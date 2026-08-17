@@ -12,6 +12,10 @@ config_root: /etc/robot-loop
 artifact_root: /var/lib/robot-loop/artifacts
 service_user: robot-loop
 services:
+  bootstrap_agentd:
+    enabled: true
+    host: 127.0.0.1
+    port: 8100
   control_plane:
     enabled: true
     host: 127.0.0.1

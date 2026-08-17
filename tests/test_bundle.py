@@ -22,9 +22,15 @@ def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path)
         assert root + "profiles/differential_drive.yaml" in names
         assert root + "config/deployment.yaml" in names
         assert root + "config/platforms/arm64.yaml" in names
+        assert root + "systemd/robot-loop-bootstrap-agentd.service" in names
         assert not any("config/robots" in name for name in names)
         manifest = json.loads(archive.read(root + "manifest.json"))
         install_script = archive.read(root + "install.sh").decode()
+        bootstrap_unit = archive.read(
+            root + "systemd/robot-loop-bootstrap-agentd.service"
+        ).decode()
+        discovery_unit = archive.read(root + "systemd/robot-loop-discovery.service").decode()
+        agentd_unit = archive.read(root + "systemd/robot-loop-agentd.service").decode()
         for relative, expected in manifest["files"].items():
             assert hashlib.sha256(archive.read(root + relative)).hexdigest() == expected
 
@@ -36,9 +42,17 @@ def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path)
         "rockchip_rk3588",
         "raspberry_pi",
     ]
+    assert manifest["startup_order"] == ["bootstrap-agentd", "discovery", "agentd"]
     assert "<robot_id>" in install_script
     assert "robotctl\" enroll init" in install_script
     assert "--confirm-safety-profile" in install_script
+    assert "robotctl bootstrap-agentd" in bootstrap_unit
+    assert "Requires=robot-loop-bootstrap-agentd.service" in discovery_unit
+    assert "After=network-online.target robot-loop-bootstrap-agentd.service" in discovery_unit
+    assert "robotctl bootstrap-wait --robot ${ROBOT_ID}" in discovery_unit
+    assert "Requires=robot-loop-discovery.service" in agentd_unit
+    assert "After=network-online.target robot-loop-discovery.service" in agentd_unit
+    assert "systemctl start robot-loop-agentd.service" in install_script
 
 
 def test_bundle_contains_no_demo_robot_identity(tmp_path: Path) -> None:

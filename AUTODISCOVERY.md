@@ -53,7 +53,12 @@ tests. This prevents documentation or naming heuristics from becoming an actuato
 
 ## Robot startup
 
-The ARM64 release dynamically enrolls one robot identity and installs
-`robot-loop-discovery.service`. On boot it scans the enrolled profile and
-`${ROBOT_DISCOVERY_SOURCE_ROOT}` before `robot-loop-agentd` starts. The default source root is
-`/opt/robot-application` and can be changed in `/etc/robot-loop/robot-loop.env`.
+The ARM64 release dynamically enrolls one robot identity and installs three ordered services:
+`robot-loop-bootstrap-agentd.service`, `robot-loop-discovery.service`, and
+`robot-loop-agentd.service`. The bootstrap daemon exposes only non-motion identity, safety-profile,
+and clock status. Discovery requires that daemon, scans the enrolled profile and
+`${ROBOT_DISCOVERY_SOURCE_ROOT}`, and persists its report. The full agentd requires a non-`FAILED`
+discovery result; a `PARTIAL` result starts it in `DEGRADED`. If discovery fails, systemd keeps the
+bootstrap daemon available and does not start the full agentd. The default source root is
+`/opt/robot-application` and can be changed in
+`/etc/robot-loop/robot-loop.env`.

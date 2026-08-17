@@ -62,7 +62,7 @@ Agent / Skills / Test DSL / Tuning Engine / State Graph     完全相同
 - adapter 之上的代码禁止出现 `if robot_id == ...`，差异只能通过 capability 和 canonical parameter binding 表达；
 - 两台车必须通过同一套 CLI conformance tests，包含单位、frame、时间戳、错误码、副作用和回滚语义。
 
-部署基线统一为 **ARM64 + Ubuntu 22.04 + ROS 2 Humble**，当前支持 Jetson Orin、RK3588 和 Raspberry Pi 4/5。发布单元是一份不携带具体机器人身份的公共 ARM64 安装包，内含同一 Agent/runtime、canonical CLI、state graph、测试与调优引擎、`robot_use` 客户端、schema 和可扩展结构/传感器 profile 模板。安装时为每台车注册任意合法且唯一的 `robot_id`，按物理结构选择并确认安全 profile，由启动发现服务识别 SoC、设备和软件绑定，最终生成本机唯一 capability manifest。三类平台的 BSP、vendor driver、设备 binding、标定和参数允许不同，但必须封装在 canonical adapter/profile 以下，上层禁止按 SoC 或具体 `robot_id` 分叉业务逻辑。两台车仍各自运行完整实例，本机密钥引用、日志、录像和 artifact 不共享。跨车 scheduler/直播控制台只是可选上层，失联不得破坏车端安全内核、记录与停止能力。
+部署基线统一为 **ARM64 + Ubuntu 22.04 + ROS 2 Humble**，当前支持 Jetson Orin、RK3588 和 Raspberry Pi 4/5。发布单元是一份不携带具体机器人身份的公共 ARM64 安装包，内含同一 Agent/runtime、canonical CLI、state graph、测试与调优引擎、`robot_use` 客户端、schema 和可扩展结构/传感器 profile 模板。安装时为每台车注册任意合法且唯一的 `robot_id`，按物理结构选择并确认安全 profile。启动顺序固定为 **最小 bootstrap agentd → 只读 discovery → 完整 agentd**：bootstrap agentd 只暴露身份、安全 profile、时钟与不可运动状态；发现服务识别 SoC、设备和软件绑定并持久化 capability manifest；只有持久化非 `FAILED` 发现报告后完整 agentd 才启动，`PARTIAL` 报告使其以 `DEGRADED` 状态启动。发现失败时 bootstrap agentd 保持在线，完整 agentd 不得启动。三类平台的 BSP、vendor driver、设备 binding、标定和参数允许不同，但必须封装在 canonical adapter/profile 以下，上层禁止按 SoC 或具体 `robot_id` 分叉业务逻辑。两台车仍各自运行完整实例，本机密钥引用、日志、录像和 artifact 不共享。跨车 scheduler/直播控制台只是可选上层，失联不得破坏车端安全内核、记录与停止能力。
 
 ### 1.2 六小时时间线
 
@@ -683,9 +683,10 @@ Sensor(front_lidar)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Bootstrap
-    Bootstrap --> Discover: safety/time/agentd ready
-    Discover --> Normalize: inventory + ROS graph
+    [*] --> BootstrapAgentd
+    BootstrapAgentd --> Discover: identity/safety profile/time ready
+    Discover --> Agentd: non-FAILED report persisted
+    Agentd --> Normalize: full runtime online
     Normalize --> Baseline: capability bindings valid
     Baseline --> Calibrate: health gates pass
     Calibrate --> BuildMap: calibration accepted
@@ -1941,7 +1942,7 @@ Tool descriptor 至少包含：
 - examples 与 semantic bindings；
 - 自身观测开销和是否会干扰被测系统。
 
-车端安装包必须包含只读自动发现服务，并在 `robot-agentd` 启动前执行一次：
+车端安装包必须包含最小 bootstrap agentd 和只读自动发现服务。bootstrap agentd 先启动并保持不可运动；发现服务依赖 bootstrap agentd，在完整 `robot-agentd` 启动前执行一次：
 
 ```text
 bounded HW probe
@@ -1955,7 +1956,7 @@ bounded HW probe
 
 默认应用源码根目录为 `/opt/robot-application`，可由部署环境显式覆盖。源码探针识别构建 manifest、ROS `package.xml`、launch/config、console entrypoint、Git revision 和静态可见的 ROS API 名称；扫描必须有文件数、单文件大小、命令超时和输出大小上限。README 只作为非可信文档证据，禁止直接执行其中的命令；新发现的二进制同样不得自动运行。自动推断出的 binding 和写命令一律标记 `DISCOVERED_UNVERIFIED`，只有在 adapter 构建并通过 schema、dry-run、幂等、取消、租约、安全和物理结果 conformance 后才能变为 `AVAILABLE`。
 
-每次发现至少持久化 `report.json`、`capability_manifest.json`、四层 probe JSON 和 `tool_catalog.json`；旧版本按 `discovery_id` 保留，不得只覆盖最新结果。发现服务失败或部分不可用时系统进入 `PARTIAL/DEGRADED`，不得伪造完整 capability，也不得阻止本地安全停止能力。
+每次发现至少持久化 `report.json`、`capability_manifest.json`、四层 probe JSON 和 `tool_catalog.json`；旧版本按 `discovery_id` 保留，不得只覆盖最新结果。发现为 `SUCCEEDED` 或 `PARTIAL` 后 systemd 才启动完整 agentd，其中 `PARTIAL` 必须保持 `DEGRADED`。发现为 `FAILED` 时完整 agentd 保持停止，bootstrap agentd 保持在线；任何状态都不得伪造完整 capability，也不得阻止本地安全停止能力。
 
 ### 12.3 配置与制品版本
 
