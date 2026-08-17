@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,8 @@ from rolo.stages.build.enrollment import PROFILE_ID_PATTERN, list_profiles
 
 ARCH_ALIASES = {"arm64": "aarch64"}
 COMMON_DEPLOYMENT_KEYS = ("install_root", "config_root", "artifact_root", "service_user")
+SAFE_AGENT_ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+SAFE_POSIX_VALUE = re.compile(r"^[A-Za-z0-9_./-]+$")
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,55 @@ def _require_string(config: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"deployment.{key} must be a non-empty string")
     return value
+
+
+def _require_bool(config: dict[str, Any], key: str) -> bool:
+    value = config.get(key)
+    if not isinstance(value, bool):
+        raise ValueError(f"deployment.coding_agent.{key} must be a boolean")
+    return value
+
+
+def _coding_agent_config(deployment: dict[str, Any]) -> dict[str, Any]:
+    value = deployment.get("coding_agent")
+    if not isinstance(value, dict):
+        raise ValueError("deployment.coding_agent must be an object")
+    executor = _require_string(value, "executor")
+    provider = _require_string(value, "provider")
+    executable = _require_string(value, "executable")
+    install_home = _require_string(value, "install_home")
+    home = _require_string(value, "home")
+    if executor != "codex":
+        raise ValueError(f"unsupported deployment coding_agent.executor: {executor}")
+    if not SAFE_AGENT_ID.fullmatch(provider):
+        raise ValueError("deployment.coding_agent.provider contains unsafe characters")
+    if not SAFE_POSIX_VALUE.fullmatch(executable) or ".." in Path(executable).parts:
+        raise ValueError("deployment.coding_agent.executable contains unsafe path characters")
+    if (
+        not install_home.startswith("/")
+        or not SAFE_POSIX_VALUE.fullmatch(install_home)
+        or ".." in Path(install_home).parts
+    ):
+        raise ValueError("deployment.coding_agent.install_home must be a safe absolute path")
+    if (
+        not home.startswith("/")
+        or not SAFE_POSIX_VALUE.fullmatch(home)
+        or ".." in Path(home).parts
+    ):
+        raise ValueError("deployment.coding_agent.home must be a safe absolute path")
+    timeout = value.get("install_timeout_s")
+    if not isinstance(timeout, int) or timeout < 1:
+        raise ValueError("deployment.coding_agent.install_timeout_s must be a positive integer")
+    return {
+        "executor": executor,
+        "provider": provider,
+        "auto_install": _require_bool(value, "auto_install"),
+        "require_auth": _require_bool(value, "require_auth"),
+        "executable": executable,
+        "install_home": install_home,
+        "home": home,
+        "install_timeout_s": timeout,
+    }
 
 
 def _resolve_source_revision(project_root: Path, configured: str) -> str:
@@ -92,9 +144,9 @@ Type=simple
 User={service_user}
 Group={service_user}
 WorkingDirectory={install_root}
-EnvironmentFile=-{config_root}/robot-loop.env
-{identity_env}Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
-Environment=ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
+EnvironmentFile=-{config_root}/rolo.env
+{identity_env}Environment=ROLO_CONFIG_DIR={config_root}
+Environment=ROLO_ARTIFACT_DIR={artifact_root}
 ExecStart={install_root}/venv/bin/robotctl {command}
 Restart=on-failure
 RestartSec=3
@@ -123,20 +175,20 @@ def _discovery_service_unit(
         "--source-root ${ROBOT_DISCOVERY_SOURCE_ROOT}"
     )
     return f"""[Unit]
-Description=Robot Loop hardware and software discovery
-After=network-online.target robot-loop-bootstrap-agentd.service
+Description=rolo hardware and software discovery
+After=network-online.target rolo-bootstrap-agentd.service
 Wants=network-online.target
-Requires=robot-loop-bootstrap-agentd.service
+Requires=rolo-bootstrap-agentd.service
 
 [Service]
 Type=oneshot
 User={service_user}
 Group={service_user}
 WorkingDirectory={install_root}
-EnvironmentFile=-{config_root}/robot-loop.env
+EnvironmentFile=-{config_root}/rolo.env
 EnvironmentFile={config_root}/robot-identity.env
-Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
-Environment=ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
+Environment=ROLO_CONFIG_DIR={config_root}
+Environment=ROLO_ARTIFACT_DIR={artifact_root}
 ExecStartPre={exec_start_pre}
 ExecStart={exec_start}
 RemainAfterExit=true
@@ -156,10 +208,13 @@ def _installer(
     install_root: str,
     config_root: str,
     artifact_root: str,
+    coding_agent: dict[str, Any],
 ) -> str:
     allowed_profiles = " ".join(profile_ids)
     profile_choices = "|".join(profile_ids)
     kernel_arch = ARCH_ALIASES[target_arch]
+    auto_install = str(coding_agent["auto_install"]).lower()
+    require_auth = str(coding_agent["require_auth"]).lower()
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
@@ -196,12 +251,33 @@ if [[ ! -r /etc/os-release ]]; then
   exit 2
 fi
 . /etc/os-release
-if [[ "${{ID:-}}" != "ubuntu" || "${{VERSION_ID:-}}" != "22.04" ]]; then
-  echo "Platform mismatch: Ubuntu 22.04 is required" >&2
+if [[ "${{ID:-}}" != "ubuntu" ]]; then
+  echo "Platform mismatch: Ubuntu is required" >&2
   exit 2
 fi
-if [[ ! -r /opt/ros/humble/setup.bash ]]; then
-  echo "ROS 2 Humble is missing; continuing with bootstrap discovery in DEGRADED mode" >&2
+case "${{VERSION_ID:-}}" in
+  20.04|22.04|24.04) ;;
+  *)
+  echo "Platform mismatch: Ubuntu 20.04, 22.04, or 24.04 is required" >&2
+  exit 2
+  ;;
+esac
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Python 3.10 or newer is required" >&2
+  exit 2
+fi
+python3 - <<'PY'
+import sys
+
+if sys.version_info[:2] < (3, 10):
+    raise SystemExit("Python 3.10 or newer is required")
+PY
+if ! python3 -m venv --help >/dev/null 2>&1; then
+  echo "The Python venv module is required" >&2
+  exit 2
+fi
+if ! compgen -G "/opt/ros/*/setup.bash" >/dev/null; then
+  echo "ROS 2 is missing; continuing with bootstrap discovery in DEGRADED mode" >&2
 fi
 
 python3 - "$BUNDLE_ROOT" <<'PY'
@@ -228,15 +304,19 @@ SERVICE_USER="{service_user}"
 INSTALL_ROOT="{install_root}"
 CONFIG_ROOT="{config_root}"
 ARTIFACT_ROOT="{artifact_root}"
+SERVICE_HOME="{coding_agent['install_home']}"
+CODEX_HOME="{coding_agent['home']}"
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-  useradd --system --home-dir "$ARTIFACT_ROOT" --shell /usr/sbin/nologin "$SERVICE_USER"
+  useradd --system --home-dir "$SERVICE_HOME" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
 install -d -o root -g root -m 0755 \
   "$INSTALL_ROOT" "$CONFIG_ROOT" "$CONFIG_ROOT/robots" \
   "$CONFIG_ROOT/profiles" "$CONFIG_ROOT/platforms"
-install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 "$ARTIFACT_ROOT"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 \
+  "$SERVICE_HOME" "$ARTIFACT_ROOT"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0700 "$CODEX_HOME"
 python3 -m venv "$INSTALL_ROOT/venv"
 "$INSTALL_ROOT/venv/bin/python" -m pip install --upgrade pip
 "$INSTALL_ROOT/venv/bin/python" -m pip install "$BUNDLE_ROOT"/wheels/rolo-*.whl
@@ -247,7 +327,7 @@ install -m 0644 "$BUNDLE_ROOT/config/deployment.yaml" "$CONFIG_ROOT/deployment.y
 install -m 0644 "$BUNDLE_ROOT/config/platforms/arm64.yaml" "$CONFIG_ROOT/platforms/arm64.yaml"
 install -m 0644 "$BUNDLE_ROOT"/profiles/*.yaml "$CONFIG_ROOT/profiles/"
 
-ROBOT_LOOP_CONFIG_DIR="$CONFIG_ROOT" \
+ROLO_CONFIG_DIR="$CONFIG_ROOT" \
   "$INSTALL_ROOT/venv/bin/robotctl" enroll init \
   --robot-id "$ROBOT_ID" \
   --profile "$PROFILE_ID" \
@@ -260,20 +340,37 @@ chmod 0644 "$CONFIG_ROOT/robot-identity.env"
 install -d -m 0755 "$INSTALL_ROOT/schemas"
 install -m 0644 "$BUNDLE_ROOT"/schemas/*.json "$INSTALL_ROOT/schemas/"
 
-if [[ ! -e "$CONFIG_ROOT/robot-loop.env" ]]; then
-  install -m 0600 "$BUNDLE_ROOT/config/robot-loop.env.example" "$CONFIG_ROOT/robot-loop.env"
+if [[ ! -e "$CONFIG_ROOT/rolo.env" ]]; then
+  install -m 0600 "$BUNDLE_ROOT/config/rolo.env.example" "$CONFIG_ROOT/rolo.env"
 fi
 
-install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-bootstrap-agentd.service" /etc/systemd/system/
-install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-agentd.service" /etc/systemd/system/
-install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-control-plane.service" /etc/systemd/system/
-install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-discovery.service" /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable robot-loop-bootstrap-agentd.service robot-loop-discovery.service
-systemctl enable robot-loop-agentd.service robot-loop-control-plane.service
-systemctl start robot-loop-agentd.service robot-loop-control-plane.service
+if [[ "{auto_install}" == "true" ]]; then
+  runuser -u "$SERVICE_USER" -- env \
+    HOME="$SERVICE_HOME" \
+    CODEX_HOME="$CODEX_HOME" \
+    ROLO_CONFIG_DIR="$CONFIG_ROOT" \
+    ROLO_ARTIFACT_DIR="$ARTIFACT_ROOT" \
+    CODING_AGENT_EXECUTOR="{coding_agent['executor']}" \
+    CODING_AGENT_PROVIDER="{coding_agent['provider']}" \
+    CODING_AGENT_EXECUTABLE="{coding_agent['executable']}" \
+    CODING_AGENT_AUTO_INSTALL="true" \
+    CODING_AGENT_REQUIRE_AUTH="{require_auth}" \
+    CODING_AGENT_INSTALL_TIMEOUT_S="{coding_agent['install_timeout_s']}" \
+    CODING_AGENT_INSTALL_HOME="$SERVICE_HOME" \
+    CODING_AGENT_HOME="$CODEX_HOME" \
+    "$INSTALL_ROOT/venv/bin/robotctl" build agent-prepare --skip-auth
+fi
 
-echo "Installed Robot Loop {__version__} for $ROBOT_ID with profile $PROFILE_ID"
+install -m 0644 "$BUNDLE_ROOT/systemd/rolo-bootstrap-agentd.service" /etc/systemd/system/
+install -m 0644 "$BUNDLE_ROOT/systemd/rolo-agentd.service" /etc/systemd/system/
+install -m 0644 "$BUNDLE_ROOT/systemd/rolo-control-plane.service" /etc/systemd/system/
+install -m 0644 "$BUNDLE_ROOT/systemd/rolo-discovery.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable rolo-bootstrap-agentd.service rolo-discovery.service
+systemctl enable rolo-agentd.service rolo-control-plane.service
+systemctl start rolo-agentd.service rolo-control-plane.service
+
+echo "Installed rolo {__version__} for $ROBOT_ID with profile $PROFILE_ID"
 echo "Startup order: bootstrap-agentd -> discovery -> agentd"
 echo "Discovery must verify bindings and calibration before motion tools become AVAILABLE"
 """
@@ -283,10 +380,10 @@ def _bundle_readme(
     *, profile_ids: Sequence[str], target_arch: str, supported_compute: Sequence[str]
 ) -> str:
     choices = "|".join(profile_ids)
-    return f"""# Robot Loop universal ARM deployment bundle
+    return f"""# rolo universal ARM deployment bundle
 
 - Product version: `{__version__}`
-- Platform baseline: ARM64 + Ubuntu 22.04 + ROS 2 Humble
+- Platform baseline: ARM64 + Ubuntu 20.04/22.04/24.04 + auto-discovered ROS 2
 - Supported compute: {", ".join(supported_compute)}
 - Robot identities: assigned dynamically at installation
 - Structure/sensor profiles: `{", ".join(profile_ids)}`
@@ -302,7 +399,7 @@ cd rolo-{__version__}-{target_arch}
 sudo bash install.sh my_robot_01 <{choices}> --confirm-safety-profile
 ```
 
-The installer creates `/etc/robot-loop/robots/my_robot_01.yaml`; no robot identity is compiled into
+The installer creates `/etc/rolo/robots/my_robot_01.yaml`; no robot identity is compiled into
 the package. Enrollment refuses to replace a different existing identity. Newly inferred bindings
 remain unverified until adapter conformance and calibration gates pass.
 
@@ -341,6 +438,7 @@ def build_compatible_bundle(
         raise ValueError("bundle config, profile, or schema input is missing")
 
     deployment = load_yaml(deployment_path)
+    coding_agent = _coding_agent_config(deployment)
     platform_config = load_yaml(platform_config_path)
     target_arch = _require_string(deployment, "target_arch")
     if target_arch not in ARCH_ALIASES:
@@ -382,7 +480,7 @@ def build_compatible_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"{bundle_name}.zip"
 
-    with tempfile.TemporaryDirectory(prefix="robot-loop-bundle-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="rolo-bundle-") as temporary:
         root = Path(temporary) / bundle_name
         for relative in ("wheels", "config", "profiles", "schemas", "systemd"):
             (root / relative).mkdir(parents=True)
@@ -398,20 +496,32 @@ def build_compatible_bundle(
         for schema in sorted(schema_dir.glob("*.json")):
             shutil.copy2(schema, root / "schemas" / schema.name)
 
-        env_text = f"""ROBOT_LOOP_ENV=production
-ROBOT_LOOP_CONFIG_DIR={config_root}
-ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
-ROBOT_LOOP_HOST={control.get('host', '127.0.0.1')}
-ROBOT_LOOP_PORT={control.get('port', 8080)}
+        env_text = f"""ROLO_ENV=production
+ROLO_CONFIG_DIR={config_root}
+ROLO_ARTIFACT_DIR={artifact_root}
+ROLO_HOST={control.get('host', '127.0.0.1')}
+ROLO_PORT={control.get('port', 8080)}
 ROBOT_DISCOVERY_SOURCE_ROOT=/opt/robot-application
+CODING_AGENT_PROVIDER={coding_agent['provider']}
+CODING_AGENT_EXECUTOR={coding_agent['executor']}
+CODING_AGENT_BASE_URL=
+CODING_AGENT_API_KEY=
+CODING_AGENT_MODEL=
+CODING_AGENT_EXECUTABLE={coding_agent['executable']}
+CODING_AGENT_TIMEOUT_S=1800
+CODING_AGENT_AUTO_INSTALL={str(coding_agent['auto_install']).lower()}
+CODING_AGENT_REQUIRE_AUTH={str(coding_agent['require_auth']).lower()}
+CODING_AGENT_INSTALL_TIMEOUT_S={coding_agent['install_timeout_s']}
+CODING_AGENT_INSTALL_HOME={coding_agent['install_home']}
+CODING_AGENT_HOME={coding_agent['home']}
 ROBOT_USE_BACKEND=mock
 OPENAI_API_KEY=
 OPENAI_MODEL=
 """
-        (root / "config" / "robot-loop.env.example").write_text(env_text, encoding="utf-8")
-        (root / "systemd" / "robot-loop-bootstrap-agentd.service").write_text(
+        (root / "config" / "rolo.env.example").write_text(env_text, encoding="utf-8")
+        (root / "systemd" / "rolo-bootstrap-agentd.service").write_text(
             _service_unit(
-                description="Robot Loop minimal bootstrap agent daemon",
+                description="rolo minimal bootstrap agent daemon",
                 service_user=service_user,
                 install_root=install_root,
                 config_root=config_root,
@@ -425,9 +535,9 @@ OPENAI_MODEL=
             ),
             encoding="utf-8",
         )
-        (root / "systemd" / "robot-loop-agentd.service").write_text(
+        (root / "systemd" / "rolo-agentd.service").write_text(
             _service_unit(
-                description="Robot Loop agent daemon",
+                description="rolo agent daemon",
                 service_user=service_user,
                 install_root=install_root,
                 config_root=config_root,
@@ -437,15 +547,15 @@ OPENAI_MODEL=
                     f"--port {agentd.get('port', 8101)}"
                 ),
                 robot_identity=True,
-                after=("robot-loop-discovery.service",),
-                wants=("robot-loop-bootstrap-agentd.service",),
-                requires=("robot-loop-discovery.service",),
+                after=("rolo-discovery.service",),
+                wants=("rolo-bootstrap-agentd.service",),
+                requires=("rolo-discovery.service",),
             ),
             encoding="utf-8",
         )
-        (root / "systemd" / "robot-loop-control-plane.service").write_text(
+        (root / "systemd" / "rolo-control-plane.service").write_text(
             _service_unit(
-                description="Robot Loop control plane",
+                description="rolo control plane",
                 service_user=service_user,
                 install_root=install_root,
                 config_root=config_root,
@@ -454,12 +564,12 @@ OPENAI_MODEL=
                     f"serve --host {control.get('host', '127.0.0.1')} "
                     f"--port {control.get('port', 8080)}"
                 ),
-                after=("robot-loop-agentd.service",),
-                wants=("robot-loop-agentd.service",),
+                after=("rolo-agentd.service",),
+                wants=("rolo-agentd.service",),
             ),
             encoding="utf-8",
         )
-        (root / "systemd" / "robot-loop-discovery.service").write_text(
+        (root / "systemd" / "rolo-discovery.service").write_text(
             _discovery_service_unit(
                 service_user=service_user,
                 install_root=install_root,
@@ -479,6 +589,7 @@ OPENAI_MODEL=
                 install_root=install_root,
                 config_root=config_root,
                 artifact_root=artifact_root,
+                coding_agent=coding_agent,
             ),
             encoding="utf-8",
             newline="\n",
@@ -513,7 +624,7 @@ OPENAI_MODEL=
             "platform_baseline": platform_baseline,
             "supported_compute": supported_compute_ids,
             "dependency_mode": deployment.get("dependency_mode", "online_resolve"),
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "source_revision": source_revision,
             "common_schema_digest": schema_digest,
             "application_wheel_sha256": sha256_file(root / "wheels" / wheel.name),

@@ -2,8 +2,8 @@ schema_version: robot-discovery-policy/v1
 platform_baseline:
   architecture: arm64
   os: ubuntu
-  os_version: "22.04"
-  ros_distribution: humble
+  os_versions: ["20.04", "22.04", "24.04"]
+  ros_distributions: [foxy, humble, jazzy]
   supported_compute:
     - nvidia_jetson_orin
     - rockchip_rk3588

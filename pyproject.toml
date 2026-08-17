@@ -3,7 +3,7 @@ name = "rolo"
 version = "0.1.0"
 description = "Local development harness for the Robot Debugging Agent 6-hour demo"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
@@ -11,6 +11,7 @@ dependencies = [
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
   "pyyaml>=6.0,<7",
+  "tomli>=2.0,<3; python_version < '3.11'",
   "typer>=0.16,<1",
   "uvicorn[standard]>=0.35,<1",
 ]
@@ -39,7 +40,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

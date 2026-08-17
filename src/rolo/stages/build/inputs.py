@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +9,7 @@ from rolo.core.models import utc_now
 from rolo.stages.contracts import AgentRequirement
 
 
-class BuildInputsStatus(StrEnum):
+class BuildInputsStatus(str, Enum):
     READY_FOR_CODING = "READY_FOR_CODING"
     DEGRADED = "DEGRADED"
     BLOCKED = "BLOCKED"

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -10,7 +10,7 @@ from rolo.core.config import get_settings
 
 @pytest.fixture(autouse=True)
 def isolated_artifact_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("ROBOT_LOOP_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -44,7 +44,7 @@ def test_unknown_robot_is_404() -> None:
 
 
 def test_robot_use_poll_uses_offline_backend() -> None:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     payload = {
         "request_id": "req-api-test",
         "robot_id": "demo_diff",

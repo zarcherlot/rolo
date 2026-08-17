@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Robot Loop Control Plane",
+    title="rolo Control Plane",
     version=__version__,
     lifespan=lifespan,
 )
@@ -60,7 +60,7 @@ async def get_robot_pipeline(robot_id: str, request: Request) -> PipelineAssessm
         runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return assess_pipeline(runtime.settings.robot_loop_artifact_dir, robot_id)
+    return assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
 
 
 @app.get("/v1/robot-use/status")

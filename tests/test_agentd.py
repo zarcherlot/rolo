@@ -58,7 +58,7 @@ def test_bootstrap_wait_requires_matching_ready_daemon(
 def test_full_agentd_waits_for_discovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ROBOT_LOOP_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
     get_settings.cache_clear()
 
     with TestClient(create_agentd_app("demo_diff")) as client:
@@ -78,7 +78,7 @@ def test_full_agentd_observes_discovery_result_without_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_root = tmp_path / "artifacts"
-    monkeypatch.setenv("ROBOT_LOOP_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     get_settings.cache_clear()
     registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()

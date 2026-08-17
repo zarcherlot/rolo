@@ -3,14 +3,23 @@ target_arch: arm64
 source_revision: auto_git
 platform_baseline:
   os: ubuntu
-  os_version: "22.04"
-  ros_distribution: humble
+  os_versions: ["20.04", "22.04", "24.04"]
+  ros_distributions: [foxy, humble, jazzy]
 hardware_profile:
   compute: auto_discover
-install_root: /opt/robot-loop
-config_root: /etc/robot-loop
-artifact_root: /var/lib/robot-loop/artifacts
-service_user: robot-loop
+install_root: /opt/rolo
+config_root: /etc/rolo
+artifact_root: /var/lib/rolo/artifacts
+service_user: rolo
+coding_agent:
+  executor: codex
+  provider: codex
+  auto_install: true
+  require_auth: true
+  executable: codex
+  install_home: /var/lib/rolo
+  home: /var/lib/rolo/codex
+  install_timeout_s: 300
 services:
   bootstrap_agentd:
     enabled: true

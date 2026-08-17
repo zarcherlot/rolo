@@ -83,7 +83,7 @@ def create_agentd_app(robot_id: str) -> FastAPI:
 
     def readiness() -> tuple[bool, str]:
         try:
-            report = load_latest_report(runtime.settings.robot_loop_artifact_dir, robot_id)
+            report = load_latest_report(runtime.settings.rolo_artifact_dir, robot_id)
         except FileNotFoundError:
             return False, "DISCOVERY_PENDING"
         if report.status == DiscoveryStatus.FAILED:
@@ -138,7 +138,7 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     @agentd.get("/v1/discovery")
     async def discovery_report() -> dict[str, object]:
         try:
-            report = load_latest_report(runtime.settings.robot_loop_artifact_dir, robot_id)
+            report = load_latest_report(runtime.settings.rolo_artifact_dir, robot_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return report.model_dump(mode="json")
@@ -146,7 +146,7 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     @agentd.get("/v1/tools")
     async def tool_catalog() -> dict[str, object]:
         try:
-            report = load_latest_report(runtime.settings.robot_loop_artifact_dir, robot_id)
+            report = load_latest_report(runtime.settings.rolo_artifact_dir, robot_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {
@@ -159,7 +159,7 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     @agentd.get("/v1/pipeline")
     async def pipeline_status() -> dict[str, object]:
         return assess_pipeline(
-            runtime.settings.robot_loop_artifact_dir, robot_id
+            runtime.settings.rolo_artifact_dir, robot_id
         ).model_dump(mode="json")
 
     @agentd.get("/v1/robots/{requested_robot_id}")

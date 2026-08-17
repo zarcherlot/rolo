@@ -21,7 +21,7 @@ def create_runtime(settings: Settings | None = None) -> Runtime:
     settings = settings or get_settings()
     registry = RobotRegistry(settings.robot_config_dir)
     registry.load()
-    artifacts = ArtifactStore(settings.robot_loop_artifact_dir)
+    artifacts = ArtifactStore(settings.rolo_artifact_dir)
     backend = create_robot_use_backend(settings)
     return Runtime(
         settings=settings,

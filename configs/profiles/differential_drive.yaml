@@ -5,8 +5,8 @@ adapter: mock
 platform:
   architecture: arm64
   compute: auto_discover
-  os: ubuntu_22.04
-  ros_distro: humble
+  os: ubuntu
+  ros_distro: auto_discover
   drive_model: differential
 geometry:
   footprint_m:
