@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "CandidateCause": {
+      "properties": {
+        "cause": {
+          "title": "Cause",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cause",
+        "confidence"
+      ],
+      "title": "CandidateCause",
+      "type": "object"
+    },
+    "ObservedFact": {
+      "properties": {
+        "frame_time": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame Time"
+        },
+        "fact": {
+          "title": "Fact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fact"
+      ],
+      "title": "ObservedFact",
+      "type": "object"
+    },
+    "RobotUseVerdict": {
+      "enum": [
+        "NORMAL",
+        "SUSPECTED_FAILURE",
+        "FAILURE",
+        "UNKNOWN"
+      ],
+      "title": "RobotUseVerdict",
+      "type": "string"
+    },
+    "TimeInterval": {
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "TimeInterval",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "robot-use-supervision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/$defs/RobotUseVerdict"
+    },
+    "failure_type": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Type"
+    },
+    "first_abnormal_interval": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimeInterval"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "expected_behavior": {
+      "title": "Expected Behavior",
+      "type": "string"
+    },
+    "observed_facts": {
+      "items": {
+        "$ref": "#/$defs/ObservedFact"
+      },
+      "title": "Observed Facts",
+      "type": "array"
+    },
+    "candidate_causes": {
+      "items": {
+        "$ref": "#/$defs/CandidateCause"
+      },
+      "title": "Candidate Causes",
+      "type": "array"
+    },
+    "requested_checks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Requested Checks",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "model_response_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Response Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "verdict",
+    "expected_behavior",
+    "confidence",
+    "model"
+  ],
+  "title": "RobotUseSupervision",
+  "type": "object"
+}

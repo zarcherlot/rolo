@@ -1,0 +1,24 @@
+schema_version: robot-deployment/v1
+robot_id: robot_a
+target_arch: arm64
+source_revision: auto_git
+platform_baseline:
+  os: ubuntu
+  os_version: "22.04"
+  ros_distribution: humble
+hardware_profile:
+  compute: auto_discover
+install_root: /opt/robot-loop
+config_root: /etc/robot-loop
+artifact_root: /var/lib/robot-loop/artifacts
+service_user: robot-loop
+services:
+  control_plane:
+    enabled: true
+    host: 127.0.0.1
+    port: 8080
+  agentd:
+    enabled: true
+    host: 127.0.0.1
+    port: 8101
+dependency_mode: online_resolve

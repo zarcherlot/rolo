@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "ImageFrame": {
+      "properties": {
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Ref"
+        },
+        "camera_id": {
+          "default": "semantic://sensor/front_camera",
+          "title": "Camera Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "timestamp"
+      ],
+      "title": "ImageFrame",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "robot-use-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "execution_id": {
+      "title": "Execution Id",
+      "type": "string"
+    },
+    "test_case_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Test Case Id"
+    },
+    "window_start": {
+      "format": "date-time",
+      "title": "Window Start",
+      "type": "string"
+    },
+    "window_end": {
+      "format": "date-time",
+      "title": "Window End",
+      "type": "string"
+    },
+    "frames": {
+      "items": {
+        "$ref": "#/$defs/ImageFrame"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Frames",
+      "type": "array"
+    },
+    "task_contract": {
+      "additionalProperties": true,
+      "title": "Task Contract",
+      "type": "object"
+    },
+    "telemetry_summary": {
+      "additionalProperties": true,
+      "title": "Telemetry Summary",
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_id",
+    "robot_id",
+    "execution_id",
+    "window_start",
+    "window_end",
+    "frames",
+    "task_contract"
+  ],
+  "title": "RobotUseRequest",
+  "type": "object"
+}

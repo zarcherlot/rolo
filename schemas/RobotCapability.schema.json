@@ -1,0 +1,47 @@
+{
+  "properties": {
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "adapter": {
+      "title": "Adapter",
+      "type": "string"
+    },
+    "platform": {
+      "additionalProperties": true,
+      "title": "Platform",
+      "type": "object"
+    },
+    "geometry": {
+      "additionalProperties": true,
+      "title": "Geometry",
+      "type": "object"
+    },
+    "sensors": {
+      "additionalProperties": true,
+      "title": "Sensors",
+      "type": "object"
+    },
+    "features": {
+      "additionalProperties": true,
+      "title": "Features",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "robot_id",
+    "adapter",
+    "platform",
+    "geometry",
+    "sensors",
+    "features"
+  ],
+  "title": "RobotCapability",
+  "type": "object"
+}

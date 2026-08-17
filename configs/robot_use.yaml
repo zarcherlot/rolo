@@ -1,0 +1,12 @@
+schema_version: robot-use-config/v1
+backend: mock
+normal_poll_interval_s: 15
+critical_poll_interval_s: 5
+window_s: 20
+overlap_s: 5
+frames_per_request: 8
+request_timeout_s: 30
+max_inflight_requests: 1
+episode_video_retention: until_final_verdict
+local_visual_detection: false
+safety_authority: none
