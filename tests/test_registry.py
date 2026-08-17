@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from robot_loop.registry import RobotRegistry
+from rolo.core.registry import RobotRegistry
 
 
 def test_loads_two_heterogeneous_robots() -> None:

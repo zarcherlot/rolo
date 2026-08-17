@@ -5,12 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from robot_loop.agentd import create_agentd_app, create_bootstrap_agentd_app
-from robot_loop.artifacts import ArtifactStore
-from robot_loop.cli import app
-from robot_loop.config import get_settings
-from robot_loop.discovery import DiscoveryService
-from robot_loop.registry import RobotRegistry
+from rolo.agentd import create_agentd_app, create_bootstrap_agentd_app
+from rolo.cli import app
+from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
+from rolo.core.registry import RobotRegistry
+from rolo.discovery import DiscoveryService
 
 
 def test_bootstrap_agentd_exposes_only_non_motion_readiness() -> None:

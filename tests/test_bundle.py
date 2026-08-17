@@ -3,11 +3,11 @@ import json
 import zipfile
 from pathlib import Path
 
-from robot_loop.bundle import build_compatible_bundle
+from rolo.bundle import build_compatible_bundle
 
 
 def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path) -> None:
-    wheel = tmp_path / "robot_loop-0.1.0-py3-none-any.whl"
+    wheel = tmp_path / "rolo-0.1.0-py3-none-any.whl"
     wheel.write_bytes(b"test wheel payload")
 
     result = build_compatible_bundle(wheel=wheel, output_dir=tmp_path / "out")
@@ -16,7 +16,7 @@ def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path)
     assert result.profile_ids == ("ackermann", "differential_drive")
     assert result.sha256 == hashlib.sha256(result.bundle.read_bytes()).hexdigest()
     with zipfile.ZipFile(result.bundle) as archive:
-        root = "robot-loop-0.1.0-arm64/"
+        root = "rolo-0.1.0-arm64/"
         names = set(archive.namelist())
         assert root + "profiles/ackermann.yaml" in names
         assert root + "profiles/differential_drive.yaml" in names
@@ -46,6 +46,7 @@ def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path)
     assert "<robot_id>" in install_script
     assert "robotctl\" enroll init" in install_script
     assert "--confirm-safety-profile" in install_script
+    assert "continuing with bootstrap discovery in DEGRADED mode" in install_script
     assert "robotctl bootstrap-agentd" in bootstrap_unit
     assert "Requires=robot-loop-bootstrap-agentd.service" in discovery_unit
     assert "After=network-online.target robot-loop-bootstrap-agentd.service" in discovery_unit
@@ -56,7 +57,7 @@ def test_builds_identity_free_arm64_bundle_with_dynamic_profiles(tmp_path: Path)
 
 
 def test_bundle_contains_no_demo_robot_identity(tmp_path: Path) -> None:
-    wheel = tmp_path / "robot_loop-0.1.0-py3-none-any.whl"
+    wheel = tmp_path / "rolo-0.1.0-py3-none-any.whl"
     wheel.write_bytes(b"test wheel payload")
     result = build_compatible_bundle(wheel=wheel, output_dir=tmp_path / "out")
 

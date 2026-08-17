@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from robot_loop.api import app
-from robot_loop.config import get_settings
+from rolo.api import app
+from rolo.core.config import get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +20,7 @@ def test_health_and_robot_registry() -> None:
     with TestClient(app) as client:
         health = client.get("/health")
         robots = client.get("/v1/robots")
+        pipeline = client.get("/v1/robots/demo_diff/pipeline")
         status = client.get("/v1/robot-use/status")
 
     assert health.status_code == 200
@@ -27,6 +28,12 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["robots"] == 2
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
+    assert [stage["stage"] for stage in pipeline.json()["stages"]] == [
+        "deploy",
+        "build",
+        "debug",
+        "test",
+    ]
     assert status.json()["local_visual_detection"] is False
 
 

@@ -4,10 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from robot_loop.agentd import create_agentd_app
-from robot_loop.cli import app
-from robot_loop.config import get_settings, load_yaml
-from robot_loop.enrollment import EnrollmentService, list_profiles
+from rolo.agentd import create_agentd_app
+from rolo.cli import app
+from rolo.core.config import get_settings, load_yaml
+from rolo.enrollment import EnrollmentService, list_profiles
 
 
 def test_enrolls_arbitrary_identity_from_profile(tmp_path: Path) -> None:

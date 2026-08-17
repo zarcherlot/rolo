@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "BuildPlanStatus": {
+      "enum": [
+        "BLOCKED",
+        "REQUIRES_CODING",
+        "READY_FOR_CONFORMANCE"
+      ],
+      "title": "BuildPlanStatus",
+      "type": "string"
+    },
+    "BuildTask": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "required_skill": {
+          "title": "Required Skill",
+          "type": "string"
+        },
+        "coding_agent_required": {
+          "default": true,
+          "title": "Coding Agent Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "required_skill"
+      ],
+      "title": "BuildTask",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "robot-build-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "default": "build",
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "source_discovery_id": {
+      "title": "Source Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/BuildPlanStatus"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/BuildTask"
+      },
+      "title": "Tasks",
+      "type": "array"
+    },
+    "required_skills": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Skills",
+      "type": "array"
+    },
+    "candidate_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Candidate Operations",
+      "type": "array"
+    },
+    "state_graph_baseline_required": {
+      "default": true,
+      "title": "State Graph Baseline Required",
+      "type": "boolean"
+    },
+    "handoff_ref": {
+      "title": "Handoff Ref",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "source_discovery_id",
+    "status",
+    "tasks",
+    "required_skills",
+    "handoff_ref"
+  ],
+  "title": "BuildPlan",
+  "type": "object"
+}
