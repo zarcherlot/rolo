@@ -1,41 +1,18 @@
 <p align="center">
-  <img src="assets/brand/rolo-logo.svg" width="720" alt="rolo Loop Exit — robot only loop once">
+  <img src="rolo-logo.svg" width="720" alt="rolo Loop Exit — robot only loop once">
 </p>
 
 <p align="center">
-  <strong>只执行一次，完整观察，精确复现。</strong><br>
-  面向机器人调试与监督的本地优先开源工程。
+  <strong>在每一次执行中自我进化。</strong><br>
 </p>
 
 <p align="center">
-  中文 · <a href="README.en.md">English</a> · <a href="BRAND.md">品牌理念</a>
+  中文 · <a href="docs/README.en.md">English</a>
 </p>
 
 ## rolo 是什么
 
-**rolo** 是 **robot only loop once** 的缩写。它表达的是一种机器人开发原则：每次只运行一个边界清晰的任务闭环，并把输入、执行、观察和结果保留下来，让问题能够被解释、复现和修正。
-
-最终字标由四个彼此独立的小写字母组成；最后一个 `o` 上唯一的蓝色出口表示一次执行明确结束，并把证据交给观察、复现和下一次决策，而不是无止境地循环。完整说明见 [`BRAND.md`](BRAND.md)。
-
-本仓库当前提供 Robot Debugging Agent 工程规格的本地开发框架。默认配置无需 ROS、Docker、相机或 OpenAI API Key；本地示例机器人由 mock adapter 模拟，同时保留正式环境使用的 CLI、API 契约、动态注册、能力清单、执行监控和 `robot_use` 监督路径。
-
-```mermaid
-flowchart LR
-    A[任务输入] --> B[一次执行]
-    B --> C[遥测与画面]
-    C --> D[语义监督]
-    D --> E[证据与复现]
-```
-
-## 当前能力
-
-- 本地优先：默认 `mock` 后端不向机器外发送图像或数据。
-- 统一接口：使用 FastAPI 控制面和 `robotctl` 命令行管理不同机器人。
-- 动态注册：安装时分配任意合规 `robot_id`，并从差速或阿克曼结构模板生成能力配置；机器人身份不编译进安装包。
-- 自动发现：只读探测硬件、Linux、ROS 图和本地应用工程，生成规范化能力清单。
-- 视觉监督：将带时间戳的画面故事板与结构化遥测交给可替换的 `robot_use` 后端。
-- 异构部署：同一份 ARM64 安装包支持 Jetson Orin、RK3588 和 Raspberry Pi 4/5，并在安装时启用机器人专属配置。
-- 离线测试：核心单元测试和 API 测试不依赖真实机器人或云端服务。
+**rolo** 是 **robot only loop once** 的缩写。它表达的是一种机器人开发原则：每运行一个边界清晰的任务，把输入、执行、观察和结果保留下来，让问题能够被解释、闭环和修正。
 
 > [!NOTE]
 > 当前版本是开发中的 MVP。模拟后端适合本地验证，但不替代真实机器人上的安全控制、急停、碰撞检测或人工授权。
@@ -43,9 +20,6 @@ flowchart LR
 ## 产品特性
 
 rolo 面向真实机器人的自主调试与测试，把每次运行组织成一个边界清晰的闭环：定义任务、执行动作、持续观察、判断结果、保留证据，再根据新的证据决定下一次运行。
-
-> [!IMPORTANT]
-> 本节描述完整产品方向。已经可用的范围以“当前能力”和仓库测试为准；自主测试、调优及多机器人编排等能力仍会随项目演进逐步实现。
 
 ### 1. 一次运行，一个完整证据闭环
 
@@ -91,8 +65,6 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 
 rolo 使用状态图管理发现、标定、操作、建图、定位、导航、测试、诊断、调优和回归。长时间任务可以生成 checkpoint，记录当前配置、活动任务、测试进度和证据索引。多台机器人可以运行相同的 Agent 和测试 DSL，同时保持独立身份、参数、状态与证据。
 
-原始产品特性说明保留在 [`PRODUCT_FEATURES.md`](PRODUCT_FEATURES.md)。
-
 ## 快速开始
 
 ### 环境要求
@@ -115,20 +87,32 @@ uv run robotctl serve
 
 API 默认运行在 `http://127.0.0.1:8080`，OpenAPI 文档位于 `http://127.0.0.1:8080/docs`。
 
-本地手工验证遵循与真机相同的启动顺序。先在终端 1 启动只读、不可运动的最小 bootstrap daemon：
+### 使用案例：四阶段机器人流程
+
+完成本地安装后，按四阶段推进一台机器人；任意时刻可用 `uv run robotctl pipeline-status --robot demo_diff` 查看总状态。
+
+| 阶段 | 主要产物 | Agent 要求 |
+|---|---|---|
+| `deploy` | capability manifest、候选语义绑定、工具目录、deployment handoff | 确定性脚本为主，Skill 可选 |
+| `build` | 已验证 canonical CLI、conformance、State Graph 基线、build handoff | Agent Skill 和 Coding Agent 必需 |
+| `debug` | 约束内闭环调试、调参证据、冻结配置、debug handoff | Debug Skill；`robot_use` 可选 |
+| `test` | 可选正式用例、全量回归、报告和证据包 | 选择该阶段时需要 Test Skill |
+
+#### 第一阶段：部署、注册与自动发现
+
+真机部署基线为 ARM64 + Ubuntu 22.04 + ROS 2 Humble。构建通用归档并在目标机按物理结构注册唯一身份：
 
 ```powershell
-uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
+.\scripts\build_bundles.ps1
 ```
 
-然后在终端 2 完成一次发现，再启动完整 agentd：
+归档位于 `dist/release/rolo-0.1.0-arm64.zip`。在目标机解压后执行：
 
-```powershell
-uv run robotctl discover run --robot demo_diff --source-root .
-uv run robotctl agentd --robot demo_diff --port 8101
+```bash
+sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
 ```
 
-在空白配置目录中注册一台真实机器人前，先核对结构、传感器和硬安全边界，再显式确认所选模板：
+本地开发无需安装归档；在空白配置目录中注册真机时，先核对结构、传感器和硬安全边界：
 
 ```powershell
 $env:ROBOT_LOOP_CONFIG_DIR = "C:\robot-loop-config"
@@ -137,74 +121,71 @@ uv run robotctl enroll init --robot-id my_robot_01 --profile differential_drive 
 uv run robotctl enroll show
 ```
 
-每个已安装实例只拥有一个 `robot_id`；更换现有身份或结构模板需要单独的迁移流程。
-
-运行检查：
+每个实例只拥有一个 `robot_id`；更换身份或结构模板需要单独迁移。随后按真机相同顺序启动最小 daemon、执行只读发现，再启动完整 agentd：
 
 ```powershell
-uv run pytest
-uv run ruff check .
+# 终端 1
+uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
+
+# 终端 2
+uv run robotctl deploy discover run --robot demo_diff --source-root C:\path\to\robot-application
+uv run robotctl deploy discover show --robot demo_diff
+uv run robotctl agentd --robot demo_diff --port 8101
+uv run robotctl deploy status --robot demo_diff
 ```
 
-## 自动发现与统一 CLI
+发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，将 capability manifest、候选语义绑定和工具目录写入 `artifacts/discovery/<robot_id>/latest`，并生成 deployment handoff。缺少 ROS、BSP 或厂商驱动时仍保留 bootstrap agentd，完整 agentd 以 `DEGRADED` 运行；发现失败则不启动完整 agentd。新绑定与标定在验证前保持不可用。证据模型与安全边界见 [`AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)。
 
-对本地应用工作区运行有边界、只读的发现流程：
+#### 第二阶段：构建标准 CLI 与 State Graph
+
+构建阶段读取 deployment handoff，生成 Coding Agent/Skill 计划，并通过统一 CLI 检查发现结果和各层 adapter：
 
 ```powershell
-uv run robotctl discover run --robot demo_diff --source-root C:\path\to\robot-application
-uv run robotctl discover show --robot demo_diff
+uv run robotctl build plan --robot demo_diff
 uv run robotctl tool catalog --robot demo_diff
-```
-
-程序会采集硬件、主机软件栈、ROS 图和本地源码工程，并把规范化能力清单、语义绑定候选与统一工具目录写入 `artifacts/discovery/<robot_id>/latest`。
-
-各层也可单独调用：
-
-```powershell
 uv run robotctl hw inventory scan
 uv run robotctl linux host inspect
 uv run robotctl ros graph snapshot
 uv run robotctl app robot discover
+uv run robotctl build status --robot demo_diff
 ```
 
-证据模型与安全边界详见 [`AUTODISCOVERY.md`](AUTODISCOVERY.md)。
+只有 canonical CLI conformance 和 State Graph 基线通过后，才允许进入调试阶段。
 
-## `robot_use` 后端
+#### 第三阶段：闭环调试与 `robot_use`
 
-默认后端为 `mock`。如需启用 OpenAI 后端，请在源码仓库之外安全设置环境变量：
+默认 `robot_use` 后端为本地 `mock`。需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
 
 ```powershell
 $env:ROBOT_USE_BACKEND = "openai"
 $env:OPENAI_API_KEY = "..."
 $env:OPENAI_MODEL = "an-image-capable-model-available-to-your-project"
+
+uv run robotctl debug status --robot demo_diff
+uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.jpg
 ```
 
-实现会发送带时间戳的画面故事板和结构化遥测。它不在本地执行视觉检测，也不会把机器人的安全决策权交给模型。
+`robot_use` 只提供语义监督，不在本地执行视觉检测，也不拥有机器人的安全决策权。调参必须受用户约束和硬安全边界限制，每次修改后都要运行受影响的 smoke、安全与回归检查。
 
-## ARM64 通用安装包
+#### 第四阶段：可选正式测试
 
-部署基线为 ARM64 + Ubuntu 22.04 + ROS 2 Humble。构建归档：
+第四阶段用于检查正式验收准备度，并在实现相应 Test Skill 后生成用例、执行全量回归和打包证据：
 
 ```powershell
-.\scripts\build_bundles.ps1
+uv run robotctl test status --robot demo_diff
 ```
 
-命令会生成 `dist/release/robot-loop-0.1.0-arm64.zip`。可把同一个归档传到不同机器人，再根据物理结构和传感器选择模板并分配身份：
-
-```bash
-sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
-```
-
-安装器会检查 ARM64、Ubuntu 22.04、ROS 2 Humble 和所有载荷校验和，然后生成该机器人的能力配置。新发现的绑定与标定在通过验证前仍保持不可用。
-
-systemd 严格按 `bootstrap-agentd → discovery → agentd` 启动：bootstrap daemon 只提供机器人身份、安全 profile 和时钟状态；discovery 持久化非 `FAILED` 报告后，完整 agentd 才启动。`PARTIAL` 报告允许完整 agentd 以 `DEGRADED` 状态启动；discovery 失败时完整 agentd 不会启动，但 bootstrap daemon 保持在线。
-
-当前 MVP 会从目标机器配置的软件包索引解析 Python 依赖；生产级离线安装还需要加入 ARM64 wheelhouse。不同平台的 ROS 和厂商驱动仍通过统一 adapter 契约接入。
+正式测试可选，但第三阶段的安全和影响范围回归不可省略。当前 MVP 尚未实现完整的自主验收执行器；ARM64 生产级离线安装也仍需补充 wheelhouse。阶段契约与实现成熟度见 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ## 工程结构
 
 ```text
-src/robot_loop/       API、CLI、领域模型与 adapters
+src/rolo/stages/deploy/  第一阶段：安装、注册、发现与交接
+src/rolo/stages/build/   第二阶段：CLI 构建计划、conformance 与 State Graph 门禁
+src/rolo/stages/debug/   第三阶段：闭环调试、调参与 robot_use
+src/rolo/stages/test/    第四阶段：可选自主测试与正式验收
+src/rolo/core/           共享配置、领域模型、制品与机器人注册表
+src/rolo/                共享 API、agentd、runtime 与兼容入口
 configs/local/        本地 mock 示例机器人的能力清单
 configs/profiles/     可注册的机器人结构与传感器模板
 configs/deployment/   通用部署与服务配置
@@ -214,11 +195,9 @@ configs/discovery.yaml
 schemas/              导出的 JSON Schema
 tests/                离线单元测试与 API 测试
 scripts/              开发与安装包构建脚本
-assets/brand/         rolo 品牌资源
+rolo-logo.svg         rolo 最终 SVG 标志
 artifacts/            运行时产物（Git 忽略）
 ```
-
-更完整的工程规格见 [`robot_debugging_agent_6h_demo_spec.md`](robot_debugging_agent_6h_demo_spec.md)。
 
 ## 参与项目
 
@@ -228,5 +207,3 @@ artifacts/            运行时产物（Git 忽略）
 uv run pytest
 uv run ruff check .
 ```
-
-品牌资源与使用规则见 [`BRAND.md`](BRAND.md)。

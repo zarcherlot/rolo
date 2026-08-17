@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "StageAssessment": {
+      "properties": {
+        "schema_version": {
+          "default": "robot-stage-assessment/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/StageName"
+        },
+        "robot_id": {
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/StageStatus"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "optional": {
+          "default": false,
+          "title": "Optional",
+          "type": "boolean"
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "artifacts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Artifacts",
+          "type": "object"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "required_skills": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Skills",
+          "type": "array"
+        },
+        "coding_agent_required": {
+          "default": false,
+          "title": "Coding Agent Required",
+          "type": "boolean"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "robot_id",
+        "status",
+        "summary"
+      ],
+      "title": "StageAssessment",
+      "type": "object"
+    },
+    "StageName": {
+      "enum": [
+        "deploy",
+        "build",
+        "debug",
+        "test"
+      ],
+      "title": "StageName",
+      "type": "string"
+    },
+    "StageStatus": {
+      "enum": [
+        "NOT_STARTED",
+        "BLOCKED",
+        "DEGRADED",
+        "READY",
+        "COMPLETE"
+      ],
+      "title": "StageStatus",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "robot-four-stage-pipeline/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/StageAssessment"
+      },
+      "title": "Stages",
+      "type": "array"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "stages"
+  ],
+  "title": "PipelineAssessment",
+  "type": "object"
+}

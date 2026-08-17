@@ -8,6 +8,10 @@ __pycache__/
 htmlcov/
 dist/
 build/
+!src/rolo/stages/build/
+!src/rolo/stages/build/**
+__pycache__/
+*.py[cod]
 *.egg-info/
 artifacts/
 logs/

@@ -1,5 +1,5 @@
 [project]
-name = "robot-loop"
+name = "rolo"
 version = "0.1.0"
 description = "Local development harness for the Robot Debugging Agent 6-hour demo"
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-robotctl = "robot_loop.cli:app"
+robotctl = "rolo.cli:app"
 
 [dependency-groups]
 dev = [
@@ -31,7 +31,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/robot_loop"]
+packages = ["src/rolo"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

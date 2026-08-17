@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "DeploymentHandoffStatus": {
+      "enum": [
+        "READY_FOR_BUILD",
+        "DEGRADED",
+        "BLOCKED"
+      ],
+      "title": "DeploymentHandoffStatus",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "robot-deployment-handoff/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "default": "deploy",
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DeploymentHandoffStatus"
+    },
+    "capability_manifest_ref": {
+      "title": "Capability Manifest Ref",
+      "type": "string"
+    },
+    "semantic_bindings_ref": {
+      "title": "Semantic Bindings Ref",
+      "type": "string"
+    },
+    "tool_catalog_ref": {
+      "title": "Tool Catalog Ref",
+      "type": "string"
+    },
+    "semantic_binding_candidates": {
+      "default": 0,
+      "title": "Semantic Binding Candidates",
+      "type": "integer"
+    },
+    "tool_count": {
+      "default": 0,
+      "title": "Tool Count",
+      "type": "integer"
+    },
+    "unresolved_dependencies": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Dependencies",
+      "type": "array"
+    },
+    "dependency_handler": {
+      "default": "deterministic_scripts",
+      "title": "Dependency Handler",
+      "type": "string"
+    },
+    "agent_skill_required": {
+      "default": false,
+      "title": "Agent Skill Required",
+      "type": "boolean"
+    },
+    "optional_agent_skills": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Optional Agent Skills",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "status",
+    "capability_manifest_ref",
+    "semantic_bindings_ref",
+    "tool_catalog_ref"
+  ],
+  "title": "DeploymentHandoff",
+  "type": "object"
+}

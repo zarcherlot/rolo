@@ -3,16 +3,16 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from robot_loop.artifacts import ArtifactStore
-from robot_loop.cli import app
-from robot_loop.config import get_settings
-from robot_loop.discovery import (
+from rolo.cli import app
+from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
+from rolo.core.registry import RobotRegistry
+from rolo.discovery import (
     ApplicationProbe,
     DiscoveryService,
     detect_compute_platform,
     load_latest_report,
 )
-from robot_loop.registry import RobotRegistry
 
 
 def make_application_project(root: Path) -> None:
@@ -104,6 +104,7 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert (artifacts.root / "discovery/demo_diff/latest/tool_catalog.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
+    assert (artifacts.root / "deploy/demo_diff/latest/handoff.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
 

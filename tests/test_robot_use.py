@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from robot_loop.adapters.mock_robot_use import MockRobotUseBackend
-from robot_loop.artifacts import ArtifactStore
-from robot_loop.models import ImageFrame, RobotUseRequest, RobotUseVerdict
-from robot_loop.registry import RobotRegistry
-from robot_loop.robot_use import RobotUseService
+from rolo.adapters.mock_robot_use import MockRobotUseBackend
+from rolo.core.artifacts import ArtifactStore
+from rolo.core.models import ImageFrame, RobotUseRequest, RobotUseVerdict
+from rolo.core.registry import RobotRegistry
+from rolo.robot_use import RobotUseService
 
 
 def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotUseRequest:
