@@ -23,7 +23,9 @@ def discover_demo(artifact_root: Path, source_root: Path) -> None:
     registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
     DiscoveryService(ArtifactStore(artifact_root)).run(
-        robot=registry.get("demo_diff"), source_roots=[source_root]
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        source_roots=[source_root],
     )
 
 
@@ -40,17 +42,21 @@ def test_discovery_writes_build_inputs_with_probes_and_build_plan(tmp_path: Path
     assert build_inputs["agent_requirement"] == "coding_agent"
     assert build_inputs["status"] in {"READY_FOR_CODING", "DEGRADED"}
     assert set(build_inputs["probe_refs"]) == {"hw", "linux", "ros", "application"}
+    assert build_inputs["semantic_context_ref"].endswith("/semantic_context.json")
     assert plan_path.is_file()
     assert plan.stage == "build"
     assert plan.status == "REQUIRES_CODING"
     assert plan.coding_agent.provider == "codex"
     assert plan.coding_agent.model is None
     assert plan.coding_agent.api_key_configured is False
+    assert plan.semantic_context_ref == build_inputs["semantic_context_ref"]
     assert plan.required_skills == [
         "canonical-adapter-builder",
         "cli-conformance",
         "state-graph-builder",
     ]
+    assert (artifact_root / "debug/demo_diff/latest/inputs.json").is_file()
+    assert (artifact_root / "test/demo_diff/latest/inputs.json").is_file()
 
 
 def test_pipeline_exposes_three_ordered_stages(tmp_path: Path) -> None:
@@ -64,7 +70,9 @@ def test_pipeline_exposes_three_ordered_stages(tmp_path: Path) -> None:
     assert pipeline.stages[0].agent_requirement == "coding_agent"
     assert pipeline.stages[1].agent_requirement == "diagnosis_agent"
     assert pipeline.stages[1].status == "BLOCKED"
+    assert "agent_inputs" in pipeline.stages[1].artifacts
     assert pipeline.stages[2].optional is True
+    assert "agent_inputs" in pipeline.stages[2].artifacts
 
 
 def test_stage_cli_keeps_legacy_and_nested_build_entries(
@@ -77,7 +85,17 @@ def test_stage_cli_keeps_legacy_and_nested_build_entries(
 
     nested = runner.invoke(
         app,
-        ["build", "discover", "run", "--robot", "demo_diff", "--source-root", str(tmp_path)],
+        [
+            "build",
+            "discover",
+            "run",
+            "--robot",
+            "demo_diff",
+            "--urdf",
+            str(Path("configs/profiles/differential_drive.urdf").resolve()),
+            "--source-root",
+            str(tmp_path),
+        ],
     )
     legacy = runner.invoke(app, ["discover", "show", "--robot", "demo_diff"])
     plan = runner.invoke(app, ["build", "plan", "--robot", "demo_diff"])

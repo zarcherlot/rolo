@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import platform
 import re
@@ -29,7 +30,14 @@ from rolo.core.models import (
     RobotCapability,
     ToolDescriptor,
 )
-from rolo.stages.build.inputs import BuildInputs, BuildInputsStatus
+from rolo.stages.build.enrollment import load_urdf_profile
+from rolo.stages.build.inputs import (
+    BuildInputs,
+    BuildInputsStatus,
+    SemanticCandidate,
+    SemanticContext,
+    StageSemanticInputs,
+)
 
 MAX_COMMAND_OUTPUT = 200_000
 MAX_SOURCE_FILES = 10_000
@@ -57,6 +65,14 @@ SAFE_ENV_KEYS = (
     "AMENT_PREFIX_PATH",
     "COLCON_PREFIX_PATH",
 )
+SEMANTIC_PARAMETER_ALIASES = {
+    "max_vel_x": ("geometry.hard_max_linear_velocity_mps", "m/s"),
+    "max_linear_velocity": ("geometry.hard_max_linear_velocity_mps", "m/s"),
+    "max_linear_speed": ("geometry.hard_max_linear_velocity_mps", "m/s"),
+    "max_vel_theta": ("geometry.hard_max_angular_velocity_radps", "rad/s"),
+    "max_angular_velocity": ("geometry.hard_max_angular_velocity_radps", "rad/s"),
+    "max_angular_speed": ("geometry.hard_max_angular_velocity_radps", "rad/s"),
+}
 
 
 def _sha256(path: Path) -> str:
@@ -342,6 +358,41 @@ def _extract_ros_names(text: str) -> dict[str, list[str]]:
     return {key: sorted(set(re.findall(pattern, text))) for key, pattern in patterns.items()}
 
 
+def _extract_semantic_candidates(
+    text: str, *, source_path: Path, source_kind: str
+) -> list[dict[str, Any]]:
+    """Extract numeric hints without executing or trusting source configuration."""
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, float, str]] = set()
+    number = r"([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)"
+    for source_key, (field, unit) in SEMANTIC_PARAMETER_ALIASES.items():
+        pattern = re.compile(
+            rf"(?i)(?<![A-Za-z0-9_]){re.escape(source_key)}(?![A-Za-z0-9_])"
+            rf"[^\r\n]{{0,120}}?{number}"
+        )
+        for match in pattern.finditer(text):
+            value = float(match.group(1))
+            if not math.isfinite(value) or value <= 0:
+                continue
+            identity = (field, value, source_key)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            candidates.append(
+                {
+                    "field": field,
+                    "value": value,
+                    "unit": unit,
+                    "source_kind": source_kind,
+                    "source_path": str(source_path),
+                    "source_key": source_key,
+                    "status": "DISCOVERED_UNVERIFIED",
+                    "safety_authority": "none",
+                }
+            )
+    return candidates
+
+
 class ApplicationProbe:
     def run(self, source_roots: Sequence[Path]) -> ProbeResult:
         projects: list[dict[str, Any]] = []
@@ -362,6 +413,7 @@ class ApplicationProbe:
                 "launch_files": [],
                 "readmes": [],
                 "config_files": [],
+                "semantic_candidates": [],
                 "ros_names": {"topics": [], "services": [], "actions": []},
                 "manifest_digests": {},
                 "source_revision": None,
@@ -412,6 +464,23 @@ class ApplicationProbe:
                     project["readmes"].append(relative)
                 if path.suffix.lower() in {".yaml", ".yml", ".json", ".toml", ".ini"}:
                     project["config_files"].append(relative)
+                candidate_source_kind = (
+                    "launch"
+                    if is_launch_file and "launch" in lower
+                    else "config"
+                    if path.suffix.lower() in {".yaml", ".yml", ".json", ".toml", ".ini"}
+                    else None
+                )
+                if candidate_source_kind and path.stat().st_size <= 2_000_000:
+                    candidate_text = _read_text(path, 2_000_000)
+                    if candidate_text:
+                        project["semantic_candidates"].extend(
+                            _extract_semantic_candidates(
+                                candidate_text,
+                                source_path=path,
+                                source_kind=candidate_source_kind,
+                            )
+                        )
                 if path.name in {
                     "pyproject.toml",
                     "setup.py",
@@ -432,6 +501,9 @@ class ApplicationProbe:
             project["packages"] = sorted(set(project["packages"]))
             project["launch_files"] = project["launch_files"][:MAX_DISCOVERED_ITEMS]
             project["config_files"] = project["config_files"][:MAX_DISCOVERED_ITEMS]
+            project["semantic_candidates"] = project["semantic_candidates"][
+                :MAX_DISCOVERED_ITEMS
+            ]
             revision = _run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout_s=5)
             if revision.get("returncode") == 0:
                 project["source_revision"] = revision["stdout"].strip()
@@ -495,7 +567,11 @@ def _capability_manifest(
     arch_aliases = {"aarch64": "arm64", "x86_64": "amd64", "amd64": "amd64"}
     normalized_observed = arch_aliases.get(observed_arch, observed_arch)
     mismatches: list[dict[str, Any]] = []
-    if expected_arch and normalized_observed and expected_arch != normalized_observed:
+    if (
+        expected_arch not in {"", "auto_discover"}
+        and normalized_observed
+        and expected_arch != normalized_observed
+    ):
         mismatches.append(
             {
                 "field": "platform.architecture",
@@ -547,6 +623,111 @@ def _capability_manifest(
             "mismatches": mismatches,
         },
     }
+
+
+def _semantic_context(
+    robot: RobotCapability,
+    probes: dict[str, ProbeResult],
+    discovery_id: str,
+) -> SemanticContext:
+    enrollment = robot.features.get("enrollment", {})
+    unresolved = set(enrollment.get("unresolved_semantics", []))
+    required_fields = {
+        "geometry.hard_max_linear_velocity_mps": robot.geometry.get(
+            "hard_max_linear_velocity_mps"
+        ),
+        "geometry.hard_max_angular_velocity_radps": robot.geometry.get(
+            "hard_max_angular_velocity_radps"
+        ),
+        "platform.drive_model": robot.platform.get("drive_model"),
+    }
+    for field, value in required_fields.items():
+        if value in {None, "", "unresolved"}:
+            unresolved.add(field)
+
+    candidates: list[SemanticCandidate] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    profile_path = str(enrollment.get("profile_path", "discovery URDF"))
+    declared_fields = {
+        "geometry.hard_max_linear_velocity_mps": (
+            robot.geometry.get("hard_max_linear_velocity_mps"),
+            "m/s",
+            "rolo@hard_max_linear_velocity_mps",
+        ),
+        "geometry.hard_max_angular_velocity_radps": (
+            robot.geometry.get("hard_max_angular_velocity_radps"),
+            "rad/s",
+            "rolo@hard_max_angular_velocity_radps",
+        ),
+    }
+    for field, (value, unit, source_key) in declared_fields.items():
+        if value is None:
+            continue
+        candidate = SemanticCandidate(
+            field=field,
+            value=value,
+            unit=unit,
+            source_kind="urdf",
+            source_path=profile_path,
+            source_key=source_key,
+            status="DECLARED_UNVERIFIED",
+        )
+        candidates.append(candidate)
+        seen.add((candidate.field, str(candidate.value), candidate.source_path, source_key))
+    for project in probes["application"].data.get("projects", []):
+        for raw_candidate in project.get("semantic_candidates", []):
+            candidate = SemanticCandidate.model_validate(raw_candidate)
+            identity = (
+                candidate.field,
+                str(candidate.value),
+                candidate.source_path,
+                candidate.source_key,
+            )
+            if identity not in seen:
+                seen.add(identity)
+                candidates.append(candidate)
+    return SemanticContext(
+        robot_id=robot.robot_id,
+        discovery_id=discovery_id,
+        unresolved_semantics=sorted(unresolved),
+        candidates=candidates,
+        motion_safety_status=enrollment.get("motion_safety_status", "UNAPPROVED"),
+    )
+
+
+def _read_discovery_urdf(robot: RobotCapability, urdf_path: Path) -> RobotCapability:
+    """Load the explicitly supplied URDF into a discovery-time capability snapshot."""
+    enrollment = dict(robot.features.get("enrollment", {}))
+    profile = load_urdf_profile(urdf_path)
+    enrollment.update(
+        {
+            "profile_id": profile.profile_id,
+            "profile_format": "urdf",
+            "profile_path": str(profile.path),
+            "profile_sha256": profile.sha256,
+            "urdf_status": "SCANNED",
+            "semantic_status": (
+                "RESOLVED" if not profile.unresolved_semantics else "PARTIAL"
+            ),
+            "motion_safety_status": enrollment.get(
+                "motion_safety_status",
+                "UNAPPROVED",
+            ),
+            "unresolved_semantics": list(profile.unresolved_semantics),
+        }
+    )
+    enrollment.pop("safety_profile_complete", None)
+    features = dict(profile.features)
+    features["enrollment"] = enrollment
+    return RobotCapability(
+        schema_version=robot.schema_version,
+        robot_id=robot.robot_id,
+        adapter=profile.adapter,
+        platform=profile.platform,
+        geometry=profile.geometry,
+        sensors=profile.sensors,
+        features=features,
+    )
 
 
 def _tool(
@@ -655,8 +836,10 @@ class DiscoveryService:
         self,
         *,
         robot: RobotCapability,
+        urdf_path: Path,
         source_roots: Sequence[Path],
     ) -> tuple[DiscoveryReport, Path]:
+        robot = _read_discovery_urdf(robot, urdf_path)
         probes = {
             "hw": HardwareProbe().run(),
             "linux": LinuxProbe().run(),
@@ -675,6 +858,7 @@ class DiscoveryService:
             status = DiscoveryStatus.PARTIAL
         now = datetime.now(timezone.utc)
         discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
+        semantic_context = _semantic_context(robot, probes, discovery_id)
         report = DiscoveryReport(
             discovery_id=discovery_id,
             robot_id=robot.robot_id,
@@ -696,6 +880,14 @@ class DiscoveryService:
             self.artifacts.write_json(
                 f"discovery/{robot.robot_id}/{location}/capability_manifest.json",
                 capability_manifest,
+            )
+            self.artifacts.write_json(
+                f"discovery/{robot.robot_id}/{location}/discovered_capability.json",
+                robot.model_dump(mode="json"),
+            )
+            self.artifacts.write_json(
+                f"discovery/{robot.robot_id}/{location}/semantic_context.json",
+                semantic_context.model_dump(mode="json"),
             )
         for layer, probe in probes.items():
             for location in (f"runs/{discovery_id}", "latest"):
@@ -723,6 +915,9 @@ class DiscoveryService:
             f"compatibility:{item['field']}"
             for item in capability_manifest["compatibility"]["mismatches"]
         )
+        semantic_context_ref = (
+            f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/semantic_context.json"
+        )
         inputs_status = {
             DiscoveryStatus.SUCCEEDED: BuildInputsStatus.READY_FOR_CODING,
             DiscoveryStatus.PARTIAL: BuildInputsStatus.DEGRADED,
@@ -740,6 +935,7 @@ class DiscoveryService:
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
                 "report.json#/semantic_bindings"
             ),
+            semantic_context_ref=semantic_context_ref,
             tool_catalog_ref=(
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
             ),
@@ -750,8 +946,10 @@ class DiscoveryService:
                 for layer in probes
             },
             semantic_binding_candidates=len(bindings),
+            semantic_value_candidates=len(semantic_context.candidates),
             tool_count=len(tools),
             unresolved_dependencies=unresolved,
+            unresolved_semantics=semantic_context.unresolved_semantics,
         )
         inputs_payload = build_inputs.model_dump(mode="json")
         self.artifacts.write_json(
@@ -760,6 +958,26 @@ class DiscoveryService:
         self.artifacts.write_json(
             f"build/{robot.robot_id}/latest/inputs.json", inputs_payload
         )
+        for location in (f"runs/{discovery_id}", "latest"):
+            self.artifacts.write_json(
+                f"build/{robot.robot_id}/{location}/semantic_context.json",
+                semantic_context.model_dump(mode="json"),
+            )
+        for stage in ("debug", "test"):
+            stage_inputs = StageSemanticInputs(
+                stage=stage,
+                robot_id=robot.robot_id,
+                source_discovery_id=discovery_id,
+                semantic_context_ref=semantic_context_ref,
+                unresolved_semantics=semantic_context.unresolved_semantics,
+                semantic_candidates=semantic_context.candidates,
+            ).model_dump(mode="json")
+            self.artifacts.write_json(
+                f"{stage}/{robot.robot_id}/runs/{discovery_id}/inputs.json", stage_inputs
+            )
+            self.artifacts.write_json(
+                f"{stage}/{robot.robot_id}/latest/inputs.json", stage_inputs
+            )
         return report, run_path
 
 

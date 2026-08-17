@@ -5,6 +5,7 @@ from pathlib import Path
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus
 from rolo.stages.build.discovery import load_latest_report
+from rolo.stages.build.inputs import BuildInputs
 from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask, CodingAgentConfig
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
@@ -22,6 +23,7 @@ class BuildStageService:
         build_inputs = self.artifacts.root / "build" / robot_id / "latest" / "inputs.json"
         if not build_inputs.is_file():
             raise FileNotFoundError(f"No build inputs for {robot_id}; run build discovery first")
+        inputs = BuildInputs.model_validate_json(build_inputs.read_text(encoding="utf-8"))
         report = load_latest_report(self.artifacts.root, robot_id)
         candidates = sorted(
             tool.operation
@@ -47,6 +49,14 @@ class BuildStageService:
                 description="Build the initial typed State Graph from verified capability evidence",
                 required_skill="state-graph-builder",
             ),
+            BuildTask(
+                id="semantic-resolution-context",
+                description=(
+                    "Preserve unresolved robot semantics and source-derived candidates for "
+                    "controlled Debug and Test validation"
+                ),
+                required_skill="state-graph-builder",
+            ),
         ]
         plan = BuildPlan(
             robot_id=robot_id,
@@ -56,6 +66,9 @@ class BuildStageService:
             required_skills=BUILD_SKILLS,
             coding_agent=self.coding_agent,
             candidate_operations=candidates,
+            semantic_context_ref=inputs.semantic_context_ref,
+            unresolved_semantics=inputs.unresolved_semantics,
+            semantic_value_candidates=inputs.semantic_value_candidates,
             handoff_ref=f"artifact://build/{robot_id}/latest/handoff.json",
         )
         path = self.artifacts.write_json(

@@ -5,6 +5,7 @@ import base64
 import json
 import mimetypes
 import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -27,7 +28,6 @@ from rolo.core.models import (
     ToolDescriptor,
 )
 from rolo.runtime import create_runtime
-from rolo.stages.build.bundle import build_compatible_bundle
 from rolo.stages.build.dependencies import CodexDependencyAdapter, CodingAgentDependencyManager
 from rolo.stages.build.discovery import (
     ApplicationProbe,
@@ -54,12 +54,12 @@ from rolo.stages.build.models import (
 )
 from rolo.stages.build.service import BuildStageService
 from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
+from rolo.stages.debug.robot_use import create_robot_use_backend
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
 app = typer.Typer(help="Canonical local CLI for the rolo development harness.")
 schema_app = typer.Typer(help="Export and inspect canonical JSON schemas.")
 robot_use_app = typer.Typer(help="Run robot_use semantic visual supervision.")
-bundle_app = typer.Typer(help="Build independently installable per-robot bundles.")
 discover_app = typer.Typer(help="Discover hardware, Linux, ROS and application capabilities.")
 tool_app = typer.Typer(help="Inspect the generated canonical tool catalog.")
 hw_app = typer.Typer(help="Canonical hardware-layer tools.")
@@ -70,9 +70,9 @@ ros_app = typer.Typer(help="Canonical ROS-layer tools.")
 ros_graph_app = typer.Typer(help="ROS graph operations.")
 application_app = typer.Typer(help="Canonical application-layer tools.")
 app_robot_cli = typer.Typer(help="Application robot discovery operations.")
-enroll_app = typer.Typer(help="Enroll an arbitrary robot identity from a capability profile.")
+enroll_app = typer.Typer(help="Inspect the robot identity and available URDF examples.")
 build_stage_app = typer.Typer(
-    help="Stage 1: install, enroll, discover, build canonical CLI adapters and the State Graph."
+    help="Stage 1: register, discover, build canonical CLI adapters and the State Graph."
 )
 debug_stage_app = typer.Typer(help="Stage 2: diagnose and tune within user constraints.")
 test_stage_app = typer.Typer(help="Stage 3: optionally generate and run acceptance tests.")
@@ -81,7 +81,6 @@ app.add_typer(debug_stage_app, name="debug")
 app.add_typer(test_stage_app, name="test")
 app.add_typer(schema_app, name="schema")
 app.add_typer(robot_use_app, name="robot-use")
-app.add_typer(bundle_app, name="bundle")
 app.add_typer(discover_app, name="discover")
 app.add_typer(tool_app, name="tool")
 app.add_typer(hw_app, name="hw")
@@ -93,7 +92,6 @@ ros_app.add_typer(ros_graph_app, name="graph")
 app.add_typer(application_app, name="app")
 application_app.add_typer(app_robot_cli, name="robot")
 app.add_typer(enroll_app, name="enroll")
-build_stage_app.add_typer(bundle_app, name="bundle")
 build_stage_app.add_typer(enroll_app, name="enroll")
 build_stage_app.add_typer(discover_app, name="discover")
 build_stage_app.add_typer(tool_app, name="tool")
@@ -249,19 +247,39 @@ def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     emit(assess_pipeline(settings.rolo_artifact_dir, robot))
 
 
-@app.command()
-def doctor() -> None:
-    """Check local prerequisites and canonical configuration."""
+def _doctor_report() -> dict[str, object]:
     settings = get_settings()
     errors: list[str] = []
     warnings: list[str] = []
+    robot_manifests = (
+        sorted(settings.robot_config_dir.glob("*.yaml"))
+        if settings.robot_config_dir.is_dir()
+        else []
+    )
+    robots = 0
+    enrollment_status = "NOT_ENROLLED"
+    if robot_manifests:
+        try:
+            runtime = create_runtime(settings)
+            robots = len(runtime.registry)
+            enrolled = runtime.registry.list()
+            states = {
+                str(robot.features.get("enrollment", {}).get("urdf_status", "REGISTERED"))
+                for robot in enrolled
+            }
+            enrollment_status = states.pop() if len(states) == 1 else "REGISTERED"
+        except Exception as exc:  # doctor must aggregate malformed robot configuration
+            errors.append(str(exc))
+            enrollment_status = "INVALID"
+    else:
+        warnings.append(
+            "No robot is registered; run 'uv run robotctl init --robot-id ...'"
+        )
+
     try:
-        runtime = create_runtime(settings)
-        robots = len(runtime.registry)
-        backend = runtime.robot_use_backend.name
-    except Exception as exc:  # doctor must aggregate configuration failures
+        backend = create_robot_use_backend(settings).name
+    except Exception as exc:  # doctor must aggregate backend configuration failures
         errors.append(str(exc))
-        robots = 0
         backend = settings.robot_use_backend
 
     install_home = settings.coding_agent_install_home or Path.home()
@@ -291,23 +309,113 @@ def doctor() -> None:
 
     coding_agent = configured_coding_agent()
 
+    return {
+        "status": "READY" if not errors else "NOT_READY",
+        "version": __version__,
+        "python": {"version": sys.version.split()[0], "executable": sys.executable},
+        "config_dir": str(settings.rolo_config_dir),
+        "artifact_dir": str(settings.rolo_artifact_dir),
+        "robots": robots,
+        "enrollment_status": enrollment_status,
+        "robot_use_backend": backend,
+        "coding_agent": coding_agent.model_dump(mode="json"),
+        "local_visual_detection": False,
+        "optional_tools": optional_tools,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+@app.command()
+def doctor() -> None:
+    """Check local prerequisites and canonical configuration."""
+    report = _doctor_report()
+    emit(report)
+    if report["status"] != "READY":
+        raise typer.Exit(code=1)
+
+
+def _run_engineering_tests(workspace: Path) -> dict[str, object]:
+    tests_root = workspace / "tests"
+    if not tests_root.is_dir():
+        return {
+            "status": "FAILED",
+            "exit_code": None,
+            "summary": f"engineering tests directory does not exist: {tests_root}",
+        }
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q"],
+            cwd=workspace,
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "FAILED", "exit_code": None, "summary": "pytest timed out after 600s"}
+    output = "\n".join(
+        part.strip() for part in (completed.stdout, completed.stderr) if part.strip()
+    )
+    return {
+        "status": "PASSED" if completed.returncode == 0 else "FAILED",
+        "exit_code": completed.returncode,
+        "summary": output[-4000:],
+    }
+
+
+@app.command("init")
+def initialize(
+    robot_id: Annotated[str, typer.Option("--robot-id", help="User-assigned robot identity")],
+) -> None:
+    """Register identity, validate the environment and run repository engineering tests."""
+    settings = get_settings()
+    try:
+        enrollment = EnrollmentService(config_root=settings.rolo_config_dir).enroll(
+            robot_id=robot_id,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    doctor_result = _doctor_report()
+    try:
+        registered_robots = [
+            robot.model_dump(mode="json") for robot in create_runtime(settings).registry.list()
+        ]
+    except Exception as exc:
+        registered_robots = []
+        doctor_result["status"] = "NOT_READY"
+        doctor_result.setdefault("errors", []).append(str(exc))  # type: ignore[union-attr]
+    workspace = Path(__file__).resolve().parents[2]
+    engineering_tests = _run_engineering_tests(workspace)
+    ready = bool(
+        doctor_result["status"] == "READY"
+        and engineering_tests["status"] == "PASSED"
+        and len(registered_robots) == 1
+        and registered_robots[0]["robot_id"] == robot_id
+    )
     emit(
         {
-            "status": "READY" if not errors else "NOT_READY",
-            "version": __version__,
-            "python": {"version": sys.version.split()[0], "executable": sys.executable},
-            "config_dir": str(settings.rolo_config_dir),
-            "artifact_dir": str(settings.rolo_artifact_dir),
-            "robots": robots,
-            "robot_use_backend": backend,
-            "coding_agent": coding_agent.model_dump(mode="json"),
-            "local_visual_detection": False,
-            "optional_tools": optional_tools,
-            "warnings": warnings,
-            "errors": errors,
+            "status": "READY_FOR_DISCOVERY" if ready else "NOT_READY",
+            "robot_id": robot_id,
+            "registration": {
+                "status": enrollment.status,
+                "capability_path": str(enrollment.capability_path),
+            },
+            "doctor": doctor_result,
+            "robots": registered_robots,
+            "engineering_tests": engineering_tests,
+            "next_step": (
+                f'uv run robotctl discover run --robot "{robot_id}" '
+                "--urdf /path/to/your_robot.urdf "
+                "--source-root /path/to/robot-application"
+            ),
+            "motion_safety_status": "UNAPPROVED",
         }
     )
-    if errors:
+    if not ready:
         raise typer.Exit(code=1)
 
 
@@ -427,46 +535,10 @@ def export_schemas(
 def enrollment_profiles(
     profile_root: Annotated[Path | None, typer.Option("--profile-root")] = None,
 ) -> None:
-    """List robot structure/sensor profiles available for enrollment."""
+    """List URDF format examples available for discovery."""
     settings = get_settings()
     resolved = resolve_profile_root(settings.rolo_config_dir, profile_root)
     emit({"profile_root": str(resolved), "profiles": list_profiles(resolved)})
-
-
-@enroll_app.command("init")
-def enrollment_init(
-    robot_id: Annotated[str, typer.Option("--robot-id")],
-    profile: Annotated[str, typer.Option("--profile")],
-    confirm_safety_profile: Annotated[
-        bool,
-        typer.Option(
-            "--confirm-safety-profile",
-            help="Confirm that geometry and hard motion bounds match the physical robot",
-        ),
-    ] = False,
-    profile_root: Annotated[Path | None, typer.Option("--profile-root")] = None,
-) -> None:
-    """Create the only active robot manifest for this installed instance."""
-    settings = get_settings()
-    resolved = resolve_profile_root(settings.rolo_config_dir, profile_root)
-    service = EnrollmentService(config_root=settings.rolo_config_dir, profile_root=resolved)
-    try:
-        result = service.enroll(
-            robot_id=robot_id,
-            profile_id=profile,
-            safety_profile_confirmed=confirm_safety_profile,
-        )
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(
-        {
-            "status": result.status,
-            "robot_id": result.robot_id,
-            "profile_id": result.profile_id,
-            "capability_path": str(result.capability_path),
-            "capability_sha256": result.capability_sha256,
-        }
-    )
 
 
 @enroll_app.command("show")
@@ -479,6 +551,7 @@ def enrollment_show() -> None:
 @discover_app.command("run")
 def discovery_run(
     robot: Annotated[str, typer.Option("--robot")],
+    urdf: Annotated[Path, typer.Option("--urdf", help="URDF path to load and analyze")],
     source_root: Annotated[
         list[Path] | None,
         typer.Option("--source-root", help="Application source root; repeat for overlays"),
@@ -492,9 +565,12 @@ def discovery_run(
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
     roots = source_root or [Path.cwd()]
-    report, artifact = DiscoveryService(runtime.robot_use.artifacts).run(
-        robot=capability, source_roots=roots
-    )
+    try:
+        report, artifact = DiscoveryService(runtime.robot_use.artifacts).run(
+            robot=capability, urdf_path=urdf, source_roots=roots
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     if full:
         emit(report)
         if report.status == DiscoveryStatus.FAILED:
@@ -608,30 +684,6 @@ def tool_schema(
             "input_schema": descriptor.input_schema,
             "output_schema": descriptor.output_schema,
             "availability": descriptor.availability,
-        }
-    )
-
-
-@bundle_app.command("build")
-def bundle_build(
-    wheel: Annotated[Path, typer.Option("--wheel", exists=True, dir_okay=False)],
-    output: Annotated[Path, typer.Option("--output", help="Bundle output directory")] = Path(
-        "dist/release"
-    ),
-) -> None:
-    """Build one checksummed ARM64 archive with no compiled-in robot identity."""
-    try:
-        result = build_compatible_bundle(wheel=wheel, output_dir=output)
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(
-        {
-            "status": "SUCCEEDED",
-            "bundle": str(result.bundle),
-            "profile_ids": result.profile_ids,
-            "target_arch": result.target_arch,
-            "version": result.version,
-            "sha256": result.sha256,
         }
     )
 

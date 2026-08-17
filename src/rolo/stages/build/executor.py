@@ -256,11 +256,28 @@ class CodexBuildExecutor:
 
     def _build_prompt(self, plan: BuildPlan) -> str:
         report = load_latest_report(self.artifacts.root, plan.robot_id)
+        semantic_context_path = (
+            self.artifacts.root
+            / "build"
+            / plan.robot_id
+            / "latest"
+            / "semantic_context.json"
+        )
+        semantic_context = (
+            json.loads(semantic_context_path.read_text(encoding="utf-8"))
+            if semantic_context_path.is_file()
+            else {
+                "unresolved_semantics": plan.unresolved_semantics,
+                "candidates": [],
+                "candidates_are_verified_limits": False,
+            }
+        )
         context: dict[str, Any] = {
             "platform": report.platform,
             "capability_manifest": report.capability_manifest,
             "semantic_bindings": report.semantic_bindings,
             "tool_catalog": [tool.model_dump(mode="json") for tool in report.tool_catalog],
+            "semantic_context": semantic_context,
         }
         return (
             "You are the Stage 1 Coding Agent for rolo. Work only inside the supplied "
@@ -269,6 +286,8 @@ class CodexBuildExecutor:
             "targeted validation. Never weaken safety gates or expose credentials. Do not create "
             "or publish build/<robot>/latest/handoff.json; a separate conformance gate owns that "
             "promotion. Return only the JSON object required by the supplied output schema.\n\n"
+            "Semantic candidates are unverified diagnostic inputs. Never encode them as hard "
+            "motion safety limits without explicit validation and approval.\n\n"
             f"BUILD PLAN:\n{plan.model_dump_json(indent=2)}\n\n"
             f"DISCOVERY CONTEXT:\n{json.dumps(context, ensure_ascii=False, indent=2)}\n"
         )

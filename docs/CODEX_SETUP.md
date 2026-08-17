@@ -1,102 +1,86 @@
-# Codex executor setup on a robot
+# Codex executor setup in a uv workspace
 
-rolo defaults to the `codex` Coding Agent executor. Its lifecycle is:
+rolo defaults to the `codex` Coding Agent executor. rolo itself is installed only through a Git
+checkout followed by `uv sync --frozen`; the commands below run from that checkout.
 
 ```text
-deployment configuration -> automatic installation -> readiness verification -> build execution
+.env configuration -> automatic Codex dependency installation -> readiness verification -> build execution
 ```
 
-## Deployment configuration
+## Configuration
 
-The bundle reads `coding_agent` from `configs/deployment/common.yaml`:
+`.env` is optional. Code defaults already select Codex, automatic installation, and authentication
+verification. Create a Git-ignored `.env` at the repository root only when persistent overrides are
+needed; `.env.example` is a reference and does not need to be copied.
 
-```yaml
-coding_agent:
-  executor: codex
-  provider: codex
-  auto_install: true
-  require_auth: true
-  executable: codex
-  install_home: /var/lib/rolo
-  home: /var/lib/rolo/codex
-  install_timeout_s: 300
+```dotenv
+CODING_AGENT_EXECUTOR=codex
+CODING_AGENT_PROVIDER=codex
+CODING_AGENT_AUTO_INSTALL=true
+CODING_AGENT_REQUIRE_AUTH=true
+CODING_AGENT_EXECUTABLE=codex
+CODING_AGENT_INSTALL_TIMEOUT_S=300
+CODING_AGENT_INSTALL_HOME=
+CODING_AGENT_HOME=
 ```
 
-Only an allowlisted executor has an installer. The Codex adapter uses the official Linux standalone
-installer documented at <https://learn.chatgpt.com/docs/codex/cli>. Provider Base URLs and model
-configuration cannot change the installer URL.
+Empty home values use the current user's home and `~/.codex`. Only an allowlisted executor has an
+installer. The Codex adapter uses the official Linux standalone installer documented at
+<https://learn.chatgpt.com/docs/codex/cli>; provider Base URLs and model settings cannot change the
+installer source.
 
-During `install.sh`, rolo installs the missing executable as the `rolo` service user and calls:
+## Installation and readiness
+
+Inspect the effective secret-free configuration, then install and verify the executable without
+claiming that authentication is complete:
 
 ```bash
-/opt/rolo/venv/bin/robotctl build agent-prepare --skip-auth
+uv run robotctl build agent-config
+uv run robotctl build agent-prepare --skip-auth
 ```
 
-This deployment check verifies installation and version without pretending that a user login is
-complete. It writes a secret-free report to:
+The second command downloads Codex only when it is missing and automatic installation is enabled.
+It writes a secret-free report under:
 
 ```text
-/var/lib/rolo/artifacts/coding-agent/dependency/latest.json
+.rolo/artifacts/coding-agent/dependency/latest.json
 ```
 
 ## First authentication
 
-Authentication is a user gate and is not automated. On a headless robot, use device-code login as
-the same operating-system user that runs the Coding Agent:
+Authentication is a user gate and is not automated. On a headless robot, run device-code login as
+the same operating-system user that owns the Git checkout:
 
 ```bash
-CODEX_BIN="$(sudo -u rolo -H sh -lc 'command -v codex')"
-sudo -u rolo -H env \
-  HOME=/var/lib/rolo \
-  CODEX_HOME=/var/lib/rolo/codex \
-  "$CODEX_BIN" login --device-auth
-```
-
-Then verify the complete dependency gate:
-
-```bash
-sudo -u rolo -H env \
-  HOME=/var/lib/rolo \
-  CODEX_HOME=/var/lib/rolo/codex \
-  ROLO_CONFIG_DIR=/etc/rolo \
-  ROLO_ARTIFACT_DIR=/var/lib/rolo/artifacts \
-  CODING_AGENT_INSTALL_HOME=/var/lib/rolo \
-  CODING_AGENT_HOME=/var/lib/rolo/codex \
-  /opt/rolo/venv/bin/robotctl build agent-prepare
+codex login --device-auth
+uv run robotctl build agent-prepare
 ```
 
 Expected readiness is `READY`. `AUTH_REQUIRED`, `INSTALL_REQUIRED`, `UNSUPPORTED`, or `FAILED`
-blocks build execution.
+blocks build execution. An explicitly configured API key can satisfy provider authentication, but
+the key remains process-local and is never written to plans or artifacts.
 
 ## Execution
 
-`build execute` always repeats installation and readiness verification before starting
-`codex exec`:
+`build execute` repeats dependency and authentication verification before starting `codex exec`:
 
 ```bash
-sudo -u rolo -H env \
-  HOME=/var/lib/rolo \
-  CODEX_HOME=/var/lib/rolo/codex \
-  ROLO_CONFIG_DIR=/etc/rolo \
-  ROLO_ARTIFACT_DIR=/var/lib/rolo/artifacts \
-  CODING_AGENT_INSTALL_HOME=/var/lib/rolo \
-  CODING_AGENT_HOME=/var/lib/rolo/codex \
-  /opt/rolo/venv/bin/robotctl build execute \
-    --robot my_robot_01 \
-    --workspace /opt/robot-application
+uv run robotctl build execute \
+  --robot "$ROBOT_ID" \
+  --workspace /path/to/robot-application
 ```
 
 The executor uses the `workspace-write` sandbox. Dependency reports, commands, and run artifacts do
 not contain API keys or cached authentication contents.
 
-## Files written on the robot
+## Files written for the current user
 
-- `/var/lib/rolo/.local/bin/codex` is the conventional standalone executable location; the actual
-  resolved path is recorded in the dependency report.
-- `/var/lib/rolo/codex/auth.json` may contain cached authentication when file-backed credential
-  storage is used. Treat it as a password.
-- `/var/lib/rolo/codex/config.toml` contains optional Codex configuration when created.
-- `/var/lib/rolo/artifacts/coding-agent/dependency/latest.json` contains only readiness metadata.
+- `~/.local/bin/codex` is the conventional standalone executable location; the resolved path is
+  recorded in the dependency report.
+- `~/.codex/auth.json` may contain cached authentication when file-backed credential storage is
+  used. Treat it as a password.
+- `~/.codex/config.toml` contains optional Codex configuration when created.
+- `.rolo/artifacts/coding-agent/dependency/latest.json` contains readiness metadata only.
 
 The official authentication and credential-storage behavior is documented at
 <https://learn.chatgpt.com/docs/auth>.

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,7 +6,8 @@ from typer.testing import CliRunner
 
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
-from rolo.core.config import get_settings
+from rolo.core.config import get_settings, load_yaml
+from rolo.core.models import RobotCapability
 from rolo.core.registry import RobotRegistry
 from rolo.discovery import (
     ApplicationProbe,
@@ -14,6 +16,7 @@ from rolo.discovery import (
     load_latest_report,
 )
 from rolo.stages.build.discovery import UBUNTU_ROS_DEFAULTS
+from rolo.stages.build.enrollment import EnrollmentService
 
 
 def make_application_project(root: Path) -> None:
@@ -43,8 +46,12 @@ demo-nav = "demo_nav.main:main"
 """,
         encoding="utf-8",
     )
-    (root / "launch/demo.launch.py").write_text("# launch placeholder\n", encoding="utf-8")
-    (root / "config/nav.yaml").write_text("controller: demo\n", encoding="utf-8")
+    (root / "launch/demo.launch.py").write_text(
+        'DeclareLaunchArgument("max_vel_x", default_value="0.45")\n', encoding="utf-8"
+    )
+    (root / "config/nav.yaml").write_text(
+        "controller:\n  max_vel_theta: 1.2\n", encoding="utf-8"
+    )
     (root / "README.md").write_text(
         "Documentation only; discovery must not execute text from this file.\n", encoding="utf-8"
     )
@@ -84,6 +91,18 @@ def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> No
     ]
     assert project["ros_names"]["topics"] == ["/cmd_vel", "/odom"]
     assert project["launch_files"] == ["launch/demo.launch.py"]
+    assert {
+        (candidate["field"], candidate["value"], candidate["source_kind"])
+        for candidate in project["semantic_candidates"]
+    } == {
+        ("geometry.hard_max_linear_velocity_mps", 0.45, "launch"),
+        ("geometry.hard_max_angular_velocity_radps", 1.2, "config"),
+    }
+    assert all(
+        candidate["status"] == "DISCOVERED_UNVERIFIED"
+        and candidate["safety_authority"] == "none"
+        for candidate in project["semantic_candidates"]
+    )
     assert "pyproject.toml" in project["manifest_digests"]
 
 
@@ -95,7 +114,9 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     artifacts = ArtifactStore(tmp_path / "artifacts")
 
     report, run_path = DiscoveryService(artifacts).run(
-        robot=registry.get("demo_diff"), source_roots=[project]
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        source_roots=[project],
     )
     loaded = load_latest_report(artifacts.root, "demo_diff")
 
@@ -114,10 +135,130 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
     assert (artifacts.root / "build/demo_diff/latest/inputs.json").is_file()
+    assert (artifacts.root / "build/demo_diff/latest/semantic_context.json").is_file()
+    assert (artifacts.root / "debug/demo_diff/latest/inputs.json").is_file()
+    assert (artifacts.root / "test/demo_diff/latest/inputs.json").is_file()
     for layer in ("hw", "linux", "ros", "application"):
         assert (artifacts.root / f"discovery/demo_diff/latest/{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
+
+
+def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Path) -> None:
+    project = tmp_path / "application"
+    make_application_project(project)
+    robot = RobotCapability.model_validate(
+        {
+            "schema_version": "robot-capability/v1",
+            "robot_id": "structural_unit",
+            "adapter": "unbound",
+            "platform": {"drive_model": "unresolved"},
+            "geometry": {},
+            "sensors": {},
+            "features": {
+                "enrollment": {
+                    "unresolved_semantics": [
+                        "platform.drive_model",
+                        "geometry.hard_max_linear_velocity_mps",
+                        "geometry.hard_max_angular_velocity_radps",
+                    ]
+                }
+            },
+        }
+    )
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+
+    structural_urdf = tmp_path / "structural_unit.urdf"
+    structural_urdf.write_text(
+        '<robot name="structural_unit"><link name="base_link"/></robot>',
+        encoding="utf-8",
+    )
+    DiscoveryService(artifacts).run(
+        robot=robot, urdf_path=structural_urdf, source_roots=[project]
+    )
+
+    for stage in ("debug", "test"):
+        inputs = json.loads(
+            (artifacts.root / stage / "structural_unit/latest/inputs.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert "geometry.hard_max_linear_velocity_mps" in inputs["unresolved_semantics"]
+        assert {candidate["field"] for candidate in inputs["semantic_candidates"]} == {
+            "geometry.hard_max_linear_velocity_mps",
+            "geometry.hard_max_angular_velocity_radps",
+        }
+        assert all(
+            candidate["safety_authority"] == "none"
+            for candidate in inputs["semantic_candidates"]
+        )
+
+
+def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: Path) -> None:
+    config_root = tmp_path / "config"
+    result = EnrollmentService(config_root=config_root).enroll(
+        robot_id="discovery_rover",
+    )
+    registered = RobotCapability.model_validate(load_yaml(result.capability_path))
+    assert registered.geometry == {}
+
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+    report, _ = DiscoveryService(artifacts).run(
+        robot=registered,
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        source_roots=[tmp_path],
+    )
+    discovered = report.capability_manifest["expected_profile"]
+
+    assert discovered["platform"]["drive_model"] == "differential"
+    assert discovered["geometry"]["hard_max_linear_velocity_mps"] == 0.8
+    enrollment = discovered["features"]["enrollment"]
+    assert enrollment["urdf_status"] == "SCANNED"
+    assert enrollment["semantic_status"] == "RESOLVED"
+    assert enrollment["motion_safety_status"] == "UNAPPROVED"
+
+
+def test_discovery_records_hash_for_supplied_urdf(tmp_path: Path) -> None:
+    profile_path = tmp_path / "robot.urdf"
+    profile_path.write_text('<robot name="hash_rover"><link name="base_link"/></robot>')
+    config_root = tmp_path / "config"
+    result = EnrollmentService(config_root=config_root).enroll(
+        robot_id="hash_rover",
+    )
+    registered = RobotCapability.model_validate(load_yaml(result.capability_path))
+    report, _ = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+        robot=registered,
+        urdf_path=profile_path,
+        source_roots=[tmp_path],
+    )
+
+    enrollment = report.capability_manifest["expected_profile"]["features"]["enrollment"]
+    assert enrollment["profile_path"] == str(profile_path.resolve())
+    assert len(enrollment["profile_sha256"]) == 64
+
+
+def test_registration_defers_semantic_validation_until_discovery(tmp_path: Path) -> None:
+    profile_path = tmp_path / "deferred.urdf"
+    profile_path.write_text(
+        """<robot name="deferred_rover">
+<link name="base_link"/>
+<rolo drive_model="unsupported_drive"/>
+</robot>
+""",
+        encoding="utf-8",
+    )
+    result = EnrollmentService(config_root=tmp_path / "config").enroll(
+        robot_id="deferred_rover",
+    )
+    assert result.status == "IDENTITY_REGISTERED"
+    registered = RobotCapability.model_validate(load_yaml(result.capability_path))
+
+    with pytest.raises(ValueError, match="unsupported drive_model"):
+        DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+            robot=registered,
+            urdf_path=profile_path,
+            source_roots=[tmp_path],
+        )
 
 
 def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -129,7 +270,16 @@ def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.Monk
 
     discovered = runner.invoke(
         app,
-        ["discover", "run", "--robot", "demo_diff", "--source-root", str(project)],
+        [
+            "discover",
+            "run",
+            "--robot",
+            "demo_diff",
+            "--urdf",
+            str(Path("configs/profiles/differential_drive.urdf").resolve()),
+            "--source-root",
+            str(project),
+        ],
     )
     catalog = runner.invoke(app, ["tool", "catalog", "--robot", "demo_diff"])
 

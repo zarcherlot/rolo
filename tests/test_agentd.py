@@ -86,7 +86,9 @@ def test_full_agentd_observes_discovery_result_without_restart(
     with TestClient(create_agentd_app("demo_diff")) as client:
         before = client.get("/health")
         DiscoveryService(ArtifactStore(artifact_root)).run(
-            robot=registry.get("demo_diff"), source_roots=[tmp_path]
+            robot=registry.get("demo_diff"),
+            urdf_path=Path("configs/profiles/differential_drive.urdf"),
+            source_roots=[tmp_path],
         )
         after = client.get("/health")
 

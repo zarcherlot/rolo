@@ -122,6 +122,9 @@ class BuildPlan(BaseModel):
     required_skills: list[str]
     coding_agent: CodingAgentConfig = Field(default_factory=CodingAgentConfig)
     candidate_operations: list[str] = Field(default_factory=list)
+    semantic_context_ref: str = ""
+    unresolved_semantics: list[str] = Field(default_factory=list)
+    semantic_value_candidates: int = 0
     state_graph_baseline_required: bool = True
     handoff_ref: str
     created_at: datetime = Field(default_factory=utc_now)

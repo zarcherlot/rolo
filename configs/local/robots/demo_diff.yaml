@@ -25,8 +25,14 @@ features:
   navigation_2d: true
   docking: true
   enrollment:
+    identity_status: REGISTERED
     profile_id: differential_drive
-    safety_profile_confirmed: true
+    profile_format: urdf
+    profile_path: configs/profiles/differential_drive.urdf
+    profile_sha256: e7dd2595b55d24f669b0e821c05c0614bd57c8bf791f889c5c702261c1f174a7
+    urdf_status: SCANNED
+    semantic_status: RESOLVED
+    motion_safety_status: APPROVED
     bindings_verified: true
     calibration_verified: true
   robot_use:
