@@ -1,6 +1,6 @@
 """Compatibility imports for Stage 1 enrollment APIs."""
 
-from rolo.stages.deploy.enrollment import (
+from rolo.stages.build.enrollment import (
     PROFILE_ID_PATTERN,
     EnrollmentResult,
     EnrollmentService,

@@ -1,4 +1,4 @@
-"""Stage 4: optional autonomous acceptance testing and full regression."""
+"""Stage 3: optional autonomous acceptance testing and full regression."""
 
 from rolo.stages.test.service import assess_test
 

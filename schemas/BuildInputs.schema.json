@@ -1,23 +1,32 @@
 {
   "$defs": {
-    "DeploymentHandoffStatus": {
+    "AgentRequirement": {
       "enum": [
-        "READY_FOR_BUILD",
+        "coding_agent",
+        "diagnosis_agent",
+        "test_agent"
+      ],
+      "title": "AgentRequirement",
+      "type": "string"
+    },
+    "BuildInputsStatus": {
+      "enum": [
+        "READY_FOR_CODING",
         "DEGRADED",
         "BLOCKED"
       ],
-      "title": "DeploymentHandoffStatus",
+      "title": "BuildInputsStatus",
       "type": "string"
     }
   },
   "properties": {
     "schema_version": {
-      "default": "robot-deployment-handoff/v1",
+      "default": "robot-build-inputs/v1",
       "title": "Schema Version",
       "type": "string"
     },
     "stage": {
-      "default": "deploy",
+      "default": "build",
       "title": "Stage",
       "type": "string"
     },
@@ -30,7 +39,7 @@
       "type": "string"
     },
     "status": {
-      "$ref": "#/$defs/DeploymentHandoffStatus"
+      "$ref": "#/$defs/BuildInputsStatus"
     },
     "capability_manifest_ref": {
       "title": "Capability Manifest Ref",
@@ -43,6 +52,13 @@
     "tool_catalog_ref": {
       "title": "Tool Catalog Ref",
       "type": "string"
+    },
+    "probe_refs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Probe Refs",
+      "type": "object"
     },
     "semantic_binding_candidates": {
       "default": 0,
@@ -61,22 +77,9 @@
       "title": "Unresolved Dependencies",
       "type": "array"
     },
-    "dependency_handler": {
-      "default": "deterministic_scripts",
-      "title": "Dependency Handler",
-      "type": "string"
-    },
-    "agent_skill_required": {
-      "default": false,
-      "title": "Agent Skill Required",
-      "type": "boolean"
-    },
-    "optional_agent_skills": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Optional Agent Skills",
-      "type": "array"
+    "agent_requirement": {
+      "$ref": "#/$defs/AgentRequirement",
+      "default": "coding_agent"
     },
     "created_at": {
       "format": "date-time",
@@ -90,8 +93,9 @@
     "status",
     "capability_manifest_ref",
     "semantic_bindings_ref",
-    "tool_catalog_ref"
+    "tool_catalog_ref",
+    "probe_refs"
   ],
-  "title": "DeploymentHandoff",
+  "title": "BuildInputs",
   "type": "object"
 }

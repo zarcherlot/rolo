@@ -6,6 +6,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from rolo.core.models import utc_now
+from rolo.stages.contracts import AgentRequirement
 
 
 class BuildPlanStatus(StrEnum):
@@ -19,7 +20,7 @@ class BuildTask(BaseModel):
     description: str
     operations: list[str] = Field(default_factory=list)
     required_skill: str
-    coding_agent_required: bool = True
+    agent_requirement: AgentRequirement = AgentRequirement.CODING_AGENT
 
 
 class BuildPlan(BaseModel):

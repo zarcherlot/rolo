@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rolo.stages.contracts import StageAssessment, StageName, StageStatus
+from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
-DEBUG_SKILLS = ["robot-debugger", "robot-use-supervisor"]
+DIAGNOSIS_SKILLS = ["robot-diagnosis", "robot-use-supervisor"]
 
 
 def assess_debug(artifact_root: Path, robot_id: str) -> StageAssessment:
@@ -18,7 +18,8 @@ def assess_debug(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="Debug is blocked until verified CLI and State Graph are available",
             prerequisites=[str(build_handoff)],
             blockers=["Missing build handoff"],
-            required_skills=DEBUG_SKILLS,
+            required_skills=DIAGNOSIS_SKILLS,
+            agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
         )
     return StageAssessment(
         stage=StageName.DEBUG,
@@ -32,5 +33,6 @@ def assess_debug(artifact_root: Path, robot_id: str) -> StageAssessment:
         prerequisites=[str(build_handoff)],
         artifacts={"handoff": str(debug_handoff)} if debug_handoff.is_file() else {},
         blockers=[] if debug_handoff.is_file() else ["Missing debug handoff"],
-        required_skills=DEBUG_SKILLS,
+        required_skills=DIAGNOSIS_SKILLS,
+        agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
     )

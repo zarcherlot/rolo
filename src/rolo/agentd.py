@@ -7,7 +7,7 @@ from rolo.core.config import get_settings
 from rolo.core.models import DiscoveryStatus, HealthState, RobotCapability, utc_now
 from rolo.core.registry import RobotRegistry
 from rolo.runtime import create_runtime
-from rolo.stages.deploy.discovery import load_latest_report
+from rolo.stages.build.discovery import load_latest_report
 from rolo.stages.pipeline import assess_pipeline
 
 

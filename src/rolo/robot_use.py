@@ -1,4 +1,4 @@
-"""Compatibility import for the Stage 3 robot_use implementation."""
+"""Compatibility import for the Stage 2 robot_use implementation."""
 
 from rolo.stages.debug.robot_use import RobotUseService, create_robot_use_backend
 

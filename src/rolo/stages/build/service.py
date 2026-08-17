@@ -4,9 +4,9 @@ from pathlib import Path
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus
+from rolo.stages.build.discovery import load_latest_report
 from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask
-from rolo.stages.contracts import StageAssessment, StageName, StageStatus
-from rolo.stages.deploy.discovery import load_latest_report
+from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
 BUILD_SKILLS = ["canonical-adapter-builder", "cli-conformance", "state-graph-builder"]
 
@@ -16,11 +16,9 @@ class BuildStageService:
         self.artifacts = artifacts
 
     def plan(self, robot_id: str) -> tuple[BuildPlan, Path]:
-        deploy_handoff = self.artifacts.root / "deploy" / robot_id / "latest" / "handoff.json"
-        if not deploy_handoff.is_file():
-            raise FileNotFoundError(
-                f"No deployment handoff for {robot_id}; run deploy discovery first"
-            )
+        build_inputs = self.artifacts.root / "build" / robot_id / "latest" / "inputs.json"
+        if not build_inputs.is_file():
+            raise FileNotFoundError(f"No build inputs for {robot_id}; run build discovery first")
         report = load_latest_report(self.artifacts.root, robot_id)
         candidates = sorted(
             tool.operation
@@ -66,19 +64,32 @@ class BuildStageService:
 
 
 def assess_build(artifact_root: Path, robot_id: str) -> StageAssessment:
-    deploy_handoff = artifact_root / "deploy" / robot_id / "latest" / "handoff.json"
+    build_inputs = artifact_root / "build" / robot_id / "latest" / "inputs.json"
     plan = artifact_root / "build" / robot_id / "latest" / "plan.json"
     handoff = artifact_root / "build" / robot_id / "latest" / "handoff.json"
-    if not deploy_handoff.is_file():
+    discovery_report = artifact_root / "discovery" / robot_id / "latest" / "report.json"
+    if not build_inputs.is_file():
+        return StageAssessment(
+            stage=StageName.BUILD,
+            robot_id=robot_id,
+            status=StageStatus.NOT_STARTED,
+            summary="Build has not produced discovery probes and coding inputs",
+            prerequisites=[str(build_inputs)],
+            blockers=["Run build discovery"],
+            required_skills=BUILD_SKILLS,
+            agent_requirement=AgentRequirement.CODING_AGENT,
+        )
+    report = load_latest_report(artifact_root, robot_id)
+    if report.status == DiscoveryStatus.FAILED:
         return StageAssessment(
             stage=StageName.BUILD,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
-            summary="Build is blocked until deployment produces a handoff",
-            prerequisites=[str(deploy_handoff)],
-            blockers=["Missing deployment handoff"],
+            summary="Build discovery probes failed",
+            artifacts={"inputs": str(build_inputs), "discovery_report": str(discovery_report)},
+            blockers=["Resolve failed discovery probes"],
             required_skills=BUILD_SKILLS,
-            coding_agent_required=True,
+            agent_requirement=AgentRequirement.CODING_AGENT,
         )
     if handoff.is_file():
         return StageAssessment(
@@ -88,16 +99,24 @@ def assess_build(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="Verified CLI and State Graph handoff is available",
             artifacts={"handoff": str(handoff)},
             required_skills=BUILD_SKILLS,
-            coding_agent_required=True,
+            agent_requirement=AgentRequirement.CODING_AGENT,
         )
     return StageAssessment(
         stage=StageName.BUILD,
         robot_id=robot_id,
-        status=StageStatus.NOT_STARTED,
-        summary="Coding and conformance work is required before debugging",
-        prerequisites=[str(deploy_handoff)],
-        artifacts={"plan": str(plan)} if plan.is_file() else {},
+        status=(
+            StageStatus.DEGRADED
+            if report.status == DiscoveryStatus.PARTIAL
+            else StageStatus.NOT_STARTED
+        ),
+        summary="Coding Agent must build and verify the canonical CLI and State Graph",
+        prerequisites=[str(build_inputs)],
+        artifacts={
+            "inputs": str(build_inputs),
+            "discovery_report": str(discovery_report),
+            **({"plan": str(plan)} if plan.is_file() else {}),
+        },
         blockers=["Missing verified canonical CLI and State Graph handoff"],
         required_skills=BUILD_SKILLS,
-        coding_agent_required=True,
+        agent_requirement=AgentRequirement.CODING_AGENT,
     )

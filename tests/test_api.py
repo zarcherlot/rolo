@@ -29,7 +29,6 @@ def test_health_and_robot_registry() -> None:
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
     assert [stage["stage"] for stage in pipeline.json()["stages"]] == [
-        "deploy",
         "build",
         "debug",
         "test",

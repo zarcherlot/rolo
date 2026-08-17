@@ -27,11 +27,8 @@ from rolo.core.models import (
     ToolDescriptor,
 )
 from rolo.runtime import create_runtime
-from rolo.stages.build.models import BuildPlan
-from rolo.stages.build.service import BuildStageService
-from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
-from rolo.stages.deploy.bundle import build_compatible_bundle
-from rolo.stages.deploy.discovery import (
+from rolo.stages.build.bundle import build_compatible_bundle
+from rolo.stages.build.discovery import (
     ApplicationProbe,
     DiscoveryService,
     HardwareProbe,
@@ -39,12 +36,15 @@ from rolo.stages.deploy.discovery import (
     RosProbe,
     load_latest_report,
 )
-from rolo.stages.deploy.enrollment import (
+from rolo.stages.build.enrollment import (
     EnrollmentService,
     list_profiles,
     resolve_profile_root,
 )
-from rolo.stages.deploy.models import DeploymentHandoff
+from rolo.stages.build.inputs import BuildInputs
+from rolo.stages.build.models import BuildPlan
+from rolo.stages.build.service import BuildStageService
+from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
 app = typer.Typer(help="Canonical local CLI for the Robot Loop development harness.")
@@ -62,11 +62,11 @@ ros_graph_app = typer.Typer(help="ROS graph operations.")
 application_app = typer.Typer(help="Canonical application-layer tools.")
 app_robot_cli = typer.Typer(help="Application robot discovery operations.")
 enroll_app = typer.Typer(help="Enroll an arbitrary robot identity from a capability profile.")
-deploy_stage_app = typer.Typer(help="Stage 1: deploy, enroll, provision, and discover.")
-build_stage_app = typer.Typer(help="Stage 2: build canonical CLI adapters and the State Graph.")
-debug_stage_app = typer.Typer(help="Stage 3: debug and tune within user constraints.")
-test_stage_app = typer.Typer(help="Stage 4: optionally generate and run acceptance tests.")
-app.add_typer(deploy_stage_app, name="deploy")
+build_stage_app = typer.Typer(
+    help="Stage 1: install, enroll, discover, build canonical CLI adapters and the State Graph."
+)
+debug_stage_app = typer.Typer(help="Stage 2: diagnose and tune within user constraints.")
+test_stage_app = typer.Typer(help="Stage 3: optionally generate and run acceptance tests.")
 app.add_typer(build_stage_app, name="build")
 app.add_typer(debug_stage_app, name="debug")
 app.add_typer(test_stage_app, name="test")
@@ -84,9 +84,9 @@ ros_app.add_typer(ros_graph_app, name="graph")
 app.add_typer(application_app, name="app")
 application_app.add_typer(app_robot_cli, name="robot")
 app.add_typer(enroll_app, name="enroll")
-deploy_stage_app.add_typer(bundle_app, name="bundle")
-deploy_stage_app.add_typer(enroll_app, name="enroll")
-deploy_stage_app.add_typer(discover_app, name="discover")
+build_stage_app.add_typer(bundle_app, name="bundle")
+build_stage_app.add_typer(enroll_app, name="enroll")
+build_stage_app.add_typer(discover_app, name="discover")
 build_stage_app.add_typer(tool_app, name="tool")
 debug_stage_app.add_typer(robot_use_app, name="robot-use")
 
@@ -102,21 +102,15 @@ def emit_stage_status(stage: StageName, robot: str) -> None:
     emit(assess_stage(stage, settings.robot_loop_artifact_dir, robot))
 
 
-@deploy_stage_app.command("status")
-def deploy_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show the deployment handoff and discovery gate."""
-    emit_stage_status(StageName.DEPLOY, robot)
-
-
 @build_stage_app.command("status")
 def build_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show canonical CLI, conformance, and State Graph readiness."""
+    """Show probe, Coding Agent, canonical CLI, and State Graph readiness."""
     emit_stage_status(StageName.BUILD, robot)
 
 
 @build_stage_app.command("plan")
 def build_stage_plan(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Generate the coding-agent and Skill plan from the deployment handoff."""
+    """Generate the Coding Agent plan from build discovery inputs."""
     settings = get_settings()
     try:
         plan, artifact = BuildStageService(ArtifactStore(settings.robot_loop_artifact_dir)).plan(
@@ -141,7 +135,7 @@ def test_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
 
 @app.command("pipeline-status")
 def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show all four lifecycle stages for one robot."""
+    """Show all three lifecycle stages for one robot."""
     settings = get_settings()
     emit(assess_pipeline(settings.robot_loop_artifact_dir, robot))
 
@@ -291,7 +285,7 @@ def export_schemas(
         RobotUseSupervision,
         DiscoveryReport,
         ToolDescriptor,
-        DeploymentHandoff,
+        BuildInputs,
         BuildPlan,
         StageAssessment,
         PipelineAssessment,

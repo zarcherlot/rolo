@@ -104,7 +104,9 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert (artifacts.root / "discovery/demo_diff/latest/tool_catalog.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
-    assert (artifacts.root / "deploy/demo_diff/latest/handoff.json").is_file()
+    assert (artifacts.root / "build/demo_diff/latest/inputs.json").is_file()
+    for layer in ("hw", "linux", "ros", "application"):
+        assert (artifacts.root / f"discovery/demo_diff/latest/{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
 
