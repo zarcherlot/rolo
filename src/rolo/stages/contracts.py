@@ -9,10 +9,15 @@ from rolo.core.models import utc_now
 
 
 class StageName(StrEnum):
-    DEPLOY = "deploy"
     BUILD = "build"
     DEBUG = "debug"
     TEST = "test"
+
+
+class AgentRequirement(StrEnum):
+    CODING_AGENT = "coding_agent"
+    DIAGNOSIS_AGENT = "diagnosis_agent"
+    TEST_AGENT = "test_agent"
 
 
 class StageStatus(StrEnum):
@@ -34,12 +39,12 @@ class StageAssessment(BaseModel):
     artifacts: dict[str, str] = Field(default_factory=dict)
     blockers: list[str] = Field(default_factory=list)
     required_skills: list[str] = Field(default_factory=list)
-    coding_agent_required: bool = False
+    agent_requirement: AgentRequirement
     observed_at: datetime = Field(default_factory=utc_now)
 
 
 class PipelineAssessment(BaseModel):
-    schema_version: str = "robot-four-stage-pipeline/v1"
+    schema_version: str = "robot-three-stage-pipeline/v1"
     robot_id: str
     stages: list[StageAssessment]
     observed_at: datetime = Field(default_factory=utc_now)

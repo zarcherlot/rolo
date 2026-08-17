@@ -105,20 +105,19 @@ uv run robotctl serve
 
 The API is available at `http://127.0.0.1:8080`; interactive OpenAPI documentation is at `http://127.0.0.1:8080/docs`.
 
-### Use case: four-stage robot workflow
+### Use case: three-stage robot workflow
 
-After local installation, advance one robot through four stages. At any time, inspect the entire pipeline with `uv run robotctl pipeline-status --robot demo_diff`.
+After local installation, advance one robot through three stages. At any time, inspect the entire pipeline with `uv run robotctl pipeline-status --robot demo_diff`.
 
 | Stage | Primary output | Agent requirement |
 |---|---|---|
-| `deploy` | capability manifest, binding candidates, tool catalog, deployment handoff | deterministic scripts; Skill optional |
-| `build` | verified canonical CLI, conformance, State Graph baseline, build handoff | Agent Skills and Coding Agent required |
-| `debug` | constrained closed-loop debugging, tuning evidence, frozen config, debug handoff | Debug Skill; `robot_use` optional |
-| `test` | optional formal cases, full regression, report, and evidence package | Test Skills required when selected |
+| `build` | bundle, probes, capability manifest, binding candidates, tool catalog, canonical CLI, State Graph, build handoff | Coding Agent |
+| `debug` | constrained diagnosis, tuning evidence, frozen config, debug handoff | Diagnosis Agent; `robot_use` optional |
+| `test` | optional formal cases, full regression, report, and evidence package | Test Agent when selected |
 
-#### Stage 1: deploy, enroll, and discover
+#### Stage 1: build
 
-The physical-robot deployment baseline is ARM64 + Ubuntu 22.04 + ROS 2 Humble. Build the universal archive and enroll one identity from the robot's physical structure:
+Build combines installation, enrollment, discovery, canonical CLI construction, and the State Graph gate. The physical-robot baseline is ARM64 + Ubuntu 22.04 + ROS 2 Humble. First build the universal archive and enroll one identity from the robot's physical structure:
 
 ```powershell
 .\scripts\build_bundles.ps1
@@ -134,9 +133,9 @@ Local development can skip the archive. When enrolling a physical robot into an 
 
 ```powershell
 $env:ROBOT_LOOP_CONFIG_DIR = "C:\robot-loop-config"
-uv run robotctl enroll profiles
-uv run robotctl enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
-uv run robotctl enroll show
+uv run robotctl build enroll profiles
+uv run robotctl build enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
+uv run robotctl build enroll show
 ```
 
 Each instance owns one `robot_id`; replacing its identity or structure profile requires a separate migration. Then follow the production sequence: start the minimal daemon, run read-only discovery, and start the full agentd:
@@ -146,17 +145,14 @@ Each instance owns one `robot_id`; replacing its identity or structure profile r
 uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
 
 # Terminal 2
-uv run robotctl deploy discover run --robot demo_diff --source-root C:\path\to\robot-application
-uv run robotctl deploy discover show --robot demo_diff
+uv run robotctl build discover run --robot demo_diff --source-root C:\path\to\robot-application
+uv run robotctl build discover show --robot demo_diff
 uv run robotctl agentd --robot demo_diff --port 8101
-uv run robotctl deploy status --robot demo_diff
 ```
 
-Discovery inventories hardware, the host software stack, the ROS graph, and local source projects. It writes the capability manifest, semantic binding candidates, and tool catalog under `artifacts/discovery/<robot_id>/latest`, then produces the deployment handoff. If ROS, the BSP, or vendor drivers are missing, bootstrap agentd remains available and the full agentd runs `DEGRADED`; a failed discovery prevents the full agentd from starting. New bindings and calibration remain unavailable until verified. See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for evidence and safety boundaries.
+Discovery inventories hardware, the host software stack, the ROS graph, and local source projects. It persists `hw/linux/ros/application` probes and writes the capability manifest, semantic binding candidates, tool catalog, and build inputs. If ROS, the BSP, or vendor drivers are missing, bootstrap agentd remains available and the full agentd runs `DEGRADED`; a failed discovery prevents the full agentd from starting. New bindings and calibration remain unavailable until verified. See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for evidence and safety boundaries.
 
-#### Stage 2: build the canonical CLI and State Graph
-
-The build stage reads the deployment handoff, produces the Coding Agent/Skill plan, and uses the canonical CLI to inspect discovery output and layer adapters:
+The Coding Agent then reads the build inputs, creates the build plan, and implements and inspects the layer adapters through the canonical CLI:
 
 ```powershell
 uv run robotctl build plan --robot demo_diff
@@ -170,9 +166,9 @@ uv run robotctl build status --robot demo_diff
 
 Debugging is gated on canonical CLI conformance and a valid State Graph baseline.
 
-#### Stage 3: closed-loop debugging and `robot_use`
+#### Stage 2: closed-loop diagnosis, debugging, and `robot_use`
 
-The default `robot_use` backend is the local `mock`. For image-model supervision, configure the backend securely outside source control, then submit timestamped images and structured telemetry:
+The Diagnosis Agent reads the build handoff and user constraints, then performs closed-loop diagnosis and tuning. The default `robot_use` backend is the local `mock`. For image-model supervision, configure the backend securely outside source control, then submit timestamped images and structured telemetry:
 
 ```powershell
 $env:ROBOT_USE_BACKEND = "openai"
@@ -185,23 +181,22 @@ uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.
 
 `robot_use` supplies semantic supervision only: it performs no local visual detection and has no authority over robot safety. Tuning remains bounded by user constraints and hard safety limits, and every change requires affected smoke, safety, and regression checks.
 
-#### Stage 4: optional formal testing
+#### Stage 3: optional formal testing
 
-Stage 4 checks formal acceptance readiness and, once the corresponding Test Skills are implemented, generates cases, runs full regression, and packages evidence:
+Stage 3 checks formal acceptance readiness and, once the corresponding Test Skills are implemented, uses a Test Agent to generate cases, run full regression, and package evidence:
 
 ```powershell
 uv run robotctl test status --robot demo_diff
 ```
 
-Formal acceptance is optional, but Stage 3 safety and affected regression checks are mandatory. The current MVP does not yet implement the complete autonomous acceptance runner, and production-grade offline ARM64 installation still needs a wheelhouse. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for stage contracts and implementation maturity.
+Formal acceptance is optional, but safety and affected regression checks during debugging are mandatory. The current MVP does not yet implement the complete autonomous acceptance runner, and production-grade offline ARM64 installation still needs a wheelhouse. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for stage contracts and implementation maturity.
 
 ## Project layout
 
 ```text
-src/rolo/stages/deploy/  Stage 1 installation, enrollment, discovery, and handoff
-src/rolo/stages/build/   Stage 2 CLI build plan, conformance, and State Graph gate
-src/rolo/stages/debug/   Stage 3 closed-loop debugging, tuning, and robot_use
-src/rolo/stages/test/    Stage 4 optional autonomous acceptance testing
+src/rolo/stages/build/   Stage 1 install, enroll, probe, build CLI, and gate the State Graph
+src/rolo/stages/debug/   Stage 2 Diagnosis Agent loop, tuning, and robot_use
+src/rolo/stages/test/    Stage 3 optional autonomous acceptance testing
 src/rolo/core/           Shared configuration, domain models, artifacts, and registry
 src/rolo/                Shared API, agentd, runtime, and compatibility imports
 configs/local/        Capability manifests for local mock examples

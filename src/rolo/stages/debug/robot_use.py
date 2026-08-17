@@ -1,4 +1,4 @@
-"""Stage 3 robot_use semantic supervision service."""
+"""Stage 2 robot_use semantic supervision service."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """Compatibility imports for Stage 1 discovery APIs."""
 
-from rolo.stages.deploy.discovery import (
+from rolo.stages.build.discovery import (
     ApplicationProbe,
     DiscoveryService,
     HardwareProbe,

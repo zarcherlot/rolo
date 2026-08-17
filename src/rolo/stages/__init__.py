@@ -1,5 +1,17 @@
-"""Four-stage Robot Loop lifecycle orchestration."""
+"""Three-stage rolo lifecycle orchestration."""
 
-from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName, StageStatus
+from rolo.stages.contracts import (
+    AgentRequirement,
+    PipelineAssessment,
+    StageAssessment,
+    StageName,
+    StageStatus,
+)
 
-__all__ = ["PipelineAssessment", "StageAssessment", "StageName", "StageStatus"]
+__all__ = [
+    "AgentRequirement",
+    "PipelineAssessment",
+    "StageAssessment",
+    "StageName",
+    "StageStatus",
+]

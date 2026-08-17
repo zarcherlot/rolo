@@ -1,8 +1,16 @@
 {
   "$defs": {
+    "AgentRequirement": {
+      "enum": [
+        "coding_agent",
+        "diagnosis_agent",
+        "test_agent"
+      ],
+      "title": "AgentRequirement",
+      "type": "string"
+    },
     "StageName": {
       "enum": [
-        "deploy",
         "build",
         "debug",
         "test"
@@ -75,10 +83,8 @@
       "title": "Required Skills",
       "type": "array"
     },
-    "coding_agent_required": {
-      "default": false,
-      "title": "Coding Agent Required",
-      "type": "boolean"
+    "agent_requirement": {
+      "$ref": "#/$defs/AgentRequirement"
     },
     "observed_at": {
       "format": "date-time",
@@ -90,7 +96,8 @@
     "stage",
     "robot_id",
     "status",
-    "summary"
+    "summary",
+    "agent_requirement"
   ],
   "title": "StageAssessment",
   "type": "object"

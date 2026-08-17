@@ -1,4 +1,4 @@
-"""Stage 1 robot identity and structural profile enrollment."""
+"""Robot identity and structural profile enrollment for Stage 1 build."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rolo.stages.contracts import StageAssessment, StageName, StageStatus
+from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
 TEST_SKILLS = ["robot-test-designer", "robot-test-runner"]
 
@@ -20,6 +20,7 @@ def assess_test(artifact_root: Path, robot_id: str) -> StageAssessment:
             prerequisites=[str(debug_handoff)],
             blockers=["Missing debug handoff"],
             required_skills=TEST_SKILLS,
+            agent_requirement=AgentRequirement.TEST_AGENT,
         )
     return StageAssessment(
         stage=StageName.TEST,
@@ -35,4 +36,5 @@ def assess_test(artifact_root: Path, robot_id: str) -> StageAssessment:
         artifacts={"handoff": str(test_handoff)} if test_handoff.is_file() else {},
         blockers=[] if test_handoff.is_file() else ["Test stage was not requested or has not run"],
         required_skills=TEST_SKILLS,
+        agent_requirement=AgentRequirement.TEST_AGENT,
     )

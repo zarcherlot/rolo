@@ -1,5 +1,14 @@
 {
   "$defs": {
+    "AgentRequirement": {
+      "enum": [
+        "coding_agent",
+        "diagnosis_agent",
+        "test_agent"
+      ],
+      "title": "AgentRequirement",
+      "type": "string"
+    },
     "BuildPlanStatus": {
       "enum": [
         "BLOCKED",
@@ -30,10 +39,9 @@
           "title": "Required Skill",
           "type": "string"
         },
-        "coding_agent_required": {
-          "default": true,
-          "title": "Coding Agent Required",
-          "type": "boolean"
+        "agent_requirement": {
+          "$ref": "#/$defs/AgentRequirement",
+          "default": "coding_agent"
         }
       },
       "required": [

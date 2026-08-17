@@ -1,4 +1,4 @@
-"""Stage 1 identity-free deployment bundle builder."""
+"""Stage 1 identity-free bundle builder for the combined build stage."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from typing import Any
 
 from rolo import __version__
 from rolo.core.config import load_yaml
-from rolo.stages.deploy.enrollment import PROFILE_ID_PATTERN, list_profiles
+from rolo.stages.build.enrollment import PROFILE_ID_PATTERN, list_profiles
 
 ARCH_ALIASES = {"arm64": "aarch64"}
 COMMON_DEPLOYMENT_KEYS = ("install_root", "config_root", "artifact_root", "service_user")

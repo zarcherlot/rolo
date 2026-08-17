@@ -25,7 +25,7 @@ from rolo.core.models import (
     RobotCapability,
     ToolDescriptor,
 )
-from rolo.stages.deploy.models import DeploymentHandoff, DeploymentHandoffStatus
+from rolo.stages.build.inputs import BuildInputs, BuildInputsStatus
 
 MAX_COMMAND_OUTPUT = 200_000
 MAX_SOURCE_FILES = 10_000
@@ -701,15 +701,15 @@ class DiscoveryService:
             f"compatibility:{item['field']}"
             for item in capability_manifest["compatibility"]["mismatches"]
         )
-        handoff_status = {
-            DiscoveryStatus.SUCCEEDED: DeploymentHandoffStatus.READY_FOR_BUILD,
-            DiscoveryStatus.PARTIAL: DeploymentHandoffStatus.DEGRADED,
-            DiscoveryStatus.FAILED: DeploymentHandoffStatus.BLOCKED,
+        inputs_status = {
+            DiscoveryStatus.SUCCEEDED: BuildInputsStatus.READY_FOR_CODING,
+            DiscoveryStatus.PARTIAL: BuildInputsStatus.DEGRADED,
+            DiscoveryStatus.FAILED: BuildInputsStatus.BLOCKED,
         }[status]
-        handoff = DeploymentHandoff(
+        build_inputs = BuildInputs(
             robot_id=robot.robot_id,
             discovery_id=discovery_id,
-            status=handoff_status,
+            status=inputs_status,
             capability_manifest_ref=(
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
                 "capability_manifest.json"
@@ -721,16 +721,22 @@ class DiscoveryService:
             tool_catalog_ref=(
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
             ),
+            probe_refs={
+                layer: (
+                    f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/{layer}.json"
+                )
+                for layer in probes
+            },
             semantic_binding_candidates=len(bindings),
             tool_count=len(tools),
             unresolved_dependencies=unresolved,
         )
-        handoff_payload = handoff.model_dump(mode="json")
+        inputs_payload = build_inputs.model_dump(mode="json")
         self.artifacts.write_json(
-            f"deploy/{robot.robot_id}/runs/{discovery_id}/handoff.json", handoff_payload
+            f"build/{robot.robot_id}/runs/{discovery_id}/inputs.json", inputs_payload
         )
         self.artifacts.write_json(
-            f"deploy/{robot.robot_id}/latest/handoff.json", handoff_payload
+            f"build/{robot.robot_id}/latest/inputs.json", inputs_payload
         )
         return report, run_path
 

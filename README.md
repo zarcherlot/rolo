@@ -87,20 +87,19 @@ uv run robotctl serve
 
 API 默认运行在 `http://127.0.0.1:8080`，OpenAPI 文档位于 `http://127.0.0.1:8080/docs`。
 
-### 使用案例：四阶段机器人流程
+### 使用案例：三阶段机器人流程
 
-完成本地安装后，按四阶段推进一台机器人；任意时刻可用 `uv run robotctl pipeline-status --robot demo_diff` 查看总状态。
+完成本地安装后，按三阶段推进一台机器人；任意时刻可用 `uv run robotctl pipeline-status --robot demo_diff` 查看总状态。
 
 | 阶段 | 主要产物 | Agent 要求 |
 |---|---|---|
-| `deploy` | capability manifest、候选语义绑定、工具目录、deployment handoff | 确定性脚本为主，Skill 可选 |
-| `build` | 已验证 canonical CLI、conformance、State Graph 基线、build handoff | Agent Skill 和 Coding Agent 必需 |
-| `debug` | 约束内闭环调试、调参证据、冻结配置、debug handoff | Debug Skill；`robot_use` 可选 |
-| `test` | 可选正式用例、全量回归、报告和证据包 | 选择该阶段时需要 Test Skill |
+| `build` | 安装包、探针、capability manifest、候选语义绑定、工具目录、canonical CLI、State Graph、build handoff | Coding Agent |
+| `debug` | 约束内闭环诊断、调参证据、冻结配置、debug handoff | Diagnosis Agent；`robot_use` 可选 |
+| `test` | 可选正式用例、全量回归、报告和证据包 | Test Agent（选择该阶段时） |
 
-#### 第一阶段：部署、注册与自动发现
+#### 第一阶段：构建
 
-真机部署基线为 ARM64 + Ubuntu 22.04 + ROS 2 Humble。构建通用归档并在目标机按物理结构注册唯一身份：
+Build 阶段合并安装、注册、发现、标准 CLI 构建和 State Graph 门禁。真机基线为 ARM64 + Ubuntu 22.04 + ROS 2 Humble；先构建通用归档并在目标机按物理结构注册唯一身份：
 
 ```powershell
 .\scripts\build_bundles.ps1
@@ -116,9 +115,9 @@ sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
 
 ```powershell
 $env:ROBOT_LOOP_CONFIG_DIR = "C:\robot-loop-config"
-uv run robotctl enroll profiles
-uv run robotctl enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
-uv run robotctl enroll show
+uv run robotctl build enroll profiles
+uv run robotctl build enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
+uv run robotctl build enroll show
 ```
 
 每个实例只拥有一个 `robot_id`；更换身份或结构模板需要单独迁移。随后按真机相同顺序启动最小 daemon、执行只读发现，再启动完整 agentd：
@@ -128,17 +127,14 @@ uv run robotctl enroll show
 uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
 
 # 终端 2
-uv run robotctl deploy discover run --robot demo_diff --source-root C:\path\to\robot-application
-uv run robotctl deploy discover show --robot demo_diff
+uv run robotctl build discover run --robot demo_diff --source-root C:\path\to\robot-application
+uv run robotctl build discover show --robot demo_diff
 uv run robotctl agentd --robot demo_diff --port 8101
-uv run robotctl deploy status --robot demo_diff
 ```
 
-发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，将 capability manifest、候选语义绑定和工具目录写入 `artifacts/discovery/<robot_id>/latest`，并生成 deployment handoff。缺少 ROS、BSP 或厂商驱动时仍保留 bootstrap agentd，完整 agentd 以 `DEGRADED` 运行；发现失败则不启动完整 agentd。新绑定与标定在验证前保持不可用。证据模型与安全边界见 [`AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)。
+发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，保存 `hw/linux/ros/application` 探针，并将 capability manifest、候选语义绑定、工具目录和 build inputs 写入制品目录。缺少 ROS、BSP 或厂商驱动时仍保留 bootstrap agentd，完整 agentd 以 `DEGRADED` 运行；发现失败则不启动完整 agentd。新绑定与标定在验证前保持不可用。证据模型与安全边界见 [`AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)。
 
-#### 第二阶段：构建标准 CLI 与 State Graph
-
-构建阶段读取 deployment handoff，生成 Coding Agent/Skill 计划，并通过统一 CLI 检查发现结果和各层 adapter：
+Coding Agent 随后读取 build inputs，生成构建计划，并通过统一 CLI 实现和检查各层 adapter：
 
 ```powershell
 uv run robotctl build plan --robot demo_diff
@@ -152,9 +148,9 @@ uv run robotctl build status --robot demo_diff
 
 只有 canonical CLI conformance 和 State Graph 基线通过后，才允许进入调试阶段。
 
-#### 第三阶段：闭环调试与 `robot_use`
+#### 第二阶段：闭环诊断、调试与 `robot_use`
 
-默认 `robot_use` 后端为本地 `mock`。需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
+Diagnosis Agent 读取 build handoff 和用户约束，执行闭环诊断与调参。默认 `robot_use` 后端为本地 `mock`；需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
 
 ```powershell
 $env:ROBOT_USE_BACKEND = "openai"
@@ -167,23 +163,22 @@ uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.
 
 `robot_use` 只提供语义监督，不在本地执行视觉检测，也不拥有机器人的安全决策权。调参必须受用户约束和硬安全边界限制，每次修改后都要运行受影响的 smoke、安全与回归检查。
 
-#### 第四阶段：可选正式测试
+#### 第三阶段：可选正式测试
 
-第四阶段用于检查正式验收准备度，并在实现相应 Test Skill 后生成用例、执行全量回归和打包证据：
+第三阶段用于检查正式验收准备度，并在实现相应 Test Skill 后由 Test Agent 生成用例、执行全量回归和打包证据：
 
 ```powershell
 uv run robotctl test status --robot demo_diff
 ```
 
-正式测试可选，但第三阶段的安全和影响范围回归不可省略。当前 MVP 尚未实现完整的自主验收执行器；ARM64 生产级离线安装也仍需补充 wheelhouse。阶段契约与实现成熟度见 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+正式测试可选，但调试阶段的安全和影响范围回归不可省略。当前 MVP 尚未实现完整的自主验收执行器；ARM64 生产级离线安装也仍需补充 wheelhouse。阶段契约与实现成熟度见 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ## 工程结构
 
 ```text
-src/rolo/stages/deploy/  第一阶段：安装、注册、发现与交接
-src/rolo/stages/build/   第二阶段：CLI 构建计划、conformance 与 State Graph 门禁
-src/rolo/stages/debug/   第三阶段：闭环调试、调参与 robot_use
-src/rolo/stages/test/    第四阶段：可选自主测试与正式验收
+src/rolo/stages/build/   第一阶段：安装、注册、探针发现、CLI 构建与 State Graph 门禁
+src/rolo/stages/debug/   第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
+src/rolo/stages/test/    第三阶段：可选自主测试与正式验收
 src/rolo/core/           共享配置、领域模型、制品与机器人注册表
 src/rolo/                共享 API、agentd、runtime 与兼容入口
 configs/local/        本地 mock 示例机器人的能力清单
