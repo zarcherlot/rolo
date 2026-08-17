@@ -3,9 +3,61 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from robot_loop import __version__
+from robot_loop.config import get_settings
 from robot_loop.discovery import load_latest_report
-from robot_loop.models import HealthState, RobotCapability, utc_now
+from robot_loop.models import DiscoveryStatus, HealthState, RobotCapability, utc_now
+from robot_loop.registry import RobotRegistry
 from robot_loop.runtime import create_runtime
+
+
+def create_bootstrap_agentd_app(robot_id: str) -> FastAPI:
+    """Create the minimal, non-motion daemon used before discovery."""
+    settings = get_settings()
+    registry = RobotRegistry(settings.robot_config_dir)
+    registry.load()
+    try:
+        capability = registry.get(robot_id)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
+
+    enrollment = capability.features.get("enrollment", {})
+    safety_profile_confirmed = bool(enrollment.get("safety_profile_confirmed"))
+    bootstrap = FastAPI(title=f"robot-bootstrap-agentd:{robot_id}", version=__version__)
+
+    @bootstrap.get("/health")
+    async def health() -> dict[str, object]:
+        return {
+            "status": HealthState.HEALTHY if safety_profile_confirmed else HealthState.UNHEALTHY,
+            "service": "robot-bootstrap-agentd",
+            "phase": "BOOTSTRAP_READY" if safety_profile_confirmed else "BOOTSTRAP_BLOCKED",
+            "robot_id": robot_id,
+            "timestamp": utc_now(),
+        }
+
+    @bootstrap.get("/v1/bootstrap")
+    async def bootstrap_status() -> dict[str, object]:
+        now = utc_now()
+        return {
+            "robot_id": robot_id,
+            "profile_id": enrollment.get("profile_id"),
+            "safety_profile_confirmed": safety_profile_confirmed,
+            "motion_enabled": False,
+            "discovery_ready": safety_profile_confirmed,
+            "clock": {"status": "LOCAL_CLOCK_AVAILABLE", "utc": now},
+            "timestamp": now,
+        }
+
+    @bootstrap.get("/v1/robots/{requested_robot_id}")
+    async def enforce_robot_scope(requested_robot_id: str) -> dict[str, object]:
+        if requested_robot_id != robot_id:
+            raise HTTPException(status_code=404, detail="bootstrap agentd is scoped to one robot")
+        return {
+            "robot_id": robot_id,
+            "profile_id": enrollment.get("profile_id"),
+            "safety_profile_confirmed": safety_profile_confirmed,
+        }
+
+    return bootstrap
 
 
 def create_agentd_app(robot_id: str) -> FastAPI:
@@ -21,20 +73,38 @@ def create_agentd_app(robot_id: str) -> FastAPI:
         for sensor in capability.sensors.values()
         if isinstance(sensor, dict)
     )
-    ready = bool(
+    configuration_ready = bool(
         enrollment.get("safety_profile_confirmed")
         and enrollment.get("bindings_verified")
         and enrollment.get("calibration_verified")
         and not bindings_unbound
     )
 
+    def readiness() -> tuple[bool, str]:
+        try:
+            report = load_latest_report(runtime.settings.robot_loop_artifact_dir, robot_id)
+        except FileNotFoundError:
+            return False, "DISCOVERY_PENDING"
+        if report.status == DiscoveryStatus.FAILED:
+            return False, "DISCOVERY_FAILED"
+        if report.status != DiscoveryStatus.SUCCEEDED:
+            return False, "DISCOVERY_PARTIAL"
+        compatibility = report.capability_manifest.get("compatibility", {})
+        if compatibility.get("status") != "MATCH":
+            return False, "CAPABILITY_MISMATCH"
+        if not configuration_ready:
+            return False, "AGENTD_DEGRADED"
+        return True, "AGENTD_READY"
+
     agentd = FastAPI(title=f"robot-agentd:{robot_id}", version=__version__)
 
     @agentd.get("/health")
     async def health() -> dict[str, object]:
+        ready, phase = readiness()
         return {
             "status": HealthState.HEALTHY if ready else HealthState.DEGRADED,
             "service": "robot-agentd",
+            "phase": phase,
             "robot_id": robot_id,
             "adapter": capability.adapter,
             "timestamp": utc_now(),
@@ -46,9 +116,11 @@ def create_agentd_app(robot_id: str) -> FastAPI:
 
     @agentd.get("/v1/state/snapshot")
     async def state_snapshot() -> dict[str, object]:
+        ready, phase = readiness()
         return {
             "robot_id": robot_id,
             "graph_version": 1,
+            "runtime_phase": phase,
             "safety": {
                 "estop": False,
                 "motion_lease": None,

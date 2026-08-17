@@ -6,10 +6,12 @@ import json
 import mimetypes
 import shutil
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 
 from robot_loop import __version__
@@ -26,6 +28,7 @@ from robot_loop.discovery import (
 from robot_loop.enrollment import EnrollmentService, list_profiles, resolve_profile_root
 from robot_loop.models import (
     DiscoveryReport,
+    DiscoveryStatus,
     ImageFrame,
     RobotCapability,
     RobotUseRequest,
@@ -148,12 +151,55 @@ def serve(
 
 
 @app.command()
+def bootstrap_agentd(
+    robot: Annotated[str, typer.Option("--robot")],
+    host: Annotated[str, typer.Option(help="Bind host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Bind port")] = 8100,
+) -> None:
+    """Start the minimal non-motion daemon required before discovery."""
+    import uvicorn
+
+    from robot_loop.agentd import create_bootstrap_agentd_app
+
+    uvicorn.run(create_bootstrap_agentd_app(robot), host=host, port=port)
+
+
+@app.command()
+def bootstrap_wait(
+    robot: Annotated[str, typer.Option("--robot")],
+    url: Annotated[str, typer.Option(help="Bootstrap agentd base URL")],
+    timeout: Annotated[float, typer.Option(min=0.1, help="Maximum wait in seconds")] = 15.0,
+) -> None:
+    """Wait until the expected robot's bootstrap daemon is ready for discovery."""
+    deadline = time.monotonic() + timeout
+    health_url = f"{url.rstrip('/')}/health"
+    last_error = "bootstrap agentd did not respond"
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(health_url, timeout=min(1.0, timeout))
+            payload = response.json()
+            if (
+                response.status_code == 200
+                and payload.get("robot_id") == robot
+                and payload.get("phase") == "BOOTSTRAP_READY"
+            ):
+                emit({"status": "READY", "robot_id": robot, "url": url})
+                return
+            last_error = f"unexpected bootstrap health response: {response.status_code} {payload}"
+        except (httpx.HTTPError, ValueError) as exc:
+            last_error = str(exc)
+        time.sleep(0.2)
+    emit({"status": "NOT_READY", "robot_id": robot, "url": url, "error": last_error})
+    raise typer.Exit(code=1)
+
+
+@app.command()
 def agentd(
     robot: Annotated[str, typer.Option("--robot")],
     host: Annotated[str, typer.Option(help="Bind host")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Bind port")] = 8101,
 ) -> None:
-    """Start a local mock robot-agentd for one configured robot."""
+    """Start the full robot-agentd after discovery has completed."""
     import uvicorn
 
     from robot_loop.agentd import create_agentd_app
@@ -259,6 +305,8 @@ def discovery_run(
     )
     if full:
         emit(report)
+        if report.status == DiscoveryStatus.FAILED:
+            raise typer.Exit(code=1)
         return
     emit(
         {
@@ -272,6 +320,8 @@ def discovery_run(
             "artifact": str(artifact),
         }
     )
+    if report.status == DiscoveryStatus.FAILED:
+        raise typer.Exit(code=1)
 
 
 @discover_app.command("show")

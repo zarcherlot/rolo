@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">rolo concept A — One Complete Loop</title>
+  <desc id="desc">A graphite lowercase rolo wordmark crossed once by a cobalt path from the first o to the second o.</desc>
+  <rect width="1200" height="400" fill="#FFFFFF"/>
+  <g fill="none" stroke="#171A22" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M190 244V148C190 111 216 90 254 90H294"/>
+    <circle cx="434" cy="166" r="92"/>
+    <path d="M676 66V213"/>
+    <circle cx="926" cy="166" r="92"/>
+  </g>
+  <g fill="none" stroke="#155EEF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M434 166H574C600 166 606 184 606 207C606 249 636 274 674 274C715 274 746 244 746 207C746 182 758 166 784 166H928"/>
+    <path d="M900 138L928 166L900 194"/>
+  </g>
+  <circle cx="434" cy="166" r="20" fill="#155EEF"/>
+  <text x="600" y="348" fill="#343844" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" font-weight="500" letter-spacing="12" text-anchor="middle">robot only loop once</text>
+</svg>

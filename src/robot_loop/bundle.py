@@ -71,14 +71,19 @@ def _service_unit(
     artifact_root: str,
     command: str,
     robot_identity: bool = False,
-    after_discovery: bool = False,
+    after: Sequence[str] = (),
+    wants: Sequence[str] = (),
+    requires: Sequence[str] = (),
 ) -> str:
     identity_env = f"EnvironmentFile={config_root}/robot-identity.env\n" if robot_identity else ""
-    discovery_dependency = " robot-loop-discovery.service" if after_discovery else ""
+    after_units = " ".join(("network-online.target", *after))
+    wants_units = " ".join(("network-online.target", *wants))
+    requires_line = f"Requires={' '.join(requires)}\n" if requires else ""
     return f"""[Unit]
 Description={description}
-After=network-online.target{discovery_dependency}
-Wants=network-online.target{discovery_dependency}
+After={after_units}
+Wants={wants_units}
+{requires_line}
 
 [Service]
 Type=simple
@@ -100,16 +105,26 @@ WantedBy=multi-user.target
 
 
 def _discovery_service_unit(
-    *, service_user: str, install_root: str, config_root: str, artifact_root: str
+    *,
+    service_user: str,
+    install_root: str,
+    config_root: str,
+    artifact_root: str,
+    bootstrap_url: str,
 ) -> str:
+    exec_start_pre = (
+        f"{install_root}/venv/bin/robotctl bootstrap-wait --robot ${{ROBOT_ID}} "
+        f"--url {bootstrap_url} --timeout 15"
+    )
     exec_start = (
         f"{install_root}/venv/bin/robotctl discover run --robot ${{ROBOT_ID}} "
         "--source-root ${ROBOT_DISCOVERY_SOURCE_ROOT}"
     )
     return f"""[Unit]
 Description=Robot Loop hardware and software discovery
-After=network-online.target
+After=network-online.target robot-loop-bootstrap-agentd.service
 Wants=network-online.target
+Requires=robot-loop-bootstrap-agentd.service
 
 [Service]
 Type=oneshot
@@ -120,6 +135,7 @@ EnvironmentFile=-{config_root}/robot-loop.env
 EnvironmentFile={config_root}/robot-identity.env
 Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
 Environment=ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
+ExecStartPre={exec_start_pre}
 ExecStart={exec_start}
 RemainAfterExit=true
 NoNewPrivileges=true
@@ -247,14 +263,17 @@ if [[ ! -e "$CONFIG_ROOT/robot-loop.env" ]]; then
   install -m 0600 "$BUNDLE_ROOT/config/robot-loop.env.example" "$CONFIG_ROOT/robot-loop.env"
 fi
 
+install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-bootstrap-agentd.service" /etc/systemd/system/
 install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-agentd.service" /etc/systemd/system/
 install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-control-plane.service" /etc/systemd/system/
 install -m 0644 "$BUNDLE_ROOT/systemd/robot-loop-discovery.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now robot-loop-discovery.service
-systemctl enable --now robot-loop-agentd.service robot-loop-control-plane.service
+systemctl enable robot-loop-bootstrap-agentd.service robot-loop-discovery.service
+systemctl enable robot-loop-agentd.service robot-loop-control-plane.service
+systemctl start robot-loop-agentd.service robot-loop-control-plane.service
 
 echo "Installed Robot Loop {__version__} for $ROBOT_ID with profile $PROFILE_ID"
+echo "Startup order: bootstrap-agentd -> discovery -> agentd"
 echo "Discovery must verify bindings and calibration before motion tools become AVAILABLE"
 """
 
@@ -271,6 +290,7 @@ def _bundle_readme(
 - Robot identities: assigned dynamically at installation
 - Structure/sensor profiles: `{", ".join(profile_ids)}`
 - Default network exposure: loopback only
+- Startup order: `bootstrap-agentd -> discovery -> agentd`
 
 Install the same archive on any compatible robot. Choose the profile from physical structure and
 sensors, not from SoC:
@@ -354,6 +374,7 @@ def build_compatible_bundle(
     service_user = common_values["service_user"]
     services = deployment.get("services", {})
     control = services.get("control_plane", {})
+    bootstrap_agentd = services.get("bootstrap_agentd", {})
     agentd = services.get("agentd", {})
     bundle_name = f"robot-loop-{__version__}-{target_arch}"
     output_dir = output_dir.resolve()
@@ -387,6 +408,22 @@ OPENAI_API_KEY=
 OPENAI_MODEL=
 """
         (root / "config" / "robot-loop.env.example").write_text(env_text, encoding="utf-8")
+        (root / "systemd" / "robot-loop-bootstrap-agentd.service").write_text(
+            _service_unit(
+                description="Robot Loop minimal bootstrap agent daemon",
+                service_user=service_user,
+                install_root=install_root,
+                config_root=config_root,
+                artifact_root=artifact_root,
+                command=(
+                    f"bootstrap-agentd --robot ${{ROBOT_ID}} "
+                    f"--host {bootstrap_agentd.get('host', '127.0.0.1')} "
+                    f"--port {bootstrap_agentd.get('port', 8100)}"
+                ),
+                robot_identity=True,
+            ),
+            encoding="utf-8",
+        )
         (root / "systemd" / "robot-loop-agentd.service").write_text(
             _service_unit(
                 description="Robot Loop agent daemon",
@@ -399,7 +436,9 @@ OPENAI_MODEL=
                     f"--port {agentd.get('port', 8101)}"
                 ),
                 robot_identity=True,
-                after_discovery=True,
+                after=("robot-loop-discovery.service",),
+                wants=("robot-loop-bootstrap-agentd.service",),
+                requires=("robot-loop-discovery.service",),
             ),
             encoding="utf-8",
         )
@@ -414,6 +453,8 @@ OPENAI_MODEL=
                     f"serve --host {control.get('host', '127.0.0.1')} "
                     f"--port {control.get('port', 8080)}"
                 ),
+                after=("robot-loop-agentd.service",),
+                wants=("robot-loop-agentd.service",),
             ),
             encoding="utf-8",
         )
@@ -423,6 +464,9 @@ OPENAI_MODEL=
                 install_root=install_root,
                 config_root=config_root,
                 artifact_root=artifact_root,
+                bootstrap_url=(
+                    f"http://127.0.0.1:{bootstrap_agentd.get('port', 8100)}"
+                ),
             ),
             encoding="utf-8",
         )
@@ -472,6 +516,7 @@ OPENAI_MODEL=
             "source_revision": source_revision,
             "common_schema_digest": schema_digest,
             "application_wheel_sha256": sha256_file(root / "wheels" / wheel.name),
+            "startup_order": ["bootstrap-agentd", "discovery", "agentd"],
             "files": files,
         }
         (root / "manifest.json").write_text(
