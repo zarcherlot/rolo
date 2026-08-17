@@ -1,5 +1,5 @@
 schema_version: robot-capability/v1
-robot_id: robot_b
+robot_id: demo_ackermann
 adapter: mock
 platform:
   architecture: arm64
@@ -8,26 +8,27 @@ platform:
   ros_distro: humble
   drive_model: ackermann
 geometry:
-  footprint_m:
-    - [0.38, 0.26]
-    - [0.38, -0.26]
-    - [-0.34, -0.26]
-    - [-0.34, 0.26]
+  footprint_m: [[0.38, 0.26], [0.38, -0.26], [-0.34, -0.26], [-0.34, 0.26]]
   hard_max_linear_velocity_mps: 1.0
   hard_max_angular_velocity_radps: 1.2
 sensors:
   front_camera:
     semantic_uri: semantic://sensor/front_camera
     modality: camera_rgb
-    binding: mock://robot_b/front_camera
+    binding: mock://demo_ackermann/front_camera
   range_primary:
     semantic_uri: semantic://sensor/front_depth
     modality: depth_camera
-    binding: mock://robot_b/depth
+    binding: mock://demo_ackermann/depth
 features:
   mapping_2d: true
   navigation_2d: true
   docking: false
+  enrollment:
+    profile_id: ackermann
+    safety_profile_confirmed: true
+    bindings_verified: true
+    calibration_verified: true
   robot_use:
     supported: true
     local_visual_detection: false

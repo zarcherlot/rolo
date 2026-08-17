@@ -23,6 +23,7 @@ from robot_loop.discovery import (
     RosProbe,
     load_latest_report,
 )
+from robot_loop.enrollment import EnrollmentService, list_profiles, resolve_profile_root
 from robot_loop.models import (
     DiscoveryReport,
     ImageFrame,
@@ -46,7 +47,8 @@ linux_host_app = typer.Typer(help="Linux host operations.")
 ros_app = typer.Typer(help="Canonical ROS-layer tools.")
 ros_graph_app = typer.Typer(help="ROS graph operations.")
 application_app = typer.Typer(help="Canonical application-layer tools.")
-application_robot_app = typer.Typer(help="Application robot discovery operations.")
+app_robot_cli = typer.Typer(help="Application robot discovery operations.")
+enroll_app = typer.Typer(help="Enroll an arbitrary robot identity from a capability profile.")
 app.add_typer(schema_app, name="schema")
 app.add_typer(robot_use_app, name="robot-use")
 app.add_typer(bundle_app, name="bundle")
@@ -59,7 +61,8 @@ linux_app.add_typer(linux_host_app, name="host")
 app.add_typer(ros_app, name="ros")
 ros_app.add_typer(ros_graph_app, name="graph")
 app.add_typer(application_app, name="app")
-application_app.add_typer(application_robot_app, name="robot")
+application_app.add_typer(app_robot_cli, name="robot")
+app.add_typer(enroll_app, name="enroll")
 
 
 def emit(value: object) -> None:
@@ -182,6 +185,59 @@ def export_schemas(
     emit({"status": "SUCCEEDED", "written": written})
 
 
+@enroll_app.command("profiles")
+def enrollment_profiles(
+    profile_root: Annotated[Path | None, typer.Option("--profile-root")] = None,
+) -> None:
+    """List robot structure/sensor profiles available for enrollment."""
+    settings = get_settings()
+    resolved = resolve_profile_root(settings.robot_loop_config_dir, profile_root)
+    emit({"profile_root": str(resolved), "profiles": list_profiles(resolved)})
+
+
+@enroll_app.command("init")
+def enrollment_init(
+    robot_id: Annotated[str, typer.Option("--robot-id")],
+    profile: Annotated[str, typer.Option("--profile")],
+    confirm_safety_profile: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-safety-profile",
+            help="Confirm that geometry and hard motion bounds match the physical robot",
+        ),
+    ] = False,
+    profile_root: Annotated[Path | None, typer.Option("--profile-root")] = None,
+) -> None:
+    """Create the only active robot manifest for this installed instance."""
+    settings = get_settings()
+    resolved = resolve_profile_root(settings.robot_loop_config_dir, profile_root)
+    service = EnrollmentService(config_root=settings.robot_loop_config_dir, profile_root=resolved)
+    try:
+        result = service.enroll(
+            robot_id=robot_id,
+            profile_id=profile,
+            safety_profile_confirmed=confirm_safety_profile,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": result.status,
+            "robot_id": result.robot_id,
+            "profile_id": result.profile_id,
+            "capability_path": str(result.capability_path),
+            "capability_sha256": result.capability_sha256,
+        }
+    )
+
+
+@enroll_app.command("show")
+def enrollment_show() -> None:
+    """Show the robot identity currently owned by this installed instance."""
+    robots = create_runtime().registry.list()
+    emit([robot.model_dump(mode="json") for robot in robots])
+
+
 @discover_app.command("run")
 def discovery_run(
     robot: Annotated[str, typer.Option("--robot")],
@@ -255,7 +311,7 @@ def ros_graph_snapshot() -> None:
     emit(RosProbe().run())
 
 
-@application_robot_app.command("discover")
+@app_robot_cli.command("discover")
 def application_robot_discover(
     source_root: Annotated[
         list[Path] | None,
@@ -316,24 +372,21 @@ def tool_schema(
 
 @bundle_app.command("build")
 def bundle_build(
-    robot: Annotated[
-        list[str], typer.Option("--robot", help="Compatible robot profile to include")
-    ],
     wheel: Annotated[Path, typer.Option("--wheel", exists=True, dir_okay=False)],
     output: Annotated[Path, typer.Option("--output", help="Bundle output directory")] = Path(
         "dist/release"
     ),
 ) -> None:
-    """Build one checksummed ARM64 archive with selectable robot profiles."""
+    """Build one checksummed ARM64 archive with no compiled-in robot identity."""
     try:
-        result = build_compatible_bundle(robot_ids=robot, wheel=wheel, output_dir=output)
+        result = build_compatible_bundle(wheel=wheel, output_dir=output)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(
         {
             "status": "SUCCEEDED",
             "bundle": str(result.bundle),
-            "robot_profiles": result.robot_ids,
+            "profile_ids": result.profile_ids,
             "target_arch": result.target_arch,
             "version": result.version,
             "sha256": result.sha256,

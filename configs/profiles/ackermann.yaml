@@ -1,0 +1,39 @@
+schema_version: robot-profile-template/v1
+profile_id: ackermann
+description: Ackermann mobile base with RGB camera and depth range sensing
+adapter: mock
+platform:
+  architecture: arm64
+  compute: auto_discover
+  os: ubuntu_22.04
+  ros_distro: humble
+  drive_model: ackermann
+geometry:
+  footprint_m:
+    - [0.38, 0.26]
+    - [0.38, -0.26]
+    - [-0.34, -0.26]
+    - [-0.34, 0.26]
+  hard_max_linear_velocity_mps: 1.0
+  hard_max_angular_velocity_radps: 1.2
+sensors:
+  front_camera:
+    semantic_uri: semantic://sensor/front_camera
+    modality: camera_rgb
+    binding: unbound://sensor/front_camera
+  range_primary:
+    semantic_uri: semantic://sensor/front_depth
+    modality: depth_camera
+    binding: unbound://sensor/range_primary
+features:
+  mapping_2d: true
+  navigation_2d: true
+  docking: false
+  robot_use:
+    supported: true
+    local_visual_detection: false
+    safety_authority: none
+enrollment:
+  requires_safety_confirmation: true
+  requires_binding_conformance: true
+  requires_calibration: true

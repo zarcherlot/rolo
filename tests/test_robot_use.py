@@ -14,7 +14,7 @@ def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotU
     now = datetime.now(UTC)
     return RobotUseRequest(
         request_id="req-test",
-        robot_id="robot_a",
+        robot_id="demo_diff",
         execution_id="exec-test",
         window_start=now - timedelta(seconds=10),
         window_end=now,
@@ -34,7 +34,7 @@ def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotU
 
 @pytest.mark.asyncio
 async def test_mock_robot_use_reports_normal(tmp_path: Path) -> None:
-    registry = RobotRegistry(Path("configs/robots"))
+    registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
     service = RobotUseService(
         registry=registry,
@@ -50,7 +50,7 @@ async def test_mock_robot_use_reports_normal(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_mock_robot_use_reports_suspected_stall(tmp_path: Path) -> None:
-    registry = RobotRegistry(Path("configs/robots"))
+    registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
     service = RobotUseService(
         registry=registry,

@@ -1,5 +1,6 @@
-schema_version: robot-capability/v1
-robot_id: robot_a
+schema_version: robot-profile-template/v1
+profile_id: differential_drive
+description: Differential-drive mobile base with RGB camera and 2D lidar
 adapter: mock
 platform:
   architecture: arm64
@@ -19,11 +20,11 @@ sensors:
   front_camera:
     semantic_uri: semantic://sensor/front_camera
     modality: camera_rgb
-    binding: mock://robot_a/front_camera
+    binding: unbound://sensor/front_camera
   range_primary:
     semantic_uri: semantic://sensor/front_lidar/scan
     modality: lidar_2d
-    binding: mock://robot_a/scan
+    binding: unbound://sensor/range_primary
 features:
   mapping_2d: true
   navigation_2d: true
@@ -32,3 +33,7 @@ features:
     supported: true
     local_visual_detection: false
     safety_authority: none
+enrollment:
+  requires_safety_confirmation: true
+  requires_binding_conformance: true
+  requires_calibration: true

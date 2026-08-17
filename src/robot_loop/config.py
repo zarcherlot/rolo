@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     robot_loop_env: str = "development"
-    robot_loop_config_dir: Path = Path("configs")
+    robot_loop_config_dir: Path = Path("configs/local")
     robot_loop_artifact_dir: Path = Path("artifacts")
     robot_loop_host: str = "127.0.0.1"
     robot_loop_port: int = 8080

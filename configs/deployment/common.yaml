@@ -1,5 +1,4 @@
 schema_version: robot-deployment/v1
-robot_id: robot_b
 target_arch: arm64
 source_revision: auto_git
 platform_baseline:

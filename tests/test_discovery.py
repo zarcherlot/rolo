@@ -81,14 +81,14 @@ def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> No
 def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     project = tmp_path / "application"
     make_application_project(project)
-    registry = RobotRegistry(Path("configs/robots"))
+    registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
     artifacts = ArtifactStore(tmp_path / "artifacts")
 
     report, run_path = DiscoveryService(artifacts).run(
-        robot=registry.get("robot_a"), source_roots=[project]
+        robot=registry.get("demo_diff"), source_roots=[project]
     )
-    loaded = load_latest_report(artifacts.root, "robot_a")
+    loaded = load_latest_report(artifacts.root, "demo_diff")
 
     assert run_path.is_file()
     assert loaded.discovery_id == report.discovery_id
@@ -101,9 +101,9 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
         "app.teleop.velocity",
         "app.localization.status",
     }
-    assert (artifacts.root / "discovery/robot_a/latest/tool_catalog.json").is_file()
-    assert (artifacts.root / "discovery/robot_a/latest/capability_manifest.json").is_file()
-    assert (artifacts.root / "discovery/robot_a/latest/application.json").is_file()
+    assert (artifacts.root / "discovery/demo_diff/latest/tool_catalog.json").is_file()
+    assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
+    assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
 
@@ -117,9 +117,9 @@ def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.Monk
 
     discovered = runner.invoke(
         app,
-        ["discover", "run", "--robot", "robot_a", "--source-root", str(project)],
+        ["discover", "run", "--robot", "demo_diff", "--source-root", str(project)],
     )
-    catalog = runner.invoke(app, ["tool", "catalog", "--robot", "robot_a"])
+    catalog = runner.invoke(app, ["tool", "catalog", "--robot", "demo_diff"])
 
     get_settings.cache_clear()
     assert discovered.exit_code == 0, discovered.output

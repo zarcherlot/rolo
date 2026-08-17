@@ -62,7 +62,7 @@ Agent / Skills / Test DSL / Tuning Engine / State Graph     完全相同
 - adapter 之上的代码禁止出现 `if robot_id == ...`，差异只能通过 capability 和 canonical parameter binding 表达；
 - 两台车必须通过同一套 CLI conformance tests，包含单位、frame、时间戳、错误码、副作用和回滚语义。
 
-部署基线统一为 **ARM64 + Ubuntu 22.04 + ROS 2 Humble**，当前支持 Jetson Orin、RK3588 和 Raspberry Pi 4/5。发布单元是一份公共 ARM64 安装包，内含同一 Agent/runtime、canonical CLI、state graph、测试与调优引擎、`robot_use` 客户端、schema 以及两车 profile；同一份归档分别复制到两台车上，安装时按车体结构与传感器显式选择且只激活本机 profile，SoC 由启动发现服务识别。三类平台的 BSP、vendor driver、设备 binding、标定和参数允许不同，但必须封装在 canonical adapter/profile 以下，上层禁止按 SoC 分叉业务逻辑。两台车仍各自运行完整实例，本机密钥引用、日志、录像和 artifact 不共享。跨车 scheduler/直播控制台只是可选上层，失联不得破坏车端安全内核、记录与停止能力。
+部署基线统一为 **ARM64 + Ubuntu 22.04 + ROS 2 Humble**，当前支持 Jetson Orin、RK3588 和 Raspberry Pi 4/5。发布单元是一份不携带具体机器人身份的公共 ARM64 安装包，内含同一 Agent/runtime、canonical CLI、state graph、测试与调优引擎、`robot_use` 客户端、schema 和可扩展结构/传感器 profile 模板。安装时为每台车注册任意合法且唯一的 `robot_id`，按物理结构选择并确认安全 profile，由启动发现服务识别 SoC、设备和软件绑定，最终生成本机唯一 capability manifest。三类平台的 BSP、vendor driver、设备 binding、标定和参数允许不同，但必须封装在 canonical adapter/profile 以下，上层禁止按 SoC 或具体 `robot_id` 分叉业务逻辑。两台车仍各自运行完整实例，本机密钥引用、日志、录像和 artifact 不共享。跨车 scheduler/直播控制台只是可选上层，失联不得破坏车端安全内核、记录与停止能力。
 
 ### 1.2 六小时时间线
 
@@ -117,7 +117,7 @@ Agent / Skills / Test DSL / Tuning Engine / State Graph     完全相同
 所有现有 CLI tool 需要包装为同一命令入口，示意如下：
 
 ```bash
-robotctl --robot robot_a <layer> <resource> <verb> \
+robotctl --robot demo_diff <layer> <resource> <verb> \
   --input request.json --output json
 ```
 
@@ -140,7 +140,7 @@ robotctl --robot robot_a <layer> <resource> <verb> \
   "schema_version": "robot-agent/v1",
   "request_id": "req_01J...",
   "session_id": "sess_demo_001",
-  "robot_id": "robot_a",
+  "robot_id": "demo_diff",
   "timestamp": "2026-08-15T10:00:00.123456+08:00",
   "deadline": "2026-08-15T10:00:10+08:00",
   "actor": {"type": "agent", "id": "debug-agent"},
@@ -164,7 +164,7 @@ robotctl --robot robot_a <layer> <resource> <verb> \
   "status": "SUCCEEDED",
   "started_at": "2026-08-15T10:00:00.130000+08:00",
   "finished_at": "2026-08-15T10:00:10.130000+08:00",
-  "robot_id": "robot_a",
+  "robot_id": "demo_diff",
   "graph_version": 38,
   "data": {
     "topic": "/scan",
@@ -210,8 +210,8 @@ INTERNAL_ERROR
 ```yaml
 key: nav.local_costmap.inflation.radius
 binding:
-  robot_a: /local_costmap/local_costmap:inflation_layer.inflation_radius
-  robot_b: /local_costmap/local_costmap:inflation.inflation_radius
+  demo_diff: /local_costmap/local_costmap:inflation_layer.inflation_radius
+  demo_ackermann: /local_costmap/local_costmap:inflation.inflation_radius
 type: float
 unit: m
 source: software_default
@@ -520,7 +520,7 @@ Application 层只暴露稳定的任务语义；Nav2、MoveIt、厂商导航栈�
 
 ```yaml
 schema_version: robot-capability/v1
-robot_id: robot_a
+robot_id: demo_diff
 adapter_version: 0.4.0
 platform:
   drive_model: differential
@@ -579,9 +579,9 @@ Skill 在执行前只检查 capability，不用 `robot_id` 写分支。真正无
 
 ```json
 {
-  "id": "rosnode://robot_a/navigation/controller_server",
+  "id": "rosnode://demo_diff/navigation/controller_server",
   "type": "Node",
-  "robot_id": "robot_a",
+  "robot_id": "demo_diff",
   "valid_from": "2026-08-15T10:00:00.000000+08:00",
   "valid_to": null,
   "observed_at": "2026-08-15T10:00:01.000000+08:00",
@@ -647,7 +647,7 @@ Sensor(front_lidar)
 {
   "event_id": "evt_01J...",
   "event_type": "graph.patch",
-  "robot_id": "robot_a",
+  "robot_id": "demo_diff",
   "session_id": "sess_demo_001",
   "event_time": "2026-08-15T10:32:07.412000+08:00",
   "ingest_time": "2026-08-15T10:32:07.430000+08:00",
@@ -745,8 +745,8 @@ stateDiagram-v2
 
 ```text
 Resource                 Lock
-robot_a motion           exclusive(robot_a)
-robot_b motion           exclusive(robot_b)
+demo_diff motion         exclusive(demo_diff)
+demo_ackermann motion    exclusive(demo_ackermann)
 test lane 1              exclusive
 overhead camera ROI A    shared if non-overlap, otherwise exclusive
 wireless stress channel  exclusive
@@ -798,7 +798,7 @@ APPLY
 ```yaml
 schema_version: robot-test-constraint/v1
 scope:
-  robots: [robot_a, robot_b]
+  robots: [demo_diff, demo_ackermann]
   software_profile: common_stack_v3
 environment:
   map: demo_arena
@@ -866,7 +866,7 @@ statistics:
 
 ```yaml
 id: nav_narrow_dynamic_001
-applies_to: [robot_a, robot_b]
+applies_to: [demo_diff, demo_ackermann]
 preconditions:
   - safety.ready == true
   - localization.quality >= 0.9
@@ -1568,7 +1568,7 @@ unit: m
 interval: [0.064, 0.079]
 confidence: 0.96
 valid_time: [t0, t1]
-subject: robot_a
+subject: demo_diff
 reference_frame: map
 method: onboard_external_pose_se2_residual
 sources:
@@ -1696,8 +1696,8 @@ overlap_with_previous_s: 5
 
 ```yaml
 schema_version: robot-use-request/v1
-mode_id: ru_robot_a_001
-robot_id: robot_a
+mode_id: ru_demo_diff_001
+robot_id: demo_diff
 execution_id: exec_nav_018
 test_case_id: nav_narrow_001
 window:
@@ -1898,7 +1898,7 @@ robot_use:
   "event_id": "evt_01J...",
   "event_type": "metric.threshold_crossed",
   "severity": "WARN",
-  "robot_id": "robot_b",
+  "robot_id": "demo_ackermann",
   "session_id": "sess_demo_001",
   "episode_id": "ep_044",
   "test_case_id": "nav_narrow_dynamic_001",
@@ -2064,19 +2064,18 @@ Skill 不应复制厂商命令，也不应把自由文本日志作为成功条�
 release/robot-loop-<version>-arm64.zip
 ```
 
-公共包包含两车 capability/deployment profile、ARM64 平台兼容清单、同版本 runtime、CLI、schema、ARM64 依赖或其明确的依赖获取模式、systemd 服务、无密钥环境变量样例、安装脚本和逐文件 SHA-256 manifest。安装命令必须显式传入 `robot_id`，并在写入系统目录前验证 ARM64、Ubuntu 22.04、ROS 2 Humble 与全部文件摘要；安装后 `/etc/robot-loop/robots` 中只能激活所选机器人的 capability。Jetson Orin、RK3588 与 Raspberry Pi 的 vendor/ROS adapter 可以使用各自驱动包，但必须通过同一 conformance suite。默认服务仅绑定 loopback；远程控制必须另行启用 mTLS transport。运行 artifact 分别落在各机器人本地目录，可在直播结束后汇聚，但原始归属和 `robot_id` 不得改写。
+公共包不包含任何具体 `robot_id` 或实例 capability，而是包含ARM64平台兼容清单、可扩展结构/传感器profile模板、公共deployment manifest、同版本runtime、CLI、schema、依赖获取模式、systemd服务、无密钥环境变量样例、安装脚本和逐文件SHA-256 manifest。安装命令必须显式传入新分配的 `robot_id`、profile以及安全边界确认，并在写入系统目录前验证ARM64、Ubuntu 22.04、ROS 2 Humble与全部文件摘要；enrollment生成 `/etc/robot-loop/robots/<robot_id>.yaml`，一个安装实例只能拥有一个身份，禁止静默覆盖。Jetson Orin、RK3588与Raspberry Pi的vendor/ROS adapter可以使用各自驱动包，但必须通过同一conformance suite。默认服务仅绑定loopback；远程控制必须另行启用mTLS transport。运行artifact分别落在各机器人本地目录，可在直播结束后汇聚，但原始归属和`robot_id`不得改写。
 
 直播结束必须自动生成并校验：
 
 ```text
 session_manifest.json
-robot_a/capability_manifest.yaml
-robot_b/capability_manifest.yaml
-robot_a|b/inventory_baseline.json
-robot_a|b/state_graph_initial.json
-robot_a|b/state_graph_final.json
-robot_a|b/calibration_report.json
-robot_a|b/map + map_quality_report.json
+<robot_id>/capability_manifest.yaml
+<robot_id>/inventory_baseline.json
+<robot_id>/state_graph_initial.json
+<robot_id>/state_graph_final.json
+<robot_id>/calibration_report.json
+<robot_id>/map + map_quality_report.json
 constraints/original.yaml
 constraints/admission_report.json
 tests/generated_suite.yaml

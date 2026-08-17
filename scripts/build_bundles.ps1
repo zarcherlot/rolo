@@ -13,4 +13,4 @@ if ($null -eq $wheel) {
     throw "uv build did not produce a robot_loop wheel"
 }
 
-uv run robotctl bundle build --robot robot_a --robot robot_b --wheel $wheel.FullName
+uv run robotctl bundle build --wheel $wheel.FullName

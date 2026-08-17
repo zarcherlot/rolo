@@ -15,12 +15,25 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     except KeyError as exc:
         raise ValueError(str(exc)) from exc
 
+    enrollment = capability.features.get("enrollment", {})
+    bindings_unbound = any(
+        str(sensor.get("binding", "")).startswith("unbound://")
+        for sensor in capability.sensors.values()
+        if isinstance(sensor, dict)
+    )
+    ready = bool(
+        enrollment.get("safety_profile_confirmed")
+        and enrollment.get("bindings_verified")
+        and enrollment.get("calibration_verified")
+        and not bindings_unbound
+    )
+
     agentd = FastAPI(title=f"robot-agentd:{robot_id}", version=__version__)
 
     @agentd.get("/health")
     async def health() -> dict[str, object]:
         return {
-            "status": HealthState.HEALTHY,
+            "status": HealthState.HEALTHY if ready else HealthState.DEGRADED,
             "service": "robot-agentd",
             "robot_id": robot_id,
             "adapter": capability.adapter,
@@ -39,12 +52,12 @@ def create_agentd_app(robot_id: str) -> FastAPI:
             "safety": {
                 "estop": False,
                 "motion_lease": None,
-                "watchdog": "ARMED",
+                "watchdog": "ARMED" if ready else "DISARMED",
             },
             "application": {
                 "state": "IDLE",
-                "localization": "READY",
-                "navigation": "READY",
+                "localization": "READY" if ready else "NOT_READY",
+                "navigation": "READY" if ready else "NOT_READY",
             },
             "timestamp": utc_now(),
         }

@@ -14,6 +14,7 @@ from typing import Any
 
 from robot_loop import __version__
 from robot_loop.config import load_yaml
+from robot_loop.enrollment import PROFILE_ID_PATTERN, list_profiles
 
 ARCH_ALIASES = {"arm64": "aarch64"}
 COMMON_DEPLOYMENT_KEYS = ("install_root", "config_root", "artifact_root", "service_user")
@@ -22,7 +23,7 @@ COMMON_DEPLOYMENT_KEYS = ("install_root", "config_root", "artifact_root", "servi
 @dataclass(frozen=True)
 class BundleResult:
     bundle: Path
-    robot_ids: tuple[str, ...]
+    profile_ids: tuple[str, ...]
     target_arch: str
     version: str
     sha256: str
@@ -69,10 +70,10 @@ def _service_unit(
     config_root: str,
     artifact_root: str,
     command: str,
-    robot_profile: bool = False,
+    robot_identity: bool = False,
     after_discovery: bool = False,
 ) -> str:
-    profile_env = f"EnvironmentFile={config_root}/robot-profile.env\n" if robot_profile else ""
+    identity_env = f"EnvironmentFile={config_root}/robot-identity.env\n" if robot_identity else ""
     discovery_dependency = " robot-loop-discovery.service" if after_discovery else ""
     return f"""[Unit]
 Description={description}
@@ -85,7 +86,7 @@ User={service_user}
 Group={service_user}
 WorkingDirectory={install_root}
 EnvironmentFile=-{config_root}/robot-loop.env
-{profile_env}Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
+{identity_env}Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
 Environment=ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
 ExecStart={install_root}/venv/bin/robotctl {command}
 Restart=on-failure
@@ -116,7 +117,7 @@ User={service_user}
 Group={service_user}
 WorkingDirectory={install_root}
 EnvironmentFile=-{config_root}/robot-loop.env
-EnvironmentFile={config_root}/robot-profile.env
+EnvironmentFile={config_root}/robot-identity.env
 Environment=ROBOT_LOOP_CONFIG_DIR={config_root}
 Environment=ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
 ExecStart={exec_start}
@@ -131,26 +132,41 @@ WantedBy=multi-user.target
 
 def _installer(
     *,
-    robot_ids: Sequence[str],
+    profile_ids: Sequence[str],
     target_arch: str,
     service_user: str,
     install_root: str,
     config_root: str,
     artifact_root: str,
 ) -> str:
-    allowed = " ".join(robot_ids)
+    allowed_profiles = " ".join(profile_ids)
+    profile_choices = "|".join(profile_ids)
     kernel_arch = ARCH_ALIASES[target_arch]
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
 BUNDLE_ROOT="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 ROBOT_ID="${{1:-}}"
-ALLOWED_ROBOTS=" {allowed} "
+PROFILE_ID="${{2:-}}"
+CONFIRM="${{3:-}}"
+ALLOWED_PROFILES=" {allowed_profiles} "
 EXPECTED_ARCH="{kernel_arch}"
 ACTUAL_ARCH="$(uname -m)"
 
-if [[ "$ALLOWED_ROBOTS" != *" $ROBOT_ID "* ]]; then
-  echo "Usage: sudo bash install.sh <{("|".join(robot_ids))}>" >&2
+usage() {{
+  echo "Usage: sudo bash install.sh <robot_id> <{profile_choices}> --confirm-safety-profile" >&2
+}}
+if [[ ! "$ROBOT_ID" =~ ^[a-z][a-z0-9_-]{{2,63}}$ ]]; then
+  usage
+  exit 1
+fi
+if [[ "$ALLOWED_PROFILES" != *" $PROFILE_ID "* ]]; then
+  usage
+  exit 1
+fi
+if [[ "$CONFIRM" != "--confirm-safety-profile" ]]; then
+  echo "Explicit confirmation of physical geometry and hard motion bounds is required" >&2
+  usage
   exit 1
 fi
 if [[ "$ACTUAL_ARCH" != "$EXPECTED_ARCH" ]]; then
@@ -187,7 +203,7 @@ print(f"Verified {{len(manifest['files'])}} bundle files")
 PY
 
 if [[ "${{EUID}}" -ne 0 ]]; then
-  echo "Run this installer as root (for example: sudo bash install.sh $ROBOT_ID)" >&2
+  echo "Run this installer as root" >&2
   exit 3
 fi
 
@@ -201,24 +217,29 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 install -d -o root -g root -m 0755 \
-  "$INSTALL_ROOT" "$CONFIG_ROOT" "$CONFIG_ROOT/robots" "$CONFIG_ROOT/platforms"
+  "$INSTALL_ROOT" "$CONFIG_ROOT" "$CONFIG_ROOT/robots" \
+  "$CONFIG_ROOT/profiles" "$CONFIG_ROOT/platforms"
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 "$ARTIFACT_ROOT"
 python3 -m venv "$INSTALL_ROOT/venv"
 "$INSTALL_ROOT/venv/bin/python" -m pip install --upgrade pip
 "$INSTALL_ROOT/venv/bin/python" -m pip install "$BUNDLE_ROOT"/wheels/robot_loop-*.whl
 
-for profile in {allowed}; do
-  rm -f "$CONFIG_ROOT/robots/$profile.yaml"
-done
-install -m 0644 "$BUNDLE_ROOT/profiles/$ROBOT_ID/capability.yaml" \
-  "$CONFIG_ROOT/robots/$ROBOT_ID.yaml"
-install -m 0644 "$BUNDLE_ROOT/profiles/$ROBOT_ID/deployment.yaml" \
-  "$CONFIG_ROOT/deployment.yaml"
 install -m 0644 "$BUNDLE_ROOT/config/robot_use.yaml" "$CONFIG_ROOT/robot_use.yaml"
 install -m 0644 "$BUNDLE_ROOT/config/discovery.yaml" "$CONFIG_ROOT/discovery.yaml"
+install -m 0644 "$BUNDLE_ROOT/config/deployment.yaml" "$CONFIG_ROOT/deployment.yaml"
 install -m 0644 "$BUNDLE_ROOT/config/platforms/arm64.yaml" "$CONFIG_ROOT/platforms/arm64.yaml"
-printf 'ROBOT_ID=%s\n' "$ROBOT_ID" > "$CONFIG_ROOT/robot-profile.env"
-chmod 0644 "$CONFIG_ROOT/robot-profile.env"
+install -m 0644 "$BUNDLE_ROOT"/profiles/*.yaml "$CONFIG_ROOT/profiles/"
+
+ROBOT_LOOP_CONFIG_DIR="$CONFIG_ROOT" \
+  "$INSTALL_ROOT/venv/bin/robotctl" enroll init \
+  --robot-id "$ROBOT_ID" \
+  --profile "$PROFILE_ID" \
+  --profile-root "$CONFIG_ROOT/profiles" \
+  --confirm-safety-profile
+
+printf 'ROBOT_ID=%s\nPROFILE_ID=%s\n' "$ROBOT_ID" "$PROFILE_ID" \
+  > "$CONFIG_ROOT/robot-identity.env"
+chmod 0644 "$CONFIG_ROOT/robot-identity.env"
 install -d -m 0755 "$INSTALL_ROOT/schemas"
 install -m 0644 "$BUNDLE_ROOT"/schemas/*.json "$INSTALL_ROOT/schemas/"
 
@@ -233,117 +254,105 @@ systemctl daemon-reload
 systemctl enable --now robot-loop-discovery.service
 systemctl enable --now robot-loop-agentd.service robot-loop-control-plane.service
 
-echo "Installed Robot Loop {__version__} with profile $ROBOT_ID"
-echo "Check with: systemctl status robot-loop-agentd robot-loop-control-plane"
+echo "Installed Robot Loop {__version__} for $ROBOT_ID with profile $PROFILE_ID"
+echo "Discovery must verify bindings and calibration before motion tools become AVAILABLE"
 """
 
 
 def _bundle_readme(
-    *, robot_ids: Sequence[str], target_arch: str, supported_compute: Sequence[str]
+    *, profile_ids: Sequence[str], target_arch: str, supported_compute: Sequence[str]
 ) -> str:
-    choices = "|".join(robot_ids)
-    return f"""# Robot Loop compatible ARM deployment bundle
+    choices = "|".join(profile_ids)
+    return f"""# Robot Loop universal ARM deployment bundle
 
 - Product version: `{__version__}`
 - Platform baseline: ARM64 + Ubuntu 22.04 + ROS 2 Humble
 - Supported compute: {", ".join(supported_compute)}
-- Included robot profiles: `{", ".join(robot_ids)}`
+- Robot identities: assigned dynamically at installation
+- Structure/sensor profiles: `{", ".join(profile_ids)}`
 - Default network exposure: loopback only
 
-Install the same archive on each target and select the local profile:
+Install the same archive on any compatible robot. Choose the profile from physical structure and
+sensors, not from SoC:
 
 ```bash
 unzip robot-loop-{__version__}-{target_arch}.zip
 cd robot-loop-{__version__}-{target_arch}
-sudo bash install.sh <{choices}>
+sudo bash install.sh my_robot_01 <{choices}> --confirm-safety-profile
 ```
 
-Only the selected profile is activated under `/etc/robot-loop`; the common runtime and schema are
-identical on both robots. The default backend is `mock`. Put `OPENAI_API_KEY` and an image-capable
-`OPENAI_MODEL` in `/etc/robot-loop/robot-loop.env` to enable remote multimodal `robot_use`.
+The installer creates `/etc/robot-loop/robots/my_robot_01.yaml`; no robot identity is compiled into
+the package. Enrollment refuses to replace a different existing identity. Newly inferred bindings
+remain unverified until adapter conformance and calibration gates pass.
 
-This MVP bundle resolves Python dependencies from the configured package index. A production
-offline release must include an ARM64 wheelhouse. SoC-specific ROS/vendor drivers stay behind the
-canonical adapter and profile binding; they are not implemented by this mock bundle.
+This MVP resolves Python dependencies from the configured package index. Production offline
+releases must include an ARM64 wheelhouse. SoC-specific BSP and drivers remain behind canonical
+adapters and are not implemented by the mock profile templates.
 """
 
 
 def build_compatible_bundle(
     *,
-    robot_ids: Sequence[str],
     wheel: Path,
     project_root: Path = Path("."),
     output_dir: Path = Path("dist/release"),
 ) -> BundleResult:
     project_root = project_root.resolve()
     wheel = wheel.resolve()
-    selected = tuple(dict.fromkeys(robot_ids))
-    if not selected:
-        raise ValueError("at least one robot profile is required")
     if not wheel.is_file() or wheel.suffix != ".whl":
         raise ValueError(f"wheel does not exist or is not a .whl file: {wheel}")
 
     robot_use_path = project_root / "configs" / "robot_use.yaml"
     discovery_config_path = project_root / "configs" / "discovery.yaml"
+    deployment_path = project_root / "configs" / "deployment" / "common.yaml"
     platform_config_path = project_root / "configs" / "platforms" / "arm64.yaml"
+    profile_root = project_root / "configs" / "profiles"
     schema_dir = project_root / "schemas"
-    if (
-        not robot_use_path.is_file()
-        or not discovery_config_path.is_file()
-        or not platform_config_path.is_file()
-        or not schema_dir.is_dir()
-    ):
-        raise ValueError("robot_use/discovery/platform config or schema directory is missing")
+    required = (
+        robot_use_path,
+        discovery_config_path,
+        deployment_path,
+        platform_config_path,
+        profile_root,
+        schema_dir,
+    )
+    if any(not path.exists() for path in required):
+        raise ValueError("bundle config, profile, or schema input is missing")
 
+    deployment = load_yaml(deployment_path)
     platform_config = load_yaml(platform_config_path)
+    target_arch = _require_string(deployment, "target_arch")
+    if target_arch not in ARCH_ALIASES:
+        raise ValueError(f"unsupported target_arch: {target_arch}; only ARM64 is supported")
+    if platform_config.get("architecture") != target_arch:
+        raise ValueError("platform manifest architecture does not match deployment")
+
+    profile_descriptors = list_profiles(profile_root)
+    profile_ids = tuple(item["profile_id"] for item in profile_descriptors)
+    if not profile_ids:
+        raise ValueError("at least one enrollment profile is required")
+    for profile_id in profile_ids:
+        if not PROFILE_ID_PATTERN.fullmatch(profile_id):
+            raise ValueError(f"invalid profile_id: {profile_id}")
+        template = load_yaml(profile_root / f"{profile_id}.yaml")
+        if template.get("platform", {}).get("architecture") != target_arch:
+            raise ValueError(f"target_arch mismatch in profile {profile_id}")
+
     compute_entries = platform_config.get("supported_compute", [])
     if not isinstance(compute_entries, list) or not compute_entries:
         raise ValueError("platform supported_compute must be a non-empty list")
     supported_compute_ids = [entry["id"] for entry in compute_entries]
     supported_compute_names = [entry["name"] for entry in compute_entries]
-
-    profiles: list[tuple[str, Path, Path, dict[str, Any], dict[str, Any]]] = []
-    for robot_id in selected:
-        capability_path = project_root / "configs" / "robots" / f"{robot_id}.yaml"
-        deployment_path = project_root / "configs" / "deployment" / f"{robot_id}.yaml"
-        if not capability_path.is_file() or not deployment_path.is_file():
-            raise ValueError(f"profile inputs are missing for {robot_id}")
-        capability = load_yaml(capability_path)
-        deployment = load_yaml(deployment_path)
-        if capability.get("robot_id") != robot_id or deployment.get("robot_id") != robot_id:
-            raise ValueError(f"robot_id mismatch in profile {robot_id}")
-        profiles.append((robot_id, capability_path, deployment_path, capability, deployment))
-
-    first_deployment = profiles[0][4]
-    target_arch = _require_string(first_deployment, "target_arch")
-    if target_arch not in ARCH_ALIASES:
-        raise ValueError(f"unsupported target_arch: {target_arch}; only ARM64 is supported")
-    common_values = {key: _require_string(first_deployment, key) for key in COMMON_DEPLOYMENT_KEYS}
-    source_revision_setting = _require_string(first_deployment, "source_revision")
-    platform_baseline = first_deployment.get("platform_baseline")
-
-    for robot_id, _, _, capability, deployment in profiles:
-        if capability.get("platform", {}).get("architecture") != target_arch:
-            raise ValueError(f"target_arch mismatch in capability {robot_id}")
-        if deployment.get("target_arch") != target_arch:
-            raise ValueError(f"target_arch mismatch in deployment {robot_id}")
-        if deployment.get("source_revision") != source_revision_setting:
-            raise ValueError("all profiles must use the same source_revision")
-        if deployment.get("platform_baseline") != platform_baseline:
-            raise ValueError("all profiles must use the same platform_baseline")
-        configured_compute = deployment.get("hardware_profile", {}).get("compute")
-        if configured_compute not in {"auto_discover", *supported_compute_ids}:
-            raise ValueError(f"unsupported compute platform in deployment {robot_id}")
-        for key, value in common_values.items():
-            if deployment.get(key) != value:
-                raise ValueError(f"all profiles must use the same {key}")
-
+    common_values = {key: _require_string(deployment, key) for key in COMMON_DEPLOYMENT_KEYS}
+    source_revision = _resolve_source_revision(
+        project_root, _require_string(deployment, "source_revision")
+    )
+    platform_baseline = deployment.get("platform_baseline")
     install_root = common_values["install_root"]
-    source_revision = _resolve_source_revision(project_root, source_revision_setting)
     config_root = common_values["config_root"]
     artifact_root = common_values["artifact_root"]
     service_user = common_values["service_user"]
-    services = first_deployment.get("services", {})
+    services = deployment.get("services", {})
     control = services.get("control_plane", {})
     agentd = services.get("agentd", {})
     bundle_name = f"robot-loop-{__version__}-{target_arch}"
@@ -355,25 +364,23 @@ def build_compatible_bundle(
         root = Path(temporary) / bundle_name
         for relative in ("wheels", "config", "profiles", "schemas", "systemd"):
             (root / relative).mkdir(parents=True)
+        (root / "config" / "platforms").mkdir()
 
         shutil.copy2(wheel, root / "wheels" / wheel.name)
         shutil.copy2(robot_use_path, root / "config" / "robot_use.yaml")
         shutil.copy2(discovery_config_path, root / "config" / "discovery.yaml")
-        (root / "config" / "platforms").mkdir()
+        shutil.copy2(deployment_path, root / "config" / "deployment.yaml")
         shutil.copy2(platform_config_path, root / "config" / "platforms" / "arm64.yaml")
-        for robot_id, capability_path, deployment_path, _, _ in profiles:
-            profile_root = root / "profiles" / robot_id
-            profile_root.mkdir()
-            shutil.copy2(capability_path, profile_root / "capability.yaml")
-            shutil.copy2(deployment_path, profile_root / "deployment.yaml")
+        for profile in sorted(profile_root.glob("*.yaml")):
+            shutil.copy2(profile, root / "profiles" / profile.name)
         for schema in sorted(schema_dir.glob("*.json")):
             shutil.copy2(schema, root / "schemas" / schema.name)
 
         env_text = f"""ROBOT_LOOP_ENV=production
 ROBOT_LOOP_CONFIG_DIR={config_root}
 ROBOT_LOOP_ARTIFACT_DIR={artifact_root}
-ROBOT_LOOP_HOST={control.get("host", "127.0.0.1")}
-ROBOT_LOOP_PORT={control.get("port", 8080)}
+ROBOT_LOOP_HOST={control.get('host', '127.0.0.1')}
+ROBOT_LOOP_PORT={control.get('port', 8080)}
 ROBOT_DISCOVERY_SOURCE_ROOT=/opt/robot-application
 ROBOT_USE_BACKEND=mock
 OPENAI_API_KEY=
@@ -391,7 +398,7 @@ OPENAI_MODEL=
                     f"agentd --robot ${{ROBOT_ID}} --host {agentd.get('host', '127.0.0.1')} "
                     f"--port {agentd.get('port', 8101)}"
                 ),
-                robot_profile=True,
+                robot_identity=True,
                 after_discovery=True,
             ),
             encoding="utf-8",
@@ -421,7 +428,7 @@ OPENAI_MODEL=
         )
         (root / "install.sh").write_text(
             _installer(
-                robot_ids=selected,
+                profile_ids=profile_ids,
                 target_arch=target_arch,
                 service_user=service_user,
                 install_root=install_root,
@@ -433,7 +440,7 @@ OPENAI_MODEL=
         )
         (root / "README.md").write_text(
             _bundle_readme(
-                robot_ids=selected,
+                profile_ids=profile_ids,
                 target_arch=target_arch,
                 supported_compute=supported_compute_names,
             ),
@@ -453,12 +460,14 @@ OPENAI_MODEL=
             "schema_version": "robot-deployment-bundle/v1",
             "product": "robot-loop",
             "version": __version__,
-            "robot_profiles": list(selected),
+            "identity_mode": "dynamic_enrollment",
+            "included_robot_ids": [],
+            "profile_ids": list(profile_ids),
             "target_arch": target_arch,
             "kernel_arch": ARCH_ALIASES[target_arch],
             "platform_baseline": platform_baseline,
             "supported_compute": supported_compute_ids,
-            "dependency_mode": first_deployment.get("dependency_mode", "online_resolve"),
+            "dependency_mode": deployment.get("dependency_mode", "online_resolve"),
             "created_at": datetime.now(UTC).isoformat(),
             "source_revision": source_revision,
             "common_schema_digest": schema_digest,
@@ -476,7 +485,7 @@ OPENAI_MODEL=
 
     return BundleResult(
         bundle=archive_path,
-        robot_ids=selected,
+        profile_ids=profile_ids,
         target_arch=target_arch,
         version=__version__,
         sha256=sha256_file(archive_path),

@@ -11,10 +11,10 @@ added; discovery never guesses a vendor driver from CPU architecture alone.
 ## Run
 
 ```bash
-robotctl discover run --robot robot_a --source-root /opt/robot-application
-robotctl discover show --robot robot_a
-robotctl tool catalog --robot robot_a
-robotctl tool schema hw.inventory.scan --robot robot_a
+robotctl discover run --robot my_robot_01 --source-root /opt/robot-application
+robotctl discover show --robot my_robot_01
+robotctl tool catalog --robot my_robot_01
+robotctl tool schema hw.inventory.scan --robot my_robot_01
 ```
 
 The four initial canonical commands are also directly callable:
@@ -53,6 +53,7 @@ tests. This prevents documentation or naming heuristics from becoming an actuato
 
 ## Robot startup
 
-The ARM64 release installs `robot-loop-discovery.service`. On boot it scans the selected robot
-profile and `${ROBOT_DISCOVERY_SOURCE_ROOT}` before `robot-loop-agentd` starts. The default source
-root is `/opt/robot-application` and can be changed in `/etc/robot-loop/robot-loop.env`.
+The ARM64 release dynamically enrolls one robot identity and installs
+`robot-loop-discovery.service`. On boot it scans the enrolled profile and
+`${ROBOT_DISCOVERY_SOURCE_ROOT}` before `robot-loop-agentd` starts. The default source root is
+`/opt/robot-application` and can be changed in `/etc/robot-loop/robot-loop.env`.

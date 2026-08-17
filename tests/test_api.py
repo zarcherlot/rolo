@@ -26,7 +26,7 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["status"] == "HEALTHY"
     assert health.json()["robots"] == 2
     assert robots.status_code == 200
-    assert {robot["robot_id"] for robot in robots.json()} == {"robot_a", "robot_b"}
+    assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
     assert status.json()["local_visual_detection"] is False
 
 
@@ -41,7 +41,7 @@ def test_robot_use_poll_uses_offline_backend() -> None:
     now = datetime.now(UTC)
     payload = {
         "request_id": "req-api-test",
-        "robot_id": "robot_a",
+        "robot_id": "demo_diff",
         "execution_id": "exec-api-test",
         "window_start": (now - timedelta(seconds=10)).isoformat(),
         "window_end": now.isoformat(),
