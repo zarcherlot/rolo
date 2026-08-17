@@ -9,7 +9,7 @@ Push-Location $Workspace
 try {
     switch ($Action) {
         "setup" {
-            uv sync --dev
+            uv sync --frozen
             uv run robotctl schema export
         }
         "check" { uv run robotctl doctor }

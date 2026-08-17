@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<robot name="differential_drive">
+  <link name="base_link">
+    <collision>
+      <origin xyz="0.01 0 0.10" rpy="0 0 0"/>
+      <geometry><box size="0.60 0.46 0.20"/></geometry>
+    </collision>
+  </link>
+  <link name="left_wheel_link"/>
+  <link name="right_wheel_link"/>
+  <link name="front_camera_link"/>
+  <link name="front_lidar_link"/>
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="left_wheel_link"/>
+    <origin xyz="0 0.24 0.08" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="10"/>
+  </joint>
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="right_wheel_link"/>
+    <origin xyz="0 -0.24 0.08" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="10"/>
+  </joint>
+  <joint name="front_camera_joint" type="fixed">
+    <parent link="base_link"/><child link="front_camera_link"/>
+    <origin xyz="0.25 0 0.22" rpy="0 0 0"/>
+  </joint>
+  <joint name="front_lidar_joint" type="fixed">
+    <parent link="base_link"/><child link="front_lidar_link"/>
+    <origin xyz="0.20 0 0.18" rpy="0 0 0"/>
+  </joint>
+  <rolo
+    description="Differential-drive mobile base with RGB camera and 2D lidar"
+    adapter="mock"
+    drive_model="differential"
+    base_link="base_link"
+    hard_max_linear_velocity_mps="0.8"
+    hard_max_angular_velocity_radps="1.5">
+    <sensor name="front_camera" link="front_camera_link"
+      semantic_uri="semantic://sensor/front_camera" modality="camera_rgb"/>
+    <sensor name="range_primary" link="front_lidar_link"
+      semantic_uri="semantic://sensor/front_lidar/scan" modality="lidar_2d"/>
+    <feature name="mapping_2d" enabled="true"/>
+    <feature name="navigation_2d" enabled="true"/>
+    <feature name="docking" enabled="true"/>
+  </rolo>
+</robot>

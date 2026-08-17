@@ -25,8 +25,14 @@ features:
   navigation_2d: true
   docking: false
   enrollment:
+    identity_status: REGISTERED
     profile_id: ackermann
-    safety_profile_confirmed: true
+    profile_format: urdf
+    profile_path: configs/profiles/ackermann.urdf
+    profile_sha256: 396b6b4f4ecf0939a2bfb1d7fe2723902cbd412b09f8407966a2c1eed07ab985
+    urdf_status: SCANNED
+    semantic_status: RESOLVED
+    motion_safety_status: APPROVED
     bindings_verified: true
     calibration_verified: true
   robot_use:

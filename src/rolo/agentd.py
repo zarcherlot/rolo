@@ -22,15 +22,15 @@ def create_bootstrap_agentd_app(robot_id: str) -> FastAPI:
         raise ValueError(str(exc)) from exc
 
     enrollment = capability.features.get("enrollment", {})
-    safety_profile_confirmed = bool(enrollment.get("safety_profile_confirmed"))
+    identity_registered = enrollment.get("identity_status") == "REGISTERED"
     bootstrap = FastAPI(title=f"robot-bootstrap-agentd:{robot_id}", version=__version__)
 
     @bootstrap.get("/health")
     async def health() -> dict[str, object]:
         return {
-            "status": HealthState.HEALTHY if safety_profile_confirmed else HealthState.UNHEALTHY,
+            "status": HealthState.HEALTHY if identity_registered else HealthState.UNHEALTHY,
             "service": "robot-bootstrap-agentd",
-            "phase": "BOOTSTRAP_READY" if safety_profile_confirmed else "BOOTSTRAP_BLOCKED",
+            "phase": "BOOTSTRAP_READY" if identity_registered else "BOOTSTRAP_BLOCKED",
             "robot_id": robot_id,
             "timestamp": utc_now(),
         }
@@ -41,9 +41,11 @@ def create_bootstrap_agentd_app(robot_id: str) -> FastAPI:
         return {
             "robot_id": robot_id,
             "profile_id": enrollment.get("profile_id"),
-            "safety_profile_confirmed": safety_profile_confirmed,
+            "urdf_status": enrollment.get("urdf_status"),
+            "semantic_status": enrollment.get("semantic_status"),
+            "motion_safety_status": enrollment.get("motion_safety_status", "UNAPPROVED"),
             "motion_enabled": False,
-            "discovery_ready": safety_profile_confirmed,
+            "discovery_ready": identity_registered,
             "clock": {"status": "LOCAL_CLOCK_AVAILABLE", "utc": now},
             "timestamp": now,
         }
@@ -55,7 +57,8 @@ def create_bootstrap_agentd_app(robot_id: str) -> FastAPI:
         return {
             "robot_id": robot_id,
             "profile_id": enrollment.get("profile_id"),
-            "safety_profile_confirmed": safety_profile_confirmed,
+            "urdf_status": enrollment.get("urdf_status"),
+            "motion_safety_status": enrollment.get("motion_safety_status", "UNAPPROVED"),
         }
 
     return bootstrap
@@ -75,7 +78,7 @@ def create_agentd_app(robot_id: str) -> FastAPI:
         if isinstance(sensor, dict)
     )
     configuration_ready = bool(
-        enrollment.get("safety_profile_confirmed")
+        enrollment.get("motion_safety_status") == "APPROVED"
         and enrollment.get("bindings_verified")
         and enrollment.get("calibration_verified")
         and not bindings_unbound

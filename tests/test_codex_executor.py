@@ -16,7 +16,9 @@ def prepare_plan(artifact_root: Path, source_root: Path) -> None:
     registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
     DiscoveryService(ArtifactStore(artifact_root)).run(
-        robot=registry.get("demo_diff"), source_roots=[source_root]
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        source_roots=[source_root],
     )
     BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
 
