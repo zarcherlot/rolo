@@ -16,18 +16,30 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    robot_loop_env: str = "development"
-    robot_loop_config_dir: Path = Path("configs/local")
-    robot_loop_artifact_dir: Path = Path("artifacts")
-    robot_loop_host: str = "127.0.0.1"
-    robot_loop_port: int = 8080
+    rolo_env: str = "development"
+    rolo_config_dir: Path = Path("configs/local")
+    rolo_artifact_dir: Path = Path("artifacts")
+    rolo_host: str = "127.0.0.1"
+    rolo_port: int = 8080
+    coding_agent_provider: str = "codex"
+    coding_agent_executor: str = "codex"
+    coding_agent_base_url: str | None = None
+    coding_agent_api_key: str | None = None
+    coding_agent_model: str | None = None
+    coding_agent_executable: str = "codex"
+    coding_agent_timeout_s: int = 1800
+    coding_agent_auto_install: bool = True
+    coding_agent_require_auth: bool = True
+    coding_agent_install_timeout_s: int = 300
+    coding_agent_install_home: Path | None = None
+    coding_agent_home: Path | None = None
     robot_use_backend: str = "mock"
     openai_api_key: str | None = None
     openai_model: str | None = None
 
     @property
     def robot_config_dir(self) -> Path:
-        return self.robot_loop_config_dir / "robots"
+        return self.rolo_config_dir / "robots"
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

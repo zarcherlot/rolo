@@ -9,13 +9,17 @@ import re
 import shlex
 import shutil
 import subprocess
-import tomllib
 import xml.etree.ElementTree as ET
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import (
@@ -44,6 +48,7 @@ SKIP_DIRECTORIES = {
     "artifacts",
     "__pycache__",
 }
+UBUNTU_ROS_DEFAULTS = {"20.04": "foxy", "22.04": "humble", "24.04": "jazzy"}
 SAFE_ENV_KEYS = (
     "ROS_DISTRO",
     "ROS_DOMAIN_ID",
@@ -249,11 +254,23 @@ class LinuxProbe:
 
 
 class RosProbe:
+    def _resolve_setup(self) -> Path | None:
+        ros_root = Path("/opt/ros")
+        os_version = _parse_os_release().get("VERSION_ID")
+        preferred = [os.environ.get("ROS_DISTRO"), UBUNTU_ROS_DEFAULTS.get(os_version)]
+        if ros_root.is_dir():
+            preferred.extend(sorted(path.name for path in ros_root.iterdir() if path.is_dir()))
+        for distro in dict.fromkeys(item for item in preferred if item):
+            setup = ros_root / distro / "setup.bash"
+            if setup.is_file():
+                return setup
+        return None
+
     def _run_ros(self, args: Sequence[str]) -> dict[str, Any]:
         if shutil.which("ros2"):
             return _run(["ros2", *args], timeout_s=10)
-        setup = Path("/opt/ros/humble/setup.bash")
-        if setup.is_file() and shutil.which("bash"):
+        setup = self._resolve_setup()
+        if setup is not None and shutil.which("bash"):
             command = f"source {shlex.quote(str(setup))} && ros2 {shlex.join(args)}"
             return _run(["bash", "-lc", command], timeout_s=10)
         return {"available": False, "error": "ROS 2 environment not found"}
@@ -263,8 +280,9 @@ class RosProbe:
         ros_root = Path("/opt/ros")
         if ros_root.is_dir():
             installed_distros = sorted(path.name for path in ros_root.iterdir() if path.is_dir())
+        setup = self._resolve_setup()
         data: dict[str, Any] = {
-            "ros_distro": os.environ.get("ROS_DISTRO"),
+            "ros_distro": os.environ.get("ROS_DISTRO") or (setup.parent.name if setup else None),
             "installed_distros": installed_distros,
             "domain_id": os.environ.get("ROS_DOMAIN_ID", "0"),
             "rmw": os.environ.get("RMW_IMPLEMENTATION"),
@@ -501,7 +519,11 @@ def _capability_manifest(
     ros_distro = probes["ros"].data.get("ros_distro")
     installed_distros = probes["ros"].data.get("installed_distros", [])
     expected_ros = robot.platform.get("ros_distro")
-    if expected_ros and expected_ros != ros_distro and expected_ros not in installed_distros:
+    if (
+        expected_ros not in {None, "", "auto_discover"}
+        and expected_ros != ros_distro
+        and expected_ros not in installed_distros
+    ):
         mismatches.append(
             {
                 "field": "platform.ros_distro",
@@ -651,7 +673,7 @@ class DiscoveryService:
             status = DiscoveryStatus.SUCCEEDED
         else:
             status = DiscoveryStatus.PARTIAL
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
         report = DiscoveryReport(
             discovery_id=discovery_id,

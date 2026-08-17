@@ -5,15 +5,18 @@ from pathlib import Path
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus
 from rolo.stages.build.discovery import load_latest_report
-from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask
+from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask, CodingAgentConfig
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
 BUILD_SKILLS = ["canonical-adapter-builder", "cli-conformance", "state-graph-builder"]
 
 
 class BuildStageService:
-    def __init__(self, artifacts: ArtifactStore) -> None:
+    def __init__(
+        self, artifacts: ArtifactStore, coding_agent: CodingAgentConfig | None = None
+    ) -> None:
         self.artifacts = artifacts
+        self.coding_agent = coding_agent or CodingAgentConfig()
 
     def plan(self, robot_id: str) -> tuple[BuildPlan, Path]:
         build_inputs = self.artifacts.root / "build" / robot_id / "latest" / "inputs.json"
@@ -51,6 +54,7 @@ class BuildStageService:
             status=(BuildPlanStatus.BLOCKED if blocked else BuildPlanStatus.REQUIRES_CODING),
             tasks=tasks,
             required_skills=BUILD_SKILLS,
+            coding_agent=self.coding_agent,
             candidate_operations=candidates,
             handoff_ref=f"artifact://build/{robot_id}/latest/handoff.json",
         )

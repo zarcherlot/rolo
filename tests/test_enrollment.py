@@ -25,6 +25,8 @@ def test_enrolls_arbitrary_identity_from_profile(tmp_path: Path) -> None:
     assert result.status == "ENROLLED_DEGRADED"
     assert capability["robot_id"] == "warehouse_bot_17"
     assert capability["platform"]["compute"] == "auto_discover"
+    assert capability["platform"]["os"] == "ubuntu"
+    assert capability["platform"]["ros_distro"] == "auto_discover"
     assert capability["features"]["enrollment"] == {
         "profile_id": "differential_drive",
         "safety_profile_confirmed": True,
@@ -99,7 +101,7 @@ def test_new_enrollment_remains_degraded_until_binding_and_calibration(
         profile_id="differential_drive",
         safety_profile_confirmed=True,
     )
-    monkeypatch.setenv("ROBOT_LOOP_CONFIG_DIR", str(config_root))
+    monkeypatch.setenv("ROLO_CONFIG_DIR", str(config_root))
     get_settings.cache_clear()
 
     with TestClient(create_agentd_app("new_field_unit")) as client:
@@ -127,7 +129,7 @@ def test_enrollment_cli_accepts_arbitrary_identity(tmp_path: Path) -> None:
             str(Path("configs/profiles").resolve()),
             "--confirm-safety-profile",
         ],
-        env={"ROBOT_LOOP_CONFIG_DIR": str(tmp_path / "config")},
+        env={"ROLO_CONFIG_DIR": str(tmp_path / "config")},
     )
     get_settings.cache_clear()
 

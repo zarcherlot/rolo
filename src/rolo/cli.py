@@ -7,7 +7,7 @@ import mimetypes
 import shutil
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -28,6 +28,7 @@ from rolo.core.models import (
 )
 from rolo.runtime import create_runtime
 from rolo.stages.build.bundle import build_compatible_bundle
+from rolo.stages.build.dependencies import CodexDependencyAdapter, CodingAgentDependencyManager
 from rolo.stages.build.discovery import (
     ApplicationProbe,
     DiscoveryService,
@@ -41,13 +42,21 @@ from rolo.stages.build.enrollment import (
     list_profiles,
     resolve_profile_root,
 )
+from rolo.stages.build.executor import CodexBuildExecutor
 from rolo.stages.build.inputs import BuildInputs
-from rolo.stages.build.models import BuildPlan
+from rolo.stages.build.models import (
+    BuildPlan,
+    CodingAgentConfig,
+    CodingAgentDependencyReport,
+    CodingAgentDependencyStatus,
+    CodingAgentResult,
+    CodingAgentRun,
+)
 from rolo.stages.build.service import BuildStageService
 from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
-app = typer.Typer(help="Canonical local CLI for the Robot Loop development harness.")
+app = typer.Typer(help="Canonical local CLI for the rolo development harness.")
 schema_app = typer.Typer(help="Export and inspect canonical JSON schemas.")
 robot_use_app = typer.Typer(help="Run robot_use semantic visual supervision.")
 bundle_app = typer.Typer(help="Build independently installable per-robot bundles.")
@@ -99,7 +108,21 @@ def emit(value: object) -> None:
 
 def emit_stage_status(stage: StageName, robot: str) -> None:
     settings = get_settings()
-    emit(assess_stage(stage, settings.robot_loop_artifact_dir, robot))
+    emit(assess_stage(stage, settings.rolo_artifact_dir, robot))
+
+
+def configured_coding_agent() -> CodingAgentConfig:
+    """Return the effective Stage 1 provider configuration without exposing its API key."""
+    settings = get_settings()
+    return CodingAgentConfig(
+        provider=settings.coding_agent_provider.strip() or "codex",
+        executor=settings.coding_agent_executor.strip() or "codex",
+        base_url=(settings.coding_agent_base_url or "").strip() or None,
+        model=(settings.coding_agent_model or "").strip() or None,
+        api_key_configured=bool(settings.coding_agent_api_key),
+        auto_install=settings.coding_agent_auto_install,
+        require_auth=settings.coding_agent_require_auth,
+    )
 
 
 @build_stage_app.command("status")
@@ -113,12 +136,98 @@ def build_stage_plan(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Generate the Coding Agent plan from build discovery inputs."""
     settings = get_settings()
     try:
-        plan, artifact = BuildStageService(ArtifactStore(settings.robot_loop_artifact_dir)).plan(
-            robot
-        )
+        plan, artifact = BuildStageService(
+            ArtifactStore(settings.rolo_artifact_dir),
+            coding_agent=configured_coding_agent(),
+        ).plan(robot)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit({"plan": plan.model_dump(mode="json"), "artifact": str(artifact)})
+
+
+@build_stage_app.command("agent-config")
+def build_agent_config() -> None:
+    """Show the effective secret-free Coding Agent provider and model selection."""
+    emit(configured_coding_agent())
+
+
+@build_stage_app.command("execute")
+def build_stage_execute(
+    robot: Annotated[str, typer.Option("--robot")],
+    workspace: Annotated[
+        Path, typer.Option("--workspace", help="Repository workspace the Coding Agent may edit")
+    ] = Path("."),
+    timeout: Annotated[
+        int | None, typer.Option("--timeout", min=1, help="Maximum execution time in seconds")
+    ] = None,
+) -> None:
+    """Explicitly execute the latest Stage 1 plan with the local Codex CLI."""
+    settings = get_settings()
+    dependency, _ = CodingAgentDependencyManager(
+        ArtifactStore(settings.rolo_artifact_dir)
+    ).prepare(
+        config=configured_coding_agent(),
+        executable=settings.coding_agent_executable,
+        auto_install=settings.coding_agent_auto_install,
+        require_auth=settings.coding_agent_require_auth,
+        install_timeout_s=settings.coding_agent_install_timeout_s,
+        install_home=settings.coding_agent_install_home,
+        codex_home=settings.coding_agent_home,
+    )
+    dependency_ready = dependency.status == CodingAgentDependencyStatus.READY or (
+        not settings.coding_agent_require_auth
+        and dependency.status == CodingAgentDependencyStatus.INSTALLED
+    )
+    if not dependency_ready:
+        emit({"dependency": dependency.model_dump(mode="json")})
+        raise typer.Exit(code=1)
+    executor = CodexBuildExecutor(
+        ArtifactStore(settings.rolo_artifact_dir),
+        executable=dependency.executable or settings.coding_agent_executable,
+        api_key=settings.coding_agent_api_key,
+    )
+    try:
+        run, artifact = executor.execute(
+            robot_id=robot,
+            workspace=workspace,
+            timeout_s=timeout or settings.coding_agent_timeout_s,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"run": run.model_dump(mode="json"), "artifact": str(artifact)})
+    if run.status != "SUCCEEDED":
+        raise typer.Exit(code=1)
+
+
+@build_stage_app.command("agent-prepare")
+def build_agent_prepare(
+    skip_auth: Annotated[
+        bool,
+        typer.Option(
+            "--skip-auth",
+            help="Install and verify the executable without requiring an authenticated session",
+        ),
+    ] = False,
+) -> None:
+    """Install and verify the configured Coding Agent dependency."""
+    settings = get_settings()
+    report, artifact = CodingAgentDependencyManager(
+        ArtifactStore(settings.rolo_artifact_dir)
+    ).prepare(
+        config=configured_coding_agent(),
+        executable=settings.coding_agent_executable,
+        auto_install=settings.coding_agent_auto_install,
+        require_auth=settings.coding_agent_require_auth and not skip_auth,
+        install_timeout_s=settings.coding_agent_install_timeout_s,
+        install_home=settings.coding_agent_install_home,
+        codex_home=settings.coding_agent_home,
+    )
+    emit({"dependency": report.model_dump(mode="json"), "artifact": str(artifact)})
+    accepted = {CodingAgentDependencyStatus.READY}
+    if skip_auth:
+        accepted.add(CodingAgentDependencyStatus.INSTALLED)
+    if report.status not in accepted:
+        raise typer.Exit(code=1)
 
 
 @debug_stage_app.command("status")
@@ -137,7 +246,7 @@ def test_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
 def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show all three lifecycle stages for one robot."""
     settings = get_settings()
-    emit(assess_pipeline(settings.robot_loop_artifact_dir, robot))
+    emit(assess_pipeline(settings.rolo_artifact_dir, robot))
 
 
 @app.command()
@@ -155,8 +264,13 @@ def doctor() -> None:
         robots = 0
         backend = settings.robot_use_backend
 
+    install_home = settings.coding_agent_install_home or Path.home()
+    codex_executable = CodexDependencyAdapter().resolve(
+        settings.coding_agent_executable, install_home
+    )
     optional_tools = {
         "git": shutil.which("git"),
+        "codex": str(codex_executable) if codex_executable else None,
         "docker": shutil.which("docker"),
         "ros2": shutil.which("ros2"),
         "ffmpeg": shutil.which("ffmpeg"),
@@ -164,6 +278,8 @@ def doctor() -> None:
     for name in ("docker", "ros2", "ffmpeg"):
         if not optional_tools[name]:
             warnings.append(f"{name} is optional for mock mode and is not installed")
+    if not optional_tools["codex"]:
+        warnings.append("codex is not installed; build agent-prepare will attempt installation")
 
     if backend == "openai":
         if not settings.openai_api_key:
@@ -173,15 +289,18 @@ def doctor() -> None:
     elif not settings.openai_api_key:
         warnings.append("OPENAI_API_KEY is not set; robot_use will remain on the mock backend")
 
+    coding_agent = configured_coding_agent()
+
     emit(
         {
             "status": "READY" if not errors else "NOT_READY",
             "version": __version__,
             "python": {"version": sys.version.split()[0], "executable": sys.executable},
-            "config_dir": str(settings.robot_loop_config_dir),
-            "artifact_dir": str(settings.robot_loop_artifact_dir),
+            "config_dir": str(settings.rolo_config_dir),
+            "artifact_dir": str(settings.rolo_artifact_dir),
             "robots": robots,
             "robot_use_backend": backend,
+            "coding_agent": coding_agent.model_dump(mode="json"),
             "local_visual_detection": False,
             "optional_tools": optional_tools,
             "warnings": warnings,
@@ -210,8 +329,8 @@ def serve(
     settings = get_settings()
     uvicorn.run(
         "rolo.api:app",
-        host=host or settings.robot_loop_host,
-        port=port or settings.robot_loop_port,
+        host=host or settings.rolo_host,
+        port=port or settings.rolo_port,
         reload=reload,
     )
 
@@ -287,6 +406,9 @@ def export_schemas(
         ToolDescriptor,
         BuildInputs,
         BuildPlan,
+        CodingAgentDependencyReport,
+        CodingAgentResult,
+        CodingAgentRun,
         StageAssessment,
         PipelineAssessment,
     ]
@@ -307,7 +429,7 @@ def enrollment_profiles(
 ) -> None:
     """List robot structure/sensor profiles available for enrollment."""
     settings = get_settings()
-    resolved = resolve_profile_root(settings.robot_loop_config_dir, profile_root)
+    resolved = resolve_profile_root(settings.rolo_config_dir, profile_root)
     emit({"profile_root": str(resolved), "profiles": list_profiles(resolved)})
 
 
@@ -326,8 +448,8 @@ def enrollment_init(
 ) -> None:
     """Create the only active robot manifest for this installed instance."""
     settings = get_settings()
-    resolved = resolve_profile_root(settings.robot_loop_config_dir, profile_root)
-    service = EnrollmentService(config_root=settings.robot_loop_config_dir, profile_root=resolved)
+    resolved = resolve_profile_root(settings.rolo_config_dir, profile_root)
+    service = EnrollmentService(config_root=settings.rolo_config_dir, profile_root=resolved)
     try:
         result = service.enroll(
             robot_id=robot_id,
@@ -399,7 +521,7 @@ def discovery_show(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show the latest persisted discovery report."""
     settings = get_settings()
     try:
-        emit(load_latest_report(settings.robot_loop_artifact_dir, robot))
+        emit(load_latest_report(settings.rolo_artifact_dir, robot))
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -450,7 +572,7 @@ def tool_catalog(
     """List canonical tools produced by the latest discovery run."""
     settings = get_settings()
     try:
-        report = load_latest_report(settings.robot_loop_artifact_dir, robot)
+        report = load_latest_report(settings.rolo_artifact_dir, robot)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
     tools = report.tool_catalog
@@ -474,7 +596,7 @@ def tool_schema(
     """Show the generated input/output schema for one canonical operation."""
     settings = get_settings()
     try:
-        report = load_latest_report(settings.robot_loop_artifact_dir, robot)
+        report = load_latest_report(settings.rolo_artifact_dir, robot)
         descriptor = next(tool for tool in report.tool_catalog if tool.operation == operation)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -533,7 +655,7 @@ def robot_use_poll(
     if not image:
         raise typer.BadParameter("At least one --image is required")
     runtime = create_runtime()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     request = RobotUseRequest(
         request_id=f"local-{int(now.timestamp() * 1000)}",
         robot_id=robot,

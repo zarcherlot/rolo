@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
 
 def utc_now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
-class HealthState(StrEnum):
+class HealthState(str, Enum):
     HEALTHY = "HEALTHY"
     DEGRADED = "DEGRADED"
     UNHEALTHY = "UNHEALTHY"
 
 
-class RobotUseVerdict(StrEnum):
+class RobotUseVerdict(str, Enum):
     NORMAL = "NORMAL"
     SUSPECTED_FAILURE = "SUSPECTED_FAILURE"
     FAILURE = "FAILURE"
     UNKNOWN = "UNKNOWN"
 
 
-class RobotUseModeState(StrEnum):
+class RobotUseModeState(str, Enum):
     DISABLED = "DISABLED"
     RECORDING = "RECORDING"
     POLLING = "POLLING"
@@ -110,7 +110,7 @@ class RobotCapability(BaseModel):
 
 class HealthResponse(BaseModel):
     status: HealthState
-    service: str = "robot-loop-control-plane"
+    service: str = "rolo-control-plane"
     version: str
     robots: int
     robot_use_backend: str
@@ -125,7 +125,7 @@ class ErrorDetail(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
-class DiscoveryStatus(StrEnum):
+class DiscoveryStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     PARTIAL = "PARTIAL"
     UNAVAILABLE = "UNAVAILABLE"

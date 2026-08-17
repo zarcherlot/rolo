@@ -12,14 +12,12 @@
 
 ## rolo 是什么
 
-**rolo** 是 **robot only loop once** 的缩写。它表达的是一种机器人开发原则：每运行一个边界清晰的任务，把输入、执行、观察和结果保留下来，让问题能够被解释、闭环和修正。
+rolo (robot only loop once) 是一种具身机器人开发原则：每执行一次边界清晰的用例，获得输入、执行、观察和结果的切片，让机器人自主的解释、闭环和修正问题。
 
 > [!NOTE]
 > 当前版本是开发中的 MVP。模拟后端适合本地验证，但不替代真实机器人上的安全控制、急停、碰撞检测或人工授权。
 
 ## 产品特性
-
-rolo 面向真实机器人的自主调试与测试，把每次运行组织成一个边界清晰的闭环：定义任务、执行动作、持续观察、判断结果、保留证据，再根据新的证据决定下一次运行。
 
 ### 1. 一次运行，一个完整证据闭环
 
@@ -67,84 +65,117 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 
 ## 快速开始
 
-### 环境要求
+### 运行环境
 
-- Windows PowerShell 5.1+
-- [`uv`](https://docs.astral.sh/uv/)
-- 由 `uv` 管理的 Python 3.12
+rolo 安装并运行在目标机器人本体。agentd、探针和运行时制品均以机器人环境为准；可以通过本地控制台或 SSH 执行部署与后续操作。
 
-ROS 2 和 FFmpeg 对本地 mock 模式是可选项；接入真实机器人和相机后才需要它们。
+| 项目 | 最低要求 |
+|---|---|
+| 处理器架构 | ARM64 |
+| 操作系统 | Ubuntu LTS 20.04+；已验证 20.04、22.04、24.04 |
+| Python | Python 3.10+，包含 `venv` |
+| 系统环境 | systemd、Bash |
+| 权限与工具 | `sudo`、`unzip`；远程部署时需 SSH/SCP |
+| 依赖获取 | 安装时可访问目标环境已配置的 Python 软件包索引 |
 
-### 安装与运行
+Ubuntu 20.04 默认提供 Python 3.8，部署前需安装 Python 3.10+ 及对应的 `venv`。完全离线部署需在 ARM64 bundle 中补充 wheelhouse。
+
+ROS 2、BSP、厂商驱动和 FFmpeg 按实际能力接入。ROS 探针优先检查当前环境，并可根据 Ubuntu 20.04、22.04、24.04 发现 Foxy、Humble、Jazzy 或 `/opt/ros` 下的其他发行版。缺少这些可选依赖不会阻止基础安装；doctor 和探针会将受影响能力标记为告警、`DEGRADED` 或 `UNAVAILABLE`。
+
+### 构建与部署
+
+使用已有发布归档时可直接执行复制与安装步骤。从源码生成归档还需要 PowerShell 5.1+、[`uv`](https://docs.astral.sh/uv/) 和 Python 3.10+：
 
 ```powershell
-Copy-Item .env.example .env
-uv sync --dev
-uv run robotctl doctor
-uv run robotctl robots
-uv run robotctl serve
+.\scripts\build_bundles.ps1
+scp .\dist\release\rolo-0.1.0-arm64.zip robot@ROBOT_IP:/tmp/
+ssh robot@ROBOT_IP
 ```
 
-API 默认运行在 `http://127.0.0.1:8080`，OpenAPI 文档位于 `http://127.0.0.1:8080/docs`。
+登录目标机器人后执行：
 
-### 使用案例：三阶段机器人流程
+```bash
+cd /tmp
+unzip rolo-0.1.0-arm64.zip
+cd rolo-0.1.0-arm64
+sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
 
-完成本地安装后，按三阶段推进一台机器人；任意时刻可用 `uv run robotctl pipeline-status --robot demo_diff` 查看总状态。
+sudo -i
+set -a
+source /etc/rolo/rolo.env
+set +a
+ROBOTCTL=/opt/rolo/venv/bin/robotctl
+$ROBOTCTL doctor
+$ROBOTCTL robots
+```
+
+安装完成后，rolo 软件包、agentd、探针和运行时制品均位于目标机器人。后续示例假设已进入上述 root shell，并已设置 `$ROBOTCTL`。
+
+### 访问控制面
+
+API 默认仅监听机器人本机回环地址。需要远程访问时，建立 SSH 端口转发：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 robot@ROBOT_IP
+```
+
+端口转发建立后，访问 `http://127.0.0.1:8080/docs`。API 与所有探针仍运行在目标机器人上。
+
+### 使用案例：三阶段工作流
+
+完成机器人部署后，按三阶段推进；任意时刻可在机器人 shell 执行 `$ROBOTCTL pipeline-status --robot my_robot_01` 查看总状态。
 
 | 阶段 | 主要产物 | Agent 要求 |
 |---|---|---|
-| `build` | 安装包、探针、capability manifest、候选语义绑定、工具目录、canonical CLI、State Graph、build handoff | Coding Agent |
+| `build` | 安装包、探针、capability manifest、候选语义绑定、工具目录、canonical CLI、State Graph、build handoff | Coding Agent；默认 Codex，可配置其他厂商 |
 | `debug` | 约束内闭环诊断、调参证据、冻结配置、debug handoff | Diagnosis Agent；`robot_use` 可选 |
 | `test` | 可选正式用例、全量回归、报告和证据包 | Test Agent（选择该阶段时） |
 
 #### 第一阶段：构建
 
-Build 阶段合并安装、注册、发现、标准 CLI 构建和 State Graph 门禁。真机基线为 ARM64 + Ubuntu 22.04 + ROS 2 Humble；先构建通用归档并在目标机按物理结构注册唯一身份：
-
-```powershell
-.\scripts\build_bundles.ps1
-```
-
-归档位于 `dist/release/rolo-0.1.0-arm64.zip`。在目标机解压后执行：
+Build 阶段合并安装、注册、发现、标准 CLI 构建和 State Graph 门禁。安装器已经根据物理结构注册唯一 `robot_id`；更换身份或结构模板需要单独迁移。systemd 在机器人上严格按 `bootstrap-agentd → discovery → agentd` 启动，可检查身份和发现结果，或对机器人本地的应用源码重新运行只读发现：
 
 ```bash
-sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
-```
-
-本地开发无需安装归档；在空白配置目录中注册真机时，先核对结构、传感器和硬安全边界：
-
-```powershell
-$env:ROBOT_LOOP_CONFIG_DIR = "C:\robot-loop-config"
-uv run robotctl build enroll profiles
-uv run robotctl build enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
-uv run robotctl build enroll show
-```
-
-每个实例只拥有一个 `robot_id`；更换身份或结构模板需要单独迁移。随后按真机相同顺序启动最小 daemon、执行只读发现，再启动完整 agentd：
-
-```powershell
-# 终端 1
-uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
-
-# 终端 2
-uv run robotctl build discover run --robot demo_diff --source-root C:\path\to\robot-application
-uv run robotctl build discover show --robot demo_diff
-uv run robotctl agentd --robot demo_diff --port 8101
+$ROBOTCTL build enroll show
+systemctl status rolo-bootstrap-agentd.service rolo-discovery.service rolo-agentd.service
+$ROBOTCTL build discover show --robot my_robot_01
+$ROBOTCTL build discover run --robot my_robot_01 --source-root /opt/robot-application
 ```
 
 发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，保存 `hw/linux/ros/application` 探针，并将 capability manifest、候选语义绑定、工具目录和 build inputs 写入制品目录。缺少 ROS、BSP 或厂商驱动时仍保留 bootstrap agentd，完整 agentd 以 `DEGRADED` 运行；发现失败则不启动完整 agentd。新绑定与标定在验证前保持不可用。证据模型与安全边界见 [`AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)。
 
-Coding Agent 随后读取 build inputs，生成构建计划，并通过统一 CLI 实现和检查各层 adapter：
+Coding Agent 随后读取 build inputs，生成构建计划，并通过统一 CLI 实现和检查各层 adapter。默认执行器是本机 `codex exec`。如果设备已经执行过 `codex login`，无需提供 API Key；也可通过环境变量选择模型，或连接支持 Responses API 的其他厂商/中转站。API Key 只从执行器进程环境读取，不会写入命令、Build Plan 或制品：
 
-```powershell
-uv run robotctl build plan --robot demo_diff
-uv run robotctl tool catalog --robot demo_diff
-uv run robotctl hw inventory scan
-uv run robotctl linux host inspect
-uv run robotctl ros graph snapshot
-uv run robotctl app robot discover
-uv run robotctl build status --robot demo_diff
+```bash
+export CODING_AGENT_PROVIDER=codex
+export CODING_AGENT_EXECUTOR=codex
+export CODING_AGENT_AUTO_INSTALL=true
+export CODING_AGENT_REQUIRE_AUTH=true
+# 可选：留空时使用厂商官方/默认端点；中转站填写其兼容 API 地址
+export CODING_AGENT_BASE_URL=""
+export CODING_AGENT_API_KEY=""
+# 可选：留空时由 Codex 或所选厂商采用默认模型
+export CODING_AGENT_MODEL=""
+
+$ROBOTCTL build agent-config
+$ROBOTCTL build agent-prepare
+$ROBOTCTL build plan --robot my_robot_01
+$ROBOTCTL build execute --robot my_robot_01 --workspace /opt/robot-application
+$ROBOTCTL tool catalog --robot my_robot_01
+$ROBOTCTL hw inventory scan
+$ROBOTCTL linux host inspect
+$ROBOTCTL ros graph snapshot
+$ROBOTCTL app robot discover
+$ROBOTCTL build status --robot my_robot_01
 ```
+
+部署 bundle 默认按 `configs/deployment/common.yaml` 的 `coding_agent` 配置，以 `rolo` 服务用户调用白名单中的官方 Codex Linux 安装器，并运行 `agent-prepare --skip-auth` 验证可执行文件和版本。安装源不能由 Base URL 替换。首次部署仍需用户以同一系统用户完成 `codex login --device-auth`；认证不会被静默自动化。
+
+完整链路为“读取配置 → 缺失时自动安装 → 验证版本和认证 → 显式执行”。`build execute` 会再次运行依赖门禁；状态不是 `READY` 时不会启动模型。审计结果写入 `coding-agent/dependency/latest.json`。`build plan` 只生成计划，不会修改源码；执行器固定使用 `workspace-write` 沙箱、超时限制和结构化输出，保留 JSONL 事件、标准错误和无密钥运行元数据。它不会直接发布 `handoff.json`，该制品仍须由后续 conformance 门禁晋级。
+
+例如使用其他厂商或中转站时，将 `CODING_AGENT_PROVIDER` 改为厂商标识，设置其 `CODING_AGENT_BASE_URL` 和模型名；若服务需要认证，再通过进程环境设置 `CODING_AGENT_API_KEY`。Build Plan 仅保存 provider、Base URL、模型名、Key 环境变量名以及是否已配置 Key，不保存 Key 本身。
+
+机器人本体的自动安装、设备码登录、验证命令和落盘文件见 [`CODEX_SETUP.md`](docs/CODEX_SETUP.md)。
 
 只有 canonical CLI conformance 和 State Graph 基线通过后，才允许进入调试阶段。
 
@@ -152,13 +183,13 @@ uv run robotctl build status --robot demo_diff
 
 Diagnosis Agent 读取 build handoff 和用户约束，执行闭环诊断与调参。默认 `robot_use` 后端为本地 `mock`；需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
 
-```powershell
-$env:ROBOT_USE_BACKEND = "openai"
-$env:OPENAI_API_KEY = "..."
-$env:OPENAI_MODEL = "an-image-capable-model-available-to-your-project"
+```bash
+export ROBOT_USE_BACKEND=openai
+export OPENAI_API_KEY="..."
+export OPENAI_MODEL="an-image-capable-model-available-to-your-project"
 
-uv run robotctl debug status --robot demo_diff
-uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.jpg
+$ROBOTCTL debug status --robot my_robot_01
+$ROBOTCTL debug robot-use poll --robot my_robot_01 --image /tmp/frame.jpg
 ```
 
 `robot_use` 只提供语义监督，不在本地执行视觉检测，也不拥有机器人的安全决策权。调参必须受用户约束和硬安全边界限制，每次修改后都要运行受影响的 smoke、安全与回归检查。
@@ -167,8 +198,8 @@ uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.
 
 第三阶段用于检查正式验收准备度，并在实现相应 Test Skill 后由 Test Agent 生成用例、执行全量回归和打包证据：
 
-```powershell
-uv run robotctl test status --robot demo_diff
+```bash
+$ROBOTCTL test status --robot my_robot_01
 ```
 
 正式测试可选，但调试阶段的安全和影响范围回归不可省略。当前 MVP 尚未实现完整的自主验收执行器；ARM64 生产级离线安装也仍需补充 wheelhouse。阶段契约与实现成熟度见 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

@@ -13,7 +13,7 @@
 
 ## What is rolo?
 
-**rolo** is short for **robot only loop once**. It captures a robotics development principle: run one bounded task loop at a time, retain its inputs, execution, observations, and result, then make failures explainable, reproducible, and fixable.
+**rolo** (**robot only loop once**) is an embodied robotics development principle: execute one clearly bounded use case at a time, preserve its inputs, execution, observations, and results, and enable the robot to autonomously explain, close the loop on, and correct problems.
 
 The final wordmark uses four independent lowercase letters. The single cobalt exit on the last `o` marks a definite end to one execution and a handoff to observation, reproduction, and the next decision—not an endless cycle.
 
@@ -85,84 +85,118 @@ rolo uses state graphs to manage discovery, calibration, operation, mapping, loc
 
 ## Quick start
 
-### Prerequisites
+### Runtime requirements
 
-- Windows PowerShell 5.1+
-- [`uv`](https://docs.astral.sh/uv/)
-- Python 3.12 managed by `uv`
+rolo is installed and runs on the target robot. agentd, probes, and runtime artifacts always reflect the robot environment; deployment and subsequent operations may be performed from a local console or over SSH.
 
-ROS 2 and FFmpeg are optional in the local mock profile. They become relevant when real robot and camera adapters are connected.
+| Item | Minimum requirement |
+|---|---|
+| Processor architecture | ARM64 |
+| Operating system | Ubuntu LTS 20.04+; validated on 20.04, 22.04, and 24.04 |
+| Python | Python 3.10+ with `venv` |
+| System environment | systemd and Bash |
+| Access and utilities | `sudo` and `unzip`; SSH/SCP for remote deployment |
+| Dependency access | Access to the Python package index configured for the target environment during installation |
 
-### Install and run
+Ubuntu 20.04 provides Python 3.8 by default; install Python 3.10+ and the matching `venv` package before deployment. Fully offline deployment requires an ARM64 wheelhouse in the bundle.
+
+Connect ROS 2, the BSP, vendor drivers, and FFmpeg according to the robot's actual capabilities. The ROS probe checks the active environment first and can discover Foxy, Humble, or Jazzy for Ubuntu 20.04, 22.04, or 24.04, as well as other distributions under `/opt/ros`. Missing optional dependencies do not block the base installation; doctor and the probes mark affected capabilities with a warning, `DEGRADED`, or `UNAVAILABLE`.
+
+### Build and deploy
+
+When using an existing release archive, begin with the copy and installation steps. Building an archive from source additionally requires PowerShell 5.1+, [`uv`](https://docs.astral.sh/uv/), and Python 3.10+:
 
 ```powershell
-Copy-Item .env.example .env
-uv sync --dev
-uv run robotctl doctor
-uv run robotctl robots
-uv run robotctl serve
+.\scripts\build_bundles.ps1
+scp .\dist\release\rolo-0.1.0-arm64.zip robot@ROBOT_IP:/tmp/
+ssh robot@ROBOT_IP
 ```
 
-The API is available at `http://127.0.0.1:8080`; interactive OpenAPI documentation is at `http://127.0.0.1:8080/docs`.
+After connecting to the target robot, run:
 
-### Use case: three-stage robot workflow
+```bash
+cd /tmp
+unzip rolo-0.1.0-arm64.zip
+cd rolo-0.1.0-arm64
+sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
 
-After local installation, advance one robot through three stages. At any time, inspect the entire pipeline with `uv run robotctl pipeline-status --robot demo_diff`.
+sudo -i
+set -a
+source /etc/rolo/rolo.env
+set +a
+ROBOTCTL=/opt/rolo/venv/bin/robotctl
+$ROBOTCTL doctor
+$ROBOTCTL robots
+```
+
+After installation, the rolo package, agentd, probes, and runtime artifacts all reside on the target robot. Subsequent examples assume the root shell above with `$ROBOTCTL` set.
+
+### Access the control plane
+
+The API listens on the robot's loopback interface by default. For remote access, create an SSH port forward:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 robot@ROBOT_IP
+```
+
+With the tunnel active, open `http://127.0.0.1:8080/docs`. The API and all probes continue to run on the target robot.
+
+### Use case: three-stage workflow
+
+After deploying to the robot, advance it through three stages. At any time, run `$ROBOTCTL pipeline-status --robot my_robot_01` in the robot shell to inspect the pipeline.
 
 | Stage | Primary output | Agent requirement |
 |---|---|---|
-| `build` | bundle, probes, capability manifest, binding candidates, tool catalog, canonical CLI, State Graph, build handoff | Coding Agent |
+| `build` | bundle, probes, capability manifest, binding candidates, tool catalog, canonical CLI, State Graph, build handoff | Coding Agent; Codex by default, other vendors configurable |
 | `debug` | constrained diagnosis, tuning evidence, frozen config, debug handoff | Diagnosis Agent; `robot_use` optional |
 | `test` | optional formal cases, full regression, report, and evidence package | Test Agent when selected |
 
 #### Stage 1: build
 
-Build combines installation, enrollment, discovery, canonical CLI construction, and the State Graph gate. The physical-robot baseline is ARM64 + Ubuntu 22.04 + ROS 2 Humble. First build the universal archive and enroll one identity from the robot's physical structure:
-
-```powershell
-.\scripts\build_bundles.ps1
-```
-
-The archive is written to `dist/release/rolo-0.1.0-arm64.zip`. Extract it on the target and run:
+Build combines installation, enrollment, discovery, canonical CLI construction, and the State Graph gate. The installer has already enrolled the one `robot_id` selected from the robot's physical structure; changing its identity or profile requires a separate migration. On the robot, systemd enforces `bootstrap-agentd -> discovery -> agentd`. Inspect the identity and discovery state, or rerun bounded discovery against application source that also resides on the robot:
 
 ```bash
-sudo bash install.sh my_robot_01 differential_drive --confirm-safety-profile
-```
-
-Local development can skip the archive. When enrolling a physical robot into an empty config root, first verify its structure, sensors, and hard safety bounds:
-
-```powershell
-$env:ROBOT_LOOP_CONFIG_DIR = "C:\robot-loop-config"
-uv run robotctl build enroll profiles
-uv run robotctl build enroll init --robot-id my_robot_01 --profile differential_drive --confirm-safety-profile
-uv run robotctl build enroll show
-```
-
-Each instance owns one `robot_id`; replacing its identity or structure profile requires a separate migration. Then follow the production sequence: start the minimal daemon, run read-only discovery, and start the full agentd:
-
-```powershell
-# Terminal 1
-uv run robotctl bootstrap-agentd --robot demo_diff --port 8100
-
-# Terminal 2
-uv run robotctl build discover run --robot demo_diff --source-root C:\path\to\robot-application
-uv run robotctl build discover show --robot demo_diff
-uv run robotctl agentd --robot demo_diff --port 8101
+$ROBOTCTL build enroll show
+systemctl status rolo-bootstrap-agentd.service rolo-discovery.service rolo-agentd.service
+$ROBOTCTL build discover show --robot my_robot_01
+$ROBOTCTL build discover run --robot my_robot_01 --source-root /opt/robot-application
 ```
 
 Discovery inventories hardware, the host software stack, the ROS graph, and local source projects. It persists `hw/linux/ros/application` probes and writes the capability manifest, semantic binding candidates, tool catalog, and build inputs. If ROS, the BSP, or vendor drivers are missing, bootstrap agentd remains available and the full agentd runs `DEGRADED`; a failed discovery prevents the full agentd from starting. New bindings and calibration remain unavailable until verified. See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for evidence and safety boundaries.
 
-The Coding Agent then reads the build inputs, creates the build plan, and implements and inspects the layer adapters through the canonical CLI:
+The Coding Agent then reads the build inputs, creates the build plan, and implements and inspects the layer adapters through the canonical CLI. The default executor is the local `codex exec` command. No API key is required when the device has already completed `codex login`. Users may also select a model or connect another vendor or relay that supports the Responses API. An API key, when needed, is read only from the executor environment and is never written to argv, the Build Plan, or artifacts:
 
-```powershell
-uv run robotctl build plan --robot demo_diff
-uv run robotctl tool catalog --robot demo_diff
-uv run robotctl hw inventory scan
-uv run robotctl linux host inspect
-uv run robotctl ros graph snapshot
-uv run robotctl app robot discover
-uv run robotctl build status --robot demo_diff
+```bash
+export CODING_AGENT_PROVIDER=codex
+export CODING_AGENT_EXECUTOR=codex
+export CODING_AGENT_AUTO_INSTALL=true
+export CODING_AGENT_REQUIRE_AUTH=true
+# Optional: leave empty for the provider's official/default endpoint.
+export CODING_AGENT_BASE_URL=""
+export CODING_AGENT_API_KEY=""
+# Optional: leave empty to use the provider or Codex default model.
+export CODING_AGENT_MODEL=""
+
+$ROBOTCTL build agent-config
+$ROBOTCTL build agent-prepare
+$ROBOTCTL build plan --robot my_robot_01
+$ROBOTCTL build execute --robot my_robot_01 --workspace /opt/robot-application
+$ROBOTCTL tool catalog --robot my_robot_01
+$ROBOTCTL hw inventory scan
+$ROBOTCTL linux host inspect
+$ROBOTCTL ros graph snapshot
+$ROBOTCTL app robot discover
+$ROBOTCTL build status --robot my_robot_01
 ```
+
+The deployment bundle reads `coding_agent` from `configs/deployment/common.yaml`. By default it runs the allowlisted official Codex Linux installer as the `rolo` service user, then calls `agent-prepare --skip-auth` to verify the executable and version. A Base URL cannot replace the installation source. The first deployment still requires the user to run `codex login --device-auth` as the same operating-system user; authentication is never silently automated.
+
+The complete chain is configuration, automatic installation when missing, version and authentication verification, then explicit execution. `build execute` repeats the dependency gate and will not start a model unless readiness is `READY`. Its audit is written to `coding-agent/dependency/latest.json`. `build plan` only creates the plan and never edits source. The executor uses the `workspace-write` sandbox, a bounded timeout, and structured output. It retains JSONL events, standard error, and secret-free run metadata, and it cannot directly publish `handoff.json`; the separate conformance gate owns that promotion.
+
+For another vendor or relay, set `CODING_AGENT_PROVIDER` to its identifier and configure its `CODING_AGENT_BASE_URL` and model. Set `CODING_AGENT_API_KEY` in the process environment only when that service requires authentication. The Build Plan persists only the provider, Base URL, model, API-key environment-variable name, and whether a key is configured; it never persists the key itself.
+
+See [`CODEX_SETUP.md`](CODEX_SETUP.md) for robot-side automatic installation, device-code login,
+verification commands, and files written on the robot.
 
 Debugging is gated on canonical CLI conformance and a valid State Graph baseline.
 
@@ -170,13 +204,13 @@ Debugging is gated on canonical CLI conformance and a valid State Graph baseline
 
 The Diagnosis Agent reads the build handoff and user constraints, then performs closed-loop diagnosis and tuning. The default `robot_use` backend is the local `mock`. For image-model supervision, configure the backend securely outside source control, then submit timestamped images and structured telemetry:
 
-```powershell
-$env:ROBOT_USE_BACKEND = "openai"
-$env:OPENAI_API_KEY = "..."
-$env:OPENAI_MODEL = "an-image-capable-model-available-to-your-project"
+```bash
+export ROBOT_USE_BACKEND=openai
+export OPENAI_API_KEY="..."
+export OPENAI_MODEL="an-image-capable-model-available-to-your-project"
 
-uv run robotctl debug status --robot demo_diff
-uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.jpg
+$ROBOTCTL debug status --robot my_robot_01
+$ROBOTCTL debug robot-use poll --robot my_robot_01 --image /tmp/frame.jpg
 ```
 
 `robot_use` supplies semantic supervision only: it performs no local visual detection and has no authority over robot safety. Tuning remains bounded by user constraints and hard safety limits, and every change requires affected smoke, safety, and regression checks.
@@ -185,8 +219,8 @@ uv run robotctl debug robot-use poll --robot demo_diff --image C:\path\to\frame.
 
 Stage 3 checks formal acceptance readiness and, once the corresponding Test Skills are implemented, uses a Test Agent to generate cases, run full regression, and package evidence:
 
-```powershell
-uv run robotctl test status --robot demo_diff
+```bash
+$ROBOTCTL test status --robot my_robot_01
 ```
 
 Formal acceptance is optional, but safety and affected regression checks during debugging are mandatory. The current MVP does not yet implement the complete autonomous acceptance runner, and production-grade offline ARM64 installation still needs a wheelhouse. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for stage contracts and implementation maturity.

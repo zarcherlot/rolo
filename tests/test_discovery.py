@@ -13,6 +13,7 @@ from rolo.discovery import (
     detect_compute_platform,
     load_latest_report,
 )
+from rolo.stages.build.discovery import UBUNTU_ROS_DEFAULTS
 
 
 def make_application_project(root: Path) -> None:
@@ -60,6 +61,14 @@ demo-nav = "demo_nav.main:main"
 )
 def test_detect_compute_platform(model: str | None, expected: str) -> None:
     assert detect_compute_platform(model) == expected
+
+
+def test_supported_ubuntu_versions_have_ros_discovery_defaults() -> None:
+    assert UBUNTU_ROS_DEFAULTS == {
+        "20.04": "foxy",
+        "22.04": "humble",
+        "24.04": "jazzy",
+    }
 
 
 def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> None:
@@ -114,7 +123,7 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
 def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = tmp_path / "application"
     make_application_project(project)
-    monkeypatch.setenv("ROBOT_LOOP_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
     get_settings.cache_clear()
     runner = CliRunner()
 

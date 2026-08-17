@@ -51,6 +51,69 @@
       ],
       "title": "BuildTask",
       "type": "object"
+    },
+    "CodingAgentConfig": {
+      "description": "Secret-free provider selection persisted with a Stage 1 build plan.",
+      "properties": {
+        "provider": {
+          "default": "codex",
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "executor": {
+          "default": "codex",
+          "minLength": 1,
+          "title": "Executor",
+          "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "api_key_env": {
+          "default": "CODING_AGENT_API_KEY",
+          "title": "Api Key Env",
+          "type": "string"
+        },
+        "api_key_configured": {
+          "default": false,
+          "title": "Api Key Configured",
+          "type": "boolean"
+        },
+        "auto_install": {
+          "default": true,
+          "title": "Auto Install",
+          "type": "boolean"
+        },
+        "require_auth": {
+          "default": true,
+          "title": "Require Auth",
+          "type": "boolean"
+        }
+      },
+      "title": "CodingAgentConfig",
+      "type": "object"
     }
   },
   "properties": {
@@ -88,6 +151,9 @@
       },
       "title": "Required Skills",
       "type": "array"
+    },
+    "coding_agent": {
+      "$ref": "#/$defs/CodingAgentConfig"
     },
     "candidate_operations": {
       "items": {

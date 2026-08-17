@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,7 @@ from rolo.robot_use import RobotUseService
 
 
 def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotUseRequest:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return RobotUseRequest(
         request_id="req-test",
         robot_id="demo_diff",

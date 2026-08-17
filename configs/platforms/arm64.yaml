@@ -3,9 +3,10 @@ architecture: arm64
 kernel_architecture: aarch64
 os:
   distribution: ubuntu
-  version: "22.04"
+  versions: ["20.04", "22.04", "24.04"]
 ros:
-  distribution: humble
+  distributions: [foxy, humble, jazzy]
+  auto_discover: true
 supported_compute:
   - id: nvidia_jetson_orin
     name: NVIDIA Jetson Orin

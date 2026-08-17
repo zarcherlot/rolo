@@ -1,26 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
 from rolo.core.models import utc_now
 
 
-class StageName(StrEnum):
+class StageName(str, Enum):
     BUILD = "build"
     DEBUG = "debug"
     TEST = "test"
 
 
-class AgentRequirement(StrEnum):
+class AgentRequirement(str, Enum):
     CODING_AGENT = "coding_agent"
     DIAGNOSIS_AGENT = "diagnosis_agent"
     TEST_AGENT = "test_agent"
 
 
-class StageStatus(StrEnum):
+class StageStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     BLOCKED = "BLOCKED"
     DEGRADED = "DEGRADED"
