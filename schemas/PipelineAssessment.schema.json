@@ -2,9 +2,9 @@
   "$defs": {
     "AgentRequirement": {
       "enum": [
-        "coding_agent",
+        "adapter_agent",
         "diagnosis_agent",
-        "test_agent"
+        "verification_agent"
       ],
       "title": "AgentRequirement",
       "type": "string"
@@ -84,9 +84,9 @@
     },
     "StageName": {
       "enum": [
-        "build",
-        "debug",
-        "test"
+        "adapt",
+        "diagnose",
+        "verify"
       ],
       "title": "StageName",
       "type": "string"

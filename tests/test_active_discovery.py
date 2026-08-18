@@ -12,19 +12,16 @@ from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus, ProbeResult, ToolDescriptor
 from rolo.core.registry import RobotRegistry
-from rolo.stages.build.active_discovery import (
+from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
     ActiveProbeMode,
-    ConfirmationDecision,
     DiscoveryModeLevel,
     HelpProbeResult,
     HelpProbeStatus,
-    confirmation_matches_report,
     run_bounded_help,
-    write_confirmation,
 )
-from rolo.stages.build.discovery import ApplicationProbe, DiscoveryService
+from rolo.stages.adapt.discovery import ApplicationProbe, DiscoveryService
 
 CREATED_AT = datetime(2026, 8, 18, tzinfo=timezone.utc)
 
@@ -47,6 +44,7 @@ def make_analyzer(
     projects: list[dict[str, object]],
     run_root: Path,
     ros_data: dict[str, object] | None = None,
+    evidence_text: dict[Path, str] | None = None,
 ) -> ActiveDiscoveryAnalyzer:
     return ActiveDiscoveryAnalyzer(
         inputs=inputs,
@@ -59,6 +57,7 @@ def make_analyzer(
         tools=[make_tool()],
         run_root=run_root,
         artifact_prefix="artifact://discovery/demo/runs/disc-test",
+        evidence_text=evidence_text,
     )
 
 
@@ -118,6 +117,101 @@ def configure(node):
     assert executable.communication.ros["publishers"][0]["name"] == "/cmd_vel"
 
 
+def test_multiple_source_projects_keep_executable_evidence_isolated(tmp_path: Path) -> None:
+    specifications = [
+        ("alpha", "alpha-only", "mqtt", "/alpha_cmd"),
+        ("beta", "beta-only", "grpc", "/beta_cmd"),
+    ]
+    roots: list[Path] = []
+    for name, dependency, protocol, topic in specifications:
+        root = tmp_path / name
+        root.mkdir()
+        roots.append(root)
+        (root / "pyproject.toml").write_text(
+            f'''[project]
+name = "{name}"
+dependencies = ["{dependency}"]
+
+[project.scripts]
+{name} = "{name}.main:main"
+''',
+            encoding="utf-8",
+        )
+        (root / "main.py").write_text(
+            f'''# {protocol}
+def configure(node):
+    node.create_publisher(Twist, "{topic}", 10)
+''',
+            encoding="utf-8",
+        )
+
+    scan = ApplicationProbe().scan(roots)
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=roots),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+            evidence_text=scan.evidence_text,
+        )
+    )
+    executables = {executable.name: executable for executable in report.executables}
+
+    assert executables["alpha"].source_analysis.declared_dependencies == ["alpha-only"]
+    assert executables["beta"].source_analysis.declared_dependencies == ["beta-only"]
+    assert executables["alpha"].communication.network["protocols"] == ["mqtt"]
+    assert executables["beta"].communication.network["protocols"] == ["grpc"]
+    assert [
+        item["name"] for item in executables["alpha"].communication.ros["publishers"]
+    ] == ["/alpha_cmd"]
+    assert [
+        item["name"] for item in executables["beta"].communication.ros["publishers"]
+    ] == ["/beta_cmd"]
+
+
+def test_active_analysis_reuses_source_evidence_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyproject.toml").write_text(
+        '''[project]
+name = "cached-app"
+
+[project.scripts]
+cached-app = "cached.main:main"
+''',
+        encoding="utf-8",
+    )
+    (source / "README.md").write_text("Run cached-app --cached over MQTT.", encoding="utf-8")
+    (source / "cached.launch.py").write_text(
+        'Node(package="cached_pkg", executable="cached-app", name="cached")',
+        encoding="utf-8",
+    )
+    scan = ApplicationProbe().scan([source])
+
+    def forbidden_read(_: Path) -> None:
+        raise AssertionError(
+            "active analysis reread source text instead of using its scan snapshot"
+        )
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.active_discovery._read_bounded_text",
+        forbidden_read,
+    )
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=[source]),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+            evidence_text=scan.evidence_text,
+        )
+    )
+
+    executable = report.executables[0]
+    assert executable.invocation.arguments == ["--cached"]
+    assert executable.launch_analysis.packages == ["cached_pkg"]
+
+
 def test_artifact_doc_mode_statically_extracts_launch_without_execution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -143,7 +237,7 @@ Node(package="vendor_pkg", executable="vendor-driver.exe", name="driver",
     def forbidden_popen(*args: object, **kwargs: object) -> None:
         raise AssertionError(f"launch or executable was unexpectedly run: {args}, {kwargs}")
 
-    monkeypatch.setattr("rolo.stages.build.active_discovery.subprocess.Popen", forbidden_popen)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.subprocess.Popen", forbidden_popen)
     report = build_report(
         make_analyzer(
             inputs=ActiveDiscoveryInputs(
@@ -193,7 +287,7 @@ def test_help_probe_runs_only_explicit_executable_and_report_omits_raw_output(
             output_bytes=64,
         )
 
-    monkeypatch.setattr("rolo.stages.build.active_discovery.run_bounded_help", fake_help)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.run_bounded_help", fake_help)
     report = build_report(
         make_analyzer(
             inputs=ActiveDiscoveryInputs(
@@ -221,7 +315,7 @@ def test_help_probe_runs_only_explicit_executable_and_report_omits_raw_output(
 
 
 def test_help_probe_enforces_output_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("rolo.stages.build.active_discovery.MAX_HELP_BYTES", 32)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.MAX_HELP_BYTES", 32)
     output = tmp_path / "python-help.txt"
 
     result = run_bounded_help(Path(sys.executable), output)
@@ -258,10 +352,10 @@ def test_help_probe_timeout_does_not_wait_for_blocked_output_reader(
             return self.returncode or 0
 
     monkeypatch.setattr(
-        "rolo.stages.build.active_discovery.subprocess.Popen",
+        "rolo.stages.adapt.active_discovery.subprocess.Popen",
         lambda *args, **kwargs: FakeProcess(),
     )
-    monkeypatch.setattr("rolo.stages.build.active_discovery.HELP_TIMEOUT_S", 0.01)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.HELP_TIMEOUT_S", 0.01)
 
     result = run_bounded_help(tmp_path / "blocked.exe", tmp_path / "help.txt")
 
@@ -282,8 +376,8 @@ def test_help_probe_count_limit_is_reported_without_running_remaining_binaries(
         called.append(path)
         return HelpProbeResult(status=HelpProbeStatus.SUCCEEDED, exit_code=0)
 
-    monkeypatch.setattr("rolo.stages.build.active_discovery.MAX_HELP_PROBES", 1)
-    monkeypatch.setattr("rolo.stages.build.active_discovery.run_bounded_help", fake_help)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.MAX_HELP_PROBES", 1)
+    monkeypatch.setattr("rolo.stages.adapt.active_discovery.run_bounded_help", fake_help)
     report = build_report(
         make_analyzer(
             inputs=ActiveDiscoveryInputs(
@@ -339,65 +433,80 @@ def test_ros_runtime_evidence_is_attributed_only_when_requested(tmp_path: Path) 
     assert runtime_report.executables[0].evidence["ros_runtime"] == ["live_ros_graph"]
 
 
-def test_empty_source_root_degrades_instead_of_claiming_high_confidence(
+def test_empty_source_root_is_rejected_instead_of_claiming_a_discovery_mode(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "empty-source"
     source.mkdir()
     projects = ApplicationProbe().run([source]).data["projects"]
 
-    report = build_report(
-        make_analyzer(
-            inputs=ActiveDiscoveryInputs(source_roots=[source]),
-            projects=projects,
-            run_root=tmp_path / "run",
+    with pytest.raises(ValueError, match="no usable primary evidence was collected"):
+        build_report(
+            make_analyzer(
+                inputs=ActiveDiscoveryInputs(source_roots=[source]),
+                projects=projects,
+                run_root=tmp_path / "run",
+            )
         )
-    )
-
-    assert report.discovery_mode.level == DiscoveryModeLevel.BINARY_ONLY
-    assert report.coverage["source"].status == "PARTIAL"
-    assert "source roots contained no usable source" in " ".join(report.warnings)
 
 
-def test_confirmation_is_bound_to_exact_report_hash_and_identity(tmp_path: Path) -> None:
-    executable = tmp_path / "driver.exe"
-    executable.write_bytes(b"MZ" + b"\0" * 62)
-    report = build_report(
-        make_analyzer(
-            inputs=ActiveDiscoveryInputs(executables=[executable]),
-            projects=[],
-            run_root=tmp_path / "run",
+def test_documentation_does_not_claim_artifact_doc_without_an_executable(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "empty-source"
+    docs = tmp_path / "docs"
+    source.mkdir()
+    docs.mkdir()
+    (docs / "README.md").write_text("Run vendor-driver --help", encoding="utf-8")
+    projects = ApplicationProbe().run([source]).data["projects"]
+
+    with pytest.raises(ValueError, match="no usable primary evidence was collected"):
+        build_report(
+            make_analyzer(
+                inputs=ActiveDiscoveryInputs(
+                    source_roots=[source],
+                    document_roots=[docs],
+                ),
+                projects=projects,
+                run_root=tmp_path / "run",
+            )
         )
-    )
-    report_path = tmp_path / "active_discovery_report.json"
-    report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
-    confirmation = write_confirmation(
-        report_path=report_path,
-        robot_id="demo",
-        discovery_id="disc-test",
-        decision=ConfirmationDecision.ACCEPT,
-        corrections=None,
-    )
 
-    assert confirmation_matches_report(confirmation, report_path) is True
-    document = json.loads(report_path.read_text(encoding="utf-8"))
-    document["warnings"].append("changed after confirmation")
-    report_path.write_text(json.dumps(document), encoding="utf-8")
-    assert confirmation_matches_report(confirmation, report_path) is False
+def test_non_executable_install_content_does_not_claim_artifact_doc(
+    tmp_path: Path,
+) -> None:
+    install = tmp_path / "install"
+    docs = tmp_path / "docs"
+    install.mkdir()
+    docs.mkdir()
+    (install / "metadata.json").write_text('{"name": "vendor-driver"}', encoding="utf-8")
+    (docs / "README.md").write_text("Vendor driver package", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="no usable primary evidence was collected"):
+        build_report(
+            make_analyzer(
+                inputs=ActiveDiscoveryInputs(
+                    install_roots=[install],
+                    document_roots=[docs],
+                ),
+                projects=[],
+                run_root=tmp_path / "run",
+            )
+        )
 
 
 def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
     result = CliRunner().invoke(
         app,
         [
-            "build",
+            "adapt",
             "discover",
             "run",
             "--robot",
             "demo_diff",
             "--urdf",
-            str(Path("configs/profiles/differential_drive.urdf").resolve()),
+            str(Path("tests/fixtures/profiles/differential_drive.urdf").resolve()),
         ],
     )
 
@@ -413,19 +522,19 @@ def test_discovery_does_not_run_host_package_inventory(
     (source / "pyproject.toml").write_text(
         '[project]\nname = "demo"\n', encoding="utf-8"
     )
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
 
     def forbidden_ros_probe(*args: object, **kwargs: object) -> None:
         raise AssertionError(f"ROS runtime probe was unexpectedly called: {args}, {kwargs}")
 
     monkeypatch.setattr(
-        "rolo.stages.build.discovery.RosProbe.run",
+        "rolo.stages.adapt.discovery.RosProbe.run",
         forbidden_ros_probe,
     )
     report, _ = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
         robot=registry.get("demo_diff"),
-        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
         active_inputs=ActiveDiscoveryInputs(
             source_roots=[source],
         ),
@@ -455,13 +564,13 @@ demo = "demo:main"
 """,
         encoding="utf-8",
     )
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     artifact_root = tmp_path / "artifacts"
 
     report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
         robot=registry.get("demo_diff"),
-        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
         active_inputs=ActiveDiscoveryInputs(source_roots=[source]),
     )
 
@@ -473,7 +582,7 @@ demo = "demo:main"
         (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
     )
     build_inputs = json.loads(
-        (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
+        (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
 
     assert dependencies["status"] == "SUCCEEDED"
@@ -514,16 +623,16 @@ demo = "demo:main"
             return tmp_path / "site-packages"
 
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         lambda _: Distribution(),
     )
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     artifact_root = tmp_path / "artifacts"
 
     report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
         robot=registry.get("demo_diff"),
-        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
         active_inputs=ActiveDiscoveryInputs(source_roots=[source]),
     )
 
@@ -535,7 +644,7 @@ demo = "demo:main"
         (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
     )
     build_inputs = json.loads(
-        (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
+        (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
 
     assert dependencies["counts_by_status"]["VERSION_CONFLICT"] == 1

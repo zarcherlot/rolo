@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "AdaptGateStatus": {
+      "enum": [
+        "PASSED",
+        "FAILED"
+      ],
+      "title": "AdaptGateStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-gate/v1",
+      "default": "robot-adapt-gate/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/AdaptGateStatus"
+    },
+    "checks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "checked_at": {
+      "format": "date-time",
+      "title": "Checked At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "robot_id",
+    "discovery_id",
+    "status"
+  ],
+  "title": "AdaptGateReport",
+  "type": "object"
+}

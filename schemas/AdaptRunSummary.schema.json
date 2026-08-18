@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-run-summary/v1",
+      "default": "robot-adapt-run-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "status": {
+      "const": "COMPLETE",
+      "default": "COMPLETE",
+      "title": "Status",
+      "type": "string"
+    },
+    "agent_run_ref": {
+      "title": "Agent Run Ref",
+      "type": "string"
+    },
+    "snapshot_ref": {
+      "title": "Snapshot Ref",
+      "type": "string"
+    },
+    "gate_ref": {
+      "title": "Gate Ref",
+      "type": "string"
+    },
+    "handoff_ref": {
+      "title": "Handoff Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "agent_run_ref",
+    "snapshot_ref",
+    "gate_ref",
+    "handoff_ref"
+  ],
+  "title": "AdaptRunSummary",
+  "type": "object"
+}

@@ -292,6 +292,11 @@
       "title": "Active Discovery Report Ref",
       "type": "string"
     },
+    "review_ref": {
+      "default": "",
+      "title": "Review Ref",
+      "type": "string"
+    },
     "discovery_mode": {
       "default": "",
       "title": "Discovery Mode",

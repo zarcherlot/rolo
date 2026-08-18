@@ -4,6 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from rolo.cli import app
+from rolo.stages.adapt.models import ToolCatalog
 
 
 def test_tracked_schemas_match_canonical_export(tmp_path: Path) -> None:
@@ -18,3 +19,11 @@ def test_tracked_schemas_match_canonical_export(tmp_path: Path) -> None:
         assert json.loads(path.read_text(encoding="utf-8")) == json.loads(
             generated[name].read_text(encoding="utf-8")
         )
+
+
+def test_exported_tool_catalog_schema_covers_the_complete_artifact() -> None:
+    schema = ToolCatalog.model_json_schema()
+
+    assert schema["properties"]["schema_version"]["const"] == "robot-tool-catalog/v1"
+    assert set(schema["required"]) == {"robot_id", "discovery_id", "tools"}
+    assert schema["properties"]["tools"]["items"]["$ref"].endswith("/ToolDescriptor")

@@ -8,9 +8,9 @@ from typer.testing import CliRunner
 from rolo.agentd import create_agentd_app
 from rolo.cli import app
 from rolo.core.config import get_settings, load_yaml
-from rolo.stages.build.enrollment import EnrollmentService, list_profiles, load_urdf_profile
+from rolo.stages.adapt.enrollment import EnrollmentService, load_urdf_profile
 
-PROFILE_ROOT = Path("configs/profiles")
+PROFILE_ROOT = Path("tests/fixtures/profiles")
 
 
 def urdf_profile(name: str) -> Path:
@@ -74,17 +74,6 @@ def test_urdf_profile_records_missing_semantics_for_discovery(
         "platform.drive_model",
     }
 
-
-
-def test_urdf_profile_catalog_is_data_driven() -> None:
-    profiles = list_profiles(PROFILE_ROOT)
-
-    assert {profile["profile_id"] for profile in profiles} == {
-        "ackermann",
-        "differential_drive",
-    }
-    assert {profile["format"] for profile in profiles} == {"urdf"}
-    assert all(str(profile["path"]).endswith(".urdf") for profile in profiles)
 
 
 def test_urdf_profile_hash_is_stable_across_line_endings(tmp_path: Path) -> None:

@@ -1,0 +1,227 @@
+{
+  "$defs": {
+    "AdaptPlanStatus": {
+      "enum": [
+        "BLOCKED",
+        "REQUIRES_CODING"
+      ],
+      "title": "AdaptPlanStatus",
+      "type": "string"
+    },
+    "AdaptTask": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "required_skill": {
+          "title": "Required Skill",
+          "type": "string"
+        },
+        "agent_requirement": {
+          "$ref": "#/$defs/AgentRequirement",
+          "default": "adapter_agent"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "required_skill"
+      ],
+      "title": "AdaptTask",
+      "type": "object"
+    },
+    "AdapterAgentConfig": {
+      "description": "Secret-free provider selection persisted with a Stage 1 Adapt plan.",
+      "properties": {
+        "provider": {
+          "default": "codex",
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "executor": {
+          "default": "codex",
+          "minLength": 1,
+          "title": "Executor",
+          "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "api_key_env": {
+          "default": "CODING_AGENT_API_KEY",
+          "title": "Api Key Env",
+          "type": "string"
+        },
+        "api_key_configured": {
+          "default": false,
+          "title": "Api Key Configured",
+          "type": "boolean"
+        },
+        "auto_install": {
+          "default": true,
+          "title": "Auto Install",
+          "type": "boolean"
+        },
+        "require_auth": {
+          "default": true,
+          "title": "Require Auth",
+          "type": "boolean"
+        }
+      },
+      "title": "AdapterAgentConfig",
+      "type": "object"
+    },
+    "AgentRequirement": {
+      "enum": [
+        "adapter_agent",
+        "diagnosis_agent",
+        "verification_agent"
+      ],
+      "title": "AgentRequirement",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-plan/v1",
+      "default": "robot-adapt-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "default": "adapt",
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "source_discovery_id": {
+      "title": "Source Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/AdaptPlanStatus"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/AdaptTask"
+      },
+      "title": "Tasks",
+      "type": "array"
+    },
+    "required_skills": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Skills",
+      "type": "array"
+    },
+    "adapter_agent": {
+      "$ref": "#/$defs/AdapterAgentConfig"
+    },
+    "candidate_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Candidate Operations",
+      "type": "array"
+    },
+    "semantic_context_ref": {
+      "default": "",
+      "title": "Semantic Context Ref",
+      "type": "string"
+    },
+    "unresolved_semantics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Semantics",
+      "type": "array"
+    },
+    "semantic_value_candidates": {
+      "default": 0,
+      "title": "Semantic Value Candidates",
+      "type": "integer"
+    },
+    "active_discovery_report_ref": {
+      "default": "",
+      "title": "Active Discovery Report Ref",
+      "type": "string"
+    },
+    "robot_wiki_ref": {
+      "default": "",
+      "title": "Robot Wiki Ref",
+      "type": "string"
+    },
+    "discovery_manifest_ref": {
+      "default": "",
+      "title": "Discovery Manifest Ref",
+      "type": "string"
+    },
+    "discovery_manifest_sha256": {
+      "default": "",
+      "title": "Discovery Manifest Sha256",
+      "type": "string"
+    },
+    "state_graph_baseline_required": {
+      "default": true,
+      "title": "State Graph Baseline Required",
+      "type": "boolean"
+    },
+    "handoff_ref": {
+      "title": "Handoff Ref",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "source_discovery_id",
+    "status",
+    "tasks",
+    "required_skills",
+    "handoff_ref"
+  ],
+  "title": "AdaptPlan",
+  "type": "object"
+}

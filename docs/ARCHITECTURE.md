@@ -1,87 +1,103 @@
 # rolo three-stage architecture
 
-rolo exposes one ordered lifecycle while keeping safety, artifacts, schemas, services, and hardware
-adapters as shared infrastructure.
+rolo exposes one ordered lifecycle:
 
 ```text
-build -> debug -> test (optional formal acceptance)
+adapt -> diagnose -> verify (optional formal acceptance)
 ```
+
+The names describe rolo's agents and avoid colliding with the user's development commands.
 
 ## Stage contracts
 
-| Stage | Inputs and work | Required output | Agent role |
+| Stage | Required input and work | Required output | Agent role |
 |---|---|---|---|
-| `build` | identity-only initialization, discovery-time URDF loading/parsing, bounded `hw/linux/ros/application` probes, unresolved semantics, discovered candidates, CLI implementation, conformance, State Graph construction | probes, discovered capability, semantic context, tool catalog, verified canonical CLI, State Graph baseline, build handoff | Coding Agent; Codex by default, vendor/model configurable |
-| `debug` | build handoff, unresolved semantics, unverified source candidates, and user debug/safety constraints | diagnosis, validated/rejected semantics, frozen configuration, tuning evidence, debug handoff | Diagnosis Agent; `robot_use` optional |
-| `test` | debug handoff, semantic validation context, and admitted acceptance constraints | final regression, semantic evidence, report, evidence package, test handoff | Test Agent when the optional stage is selected |
+| `adapt` | bounded host/application discovery, chief-engineer-maintained robot Wiki, canonical CLI implementation, State Graph construction, independent conformance | editable robot Wiki, immutable machine-evidence manifest, verified tool catalog, State Graph baseline, conformance report, adapt handoff | Adapter Agent; Codex by default |
+| `diagnose` | validated adapt handoff, unresolved semantics, user diagnosis/safety constraints | diagnosis, validated/rejected semantics, frozen configuration, tuning evidence, diagnosis handoff | Diagnosis Agent; `robot_use` optional |
+| `verify` | validated diagnosis handoff and admitted acceptance constraints | full regression, report, evidence package, verification handoff | Verification Agent when selected |
 
-Optional formal testing does not make safety regression optional. Every debug-stage change must run
-the affected smoke and safety regressions before it can be retained.
+Formal verification is optional; affected smoke and safety regression after every retained diagnosis
+change is not optional.
 
 ## Source layout
 
 ```text
 src/rolo/stages/
-├── build/    # enroll, probe, generate coding plan, CLI conformance, State Graph gate
-├── debug/    # Diagnosis Agent loop, constrained tuning, robot_use
-└── test/     # optional formal test generation and acceptance gate
+├── adapt/       # discovery, Adapter Agent run, frozen output, gate, handoff
+├── diagnose/    # Diagnosis Agent gate, constrained tuning, robot_use
+└── verify/      # optional formal verification gate
 ```
 
-`agentd.py`, `api.py`, and `runtime.py` remain shared services. Shared configuration, domain models,
-artifacts, and the robot registry live under `src/rolo/core/`.
+`artifact_paths.py` is the single path vocabulary. Stage artifacts exist only under `adapt/`,
+`diagnose/`, and `verify/`. `cli.py` assembles command groups, while shared services remain outside
+stage packages.
 
-## Artifact flow
+## Evidence and handoff flow
 
-`robotctl init` registers only `robot_id` and runs doctor plus robot-list validation. Repository
-tests remain a development/CI responsibility. Init does not accept a URDF or approve motion.
-Discovery receives a URDF path explicitly,
-records its path/hash, parses the full file, persists each probe, and writes `semantic_context.json` plus Build, Debug, and Test input
-artifacts. The semantic context carries unresolved URDF fields and source-attributed launch/config
-candidates. Candidates are explicitly unverified and have no safety authority. The build inputs
-reference the probe artifacts, capability manifest, semantic context, binding candidates, and tool catalog. The
-Coding Agent consumes those inputs and produces the verified CLI/State Graph handoff at
-`build/<robot_id>/latest/handoff.json`, which gates the Diagnosis Agent.
+1. Discovery writes probe results, capability/semantic evidence, tool candidates, and a report into
+   `discovery/<robot>/runs/<discovery_id>/`.
+2. `robot_wiki.md` presents the stack as an editable engineering Wiki. It is intentionally excluded
+   from hashes so the robot's chief engineer can correct and extend it directly.
+3. `manifest.json` hashes the machine-readable evidence. `latest.json` is only an atomic index;
+   readers revalidate the manifest and report before use.
+4. `adapt run` derives an in-memory plan carrying the manifest identity and current Wiki reference,
+   then revalidates machine evidence before preparing or starting the Adapter Agent.
+5. The Adapter Agent writes proposed workspace-relative tool catalog, State Graph, and conformance
+   files. Executor success does not publish a handoff.
+6. The same `adapt run` freezes those proposed files before an independent rolo gate validates
+   identities, exact operation coverage, schemas, errors, idempotency, cancellation, safety,
+   verified availability, and physical-result evidence for write/R3 operations.
+7. A passed gate writes the immutable handoff under `adapt/<robot>/runs/<run_id>/` and atomically
+   publishes only the hash-bound index `adapt/<robot>/latest.json`. A failed gate never changes the
+   latest index.
+8. Diagnose validates the full adapt handoff; Verify validates a structured diagnosis handoff.
+   Merely creating a file at a handoff path never opens the next gate.
 
-The Stage 1 provider contract defaults to Codex but is vendor-neutral. `CODING_AGENT_PROVIDER`,
-`CODING_AGENT_BASE_URL`, and `CODING_AGENT_MODEL` select a vendor, its official/default endpoint or
-a compatible relay, and a model. `CODING_AGENT_API_KEY` remains process-local secret input. Plans
-record only secret-free provider metadata and whether a key is configured. The explicit Codex
-executor uses saved `codex login` authentication when no key is configured, runs non-interactively
-with the `workspace-write` sandbox, and retains JSONL events plus a schema-validated final result.
-It never promotes its own output to the build handoff.
+The Adapter Agent provider is configurable through `CODING_AGENT_*` settings for compatibility.
+Secrets remain process-local; plans and audit artifacts contain only secret-free configuration.
 
-The dependency lifecycle is `configuration -> allowlisted install -> verification -> execution`.
-The uv workspace may install a missing executor and verify its version without automating login. The
-build execution gate verifies the installed executable and authentication again, persists a
-secret-free dependency report, and blocks execution unless the configured executor is ready.
+The retained Adapt artifacts are deliberately small and centralized:
 
-Software discovery uses source and launch evidence to identify Python and ROS direct dependencies.
-It resolves only those candidates against local metadata, reports missing/conflicting/unknown state,
-and performs no host package inventory or target dependency installation. The target contract is
-specified in [`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md).
+```text
+adapt/<robot>/
+├── latest/inputs.json             # mutable discovery-to-Adapt input index
+├── latest.json                    # atomic index to the last passed handoff
+└── runs/<run_id>/
+    ├── prompt.txt
+    ├── events.jsonl
+    ├── stderr.log
+    ├── result.json
+    ├── run.json
+    ├── output-snapshot/           # normalized immutable Agent proposals + hashes
+    ├── gate.json
+    ├── handoff.json
+    └── summary.json
+```
+
+The derived plan is not a mutable `latest/plan.json`; it is carried in the audit prompt. The output
+schema is temporary, and a successful raw final message is normalized into `result.json` rather
+than retained as a duplicate.
 
 ## Current implementation maturity
 
-- Build implements enrollment, bounded discovery, probe persistence, build inputs,
-  a machine-readable Coding Agent plan, an allowlisted dependency installer and verifier, and an
-  explicit Codex executor with audit artifacts.
-  Adapter completeness, promotion, conformance execution, and the real State Graph store remain
-  implementation work.
-- Debug contains the `robot_use` supervision service and a hard build-handoff gate. Closed-loop
-  diagnosis, transactions, tuning, and debug handoff production remain implementation work.
-- Test exposes an optional stage gate. Runtime test DSL, Oracle registry, autonomous execution,
-  final regression, and evidence packaging remain implementation work. Repository tests under
-  `tests/` are engineering tests and are not Stage 3 robot acceptance tests.
+- Adapt implements enrollment, bounded discovery, an editable whole-stack robot Wiki, machine-only
+  manifest validation, a unified Adapter Agent run, frozen output, independent conformance,
+  immutable handoff publication, and downstream validation. The Agent still owns
+  repository-specific adapter and State Graph implementation.
+- Diagnose contains `robot_use`, a validated adapt-handoff gate, and a structured diagnosis-handoff
+  contract. Closed-loop diagnosis transactions, tuning, and handoff production remain work.
+- Verify contains validated upstream and structured output gates. Runtime acceptance DSL, oracle
+  registry, autonomous execution, and evidence packaging remain work. Repository tests under
+  `tests/` are engineering tests, not robot acceptance runs.
 
 ## CLI
 
-The stage-oriented commands are canonical for lifecycle orchestration:
-
 ```text
-uv run robotctl build status|plan|agent-config|agent-prepare|execute|enroll|discover
-uv run robotctl debug status|robot-use
-uv run robotctl test status
+uv run robotctl adapt status|run|agent-config|enroll|discover
+uv run robotctl diagnose status|robot-use
+uv run robotctl verify status
 uv run robotctl pipeline-status
 ```
 
-Top-level `enroll`, `discover`, `tool`, and layer commands remain available through `uv run robotctl`.
+The top-level `tool`, `hw`, `linux`, `middleware`, `ros`, and `app` commands remain the canonical
+semantic introspection surface.

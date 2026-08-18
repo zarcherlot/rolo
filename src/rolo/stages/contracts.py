@@ -9,15 +9,17 @@ from rolo.core.models import utc_now
 
 
 class StageName(str, Enum):
-    BUILD = "build"
-    DEBUG = "debug"
-    TEST = "test"
+    ADAPT = "adapt"
+    DIAGNOSE = "diagnose"
+    VERIFY = "verify"
+
 
 
 class AgentRequirement(str, Enum):
-    CODING_AGENT = "coding_agent"
+    ADAPTER_AGENT = "adapter_agent"
     DIAGNOSIS_AGENT = "diagnosis_agent"
-    TEST_AGENT = "test_agent"
+    VERIFICATION_AGENT = "verification_agent"
+
 
 
 class StageStatus(str, Enum):

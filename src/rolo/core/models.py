@@ -180,6 +180,7 @@ class DiscoveryReport(BaseModel):
     software_summary_ref: str = ""
     dependency_report_ref: str = ""
     active_discovery_report_ref: str = ""
+    review_ref: str = ""
     discovery_mode: str = ""
     source_roots: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
@@ -190,4 +191,6 @@ class DiscoveryLatestIndex(BaseModel):
     robot_id: str
     discovery_id: str
     report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_ref: str
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     published_at: datetime = Field(default_factory=utc_now)

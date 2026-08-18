@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-verification-handoff/v1",
+      "default": "robot-verification-handoff/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "source_diagnosis_handoff_ref": {
+      "title": "Source Diagnosis Handoff Ref",
+      "type": "string"
+    },
+    "source_diagnosis_handoff_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Diagnosis Handoff Sha256",
+      "type": "string"
+    },
+    "regression_report_ref": {
+      "title": "Regression Report Ref",
+      "type": "string"
+    },
+    "regression_report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Regression Report Sha256",
+      "type": "string"
+    },
+    "evidence_package_ref": {
+      "title": "Evidence Package Ref",
+      "type": "string"
+    },
+    "evidence_package_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Package Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "source_diagnosis_handoff_ref",
+    "source_diagnosis_handoff_sha256",
+    "regression_report_ref",
+    "regression_report_sha256",
+    "evidence_package_ref",
+    "evidence_package_sha256"
+  ],
+  "title": "VerificationHandoff",
+  "type": "object"
+}

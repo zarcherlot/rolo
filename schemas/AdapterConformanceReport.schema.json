@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "OperationConformance": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "schema_valid": {
+          "title": "Schema Valid",
+          "type": "boolean"
+        },
+        "errors_valid": {
+          "title": "Errors Valid",
+          "type": "boolean"
+        },
+        "idempotency_valid": {
+          "title": "Idempotency Valid",
+          "type": "boolean"
+        },
+        "cancellation_valid": {
+          "title": "Cancellation Valid",
+          "type": "boolean"
+        },
+        "safety_valid": {
+          "title": "Safety Valid",
+          "type": "boolean"
+        },
+        "physical_result_valid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Result Valid"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation",
+        "schema_valid",
+        "errors_valid",
+        "idempotency_valid",
+        "cancellation_valid",
+        "safety_valid"
+      ],
+      "title": "OperationConformance",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-conformance/v1",
+      "default": "robot-adapter-conformance/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/OperationConformance"
+      },
+      "title": "Operations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "operations"
+  ],
+  "title": "AdapterConformanceReport",
+  "type": "object"
+}

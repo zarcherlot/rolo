@@ -19,6 +19,15 @@
       "title": "Report Sha256",
       "type": "string"
     },
+    "manifest_ref": {
+      "title": "Manifest Ref",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
     "published_at": {
       "format": "date-time",
       "title": "Published At",
@@ -28,7 +37,9 @@
   "required": [
     "robot_id",
     "discovery_id",
-    "report_sha256"
+    "report_sha256",
+    "manifest_ref",
+    "manifest_sha256"
   ],
   "title": "DiscoveryLatestIndex",
   "type": "object"

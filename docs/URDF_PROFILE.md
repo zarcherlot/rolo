@@ -3,7 +3,7 @@
 `robotctl init --robot-id ...` registers identity only. It does not accept, read, or record a URDF.
 
 The initial URDF state is `NOT_DISCOVERED`, semantic state is `UNRESOLVED`, and motion safety state
-is `UNAPPROVED`. `robotctl build discover run --robot ... --urdf /path/to/robot.urdf` loads the file and
+is `UNAPPROVED`. `robotctl adapt discover run --robot ... --urdf /path/to/robot.urdf` loads the file and
 performs the full parsing described below. Its artifact records the resolved path and SHA-256.
 
 ## Discovery-time standard URDF data
@@ -50,7 +50,7 @@ names such as `max_vel_x`, `max_linear_velocity`, `max_vel_theta`, and
 field, unit, source path, original key, and `DISCOVERED_UNVERIFIED` status in
 `semantic_context.json`.
 
-The unresolved fields and candidates are copied into the Build, Debug, and Test agent inputs.
+The unresolved fields and candidates are copied into the Adapt, Diagnose, and Verify agent inputs.
 Speed values declared in the optional URDF extension are also represented as
 `DECLARED_UNVERIFIED` with `safety_authority: none`; a declaration is evidence, not approval.
 Source candidates may describe a controller setting rather than a physical safety limit, so they
@@ -62,7 +62,7 @@ controlled validation, but they must not silently promote them to verified hard 
 Initialization records no URDF data. Each discovery run records the supplied absolute URDF path and
 SHA-256 with its evidence. There is no installation-time safety confirmation because no URDF has
 been supplied at that point. Motion remains `UNAPPROVED` until a later
-controlled debug/test validation and explicit safety-approval workflow promotes it.
+controlled diagnosis/verification and explicit safety-approval workflow promotes it.
 
-See [`differential_drive.urdf`](../configs/profiles/differential_drive.urdf) and
-[`ackermann.urdf`](../configs/profiles/ackermann.urdf) for complete format examples.
+See [`differential_drive.urdf`](../tests/fixtures/profiles/differential_drive.urdf) and
+[`ackermann.urdf`](../tests/fixtures/profiles/ackermann.urdf) for complete format examples.

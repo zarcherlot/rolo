@@ -9,14 +9,14 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings, load_yaml
 from rolo.core.models import RobotCapability
 from rolo.core.registry import RobotRegistry
-from rolo.stages.build.discovery import (
+from rolo.stages.adapt.discovery import (
     UBUNTU_ROS_DEFAULTS,
     ApplicationProbe,
     DiscoveryService,
     detect_compute_platform,
     load_latest_report,
 )
-from rolo.stages.build.enrollment import EnrollmentService
+from rolo.stages.adapt.enrollment import EnrollmentService
 
 
 def make_application_project(root: Path) -> None:
@@ -146,13 +146,13 @@ dependencies = [
 def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     project = tmp_path / "application"
     make_application_project(project)
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     artifacts = ArtifactStore(tmp_path / "artifacts")
 
     report, run_path = DiscoveryService(artifacts).run(
         robot=registry.get("demo_diff"),
-        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
         source_roots=[project],
     )
     loaded = load_latest_report(artifacts.root, "demo_diff")
@@ -161,7 +161,22 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert loaded.discovery_id == report.discovery_id
     assert {tool.operation for tool in report.tool_catalog} >= {
         "hw.inventory.scan",
+        "linux.host.inventory",
         "linux.host.inspect",
+        "linux.service.list",
+        "linux.service.inspect",
+        "linux.container.list",
+        "linux.container.inspect",
+        "linux.schedule.list",
+        "linux.schedule.inspect",
+        "linux.process.list",
+        "linux.process.inspect",
+        "linux.binary.describe",
+        "linux.cli.probe",
+        "linux.config.locate",
+        "linux.network.listeners",
+        "middleware.inspect",
+        "ros.node.status",
         "ros.graph.snapshot",
         "app.robot.discover",
         "tool.catalog",
@@ -173,16 +188,28 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert json.loads(latest_index.read_text(encoding="utf-8"))["discovery_id"] == (
         report.discovery_id
     )
-    assert (artifacts.root / "build/demo_diff/latest/inputs.json").is_file()
-    assert (artifacts.root / "build/demo_diff/latest/semantic_context.json").is_file()
-    assert (artifacts.root / "debug/demo_diff/latest/inputs.json").is_file()
-    assert (artifacts.root / "test/demo_diff/latest/inputs.json").is_file()
+    adapt_inputs = artifacts.root / "adapt/demo_diff/latest/inputs.json"
+    assert adapt_inputs.is_file()
+    assert json.loads(adapt_inputs.read_text(encoding="utf-8"))[
+        "semantic_context_ref"
+    ].endswith("/semantic_context.json")
+    assert (artifacts.root / "diagnose/demo_diff/latest/inputs.json").is_file()
+    assert (artifacts.root / "verify/demo_diff/latest/inputs.json").is_file()
     for layer in ("hw", "linux", "ros", "application"):
         assert (run_path.parent / f"{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
     assert (run_path.parent / "software_summary.json").is_file()
     assert "packages" not in report.capability_manifest["observed"]["software_stack"]
+    wiki_path = run_path.parent / "robot_wiki.md"
+    manifest = json.loads((run_path.parent / "manifest.json").read_text(encoding="utf-8"))
+    assert wiki_path.is_file()
+    assert "robot_wiki.md" not in {item["path"] for item in manifest["files"]}
+    wiki_path.write_text(
+        wiki_path.read_text(encoding="utf-8") + "\n## 总工修正\nCAN-FD 总线已复核。\n",
+        encoding="utf-8",
+    )
+    assert load_latest_report(artifacts.root, "demo_diff").discovery_id == report.discovery_id
 
     run_path.write_text(run_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(ValueError, match="hash mismatch"):
@@ -222,7 +249,7 @@ def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Pat
         robot=robot, urdf_path=structural_urdf, source_roots=[project]
     )
 
-    for stage in ("debug", "test"):
+    for stage in ("diagnose", "verify"):
         inputs = json.loads(
             (artifacts.root / stage / "structural_unit/latest/inputs.json").read_text(
                 encoding="utf-8"
@@ -240,6 +267,9 @@ def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Pat
 
 
 def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "discovery-rover"\n', encoding="utf-8"
+    )
     config_root = tmp_path / "config"
     result = EnrollmentService(config_root=config_root).enroll(
         robot_id="discovery_rover",
@@ -250,7 +280,7 @@ def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: 
     artifacts = ArtifactStore(tmp_path / "artifacts")
     report, _ = DiscoveryService(artifacts).run(
         robot=registered,
-        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
         source_roots=[tmp_path],
     )
     discovered = report.capability_manifest["expected_profile"]
@@ -264,6 +294,9 @@ def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: 
 
 
 def test_discovery_records_hash_for_supplied_urdf(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "hash-rover"\n', encoding="utf-8"
+    )
     profile_path = tmp_path / "robot.urdf"
     profile_path.write_text('<robot name="hash_rover"><link name="base_link"/></robot>')
     config_root = tmp_path / "config"
@@ -316,21 +349,25 @@ def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.Monk
     discovered = runner.invoke(
         app,
         [
-            "build",
+            "adapt",
             "discover",
             "run",
             "--robot",
             "demo_diff",
             "--urdf",
-            str(Path("configs/profiles/differential_drive.urdf").resolve()),
+            str(Path("tests/fixtures/profiles/differential_drive.urdf").resolve()),
             "--source-root",
             str(project),
         ],
     )
     catalog = runner.invoke(app, ["tool", "catalog", "--robot", "demo_diff"])
+    review = runner.invoke(app, ["adapt", "discover", "review", "--robot", "demo_diff"])
 
     get_settings.cache_clear()
     assert discovered.exit_code == 0, discovered.output
     assert '"status": "PARTIAL"' in discovered.output
     assert catalog.exit_code == 0, catalog.output
     assert '"operation": "hw.inventory.scan"' in catalog.output
+    assert review.exit_code == 0, review.output
+    assert "# 机器人 Wiki：demo_diff" in review.output
+    assert "## ROS 与通信拓扑" in review.output

@@ -101,45 +101,6 @@
       "title": "Confidence",
       "type": "string"
     },
-    "ConfirmationPrompt": {
-      "additionalProperties": false,
-      "properties": {
-        "required": {
-          "default": true,
-          "title": "Required",
-          "type": "boolean"
-        },
-        "prompt": {
-          "title": "Prompt",
-          "type": "string"
-        },
-        "confirm_command": {
-          "title": "Confirm Command",
-          "type": "string"
-        },
-        "correction_command": {
-          "title": "Correction Command",
-          "type": "string"
-        }
-      },
-      "required": [
-        "prompt",
-        "confirm_command",
-        "correction_command"
-      ],
-      "title": "ConfirmationPrompt",
-      "type": "object"
-    },
-    "ConfirmationStatus": {
-      "enum": [
-        "AWAITING_USER_CONFIRMATION",
-        "ACCEPTED",
-        "REJECTED",
-        "CORRECTION_REQUIRED"
-      ],
-      "title": "ConfirmationStatus",
-      "type": "string"
-    },
     "CoverageRecord": {
       "additionalProperties": false,
       "properties": {
@@ -756,10 +717,6 @@
       "title": "Technical Status",
       "type": "string"
     },
-    "confirmation_status": {
-      "$ref": "#/$defs/ConfirmationStatus",
-      "default": "AWAITING_USER_CONFIRMATION"
-    },
     "discovery_mode": {
       "$ref": "#/$defs/DiscoveryMode"
     },
@@ -816,9 +773,6 @@
       "title": "Warnings",
       "type": "array"
     },
-    "confirmation": {
-      "$ref": "#/$defs/ConfirmationPrompt"
-    },
     "created_at": {
       "format": "date-time",
       "title": "Created At",
@@ -832,7 +786,6 @@
     "discovery_mode",
     "inputs",
     "coverage",
-    "confirmation",
     "created_at"
   ],
   "title": "ActiveDiscoveryReport",

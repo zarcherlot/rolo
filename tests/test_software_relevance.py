@@ -4,14 +4,15 @@ from pathlib import Path
 import pytest
 
 from rolo.core.models import DiscoveryStatus, ProbeResult
-from rolo.stages.build.active_discovery import (
+from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
 )
-from rolo.stages.build.software_relevance import (
+from rolo.stages.adapt.software_relevance import (
     CandidateResolutionStatus,
     DirectDependencyResolver,
     SoftwareDiscoveryPolicy,
+    build_software_summary,
     enrich_active_report,
 )
 
@@ -118,7 +119,7 @@ def test_python_dependencies_resolve_installed_and_missing_without_pip(
         raise PackageNotFoundError(name)
 
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         fake_distribution,
     )
     resolution = DirectDependencyResolver(
@@ -159,7 +160,7 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
     project = make_project(tmp_path, [declaration])
     report = make_report(tmp_path, projects=[project])
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         lambda _: FakeDistribution("installed-lib", "2.0", tmp_path / "site-packages"),
     )
 
@@ -300,7 +301,7 @@ def test_inapplicable_python_marker_is_not_queried(
         raise AssertionError("an inapplicable dependency must not be queried")
 
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         forbidden_distribution,
     )
 
@@ -334,7 +335,7 @@ def test_python_dependency_name_variants_merge_to_one_candidate(
     project = make_project(tmp_path, declarations)
     report = make_report(tmp_path, projects=[project])
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         lambda _: FakeDistribution("demo-lib", "2.0", tmp_path / "site-packages"),
     )
 
@@ -350,6 +351,48 @@ def test_python_dependency_name_variants_merge_to_one_candidate(
     assert len(resolution.candidates) == 1
     assert resolution.candidates[0].specifiers == ["<3", ">=1"]
     assert resolution.candidates[0].status == "INSTALLED"
+
+
+def test_optional_installed_dependency_uses_one_consistent_counting_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    declaration = {
+        "name": "optional-lib",
+        "ecosystem": "python",
+        "scope": "optional",
+        "required": False,
+        "specifier": None,
+        "source": str(tmp_path / "pyproject.toml"),
+    }
+    project = make_project(tmp_path, [declaration])
+    report = make_report(tmp_path, projects=[project])
+    monkeypatch.setattr(
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
+        lambda _: FakeDistribution("optional-lib", "1.0", tmp_path / "site-packages"),
+    )
+
+    resolution = DirectDependencyResolver(environment={}).resolve(
+        discovery_id="disc-relevance",
+        projects=[project],
+        active_report=report,
+        collected_at=COLLECTED_AT,
+    )
+    enrich_active_report(
+        report,
+        resolution,
+        dependency_report_ref="artifact://discovery/demo/runs/disc-relevance/direct_dependencies.json",
+    )
+    summary = build_software_summary(
+        report=resolution,
+        dependency_report_ref="artifact://discovery/demo/runs/disc-relevance/direct_dependencies.json",
+    )
+
+    candidate_id = resolution.candidates[0].candidate_id
+    assert summary.discovery_id == resolution.discovery_id
+    assert summary.installed_dependency_count == 1
+    assert report.dependency_summary["required"] == []
+    assert report.dependency_summary["installed"] == [candidate_id]
+    assert report.executables[0].dependencies["installed"] == [candidate_id]
 
 
 def test_missing_ament_index_is_unknown_not_missing(tmp_path: Path) -> None:
@@ -427,7 +470,7 @@ def test_relevance_candidate_limit_is_explicitly_partial(
         raise PackageNotFoundError(name)
 
     monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         missing_distribution,
     )
 

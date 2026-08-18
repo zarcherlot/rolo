@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rolo.adapters.base import RobotUseBackend
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings, get_settings
 from rolo.core.registry import RobotRegistry
-from rolo.stages.debug.robot_use import RobotUseService, create_robot_use_backend
+from rolo.integrations.robot_use.base import RobotUseBackend
+from rolo.stages.diagnose.robot_use import RobotUseService, create_robot_use_backend
 
 
 @dataclass
