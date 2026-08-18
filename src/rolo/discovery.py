@@ -8,6 +8,16 @@ from rolo.stages.build.discovery import (
     RosProbe,
     detect_compute_platform,
     load_latest_report,
+    load_report,
+)
+from rolo.stages.build.software_inventory import (
+    CollectorStatus,
+    DpkgPackageCollector,
+    PackageCollectorState,
+    PackageInventoryIndex,
+    PackageRecord,
+    SoftwareInventoryPolicy,
+    SoftwareSummary,
 )
 
 __all__ = [
@@ -18,4 +28,12 @@ __all__ = [
     "RosProbe",
     "detect_compute_platform",
     "load_latest_report",
+    "load_report",
+    "CollectorStatus",
+    "DpkgPackageCollector",
+    "PackageCollectorState",
+    "PackageInventoryIndex",
+    "PackageRecord",
+    "SoftwareInventoryPolicy",
+    "SoftwareSummary",
 ]

@@ -53,6 +53,14 @@ from rolo.stages.build.models import (
     CodingAgentRun,
 )
 from rolo.stages.build.service import BuildStageService
+from rolo.stages.build.software_inventory import (
+    PackageCollectorState,
+    PackageInventoryIndex,
+    PackageRecord,
+    SoftwareInventoryPolicy,
+    SoftwareSummary,
+    load_software_inventory_policy,
+)
 from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
 from rolo.stages.debug.robot_use import create_robot_use_backend
 from rolo.stages.pipeline import assess_pipeline, assess_stage
@@ -519,6 +527,11 @@ def export_schemas(
         CodingAgentRun,
         StageAssessment,
         PipelineAssessment,
+        PackageRecord,
+        PackageCollectorState,
+        PackageInventoryIndex,
+        SoftwareInventoryPolicy,
+        SoftwareSummary,
     ]
     written: list[str] = []
     for model in models:
@@ -566,7 +579,13 @@ def discovery_run(
         raise typer.BadParameter(str(exc)) from exc
     roots = source_root or [Path.cwd()]
     try:
-        report, artifact = DiscoveryService(runtime.robot_use.artifacts).run(
+        inventory_policy = load_software_inventory_policy(
+            runtime.settings.rolo_discovery_policy_path
+        )
+        report, artifact = DiscoveryService(
+            runtime.robot_use.artifacts,
+            inventory_policy=inventory_policy,
+        ).run(
             robot=capability, urdf_path=urdf, source_roots=roots
         )
     except ValueError as exc:
@@ -585,6 +604,8 @@ def discovery_run(
             "probe_status": {name: probe.status for name, probe in report.probes.items()},
             "semantic_bindings": len(report.semantic_bindings),
             "tools": len(report.tool_catalog),
+            "software_packages": report.software_summary.get("package_count", 0),
+            "software_inventory_complete": report.software_summary.get("complete", False),
             "artifact": str(artifact),
         }
     )

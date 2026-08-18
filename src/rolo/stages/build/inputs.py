@@ -70,6 +70,10 @@ class BuildInputs(BaseModel):
     semantic_bindings_ref: str
     semantic_context_ref: str
     tool_catalog_ref: str
+    software_summary_ref: str = ""
+    package_inventory_ref: str = ""
+    software_package_count: int = 0
+    software_inventory_complete: bool = False
     probe_refs: dict[str, str]
     semantic_binding_candidates: int = 0
     semantic_value_candidates: int = 0

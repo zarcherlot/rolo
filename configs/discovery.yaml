@@ -13,6 +13,14 @@ limits:
   max_command_output_bytes: 200000
   max_source_files: 10000
   max_discovered_items: 1000
+software_inventory:
+  collector_timeout_s: 30
+  max_raw_bytes_per_collector: 52428800
+  max_record_bytes: 65536
+  # This is a chunk rollover limit, not a total-package limit. Additional
+  # records continue in dpkg-0002.jsonl, dpkg-0003.jsonl, and so on.
+  records_per_chunk: 1000
+  bytes_per_chunk: 2097152
 application:
   default_source_root: /opt/robot-application
   execute_discovered_binaries: false

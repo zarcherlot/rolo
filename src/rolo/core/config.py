@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     rolo_env: str = "development"
     rolo_config_dir: Path = Path(".rolo/config")
     rolo_artifact_dir: Path = Path(".rolo/artifacts")
+    rolo_discovery_policy_path: Path = Path("configs/discovery.yaml")
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     coding_agent_provider: str = "codex"

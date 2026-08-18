@@ -183,5 +183,8 @@ class DiscoveryReport(BaseModel):
     probes: dict[str, ProbeResult]
     semantic_bindings: dict[str, dict[str, Any]] = Field(default_factory=dict)
     tool_catalog: list[ToolDescriptor] = Field(default_factory=list)
+    software_summary: dict[str, Any] = Field(default_factory=dict)
+    software_summary_ref: str = ""
+    package_inventory_ref: str = ""
     source_roots: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)

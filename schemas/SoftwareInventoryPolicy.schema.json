@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "description": "Effective limits for package collection, separate from general discovery limits.",
+  "properties": {
+    "collector_timeout_s": {
+      "default": 30.0,
+      "exclusiveMinimum": 0,
+      "title": "Collector Timeout S",
+      "type": "number"
+    },
+    "max_raw_bytes_per_collector": {
+      "default": 52428800,
+      "exclusiveMinimum": 0,
+      "title": "Max Raw Bytes Per Collector",
+      "type": "integer"
+    },
+    "max_record_bytes": {
+      "default": 65536,
+      "exclusiveMinimum": 0,
+      "title": "Max Record Bytes",
+      "type": "integer"
+    },
+    "records_per_chunk": {
+      "default": 1000,
+      "exclusiveMinimum": 0,
+      "title": "Records Per Chunk",
+      "type": "integer"
+    },
+    "bytes_per_chunk": {
+      "default": 2097152,
+      "exclusiveMinimum": 0,
+      "title": "Bytes Per Chunk",
+      "type": "integer"
+    }
+  },
+  "title": "SoftwareInventoryPolicy",
+  "type": "object"
+}

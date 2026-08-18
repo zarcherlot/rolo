@@ -162,6 +162,23 @@
       "title": "Candidate Operations",
       "type": "array"
     },
+    "semantic_context_ref": {
+      "default": "",
+      "title": "Semantic Context Ref",
+      "type": "string"
+    },
+    "unresolved_semantics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Semantics",
+      "type": "array"
+    },
+    "semantic_value_candidates": {
+      "default": 0,
+      "title": "Semantic Value Candidates",
+      "type": "integer"
+    },
     "state_graph_baseline_required": {
       "default": true,
       "title": "State Graph Baseline Required",

@@ -134,6 +134,8 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     assert (artifacts.root / "discovery/demo_diff/latest/tool_catalog.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
     assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
+    assert (artifacts.root / "discovery/demo_diff/latest/software_summary.json").is_file()
+    assert (artifacts.root / "discovery/demo_diff/latest/package_inventory/index.json").is_file()
     assert (artifacts.root / "build/demo_diff/latest/inputs.json").is_file()
     assert (artifacts.root / "build/demo_diff/latest/semantic_context.json").is_file()
     assert (artifacts.root / "debug/demo_diff/latest/inputs.json").is_file()
@@ -142,6 +144,10 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
         assert (artifacts.root / f"discovery/demo_diff/latest/{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
+    assert (run_path.parent / "software_summary.json").is_file()
+    assert (run_path.parent / "package_inventory/index.json").is_file()
+    assert report.package_inventory_ref.endswith("/package_inventory/index.json")
+    assert "packages" not in report.capability_manifest["observed"]["software_stack"]
 
 
 def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Path) -> None:

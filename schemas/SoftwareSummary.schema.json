@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "CollectorStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "UNAVAILABLE",
+        "NOT_APPLICABLE"
+      ],
+      "title": "CollectorStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-software-summary/v1",
+      "default": "robot-software-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/CollectorStatus"
+    },
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "package_count": {
+      "minimum": 0,
+      "title": "Package Count",
+      "type": "integer"
+    },
+    "inventory_sha256": {
+      "title": "Inventory Sha256",
+      "type": "string"
+    },
+    "policy_sha256": {
+      "title": "Policy Sha256",
+      "type": "string"
+    },
+    "package_inventory_ref": {
+      "title": "Package Inventory Ref",
+      "type": "string"
+    },
+    "counts_by_manager": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Manager",
+      "type": "object"
+    },
+    "counts_by_architecture": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Architecture",
+      "type": "object"
+    },
+    "counts_by_status": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Status",
+      "type": "object"
+    },
+    "relevance_resolution_status": {
+      "const": "NOT_IMPLEMENTED",
+      "default": "NOT_IMPLEMENTED",
+      "title": "Relevance Resolution Status",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "status",
+    "complete",
+    "package_count",
+    "inventory_sha256",
+    "policy_sha256",
+    "package_inventory_ref"
+  ],
+  "title": "SoftwareSummary",
+  "type": "object"
+}

@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "CollectorStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "UNAVAILABLE",
+        "NOT_APPLICABLE"
+      ],
+      "title": "CollectorStatus",
+      "type": "string"
+    },
+    "InventoryChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "artifact_ref": {
+          "title": "Artifact Ref",
+          "type": "string"
+        },
+        "record_count": {
+          "minimum": 0,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "byte_count": {
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "first_package_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Package Id"
+        },
+        "last_package_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Package Id"
+        }
+      },
+      "required": [
+        "sequence",
+        "artifact_ref",
+        "record_count",
+        "byte_count",
+        "sha256"
+      ],
+      "title": "InventoryChunk",
+      "type": "object"
+    },
+    "PackageCollectorState": {
+      "additionalProperties": false,
+      "properties": {
+        "collector": {
+          "title": "Collector",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CollectorStatus"
+        },
+        "record_count": {
+          "minimum": 0,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "limit_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit Name"
+        },
+        "raw_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Raw Bytes",
+          "type": "integer"
+        },
+        "malformed_records": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Malformed Records",
+          "type": "integer"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "collector",
+        "status",
+        "record_count",
+        "complete",
+        "truncated"
+      ],
+      "title": "PackageCollectorState",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-software-inventory-index/v1",
+      "default": "robot-software-inventory-index/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "inventory_sha256": {
+      "title": "Inventory Sha256",
+      "type": "string"
+    },
+    "policy_sha256": {
+      "title": "Policy Sha256",
+      "type": "string"
+    },
+    "record_count": {
+      "minimum": 0,
+      "title": "Record Count",
+      "type": "integer"
+    },
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "counts_by_manager": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Manager",
+      "type": "object"
+    },
+    "counts_by_architecture": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Architecture",
+      "type": "object"
+    },
+    "counts_by_status": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Status",
+      "type": "object"
+    },
+    "collectors": {
+      "items": {
+        "$ref": "#/$defs/PackageCollectorState"
+      },
+      "title": "Collectors",
+      "type": "array"
+    },
+    "chunks": {
+      "items": {
+        "$ref": "#/$defs/InventoryChunk"
+      },
+      "title": "Chunks",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "inventory_sha256",
+    "policy_sha256",
+    "record_count",
+    "complete",
+    "collectors",
+    "created_at"
+  ],
+  "title": "PackageInventoryIndex",
+  "type": "object"
+}

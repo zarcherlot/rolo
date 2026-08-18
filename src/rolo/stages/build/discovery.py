@@ -38,6 +38,12 @@ from rolo.stages.build.inputs import (
     SemanticContext,
     StageSemanticInputs,
 )
+from rolo.stages.build.software_inventory import (
+    CollectorStatus,
+    DpkgPackageCollector,
+    SoftwareInventoryPolicy,
+    SoftwareSummary,
+)
 
 MAX_COMMAND_OUTPUT = 200_000
 MAX_SOURCE_FILES = 10_000
@@ -229,7 +235,10 @@ class LinuxProbe:
             "environment": {key: os.environ[key] for key in SAFE_ENV_KEYS if key in os.environ},
             "executables": {},
             "processes": [],
-            "packages": [],
+            "package_inventory": {
+                "status": "COLLECTED_SEPARATELY",
+                "detail": "See the immutable package_inventory artifact",
+            },
         }
         warnings: list[str] = []
         executable_checks = {
@@ -255,13 +264,8 @@ class LinuxProbe:
             processes = _run(["ps", "-eo", "pid=,ppid=,stat=,comm="])
             if processes.get("returncode") == 0:
                 data["processes"] = processes["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
-            packages = _run(["dpkg-query", "-W", "-f=${Package}\t${Version}\n"], timeout_s=15)
-            if packages.get("returncode") == 0:
-                data["packages"] = packages["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
-            else:
-                warnings.append("dpkg package inventory is unavailable")
         else:
-            warnings.append("Linux process and dpkg probes were skipped on a non-Linux host")
+            warnings.append("Linux process probes were skipped on a non-Linux host")
 
         status = (
             DiscoveryStatus.SUCCEEDED if platform.system() == "Linux" else DiscoveryStatus.PARTIAL
@@ -560,6 +564,7 @@ def _capability_manifest(
     robot: RobotCapability,
     probes: dict[str, ProbeResult],
     bindings: dict[str, dict[str, Any]],
+    software_summary: SoftwareSummary,
 ) -> dict[str, Any]:
     expected_arch = str(robot.platform.get("architecture", "")).lower()
     expected_compute = str(robot.platform.get("compute", "auto_discover")).lower()
@@ -613,7 +618,11 @@ def _capability_manifest(
         "expected_profile": robot.model_dump(mode="json"),
         "observed": {
             "hardware": probes["hw"].data,
-            "software_stack": probes["linux"].data,
+            "software_stack": {
+                "host": probes["linux"].data.get("host", {}),
+                "executables": probes["linux"].data.get("executables", {}),
+                "package_inventory": software_summary.model_dump(mode="json"),
+            },
             "ros_graph": probes["ros"].data,
             "applications": probes["application"].data.get("projects", []),
         },
@@ -829,8 +838,13 @@ def _build_tool_catalog(
 
 
 class DiscoveryService:
-    def __init__(self, artifacts: ArtifactStore) -> None:
+    def __init__(
+        self,
+        artifacts: ArtifactStore,
+        inventory_policy: SoftwareInventoryPolicy | None = None,
+    ) -> None:
         self.artifacts = artifacts
+        self.inventory_policy = inventory_policy or SoftwareInventoryPolicy()
 
     def run(
         self,
@@ -840,6 +854,25 @@ class DiscoveryService:
         source_roots: Sequence[Path],
     ) -> tuple[DiscoveryReport, Path]:
         robot = _read_discovery_urdf(robot, urdf_path)
+        now = datetime.now(timezone.utc)
+        discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
+        inventory_relative = (
+            f"discovery/{robot.robot_id}/runs/{discovery_id}/package_inventory"
+        )
+        package_inventory_ref = f"artifact://{inventory_relative}/index.json"
+        inventory_index = DpkgPackageCollector(self.inventory_policy).collect(
+            output_dir=self.artifacts.root / inventory_relative,
+            artifact_prefix=f"artifact://{inventory_relative}",
+            discovery_id=discovery_id,
+            collected_at=now,
+        )
+        software_summary = SoftwareSummary.from_index(
+            inventory_index,
+            package_inventory_ref,
+        )
+        software_summary_ref = (
+            f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
+        )
         probes = {
             "hw": HardwareProbe().run(),
             "linux": LinuxProbe().run(),
@@ -848,16 +881,17 @@ class DiscoveryService:
         }
         bindings = _semantic_bindings(probes)
         tools = _build_tool_catalog(probes, bindings)
-        capability_manifest = _capability_manifest(robot, probes, bindings)
+        capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
         statuses = {probe.status for probe in probes.values()}
         if DiscoveryStatus.FAILED in statuses:
             status = DiscoveryStatus.FAILED
-        elif statuses == {DiscoveryStatus.SUCCEEDED}:
+        elif statuses == {DiscoveryStatus.SUCCEEDED} and software_summary.status in {
+            CollectorStatus.SUCCEEDED,
+            CollectorStatus.NOT_APPLICABLE,
+        }:
             status = DiscoveryStatus.SUCCEEDED
         else:
             status = DiscoveryStatus.PARTIAL
-        now = datetime.now(timezone.utc)
-        discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
         semantic_context = _semantic_context(robot, probes, discovery_id)
         report = DiscoveryReport(
             discovery_id=discovery_id,
@@ -868,49 +902,56 @@ class DiscoveryService:
             probes=probes,
             semantic_bindings=bindings,
             tool_catalog=tools,
+            software_summary=software_summary.model_dump(mode="json"),
+            software_summary_ref=software_summary_ref,
+            package_inventory_ref=package_inventory_ref,
             source_roots=[str(path.expanduser().resolve()) for path in source_roots],
             created_at=now,
         )
         payload = report.model_dump(mode="json")
-        run_path = self.artifacts.write_json(
-            f"discovery/{robot.robot_id}/runs/{discovery_id}/report.json", payload
+        self.artifacts.write_json(
+            f"{inventory_relative}/index.json",
+            inventory_index.model_dump(mode="json"),
         )
-        self.artifacts.write_json(f"discovery/{robot.robot_id}/latest/report.json", payload)
-        for location in (f"runs/{discovery_id}", "latest"):
-            self.artifacts.write_json(
-                f"discovery/{robot.robot_id}/{location}/capability_manifest.json",
-                capability_manifest,
-            )
-            self.artifacts.write_json(
-                f"discovery/{robot.robot_id}/{location}/discovered_capability.json",
-                robot.model_dump(mode="json"),
-            )
-            self.artifacts.write_json(
-                f"discovery/{robot.robot_id}/{location}/semantic_context.json",
-                semantic_context.model_dump(mode="json"),
-            )
+        self.artifacts.write_json(
+            f"discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json",
+            software_summary.model_dump(mode="json"),
+        )
+        run_location = f"discovery/{robot.robot_id}/runs/{discovery_id}"
+        self.artifacts.write_json(
+            f"{run_location}/capability_manifest.json",
+            capability_manifest,
+        )
+        self.artifacts.write_json(
+            f"{run_location}/discovered_capability.json",
+            robot.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{run_location}/semantic_context.json",
+            semantic_context.model_dump(mode="json"),
+        )
         for layer, probe in probes.items():
-            for location in (f"runs/{discovery_id}", "latest"):
-                self.artifacts.write_json(
-                    f"discovery/{robot.robot_id}/{location}/{layer}.json",
-                    probe.model_dump(mode="json"),
-                )
+            self.artifacts.write_json(
+                f"{run_location}/{layer}.json",
+                probe.model_dump(mode="json"),
+            )
         catalog_payload = {
             "schema_version": "robot-tool-catalog/v1",
             "robot_id": robot.robot_id,
             "discovery_id": discovery_id,
             "tools": [tool.model_dump(mode="json") for tool in tools],
         }
-        for location in (f"runs/{discovery_id}", "latest"):
-            self.artifacts.write_json(
-                f"discovery/{robot.robot_id}/{location}/tool_catalog.json",
-                catalog_payload,
-            )
+        self.artifacts.write_json(f"{run_location}/tool_catalog.json", catalog_payload)
         unresolved = [
             f"{layer}:{probe.status}"
             for layer, probe in probes.items()
             if probe.status != DiscoveryStatus.SUCCEEDED
         ]
+        inventory_state = inventory_index.collectors[0]
+        if not inventory_state.complete:
+            unresolved.append(
+                f"software_inventory:{inventory_state.collector}:{inventory_state.status.value}"
+            )
         unresolved.extend(
             f"compatibility:{item['field']}"
             for item in capability_manifest["compatibility"]["mismatches"]
@@ -939,6 +980,10 @@ class DiscoveryService:
             tool_catalog_ref=(
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
             ),
+            software_summary_ref=software_summary_ref,
+            package_inventory_ref=package_inventory_ref,
+            software_package_count=software_summary.package_count,
+            software_inventory_complete=software_summary.complete,
             probe_refs={
                 layer: (
                     f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/{layer}.json"
@@ -956,13 +1001,10 @@ class DiscoveryService:
             f"build/{robot.robot_id}/runs/{discovery_id}/inputs.json", inputs_payload
         )
         self.artifacts.write_json(
-            f"build/{robot.robot_id}/latest/inputs.json", inputs_payload
+            f"build/{robot.robot_id}/runs/{discovery_id}/semantic_context.json",
+            semantic_context.model_dump(mode="json"),
         )
-        for location in (f"runs/{discovery_id}", "latest"):
-            self.artifacts.write_json(
-                f"build/{robot.robot_id}/{location}/semantic_context.json",
-                semantic_context.model_dump(mode="json"),
-            )
+        stage_payloads: dict[str, dict[str, Any]] = {}
         for stage in ("debug", "test"):
             stage_inputs = StageSemanticInputs(
                 stage=stage,
@@ -972,12 +1014,55 @@ class DiscoveryService:
                 unresolved_semantics=semantic_context.unresolved_semantics,
                 semantic_candidates=semantic_context.candidates,
             ).model_dump(mode="json")
+            stage_payloads[stage] = stage_inputs
             self.artifacts.write_json(
                 f"{stage}/{robot.robot_id}/runs/{discovery_id}/inputs.json", stage_inputs
             )
+
+        # The immutable run report is its commit marker as well.
+        run_path = self.artifacts.write_json(f"{run_location}/report.json", payload)
+
+        # Publish mutable convenience paths only after the immutable run is complete.
+        latest_location = f"discovery/{robot.robot_id}/latest"
+        self.artifacts.write_json(
+            f"{latest_location}/package_inventory/index.json",
+            inventory_index.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/software_summary.json",
+            software_summary.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/capability_manifest.json",
+            capability_manifest,
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/discovered_capability.json",
+            robot.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/semantic_context.json",
+            semantic_context.model_dump(mode="json"),
+        )
+        for layer, probe in probes.items():
+            self.artifacts.write_json(
+                f"{latest_location}/{layer}.json",
+                probe.model_dump(mode="json"),
+            )
+        self.artifacts.write_json(f"{latest_location}/tool_catalog.json", catalog_payload)
+        self.artifacts.write_json(
+            f"build/{robot.robot_id}/latest/inputs.json", inputs_payload
+        )
+        self.artifacts.write_json(
+            f"build/{robot.robot_id}/latest/semantic_context.json",
+            semantic_context.model_dump(mode="json"),
+        )
+        for stage, stage_inputs in stage_payloads.items():
             self.artifacts.write_json(
                 f"{stage}/{robot.robot_id}/latest/inputs.json", stage_inputs
             )
+        # report.json is the commit marker for readers of the latest snapshot.
+        self.artifacts.write_json(f"{latest_location}/report.json", payload)
         return report, run_path
 
 
@@ -987,4 +1072,11 @@ def load_latest_report(artifact_root: Path, robot_id: str) -> DiscoveryReport:
         raise FileNotFoundError(
             f"No discovery report for {robot_id}; run robotctl discover run first"
         )
+    return DiscoveryReport.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def load_report(artifact_root: Path, robot_id: str, discovery_id: str) -> DiscoveryReport:
+    path = artifact_root / "discovery" / robot_id / "runs" / discovery_id / "report.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"No discovery report {discovery_id} for {robot_id}")
     return DiscoveryReport.model_validate_json(path.read_text(encoding="utf-8"))

@@ -8,7 +8,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.registry import RobotRegistry
 from rolo.discovery import DiscoveryService
 from rolo.stages.build.executor import CodexBuildExecutor, build_codex_command
-from rolo.stages.build.models import CodingAgentConfig, CodingAgentResult
+from rolo.stages.build.models import BuildPlan, CodingAgentConfig, CodingAgentResult
 from rolo.stages.build.service import BuildStageService
 
 
@@ -21,6 +21,39 @@ def prepare_plan(artifact_root: Path, source_root: Path) -> None:
         source_roots=[source_root],
     )
     BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
+
+
+def test_build_prompt_is_pinned_to_plan_discovery_snapshot(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    prepare_plan(artifact_root, workspace)
+    plan = BuildPlan.model_validate_json(
+        (artifact_root / "build/demo_diff/latest/plan.json").read_text(encoding="utf-8")
+    )
+    run_report_path = (
+        artifact_root
+        / "discovery"
+        / "demo_diff"
+        / "runs"
+        / plan.source_discovery_id
+        / "report.json"
+    )
+    latest_report_path = artifact_root / "discovery/demo_diff/latest/report.json"
+    planned_report = json.loads(run_report_path.read_text(encoding="utf-8"))
+    latest_report = json.loads(latest_report_path.read_text(encoding="utf-8"))
+    planned_report["capability_manifest"]["snapshot_marker"] = "planned-snapshot"
+    latest_report["capability_manifest"]["snapshot_marker"] = "newer-latest-snapshot"
+    run_report_path.write_text(json.dumps(planned_report), encoding="utf-8")
+    latest_report_path.write_text(json.dumps(latest_report), encoding="utf-8")
+    inventory_chunk = run_report_path.parent / "package_inventory/dpkg-0001.jsonl"
+    inventory_chunk.write_text('{"name":"full-inventory-only-marker"}\n', encoding="utf-8")
+
+    prompt = CodexBuildExecutor(ArtifactStore(artifact_root))._build_prompt(plan)
+
+    assert "planned-snapshot" in prompt
+    assert "newer-latest-snapshot" not in prompt
+    assert "full-inventory-only-marker" not in prompt
 
 
 def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(

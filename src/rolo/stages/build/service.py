@@ -4,7 +4,7 @@ from pathlib import Path
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus
-from rolo.stages.build.discovery import load_latest_report
+from rolo.stages.build.discovery import load_latest_report, load_report
 from rolo.stages.build.inputs import BuildInputs
 from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask, CodingAgentConfig
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
@@ -24,7 +24,7 @@ class BuildStageService:
         if not build_inputs.is_file():
             raise FileNotFoundError(f"No build inputs for {robot_id}; run build discovery first")
         inputs = BuildInputs.model_validate_json(build_inputs.read_text(encoding="utf-8"))
-        report = load_latest_report(self.artifacts.root, robot_id)
+        report = load_report(self.artifacts.root, robot_id, inputs.discovery_id)
         candidates = sorted(
             tool.operation
             for tool in report.tool_catalog

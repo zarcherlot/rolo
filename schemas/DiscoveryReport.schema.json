@@ -272,6 +272,21 @@
       "title": "Tool Catalog",
       "type": "array"
     },
+    "software_summary": {
+      "additionalProperties": true,
+      "title": "Software Summary",
+      "type": "object"
+    },
+    "software_summary_ref": {
+      "default": "",
+      "title": "Software Summary Ref",
+      "type": "string"
+    },
+    "package_inventory_ref": {
+      "default": "",
+      "title": "Package Inventory Ref",
+      "type": "string"
+    },
     "source_roots": {
       "items": {
         "type": "string"

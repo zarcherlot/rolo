@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import utc_now
-from rolo.stages.build.discovery import load_latest_report
+from rolo.stages.build.discovery import load_report
 from rolo.stages.build.enrollment import ROBOT_ID_PATTERN
 from rolo.stages.build.models import (
     BuildPlan,
@@ -255,12 +255,17 @@ class CodexBuildExecutor:
         return environment
 
     def _build_prompt(self, plan: BuildPlan) -> str:
-        report = load_latest_report(self.artifacts.root, plan.robot_id)
+        report = load_report(
+            self.artifacts.root,
+            plan.robot_id,
+            plan.source_discovery_id,
+        )
         semantic_context_path = (
             self.artifacts.root
             / "build"
             / plan.robot_id
-            / "latest"
+            / "runs"
+            / plan.source_discovery_id
             / "semantic_context.json"
         )
         semantic_context = (
@@ -277,6 +282,7 @@ class CodexBuildExecutor:
             "capability_manifest": report.capability_manifest,
             "semantic_bindings": report.semantic_bindings,
             "tool_catalog": [tool.model_dump(mode="json") for tool in report.tool_catalog],
+            "software_summary": report.software_summary,
             "semantic_context": semantic_context,
         }
         return (

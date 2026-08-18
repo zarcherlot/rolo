@@ -89,6 +89,7 @@ def test_urdf_profile_catalog_is_data_driven() -> None:
 
 def test_urdf_profile_hash_is_stable_across_line_endings(tmp_path: Path) -> None:
     source = urdf_profile("differential_drive").read_bytes()
+    source = source.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     crlf_profile = tmp_path / "differential_drive.urdf"
     crlf_profile.write_bytes(source.replace(b"\n", b"\r\n"))
 

@@ -49,9 +49,33 @@
       "title": "Semantic Bindings Ref",
       "type": "string"
     },
+    "semantic_context_ref": {
+      "title": "Semantic Context Ref",
+      "type": "string"
+    },
     "tool_catalog_ref": {
       "title": "Tool Catalog Ref",
       "type": "string"
+    },
+    "software_summary_ref": {
+      "default": "",
+      "title": "Software Summary Ref",
+      "type": "string"
+    },
+    "package_inventory_ref": {
+      "default": "",
+      "title": "Package Inventory Ref",
+      "type": "string"
+    },
+    "software_package_count": {
+      "default": 0,
+      "title": "Software Package Count",
+      "type": "integer"
+    },
+    "software_inventory_complete": {
+      "default": false,
+      "title": "Software Inventory Complete",
+      "type": "boolean"
     },
     "probe_refs": {
       "additionalProperties": {
@@ -65,6 +89,11 @@
       "title": "Semantic Binding Candidates",
       "type": "integer"
     },
+    "semantic_value_candidates": {
+      "default": 0,
+      "title": "Semantic Value Candidates",
+      "type": "integer"
+    },
     "tool_count": {
       "default": 0,
       "title": "Tool Count",
@@ -75,6 +104,13 @@
         "type": "string"
       },
       "title": "Unresolved Dependencies",
+      "type": "array"
+    },
+    "unresolved_semantics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Semantics",
       "type": "array"
     },
     "agent_requirement": {
@@ -93,6 +129,7 @@
     "status",
     "capability_manifest_ref",
     "semantic_bindings_ref",
+    "semantic_context_ref",
     "tool_catalog_ref",
     "probe_refs"
   ],
