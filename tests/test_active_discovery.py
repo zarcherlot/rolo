@@ -432,10 +432,9 @@ def test_discovery_does_not_run_host_package_inventory(
     )
 
     assert report.software_summary["status"] == "PARTIAL"
-    assert report.software_summary["relevance_resolution_status"] == "PARTIAL"
-    assert report.software_summary["relevant_candidate_count"] == 0
+    assert report.software_summary["direct_dependency_count"] == 0
     assert report.software_summary["unknown_dependency_count"] == 1
-    assert (tmp_path / "artifacts/discovery/demo_diff/latest/package_relevance.json").is_file()
+    assert (tmp_path / "artifacts/discovery/demo_diff/latest.json").is_file()
     assert report.probes["ros"].status == "UNAVAILABLE"
     assert report.probes["ros"].warnings == ["ROS runtime inspection was not requested"]
 
@@ -467,8 +466,8 @@ demo = "demo:main"
     )
 
     run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
-    relevance = json.loads(
-        (run_root / "package_relevance.json").read_text(encoding="utf-8")
+    dependencies = json.loads(
+        (run_root / "direct_dependencies.json").read_text(encoding="utf-8")
     )
     active = json.loads(
         (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
@@ -477,11 +476,12 @@ demo = "demo:main"
         (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
 
-    assert relevance["status"] == "SUCCEEDED"
-    assert relevance["missing_count"] == 1
-    assert relevance["candidates"][0]["name"] == missing_name
-    assert relevance["candidates"][0]["status"] == "MISSING"
-    assert active["dependency_summary"]["missing"][0]["name"] == missing_name
+    assert dependencies["status"] == "SUCCEEDED"
+    assert dependencies["counts_by_status"]["MISSING"] == 1
+    assert dependencies["candidates"][0]["name"] == missing_name
+    assert dependencies["candidates"][0]["status"] == "MISSING"
+    missing_id = dependencies["candidates"][0]["candidate_id"]
+    assert active["dependency_summary"]["missing"] == [missing_id]
     assert report.software_summary["missing_dependency_count"] == 1
     assert any(
         item == f"dependency:python:{missing_name}:MISSING"
@@ -528,8 +528,8 @@ demo = "demo:main"
     )
 
     run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
-    relevance = json.loads(
-        (run_root / "package_relevance.json").read_text(encoding="utf-8")
+    dependencies = json.loads(
+        (run_root / "direct_dependencies.json").read_text(encoding="utf-8")
     )
     active = json.loads(
         (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
@@ -538,9 +538,10 @@ demo = "demo:main"
         (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
 
-    assert relevance["conflict_count"] == 1
-    assert relevance["candidates"][0]["status"] == "VERSION_CONFLICT"
-    assert active["dependency_summary"]["conflicting"][0]["name"] == "conflict-lib"
+    assert dependencies["counts_by_status"]["VERSION_CONFLICT"] == 1
+    assert dependencies["candidates"][0]["status"] == "VERSION_CONFLICT"
+    conflict_id = dependencies["candidates"][0]["candidate_id"]
+    assert active["dependency_summary"]["conflicting"] == [conflict_id]
     assert report.software_summary["conflicting_dependency_count"] == 1
     assert "dependency:python:conflict-lib:VERSION_CONFLICT" in build_inputs[
         "unresolved_dependencies"

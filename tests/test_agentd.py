@@ -10,7 +10,7 @@ from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.registry import RobotRegistry
-from rolo.discovery import DiscoveryService
+from rolo.stages.build.discovery import DiscoveryService
 
 
 def test_bootstrap_agentd_exposes_only_non_motion_readiness() -> None:

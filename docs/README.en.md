@@ -97,7 +97,7 @@ uv sync --frozen
 uv run robotctl init --robot-id your_robot_id
 ```
 
-### Access the control plane
+### Access the management API
 
 The API listens only on the robot's loopback interface by default. For remote access, create an SSH
 port forward:
@@ -139,6 +139,11 @@ uv run robotctl build discover run --robot "$ROBOT_ID" \
 Discovery inventories hardware, the host software stack, the ROS graph, and local source projects.
 It persists the four `hw/linux/ros/application` probes and writes the capability manifest, semantic
 binding candidates, tool catalog, and build inputs.
+
+Software discovery resolves only Python and ROS direct dependencies declared by source or launch
+evidence. Local metadata classifies them as installed, missing, version-conflicting, or unknown;
+discovery neither scans the host package database nor installs target-project dependencies. See
+[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the complete contract.
 
 The Coding Agent then reads the build inputs, creates a build plan, and implements and inspects each
 layer adapter through the canonical CLI. A local `.env` can select the model or configure an API
@@ -206,12 +211,9 @@ src/rolo/stages/build/   Stage 1: registration, probe discovery, CLI constructio
 src/rolo/stages/debug/   Stage 2: Diagnosis Agent loop, tuning, and robot_use
 src/rolo/stages/test/    Stage 3: optional autonomous testing and formal acceptance
 src/rolo/core/           Shared configuration, domain models, artifacts, and robot registry
-src/rolo/                Shared API, agentd, runtime, and compatibility entry points
+src/rolo/                Shared API, agentd, and runtime
 configs/local/           Capability manifests for local mock robots
 configs/profiles/        URDF profile format examples
-configs/platforms/       ARM64 compatibility and compute-platform manifests
-configs/robot_use.yaml
-configs/discovery.yaml
 schemas/                 Exported JSON Schemas
 tests/                   Offline unit and API tests
 scripts/                 Development helpers

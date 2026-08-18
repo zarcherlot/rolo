@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 from rolo.agentd import create_agentd_app
 from rolo.cli import app
 from rolo.core.config import get_settings, load_yaml
-from rolo.enrollment import EnrollmentService, list_profiles, load_urdf_profile
+from rolo.stages.build.enrollment import EnrollmentService, list_profiles, load_urdf_profile
 
 PROFILE_ROOT = Path("configs/profiles")
 
@@ -117,14 +117,8 @@ def test_new_enrollment_remains_degraded_until_binding_and_calibration(
     assert state.json()["application"]["navigation"] == "NOT_READY"
 
 
-def test_init_registers_and_runs_all_install_checks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_registers_and_runs_runtime_checks(tmp_path: Path) -> None:
     get_settings.cache_clear()
-    monkeypatch.setattr(
-        "rolo.cli._run_engineering_tests",
-        lambda _workspace: {"status": "PASSED", "exit_code": 0, "summary": "48 passed"},
-    )
     result = CliRunner().invoke(
         app,
         [
@@ -140,7 +134,7 @@ def test_init_registers_and_runs_all_install_checks(
     assert '"robot_id": "customer_rover_42"' in result.output
     assert '"profile_path"' not in result.output
     assert '"status": "READY_FOR_DISCOVERY"' in result.output
-    assert '"engineering_tests"' in result.output
+    assert '"engineering_tests"' not in result.output
     assert '"enrollment_status": "NOT_DISCOVERED"' in result.output
     assert '"motion_safety_status": "UNAPPROVED"' in result.output
     assert (tmp_path / "config/robots/customer_rover_42.yaml").is_file()

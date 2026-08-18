@@ -28,13 +28,13 @@ src/rolo/stages/
 ```
 
 `agentd.py`, `api.py`, and `runtime.py` remain shared services. Shared configuration, domain models,
-artifacts, and the robot registry live under `src/rolo/core/`. Compatibility modules at
-`rolo.enrollment`, `rolo.discovery`, and `rolo.robot_use` preserve top-level imports.
+artifacts, and the robot registry live under `src/rolo/core/`.
 
 ## Artifact flow
 
-`robotctl init` registers only `robot_id` and runs doctor, robot-list validation, and repository
-tests. It does not accept a URDF or approve motion. Discovery receives a URDF path explicitly,
+`robotctl init` registers only `robot_id` and runs doctor plus robot-list validation. Repository
+tests remain a development/CI responsibility. Init does not accept a URDF or approve motion.
+Discovery receives a URDF path explicitly,
 records its path/hash, parses the full file, persists each probe, and writes `semantic_context.json` plus Build, Debug, and Test input
 artifacts. The semantic context carries unresolved URDF fields and source-attributed launch/config
 candidates. Candidates are explicitly unverified and have no safety authority. The build inputs
@@ -55,6 +55,11 @@ The uv workspace may install a missing executor and verify its version without a
 build execution gate verifies the installed executable and authentication again, persists a
 secret-free dependency report, and blocks execution unless the configured executor is ready.
 
+Software discovery uses source and launch evidence to identify Python and ROS direct dependencies.
+It resolves only those candidates against local metadata, reports missing/conflicting/unknown state,
+and performs no host package inventory or target dependency installation. The target contract is
+specified in [`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md).
+
 ## Current implementation maturity
 
 - Build implements enrollment, bounded discovery, probe persistence, build inputs,
@@ -73,7 +78,7 @@ secret-free dependency report, and blocks execution unless the configured execut
 The stage-oriented commands are canonical for lifecycle orchestration:
 
 ```text
-uv run robotctl build status|plan|agent-config|enroll|discover|tool
+uv run robotctl build status|plan|agent-config|agent-prepare|execute|enroll|discover
 uv run robotctl debug status|robot-use
 uv run robotctl test status
 uv run robotctl pipeline-status

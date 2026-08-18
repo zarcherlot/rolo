@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -118,13 +118,6 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(default_factory=utc_now)
 
 
-class ErrorDetail(BaseModel):
-    code: str
-    message: str
-    retryable: bool = False
-    details: dict[str, Any] = Field(default_factory=dict)
-
-
 class DiscoveryStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     PARTIAL = "PARTIAL"
@@ -185,9 +178,16 @@ class DiscoveryReport(BaseModel):
     tool_catalog: list[ToolDescriptor] = Field(default_factory=list)
     software_summary: dict[str, Any] = Field(default_factory=dict)
     software_summary_ref: str = ""
-    package_relevance_ref: str = ""
+    dependency_report_ref: str = ""
     active_discovery_report_ref: str = ""
-    confirmation_status: str = "AWAITING_USER_CONFIRMATION"
     discovery_mode: str = ""
     source_roots: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class DiscoveryLatestIndex(BaseModel):
+    schema_version: Literal["robot-discovery-latest/v1"] = "robot-discovery-latest/v1"
+    robot_id: str
+    discovery_id: str
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    published_at: datetime = Field(default_factory=utc_now)

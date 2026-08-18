@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import platform
 import queue
@@ -20,6 +19,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import ProbeResult, ToolDescriptor, utc_now
 
 MAX_ACTIVE_FILES = 10_000
@@ -326,14 +326,6 @@ class DiscoveryConfirmation(BaseModel):
     corrections_ref: str | None = None
     corrections_sha256: str | None = None
     confirmed_at: datetime = Field(default_factory=utc_now)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _hash_files(paths: Iterable[Path]) -> dict[str, str]:
@@ -1059,11 +1051,10 @@ class ActiveDiscoveryAnalyzer:
                     capability_candidates=candidate_operations,
                     dependencies={
                         "declared": dependencies,
-                        "binary_linked": [],
-                        "runtime_observed": [],
+                        "installed": [],
                         "missing": [],
+                        "unknown": [],
                         "version_conflicts": [],
-                        "install_candidates": [],
                     },
                     safety={
                         "access": "read",
@@ -1154,11 +1145,10 @@ class ActiveDiscoveryAnalyzer:
                     capability_candidates=candidate_operations,
                     dependencies={
                         "declared": dependencies,
-                        "binary_linked": [],
-                        "runtime_observed": [],
+                        "installed": [],
                         "missing": [],
+                        "unknown": [],
                         "version_conflicts": [],
-                        "install_candidates": [],
                     },
                     safety={
                         "access": "unknown",
@@ -1355,10 +1345,15 @@ class ActiveDiscoveryAnalyzer:
             executables=executables,
             canonical_operation_summary=candidate_operations,
             dependency_summary={
-                "required": dependencies,
+                "report_ref": None,
+                "candidates": [],
+                "declared": dependencies,
+                "required": [],
+                "installed": [],
                 "missing": [],
+                "unknown": [],
                 "conflicting": [],
-                "installation_plan_ref": None,
+                "unresolved_executables": [],
             },
             unknowns=(
                 ["no executable entrypoint could be identified"] if not executables else []
@@ -1463,14 +1458,24 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
                 "",
             ]
         )
+    dependency_candidates = {
+        candidate.get("candidate_id"): candidate
+        for candidate in report.dependency_summary.get("candidates", [])
+    }
+
+    def dependency_names(key: str) -> list[str]:
+        return [
+            str(dependency_candidates.get(candidate_id, {}).get("name", candidate_id))
+            for candidate_id in report.dependency_summary.get(key, [])
+        ]
+
     lines.extend(
         [
             "## Dependency summary",
             "",
-            f"- Required: {summarize(report.dependency_summary.get('required', []), limit=100)}",
-            f"- Missing: {summarize(report.dependency_summary.get('missing', []), limit=100)}",
-            f"- Conflicting: "
-            f"{summarize(report.dependency_summary.get('conflicting', []), limit=100)}",
+            f"- Required: {summarize(dependency_names('required'), limit=100)}",
+            f"- Missing: {summarize(dependency_names('missing'), limit=100)}",
+            f"- Conflicting: {summarize(dependency_names('conflicting'), limit=100)}",
             "",
             "## Unknowns and conflicts",
             "",
@@ -1536,7 +1541,7 @@ def write_confirmation(
             f"artifact://discovery/{robot_id}/runs/{discovery_id}/"
             "active_discovery_report.json"
         ),
-        report_sha256=hashlib.sha256(report_payload).hexdigest(),
+        report_sha256=sha256_bytes(report_payload),
         decision=decision,
         confirmation_status=confirmation_status_for_decision(decision),
         corrections_ref=str(corrections_path) if corrections_path else None,
@@ -1548,7 +1553,7 @@ def confirmation_matches_report(confirmation: DiscoveryConfirmation, report_path
     try:
         payload = report_path.read_bytes()
         report = ActiveDiscoveryReport.model_validate_json(payload)
-        report_sha256 = hashlib.sha256(payload).hexdigest()
+        report_sha256 = sha256_bytes(payload)
     except (OSError, ValueError):
         return False
     return (

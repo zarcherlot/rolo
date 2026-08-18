@@ -24,7 +24,6 @@ from rolo.stages.build.active_discovery import ActiveDiscoveryReport
 class ResolutionStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     PARTIAL = "PARTIAL"
-    BLOCKED_BY_POLICY = "BLOCKED_BY_POLICY"
 
 
 class CandidateResolutionStatus(str, Enum):
@@ -32,7 +31,6 @@ class CandidateResolutionStatus(str, Enum):
     MISSING = "MISSING"
     VERSION_CONFLICT = "VERSION_CONFLICT"
     UNKNOWN = "UNKNOWN"
-    BLOCKED_BY_POLICY = "BLOCKED_BY_POLICY"
 
 
 class SoftwareDiscoveryPolicy(BaseModel):
@@ -43,13 +41,12 @@ class SoftwareDiscoveryPolicy(BaseModel):
     max_candidates: int = Field(default=1_000, gt=0)
 
 
-class PackageRelevanceCandidate(BaseModel):
+class DirectDependencyCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate_id: str
     name: str
     ecosystem: Literal["python", "ros"]
-    relevance: Literal["DIRECT"] = "DIRECT"
     required: bool = True
     specifiers: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=list)
@@ -62,23 +59,19 @@ class PackageRelevanceCandidate(BaseModel):
     reason: str | None = None
 
 
-class PackageRelevanceReport(BaseModel):
+class DirectDependencyReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-package-relevance/v1"] = "robot-package-relevance/v1"
+    schema_version: Literal["robot-direct-dependency-report/v1"] = (
+        "robot-direct-dependency-report/v1"
+    )
     discovery_id: str
     status: ResolutionStatus
-    complete: bool
-    candidate_count: int = Field(ge=0)
     omitted_candidate_count: int = Field(default=0, ge=0)
-    installed_count: int = Field(default=0, ge=0)
-    missing_count: int = Field(default=0, ge=0)
-    conflict_count: int = Field(default=0, ge=0)
-    unknown_count: int = Field(default=0, ge=0)
     unresolved_executables: list[str] = Field(default_factory=list)
     counts_by_ecosystem: dict[str, int] = Field(default_factory=dict)
     counts_by_status: dict[str, int] = Field(default_factory=dict)
-    candidates: list[PackageRelevanceCandidate] = Field(default_factory=list)
+    candidates: list[DirectDependencyCandidate] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime
 
@@ -89,11 +82,9 @@ class SoftwareSummary(BaseModel):
     schema_version: Literal["robot-software-summary/v1"] = "robot-software-summary/v1"
     discovery_id: str
     status: ResolutionStatus
-    complete: bool
-    relevance_resolution_status: str
-    package_relevance_ref: str = ""
-    relevant_candidate_count: int = Field(default=0, ge=0)
-    relevant_resolved_count: int = Field(default=0, ge=0)
+    dependency_report_ref: str = ""
+    direct_dependency_count: int = Field(default=0, ge=0)
+    installed_dependency_count: int = Field(default=0, ge=0)
     missing_dependency_count: int = Field(default=0, ge=0)
     conflicting_dependency_count: int = Field(default=0, ge=0)
     unknown_dependency_count: int = Field(default=0, ge=0)
@@ -108,16 +99,16 @@ def _normalized_candidate_name(ecosystem: str, name: str) -> str:
 
 def _candidate_id(ecosystem: str, name: str) -> str:
     identity = f"{ecosystem}\0{_normalized_candidate_name(ecosystem, name)}".encode()
-    return f"pkgcand-{hashlib.sha256(identity).hexdigest()[:16]}"
+    return f"depcand-{hashlib.sha256(identity).hexdigest()[:16]}"
 
 
 def _version_checked_candidate(
-    candidate: PackageRelevanceCandidate,
+    candidate: DirectDependencyCandidate,
     *,
     package_id: str,
     package_name: str,
     version: str | None,
-) -> PackageRelevanceCandidate:
+) -> DirectDependencyCandidate:
     installed = candidate.model_copy(
         update={
             "status": CandidateResolutionStatus.INSTALLED,
@@ -164,8 +155,8 @@ def _version_checked_candidate(
 
 
 def _python_candidate(
-    candidate: PackageRelevanceCandidate,
-) -> PackageRelevanceCandidate:
+    candidate: DirectDependencyCandidate,
+) -> DirectDependencyCandidate:
     try:
         distribution = importlib_metadata.distribution(candidate.name)
     except importlib_metadata.PackageNotFoundError:
@@ -202,10 +193,10 @@ def _ament_prefixes(environment: Mapping[str, str]) -> list[Path]:
 
 
 def _ros_candidate(
-    candidate: PackageRelevanceCandidate,
+    candidate: DirectDependencyCandidate,
     *,
     prefixes: Sequence[Path],
-) -> PackageRelevanceCandidate:
+) -> DirectDependencyCandidate:
     if not prefixes:
         return candidate.model_copy(
             update={
@@ -239,7 +230,7 @@ def _ros_candidate(
     )
 
 
-class RelevantSoftwareResolver:
+class DirectDependencyResolver:
     def __init__(
         self,
         policy: SoftwareDiscoveryPolicy | None = None,
@@ -254,7 +245,7 @@ class RelevantSoftwareResolver:
         *,
         projects: Sequence[dict[str, Any]],
         active_report: ActiveDiscoveryReport,
-    ) -> tuple[list[PackageRelevanceCandidate], int]:
+    ) -> tuple[list[DirectDependencyCandidate], int]:
         merged: dict[tuple[str, str], dict[str, Any]] = {}
 
         def add(
@@ -322,7 +313,7 @@ class RelevantSoftwareResolver:
                     executable_id=executable.executable_id,
                 )
         candidates = [
-            PackageRelevanceCandidate(
+            DirectDependencyCandidate(
                 candidate_id=_candidate_id(item["ecosystem"], item["name"]),
                 name=item["name"],
                 ecosystem=item["ecosystem"],
@@ -345,8 +336,7 @@ class RelevantSoftwareResolver:
         projects: Sequence[dict[str, Any]],
         active_report: ActiveDiscoveryReport,
         collected_at: datetime,
-        enabled: bool = True,
-    ) -> PackageRelevanceReport:
+    ) -> DirectDependencyReport:
         candidates, omitted = self._candidates(projects=projects, active_report=active_report)
         unresolved_executables = [
             executable.executable_id
@@ -357,27 +347,8 @@ class RelevantSoftwareResolver:
             )
             and not executable.launch_analysis.packages
         ]
-        if not enabled:
-            candidates = [
-                candidate.model_copy(
-                    update={
-                        "status": CandidateResolutionStatus.BLOCKED_BY_POLICY,
-                        "reason": "dependency resolution was disabled by policy",
-                    }
-                )
-                for candidate in candidates
-            ]
-            return self._report(
-                discovery_id=discovery_id,
-                candidates=candidates,
-                omitted=omitted,
-                unresolved_executables=unresolved_executables,
-                created_at=collected_at,
-                forced_status=ResolutionStatus.BLOCKED_BY_POLICY,
-            )
-
         prefixes = _ament_prefixes(self.environment)
-        resolved: list[PackageRelevanceCandidate] = []
+        resolved: list[DirectDependencyCandidate] = []
         for candidate in candidates:
             if candidate.ecosystem == "python":
                 resolved.append(_python_candidate(candidate))
@@ -395,22 +366,18 @@ class RelevantSoftwareResolver:
     def _report(
         *,
         discovery_id: str,
-        candidates: list[PackageRelevanceCandidate],
+        candidates: list[DirectDependencyCandidate],
         omitted: int,
         unresolved_executables: list[str],
         created_at: datetime,
-        forced_status: ResolutionStatus | None = None,
-    ) -> PackageRelevanceReport:
+    ) -> DirectDependencyReport:
         counts = Counter(candidate.status.value for candidate in candidates)
         ecosystem_counts = Counter(candidate.ecosystem for candidate in candidates)
         incomplete = bool(unresolved_executables) or omitted > 0 or any(
-            candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
+            candidate.status == CandidateResolutionStatus.UNKNOWN
             for candidate in candidates
         )
-        status = forced_status or (
-            ResolutionStatus.PARTIAL if incomplete else ResolutionStatus.SUCCEEDED
-        )
+        status = ResolutionStatus.PARTIAL if incomplete else ResolutionStatus.SUCCEEDED
         warnings: list[str] = []
         if omitted:
             warnings.append(f"{omitted} relevance candidates exceeded the configured limit")
@@ -422,19 +389,12 @@ class RelevantSoftwareResolver:
         warnings.extend(
             f"{candidate.ecosystem}:{candidate.name}: {candidate.reason or candidate.status.value}"
             for candidate in candidates
-            if candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
+            if candidate.status == CandidateResolutionStatus.UNKNOWN
         )
-        return PackageRelevanceReport(
+        return DirectDependencyReport(
             discovery_id=discovery_id,
             status=status,
-            complete=status == ResolutionStatus.SUCCEEDED,
-            candidate_count=len(candidates),
             omitted_candidate_count=omitted,
-            installed_count=counts[CandidateResolutionStatus.INSTALLED.value],
-            missing_count=counts[CandidateResolutionStatus.MISSING.value],
-            conflict_count=counts[CandidateResolutionStatus.VERSION_CONFLICT.value],
-            unknown_count=counts[CandidateResolutionStatus.UNKNOWN.value],
             unresolved_executables=unresolved_executables,
             counts_by_ecosystem=dict(sorted(ecosystem_counts.items())),
             counts_by_status=dict(sorted(counts.items())),
@@ -447,18 +407,17 @@ class RelevantSoftwareResolver:
 def build_software_summary(
     *,
     discovery_id: str,
-    report: PackageRelevanceReport,
-    package_relevance_ref: str,
+    report: DirectDependencyReport,
+    dependency_report_ref: str,
 ) -> SoftwareSummary:
     required = [candidate for candidate in report.candidates if candidate.required]
+    counts = Counter(candidate.status.value for candidate in report.candidates)
     return SoftwareSummary(
         discovery_id=discovery_id,
         status=report.status,
-        complete=report.complete,
-        relevance_resolution_status=report.status.value,
-        package_relevance_ref=package_relevance_ref,
-        relevant_candidate_count=report.candidate_count,
-        relevant_resolved_count=report.installed_count,
+        dependency_report_ref=dependency_report_ref,
+        direct_dependency_count=len(report.candidates),
+        installed_dependency_count=counts[CandidateResolutionStatus.INSTALLED.value],
         missing_dependency_count=sum(
             candidate.status == CandidateResolutionStatus.MISSING for candidate in required
         ),
@@ -468,8 +427,7 @@ def build_software_summary(
         ),
         unknown_dependency_count=len(report.unresolved_executables)
         + sum(
-            candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
+            candidate.status == CandidateResolutionStatus.UNKNOWN
             for candidate in required
         ),
         warnings=report.warnings,
@@ -478,37 +436,41 @@ def build_software_summary(
 
 def enrich_active_report(
     active_report: ActiveDiscoveryReport,
-    resolution: PackageRelevanceReport,
+    resolution: DirectDependencyReport,
+    *,
+    dependency_report_ref: str,
 ) -> None:
     candidates = resolution.candidates
+    declared = list(active_report.dependency_summary.get("declared", []))
+    compact_candidates = [
+        {
+            "candidate_id": candidate.candidate_id,
+            "name": candidate.name,
+            "ecosystem": candidate.ecosystem,
+            "required": candidate.required,
+            "status": candidate.status.value,
+        }
+        for candidate in candidates
+    ]
+
+    def ids_with_status(*statuses: CandidateResolutionStatus) -> list[str]:
+        accepted = set(statuses)
+        return [
+            candidate.candidate_id
+            for candidate in candidates
+            if candidate.required and candidate.status in accepted
+        ]
+
     active_report.dependency_summary = {
-        "required": [
-            candidate.model_dump(mode="json") for candidate in candidates if candidate.required
-        ],
-        "resolved": [
-            candidate.model_dump(mode="json")
-            for candidate in candidates
-            if candidate.status == CandidateResolutionStatus.INSTALLED
-        ],
-        "missing": [
-            candidate.model_dump(mode="json")
-            for candidate in candidates
-            if candidate.required and candidate.status == CandidateResolutionStatus.MISSING
-        ],
-        "unknown": [
-            candidate.model_dump(mode="json")
-            for candidate in candidates
-            if candidate.required
-            and candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
-        ],
-        "conflicting": [
-            candidate.model_dump(mode="json")
-            for candidate in candidates
-            if candidate.required
-            and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
-        ],
-        "installation_plan_ref": None,
+        "report_ref": dependency_report_ref,
+        "declared": declared,
+        "candidates": compact_candidates,
+        "required": [candidate.candidate_id for candidate in candidates if candidate.required],
+        "installed": ids_with_status(CandidateResolutionStatus.INSTALLED),
+        "missing": ids_with_status(CandidateResolutionStatus.MISSING),
+        "unknown": ids_with_status(CandidateResolutionStatus.UNKNOWN),
+        "conflicting": ids_with_status(CandidateResolutionStatus.VERSION_CONFLICT),
+        "unresolved_executables": resolution.unresolved_executables,
     }
     by_key = {
         (
@@ -533,25 +495,24 @@ def enrich_active_report(
             for package in executable.launch_analysis.packages
         )
         applicable = [by_key[key] for key in sorted(applicable_keys) if key in by_key]
-        executable.dependencies["resolved"] = [
-            candidate.model_dump(mode="json")
+        executable.dependencies["installed"] = [
+            candidate.candidate_id
             for candidate in applicable
             if candidate.status == CandidateResolutionStatus.INSTALLED
         ]
         executable.dependencies["missing"] = [
-            candidate.model_dump(mode="json")
+            candidate.candidate_id
             for candidate in applicable
             if candidate.required and candidate.status == CandidateResolutionStatus.MISSING
         ]
         executable.dependencies["unknown"] = [
-            candidate.model_dump(mode="json")
+            candidate.candidate_id
             for candidate in applicable
             if candidate.required
-            and candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
+            and candidate.status == CandidateResolutionStatus.UNKNOWN
         ]
         executable.dependencies["version_conflicts"] = [
-            candidate.model_dump(mode="json")
+            candidate.candidate_id
             for candidate in applicable
             if candidate.required
             and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
@@ -571,9 +532,7 @@ def enrich_active_report(
         | {
             f"dependency resolution unknown: {candidate.ecosystem}:{candidate.name}"
             for candidate in candidates
-            if candidate.required
-            and candidate.status
-            in {CandidateResolutionStatus.UNKNOWN, CandidateResolutionStatus.BLOCKED_BY_POLICY}
+            if candidate.required and candidate.status == CandidateResolutionStatus.UNKNOWN
         }
         | {
             f"dependency declarations unavailable: {executable_id}"

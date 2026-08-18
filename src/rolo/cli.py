@@ -5,7 +5,6 @@ import base64
 import json
 import mimetypes
 import shutil
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -19,6 +18,7 @@ from rolo import __version__
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.models import (
+    DiscoveryLatestIndex,
     DiscoveryReport,
     DiscoveryStatus,
     ImageFrame,
@@ -33,6 +33,7 @@ from rolo.stages.build.active_discovery import (
     ActiveDiscoveryReport,
     ActiveProbeMode,
     ConfirmationDecision,
+    ConfirmationStatus,
     DiscoveryConfirmation,
     write_confirmation,
 )
@@ -62,8 +63,8 @@ from rolo.stages.build.models import (
 )
 from rolo.stages.build.service import BuildStageService
 from rolo.stages.build.software_relevance import (
-    PackageRelevanceCandidate,
-    PackageRelevanceReport,
+    DirectDependencyCandidate,
+    DirectDependencyReport,
     SoftwareDiscoveryPolicy,
     SoftwareSummary,
 )
@@ -94,8 +95,6 @@ app.add_typer(build_stage_app, name="build")
 app.add_typer(debug_stage_app, name="debug")
 app.add_typer(test_stage_app, name="test")
 app.add_typer(schema_app, name="schema")
-app.add_typer(robot_use_app, name="robot-use")
-app.add_typer(discover_app, name="discover")
 app.add_typer(tool_app, name="tool")
 app.add_typer(hw_app, name="hw")
 hw_app.add_typer(hw_inventory_app, name="inventory")
@@ -105,10 +104,8 @@ app.add_typer(ros_app, name="ros")
 ros_app.add_typer(ros_graph_app, name="graph")
 app.add_typer(application_app, name="app")
 application_app.add_typer(app_robot_cli, name="robot")
-app.add_typer(enroll_app, name="enroll")
 build_stage_app.add_typer(enroll_app, name="enroll")
 build_stage_app.add_typer(discover_app, name="discover")
-build_stage_app.add_typer(tool_app, name="tool")
 debug_stage_app.add_typer(robot_use_app, name="robot-use")
 
 
@@ -354,42 +351,11 @@ def doctor() -> None:
         raise typer.Exit(code=1)
 
 
-def _run_engineering_tests(workspace: Path) -> dict[str, object]:
-    tests_root = workspace / "tests"
-    if not tests_root.is_dir():
-        return {
-            "status": "FAILED",
-            "exit_code": None,
-            "summary": f"engineering tests directory does not exist: {tests_root}",
-        }
-    try:
-        completed = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q"],
-            cwd=workspace,
-            capture_output=True,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=600,
-        )
-    except subprocess.TimeoutExpired:
-        return {"status": "FAILED", "exit_code": None, "summary": "pytest timed out after 600s"}
-    output = "\n".join(
-        part.strip() for part in (completed.stdout, completed.stderr) if part.strip()
-    )
-    return {
-        "status": "PASSED" if completed.returncode == 0 else "FAILED",
-        "exit_code": completed.returncode,
-        "summary": output[-4000:],
-    }
-
-
 @app.command("init")
 def initialize(
     robot_id: Annotated[str, typer.Option("--robot-id", help="User-assigned robot identity")],
 ) -> None:
-    """Register identity, validate the environment and run repository engineering tests."""
+    """Register identity and validate the installed runtime environment."""
     settings = get_settings()
     try:
         enrollment = EnrollmentService(config_root=settings.rolo_config_dir).enroll(
@@ -407,11 +373,8 @@ def initialize(
         registered_robots = []
         doctor_result["status"] = "NOT_READY"
         doctor_result.setdefault("errors", []).append(str(exc))  # type: ignore[union-attr]
-    workspace = Path(__file__).resolve().parents[2]
-    engineering_tests = _run_engineering_tests(workspace)
     ready = bool(
         doctor_result["status"] == "READY"
-        and engineering_tests["status"] == "PASSED"
         and len(registered_robots) == 1
         and registered_robots[0]["robot_id"] == robot_id
     )
@@ -425,9 +388,8 @@ def initialize(
             },
             "doctor": doctor_result,
             "robots": registered_robots,
-            "engineering_tests": engineering_tests,
             "next_step": (
-                f'uv run robotctl discover run --robot "{robot_id}" '
+                f'uv run robotctl build discover run --robot "{robot_id}" '
                 "--urdf /path/to/your_robot.urdf "
                 "--source-root /path/to/robot-application"
             ),
@@ -530,6 +492,7 @@ def export_schemas(
         RobotUseRequest,
         RobotUseSupervision,
         DiscoveryReport,
+        DiscoveryLatestIndex,
         ToolDescriptor,
         BuildInputs,
         BuildPlan,
@@ -540,8 +503,8 @@ def export_schemas(
         PipelineAssessment,
         SoftwareSummary,
         SoftwareDiscoveryPolicy,
-        PackageRelevanceCandidate,
-        PackageRelevanceReport,
+        DirectDependencyCandidate,
+        DirectDependencyReport,
         ActiveDiscoveryInputs,
         ActiveDiscoveryReport,
         DiscoveryConfirmation,
@@ -647,9 +610,11 @@ def discovery_run(
             "probe_status": {name: probe.status for name, probe in report.probes.items()},
             "semantic_bindings": len(report.semantic_bindings),
             "tools": len(report.tool_catalog),
-            "dependency_resolution_complete": report.software_summary.get("complete", False),
-            "relevant_candidates": report.software_summary.get(
-                "relevant_candidate_count", 0
+            "dependency_resolution_complete": (
+                report.software_summary.get("status") == "SUCCEEDED"
+            ),
+            "direct_dependencies": report.software_summary.get(
+                "direct_dependency_count", 0
             ),
             "missing_dependencies": report.software_summary.get(
                 "missing_dependency_count", 0
@@ -657,9 +622,9 @@ def discovery_run(
             "conflicting_dependencies": report.software_summary.get(
                 "conflicting_dependency_count", 0
             ),
-            "package_relevance": report.package_relevance_ref,
+            "dependency_report": report.dependency_report_ref,
             "discovery_mode": report.discovery_mode,
-            "confirmation_status": report.confirmation_status,
+            "confirmation_status": ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             "active_discovery_report": report.active_discovery_report_ref,
             "confirmation_prompt": (
                 "Review the active discovery report, then run: "

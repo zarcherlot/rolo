@@ -75,7 +75,7 @@ uv sync --frozen
 uv run robotctl init --robot-id your_robot_id
 ```
 
-### 访问控制面
+### 访问管理 API
 
 API 默认仅监听机器人本机回环地址。需要远程访问时，建立 SSH 端口转发：
 
@@ -108,6 +108,8 @@ uv run robotctl build discover run --robot "$ROBOT_ID" \
 ```
 
 发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，保存 `hw/linux/ros/application` 四类探针，并将 capability manifest、候选语义绑定、工具目录和 build inputs 写入制品目录。
+
+软件发现只解析源码和 launch 明确声明的 Python/ROS 直接依赖，并通过本地元数据判断已安装、缺失、版本冲突或未知；它不扫描主机包数据库，也不自动安装目标工程依赖。完整规范见 [`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)。
 
 Coding Agent 随后读取 build inputs，生成构建计划，并通过统一 CLI 实现和检查各层 adapter。可通过本地 `.env` 选择模型或配置 API Key，支持中转站。
 
@@ -168,16 +170,13 @@ src/rolo/stages/build/   第一阶段：注册、探针发现、CLI 构建与 St
 src/rolo/stages/debug/   第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
 src/rolo/stages/test/    第三阶段：可选自主测试与正式验收
 src/rolo/core/           共享配置、领域模型、制品与机器人注册表
-src/rolo/                共享 API、agentd、runtime 与兼容入口
-configs/local/        本地 mock 示例机器人的能力清单
-configs/profiles/     URDF profile 格式示例
-configs/platforms/    ARM64 兼容性和计算平台清单
-configs/robot_use.yaml
-configs/discovery.yaml
-schemas/              导出的 JSON Schema
-tests/                离线单元测试与 API 测试
-scripts/              开发辅助脚本
-rolo-logo.svg         rolo 最终 SVG 标志
+src/rolo/                共享 API、agentd 与 runtime
+configs/local/           本地 mock 示例机器人的能力清单
+configs/profiles/        URDF profile 格式示例
+schemas/                 导出的 JSON Schema
+tests/                   离线单元测试与 API 测试
+scripts/                 开发辅助脚本
+rolo-logo.svg            rolo 最终 SVG 标志
 ```
 
 ## 参与项目

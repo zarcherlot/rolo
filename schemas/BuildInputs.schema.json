@@ -63,19 +63,14 @@
       "title": "Software Summary Ref",
       "type": "string"
     },
-    "package_relevance_ref": {
+    "dependency_report_ref": {
       "default": "",
-      "title": "Package Relevance Ref",
+      "title": "Dependency Report Ref",
       "type": "string"
     },
     "active_discovery_report_ref": {
       "default": "",
       "title": "Active Discovery Report Ref",
-      "type": "string"
-    },
-    "confirmation_status": {
-      "default": "AWAITING_USER_CONFIRMATION",
-      "title": "Confirmation Status",
       "type": "string"
     },
     "probe_refs": {

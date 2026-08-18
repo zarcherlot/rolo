@@ -9,11 +9,11 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.models import utc_now
 from rolo.core.registry import RobotRegistry
-from rolo.discovery import DiscoveryService
 from rolo.stages.build.active_discovery import (
     ConfirmationDecision,
     write_confirmation,
 )
+from rolo.stages.build.discovery import DiscoveryService
 from rolo.stages.build.models import (
     CodingAgentConfig,
     CodingAgentDependencyReport,
@@ -118,7 +118,7 @@ def test_build_plan_rejects_confirmation_after_report_changes(tmp_path: Path) ->
     assert plan.confirmation_status == "INVALID_OR_STALE"
 
 
-def test_stage_cli_keeps_legacy_and_nested_build_entries(
+def test_stage_cli_exposes_only_canonical_lifecycle_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_root = tmp_path / "artifacts"
@@ -140,7 +140,7 @@ def test_stage_cli_keeps_legacy_and_nested_build_entries(
             str(tmp_path),
         ],
     )
-    legacy = runner.invoke(app, ["discover", "show", "--robot", "demo_diff"])
+    removed_legacy = runner.invoke(app, ["discover", "show", "--robot", "demo_diff"])
     discovery_id = json.loads(nested.output)["discovery_id"]
     confirm = runner.invoke(
         app,
@@ -172,7 +172,7 @@ def test_stage_cli_keeps_legacy_and_nested_build_entries(
 
     get_settings.cache_clear()
     assert nested.exit_code == 0, nested.output
-    assert legacy.exit_code == 0, legacy.output
+    assert removed_legacy.exit_code != 0
     assert confirm.exit_code == 0, confirm.output
     assert '"status": "ACCEPTED"' in confirm.output
     assert duplicate_confirm.exit_code == 2

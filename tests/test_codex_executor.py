@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -6,11 +7,11 @@ import pytest
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.registry import RobotRegistry
-from rolo.discovery import DiscoveryService
 from rolo.stages.build.active_discovery import (
     ConfirmationDecision,
     write_confirmation,
 )
+from rolo.stages.build.discovery import DiscoveryService
 from rolo.stages.build.executor import CodexBuildExecutor, build_codex_command
 from rolo.stages.build.models import BuildPlan, CodingAgentConfig, CodingAgentResult
 from rolo.stages.build.service import BuildStageService
@@ -55,13 +56,22 @@ def test_build_prompt_is_pinned_to_plan_discovery_snapshot(tmp_path: Path) -> No
         / plan.source_discovery_id
         / "report.json"
     )
-    latest_report_path = artifact_root / "discovery/demo_diff/latest/report.json"
     planned_report = json.loads(run_report_path.read_text(encoding="utf-8"))
-    latest_report = json.loads(latest_report_path.read_text(encoding="utf-8"))
+    latest_report = json.loads(run_report_path.read_text(encoding="utf-8"))
     planned_report["capability_manifest"]["snapshot_marker"] = "planned-snapshot"
     latest_report["capability_manifest"]["snapshot_marker"] = "newer-latest-snapshot"
     run_report_path.write_text(json.dumps(planned_report), encoding="utf-8")
-    latest_report_path.write_text(json.dumps(latest_report), encoding="utf-8")
+    newer_id = "disc-newer"
+    newer_report_path = (
+        artifact_root / "discovery" / "demo_diff" / "runs" / newer_id / "report.json"
+    )
+    newer_report_path.parent.mkdir(parents=True)
+    newer_report_path.write_text(json.dumps(latest_report), encoding="utf-8")
+    latest_index_path = artifact_root / "discovery/demo_diff/latest.json"
+    latest_index = json.loads(latest_index_path.read_text(encoding="utf-8"))
+    latest_index["discovery_id"] = newer_id
+    latest_index["report_sha256"] = hashlib.sha256(newer_report_path.read_bytes()).hexdigest()
+    latest_index_path.write_text(json.dumps(latest_index), encoding="utf-8")
     inventory_chunk = run_report_path.parent / "unrelated-large-artifact-marker.json"
     inventory_chunk.write_text('{"name":"full-inventory-only-marker"}\n', encoding="utf-8")
     active_report_path = run_report_path.with_name("active_discovery_report.json")

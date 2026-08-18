@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import xml.etree.ElementTree as ET
@@ -13,6 +12,7 @@ from typing import Any
 import yaml
 
 from rolo.core.config import load_yaml
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import RobotCapability
 
 ROBOT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -50,10 +50,6 @@ class EnrollmentResult:
     capability_sha256: str
 
 
-def _digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def load_urdf_source(path: Path) -> UrdfSource:
     """Validate only the immutable identity envelope needed before discovery."""
     resolved = path.expanduser().resolve()
@@ -78,7 +74,7 @@ def load_urdf_source(path: Path) -> UrdfSource:
     return UrdfSource(
         profile_id=profile_id,
         path=resolved,
-        sha256=hashlib.sha256(normalized_payload).hexdigest(),
+        sha256=sha256_bytes(normalized_payload),
     )
 
 
@@ -343,7 +339,7 @@ class EnrollmentService:
                     status="ALREADY_REGISTERED",
                     robot_id=robot_id,
                     capability_path=target,
-                    capability_sha256=_digest(target),
+                    capability_sha256=sha256_file(target),
                 )
             active_ids = ", ".join(path.stem for path in active)
             raise ValueError(
@@ -397,7 +393,7 @@ class EnrollmentService:
             "schema_version": "robot-enrollment/v3",
             "robot_id": robot_id,
             "capability_path": str(target),
-            "capability_sha256": _digest(target),
+            "capability_sha256": sha256_file(target),
             "identity_status": "REGISTERED",
             "urdf_status": "NOT_DISCOVERED",
             "semantic_status": "UNRESOLVED",

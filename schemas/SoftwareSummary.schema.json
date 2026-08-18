@@ -3,8 +3,7 @@
     "ResolutionStatus": {
       "enum": [
         "SUCCEEDED",
-        "PARTIAL",
-        "BLOCKED_BY_POLICY"
+        "PARTIAL"
       ],
       "title": "ResolutionStatus",
       "type": "string"
@@ -25,29 +24,21 @@
     "status": {
       "$ref": "#/$defs/ResolutionStatus"
     },
-    "complete": {
-      "title": "Complete",
-      "type": "boolean"
-    },
-    "relevance_resolution_status": {
-      "title": "Relevance Resolution Status",
-      "type": "string"
-    },
-    "package_relevance_ref": {
+    "dependency_report_ref": {
       "default": "",
-      "title": "Package Relevance Ref",
+      "title": "Dependency Report Ref",
       "type": "string"
     },
-    "relevant_candidate_count": {
+    "direct_dependency_count": {
       "default": 0,
       "minimum": 0,
-      "title": "Relevant Candidate Count",
+      "title": "Direct Dependency Count",
       "type": "integer"
     },
-    "relevant_resolved_count": {
+    "installed_dependency_count": {
       "default": 0,
       "minimum": 0,
-      "title": "Relevant Resolved Count",
+      "title": "Installed Dependency Count",
       "type": "integer"
     },
     "missing_dependency_count": {
@@ -78,9 +69,7 @@
   },
   "required": [
     "discovery_id",
-    "status",
-    "complete",
-    "relevance_resolution_status"
+    "status"
   ],
   "title": "SoftwareSummary",
   "type": "object"

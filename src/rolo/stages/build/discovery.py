@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 import os
 import platform
@@ -25,7 +24,9 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.hashing import sha256_file
 from rolo.core.models import (
+    DiscoveryLatestIndex,
     DiscoveryReport,
     DiscoveryStatus,
     ProbeResult,
@@ -36,7 +37,6 @@ from rolo.stages.build.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
     ActiveProbeMode,
-    ConfirmationStatus,
     render_active_discovery_markdown,
 )
 from rolo.stages.build.enrollment import load_urdf_profile
@@ -49,7 +49,7 @@ from rolo.stages.build.inputs import (
 )
 from rolo.stages.build.software_relevance import (
     CandidateResolutionStatus,
-    RelevantSoftwareResolver,
+    DirectDependencyResolver,
     ResolutionStatus,
     SoftwareDiscoveryPolicy,
     SoftwareSummary,
@@ -91,14 +91,6 @@ SEMANTIC_PARAMETER_ALIASES = {
     "max_angular_velocity": ("geometry.hard_max_angular_velocity_radps", "rad/s"),
     "max_angular_speed": ("geometry.hard_max_angular_velocity_radps", "rad/s"),
 }
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _read_text(path: Path, limit: int = MAX_COMMAND_OUTPUT) -> str | None:
@@ -604,7 +596,7 @@ class ApplicationProbe:
                     "package.xml",
                     "CMakeLists.txt",
                 }:
-                    project["manifest_digests"][relative] = _sha256(path)
+                    project["manifest_digests"][relative] = sha256_file(path)
                 if path.suffix.lower() in source_suffixes and path.stat().st_size <= 2_000_000:
                     text = _read_text(path, 2_000_000)
                     if text:
@@ -1024,9 +1016,9 @@ class DiscoveryService:
         software_summary_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
         )
-        package_relevance_ref = (
+        dependency_report_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
-            "package_relevance.json"
+            "direct_dependencies.json"
         )
         ros_probe = (
             RosProbe().run()
@@ -1077,21 +1069,25 @@ class DiscoveryService:
             technical_status=status.value,
             created_at=now,
         )
-        relevance_report = RelevantSoftwareResolver(self.software_policy).resolve(
+        dependency_report = DirectDependencyResolver(self.software_policy).resolve(
             discovery_id=discovery_id,
             projects=probes["application"].data.get("projects", []),
             active_report=active_report,
             collected_at=now,
         )
-        enrich_active_report(active_report, relevance_report)
+        enrich_active_report(
+            active_report,
+            dependency_report,
+            dependency_report_ref=dependency_report_ref,
+        )
         software_summary = build_software_summary(
             discovery_id=discovery_id,
-            report=relevance_report,
-            package_relevance_ref=package_relevance_ref,
+            report=dependency_report,
+            dependency_report_ref=dependency_report_ref,
         )
         capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
         if (
-            relevance_report.status == ResolutionStatus.PARTIAL
+            dependency_report.status == ResolutionStatus.PARTIAL
             and status == DiscoveryStatus.SUCCEEDED
         ):
             status = DiscoveryStatus.PARTIAL
@@ -1116,9 +1112,8 @@ class DiscoveryService:
             tool_catalog=tools,
             software_summary=software_summary.model_dump(mode="json"),
             software_summary_ref=software_summary_ref,
-            package_relevance_ref=package_relevance_ref,
+            dependency_report_ref=dependency_report_ref,
             active_discovery_report_ref=active_report_ref,
-            confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             discovery_mode=active_report.discovery_mode.level.value,
             source_roots=[str(path) for path in active_inputs.source_roots],
             created_at=now,
@@ -1129,8 +1124,8 @@ class DiscoveryService:
             software_summary.model_dump(mode="json"),
         )
         self.artifacts.write_json(
-            f"{run_location}/package_relevance.json",
-            relevance_report.model_dump(mode="json"),
+            f"{run_location}/direct_dependencies.json",
+            dependency_report.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/active_discovery_report.json",
@@ -1175,19 +1170,18 @@ class DiscoveryService:
         ]
         unresolved.extend(
             f"dependency:{candidate.ecosystem}:{candidate.name}:{candidate.status.value}"
-            for candidate in relevance_report.candidates
+            for candidate in dependency_report.candidates
             if candidate.required
             and candidate.status
             in {
                 CandidateResolutionStatus.MISSING,
                 CandidateResolutionStatus.VERSION_CONFLICT,
                 CandidateResolutionStatus.UNKNOWN,
-                CandidateResolutionStatus.BLOCKED_BY_POLICY,
             }
         )
         unresolved.extend(
             f"dependency:executable:{executable_id}:UNKNOWN"
-            for executable_id in relevance_report.unresolved_executables
+            for executable_id in dependency_report.unresolved_executables
         )
         unresolved.extend(
             f"compatibility:{item['field']}"
@@ -1218,9 +1212,8 @@ class DiscoveryService:
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
             ),
             software_summary_ref=software_summary_ref,
-            package_relevance_ref=package_relevance_ref,
+            dependency_report_ref=dependency_report_ref,
             active_discovery_report_ref=active_report_ref,
-            confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             probe_refs={
                 layer: (
                     f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/{layer}.json"
@@ -1259,42 +1252,7 @@ class DiscoveryService:
         # The immutable run report is its commit marker as well.
         run_path = self.artifacts.write_json(f"{run_location}/report.json", payload)
 
-        # Publish mutable convenience paths only after the immutable run is complete.
-        latest_location = f"discovery/{robot.robot_id}/latest"
-        self.artifacts.write_json(
-            f"{latest_location}/software_summary.json",
-            software_summary.model_dump(mode="json"),
-        )
-        self.artifacts.write_json(
-            f"{latest_location}/package_relevance.json",
-            relevance_report.model_dump(mode="json"),
-        )
-        self.artifacts.write_json(
-            f"{latest_location}/active_discovery_report.json",
-            active_report.model_dump(mode="json"),
-        )
-        self.artifacts.write_text(
-            f"{latest_location}/active_discovery_report.md",
-            render_active_discovery_markdown(active_report),
-        )
-        self.artifacts.write_json(
-            f"{latest_location}/capability_manifest.json",
-            capability_manifest,
-        )
-        self.artifacts.write_json(
-            f"{latest_location}/discovered_capability.json",
-            robot.model_dump(mode="json"),
-        )
-        self.artifacts.write_json(
-            f"{latest_location}/semantic_context.json",
-            semantic_context.model_dump(mode="json"),
-        )
-        for layer, probe in probes.items():
-            self.artifacts.write_json(
-                f"{latest_location}/{layer}.json",
-                probe.model_dump(mode="json"),
-            )
-        self.artifacts.write_json(f"{latest_location}/tool_catalog.json", catalog_payload)
+        # Publish downstream convenience inputs before advancing the discovery index.
         self.artifacts.write_json(
             f"build/{robot.robot_id}/latest/inputs.json", inputs_payload
         )
@@ -1306,18 +1264,45 @@ class DiscoveryService:
             self.artifacts.write_json(
                 f"{stage}/{robot.robot_id}/latest/inputs.json", stage_inputs
             )
-        # report.json is the commit marker for readers of the latest snapshot.
-        self.artifacts.write_json(f"{latest_location}/report.json", payload)
+        latest = DiscoveryLatestIndex(
+            robot_id=robot.robot_id,
+            discovery_id=discovery_id,
+            report_sha256=sha256_file(run_path),
+            published_at=now,
+        )
+        # latest.json is the atomic commit marker for readers of the latest snapshot.
+        self.artifacts.write_json(
+            f"discovery/{robot.robot_id}/latest.json",
+            latest.model_dump(mode="json"),
+        )
         return report, run_path
 
 
 def load_latest_report(artifact_root: Path, robot_id: str) -> DiscoveryReport:
-    path = artifact_root / "discovery" / robot_id / "latest" / "report.json"
-    if not path.is_file():
+    index_path = artifact_root / "discovery" / robot_id / "latest.json"
+    if not index_path.is_file():
         raise FileNotFoundError(
-            f"No discovery report for {robot_id}; run robotctl discover run first"
+            f"No discovery report for {robot_id}; run robotctl build discover run first"
         )
-    return DiscoveryReport.model_validate_json(path.read_text(encoding="utf-8"))
+    index = DiscoveryLatestIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
+    if index.robot_id != robot_id or Path(index.discovery_id).name != index.discovery_id:
+        raise ValueError(f"Invalid latest discovery index for {robot_id}")
+    report_path = (
+        artifact_root
+        / "discovery"
+        / robot_id
+        / "runs"
+        / index.discovery_id
+        / "report.json"
+    )
+    if not report_path.is_file():
+        raise FileNotFoundError(f"Latest discovery run is incomplete: {index.discovery_id}")
+    if sha256_file(report_path) != index.report_sha256:
+        raise ValueError(f"Latest discovery report hash mismatch: {index.discovery_id}")
+    report = DiscoveryReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+    if report.robot_id != robot_id or report.discovery_id != index.discovery_id:
+        raise ValueError(f"Latest discovery report identity mismatch: {index.discovery_id}")
+    return report
 
 
 def load_report(artifact_root: Path, robot_id: str, discovery_id: str) -> DiscoveryReport:

@@ -72,9 +72,8 @@ class BuildInputs(BaseModel):
     semantic_context_ref: str
     tool_catalog_ref: str
     software_summary_ref: str = ""
-    package_relevance_ref: str = ""
+    dependency_report_ref: str = ""
     active_discovery_report_ref: str = ""
-    confirmation_status: str = "AWAITING_USER_CONFIRMATION"
     probe_refs: dict[str, str]
     semantic_binding_candidates: int = 0
     semantic_value_candidates: int = 0

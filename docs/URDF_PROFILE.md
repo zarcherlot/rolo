@@ -3,7 +3,7 @@
 `robotctl init --robot-id ...` registers identity only. It does not accept, read, or record a URDF.
 
 The initial URDF state is `NOT_DISCOVERED`, semantic state is `UNRESOLVED`, and motion safety state
-is `UNAPPROVED`. `robotctl discover run --robot ... --urdf /path/to/robot.urdf` loads the file and
+is `UNAPPROVED`. `robotctl build discover run --robot ... --urdf /path/to/robot.urdf` loads the file and
 performs the full parsing described below. Its artifact records the resolved path and SHA-256.
 
 ## Discovery-time standard URDF data

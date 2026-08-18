@@ -7,7 +7,7 @@ from rolo.adapters.mock_robot_use import MockRobotUseBackend
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import ImageFrame, RobotUseRequest, RobotUseVerdict
 from rolo.core.registry import RobotRegistry
-from rolo.robot_use import RobotUseService
+from rolo.stages.debug.robot_use import RobotUseService
 
 
 def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotUseRequest:

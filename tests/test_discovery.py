@@ -9,13 +9,13 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings, load_yaml
 from rolo.core.models import RobotCapability
 from rolo.core.registry import RobotRegistry
-from rolo.discovery import (
+from rolo.stages.build.discovery import (
+    UBUNTU_ROS_DEFAULTS,
     ApplicationProbe,
     DiscoveryService,
     detect_compute_platform,
     load_latest_report,
 )
-from rolo.stages.build.discovery import UBUNTU_ROS_DEFAULTS
 from rolo.stages.build.enrollment import EnrollmentService
 
 
@@ -168,20 +168,25 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
         "app.teleop.velocity",
         "app.localization.status",
     }
-    assert (artifacts.root / "discovery/demo_diff/latest/tool_catalog.json").is_file()
-    assert (artifacts.root / "discovery/demo_diff/latest/capability_manifest.json").is_file()
-    assert (artifacts.root / "discovery/demo_diff/latest/application.json").is_file()
-    assert (artifacts.root / "discovery/demo_diff/latest/software_summary.json").is_file()
+    latest_index = artifacts.root / "discovery/demo_diff/latest.json"
+    assert latest_index.is_file()
+    assert json.loads(latest_index.read_text(encoding="utf-8"))["discovery_id"] == (
+        report.discovery_id
+    )
     assert (artifacts.root / "build/demo_diff/latest/inputs.json").is_file()
     assert (artifacts.root / "build/demo_diff/latest/semantic_context.json").is_file()
     assert (artifacts.root / "debug/demo_diff/latest/inputs.json").is_file()
     assert (artifacts.root / "test/demo_diff/latest/inputs.json").is_file()
     for layer in ("hw", "linux", "ros", "application"):
-        assert (artifacts.root / f"discovery/demo_diff/latest/{layer}.json").is_file()
+        assert (run_path.parent / f"{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
     assert (run_path.parent / "tool_catalog.json").is_file()
     assert (run_path.parent / "software_summary.json").is_file()
     assert "packages" not in report.capability_manifest["observed"]["software_stack"]
+
+    run_path.write_text(run_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        load_latest_report(artifacts.root, "demo_diff")
 
 
 def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Path) -> None:
@@ -311,6 +316,7 @@ def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.Monk
     discovered = runner.invoke(
         app,
         [
+            "build",
             "discover",
             "run",
             "--robot",

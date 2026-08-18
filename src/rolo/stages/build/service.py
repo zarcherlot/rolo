@@ -134,7 +134,7 @@ def assess_build(artifact_root: Path, robot_id: str) -> StageAssessment:
     build_inputs = artifact_root / "build" / robot_id / "latest" / "inputs.json"
     plan = artifact_root / "build" / robot_id / "latest" / "plan.json"
     handoff = artifact_root / "build" / robot_id / "latest" / "handoff.json"
-    discovery_report = artifact_root / "discovery" / robot_id / "latest" / "report.json"
+    discovery_report = artifact_root / "discovery" / robot_id / "latest.json"
     if not build_inputs.is_file():
         return StageAssessment(
             stage=StageName.BUILD,

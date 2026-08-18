@@ -5,13 +5,12 @@
         "INSTALLED",
         "MISSING",
         "VERSION_CONFLICT",
-        "UNKNOWN",
-        "BLOCKED_BY_POLICY"
+        "UNKNOWN"
       ],
       "title": "CandidateResolutionStatus",
       "type": "string"
     },
-    "PackageRelevanceCandidate": {
+    "DirectDependencyCandidate": {
       "additionalProperties": false,
       "properties": {
         "candidate_id": {
@@ -28,12 +27,6 @@
             "ros"
           ],
           "title": "Ecosystem",
-          "type": "string"
-        },
-        "relevance": {
-          "const": "DIRECT",
-          "default": "DIRECT",
-          "title": "Relevance",
           "type": "string"
         },
         "required": {
@@ -127,14 +120,13 @@
         "name",
         "ecosystem"
       ],
-      "title": "PackageRelevanceCandidate",
+      "title": "DirectDependencyCandidate",
       "type": "object"
     },
     "ResolutionStatus": {
       "enum": [
         "SUCCEEDED",
-        "PARTIAL",
-        "BLOCKED_BY_POLICY"
+        "PARTIAL"
       ],
       "title": "ResolutionStatus",
       "type": "string"
@@ -143,8 +135,8 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "robot-package-relevance/v1",
-      "default": "robot-package-relevance/v1",
+      "const": "robot-direct-dependency-report/v1",
+      "default": "robot-direct-dependency-report/v1",
       "title": "Schema Version",
       "type": "string"
     },
@@ -155,43 +147,10 @@
     "status": {
       "$ref": "#/$defs/ResolutionStatus"
     },
-    "complete": {
-      "title": "Complete",
-      "type": "boolean"
-    },
-    "candidate_count": {
-      "minimum": 0,
-      "title": "Candidate Count",
-      "type": "integer"
-    },
     "omitted_candidate_count": {
       "default": 0,
       "minimum": 0,
       "title": "Omitted Candidate Count",
-      "type": "integer"
-    },
-    "installed_count": {
-      "default": 0,
-      "minimum": 0,
-      "title": "Installed Count",
-      "type": "integer"
-    },
-    "missing_count": {
-      "default": 0,
-      "minimum": 0,
-      "title": "Missing Count",
-      "type": "integer"
-    },
-    "conflict_count": {
-      "default": 0,
-      "minimum": 0,
-      "title": "Conflict Count",
-      "type": "integer"
-    },
-    "unknown_count": {
-      "default": 0,
-      "minimum": 0,
-      "title": "Unknown Count",
       "type": "integer"
     },
     "unresolved_executables": {
@@ -217,7 +176,7 @@
     },
     "candidates": {
       "items": {
-        "$ref": "#/$defs/PackageRelevanceCandidate"
+        "$ref": "#/$defs/DirectDependencyCandidate"
       },
       "title": "Candidates",
       "type": "array"
@@ -238,10 +197,8 @@
   "required": [
     "discovery_id",
     "status",
-    "complete",
-    "candidate_count",
     "created_at"
   ],
-  "title": "PackageRelevanceReport",
+  "title": "DirectDependencyReport",
   "type": "object"
 }

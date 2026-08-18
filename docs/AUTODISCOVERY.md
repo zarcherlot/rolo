@@ -4,6 +4,10 @@ The discovery subsystem inventories a robot without exposing an unrestricted she
 bounded read-only probes for hardware, Linux and the live ROS graph, plus a non-executing source
 scanner for application workspaces.
 
+Application discovery resolves only Python and ROS direct dependencies declared by source and launch
+evidence. It does not scan the host package database or install target dependencies. See
+[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the normative limits and report contract.
+
 On ARM64 targets it normalizes device-tree models into `nvidia_jetson_orin`, `rockchip_rk3588`, or
 `raspberry_pi`. Unknown boards remain `unknown` until their platform manifest and adapter have been
 added; discovery never guesses a vendor driver from CPU architecture alone.
@@ -11,10 +15,10 @@ added; discovery never guesses a vendor driver from CPU architecture alone.
 ## Run
 
 ```bash
-uv run robotctl discover run --robot "$ROBOT_ID" \
+uv run robotctl build discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
   --source-root /path/to/robot-application
-uv run robotctl discover show --robot "$ROBOT_ID"
+uv run robotctl build discover show --robot "$ROBOT_ID"
 uv run robotctl tool catalog --robot "$ROBOT_ID"
 uv run robotctl tool schema hw.inventory.scan --robot "$ROBOT_ID"
 ```
@@ -33,16 +37,22 @@ uv run robotctl app robot discover --source-root /path/to/robot-application
 A successful or partial run writes:
 
 ```text
-artifacts/discovery/<robot_id>/latest/
-├── report.json
-├── capability_manifest.json
-├── discovered_capability.json
-├── semantic_context.json
-├── hw.json
-├── linux.json
-├── ros.json
-├── application.json
-└── tool_catalog.json
+artifacts/discovery/<robot_id>/
+├── latest.json                 # discovery ID and immutable report hash
+└── runs/<discovery_id>/
+    ├── report.json
+    ├── active_discovery_report.json
+    ├── active_discovery_report.md
+    ├── capability_manifest.json
+    ├── discovered_capability.json
+    ├── semantic_context.json
+    ├── direct_dependencies.json
+    ├── software_summary.json
+    ├── hw.json
+    ├── linux.json
+    ├── ros.json
+    ├── application.json
+    └── tool_catalog.json
 ```
 
 The source scanner recognizes `pyproject.toml`, setuptools, CMake, Cargo, ROS `package.xml`, launch
