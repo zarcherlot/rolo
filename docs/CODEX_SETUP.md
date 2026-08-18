@@ -1,10 +1,10 @@
 # Codex executor setup in a uv workspace
 
-rolo defaults to the `codex` Coding Agent executor. rolo itself is installed only through a Git
+rolo defaults to the `codex` Adapter Agent executor. rolo itself is installed only through a Git
 checkout followed by `uv sync --frozen`; the commands below run from that checkout.
 
 ```text
-.env configuration -> automatic Codex dependency installation -> readiness verification -> build execution
+.env configuration -> adapt run -> automatic dependency readiness -> Agent -> gate -> handoff
 ```
 
 ## Configuration
@@ -29,18 +29,16 @@ installer. The Codex adapter uses the official Linux standalone installer docume
 <https://learn.chatgpt.com/docs/codex/cli>; provider Base URLs and model settings cannot change the
 installer source.
 
-## Installation and readiness
+## Configuration inspection and readiness
 
-Inspect the effective secret-free configuration, then install and verify the executable without
-claiming that authentication is complete:
+Inspect the effective secret-free configuration before running Adapt:
 
 ```bash
-uv run robotctl build agent-config
-uv run robotctl build agent-prepare --skip-auth
+uv run robotctl adapt agent-config
 ```
 
-The second command downloads Codex only when it is missing and automatic installation is enabled.
-It writes a secret-free report under:
+`adapt run` checks readiness immediately before Agent execution and downloads Codex only when it is
+missing and automatic installation is enabled. It writes a secret-free report under:
 
 ```text
 .rolo/artifacts/coding-agent/dependency/latest.json
@@ -53,19 +51,19 @@ the same operating-system user that owns the Git checkout:
 
 ```bash
 codex login --device-auth
-uv run robotctl build agent-prepare
 ```
 
-Expected readiness is `READY`. `AUTH_REQUIRED`, `INSTALL_REQUIRED`, `UNSUPPORTED`, or `FAILED`
-blocks build execution. An explicitly configured API key can satisfy provider authentication, but
-the key remains process-local and is never written to plans or artifacts.
+The next `adapt run` must observe `READY`. `AUTH_REQUIRED`, `INSTALL_REQUIRED`, `UNSUPPORTED`, or
+`FAILED` blocks Agent execution. An explicitly configured API key can satisfy provider
+authentication, but the key remains process-local and is never written to plans or artifacts.
 
 ## Execution
 
-`build execute` repeats dependency and authentication verification before starting `codex exec`:
+After discovery and optional Wiki correction, one command performs readiness, Agent execution, frozen
+output capture, the independent conformance gate, and handoff publication:
 
 ```bash
-uv run robotctl build execute \
+uv run robotctl adapt run \
   --robot "$ROBOT_ID" \
   --workspace /path/to/robot-application
 ```

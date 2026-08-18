@@ -10,7 +10,7 @@ from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.registry import RobotRegistry
-from rolo.discovery import DiscoveryService
+from rolo.stages.adapt.discovery import DiscoveryService
 
 
 def test_bootstrap_agentd_exposes_only_non_motion_readiness() -> None:
@@ -80,14 +80,17 @@ def test_full_agentd_observes_discovery_result_without_restart(
     artifact_root = tmp_path / "artifacts"
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     get_settings.cache_clear()
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "agentd-demo"\n', encoding="utf-8"
+    )
 
     with TestClient(create_agentd_app("demo_diff")) as client:
         before = client.get("/health")
         DiscoveryService(ArtifactStore(artifact_root)).run(
             robot=registry.get("demo_diff"),
-            urdf_path=Path("configs/profiles/differential_drive.urdf"),
+            urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
             source_roots=[tmp_path],
         )
         after = client.get("/health")

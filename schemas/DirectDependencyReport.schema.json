@@ -1,0 +1,204 @@
+{
+  "$defs": {
+    "CandidateResolutionStatus": {
+      "enum": [
+        "INSTALLED",
+        "MISSING",
+        "VERSION_CONFLICT",
+        "UNKNOWN"
+      ],
+      "title": "CandidateResolutionStatus",
+      "type": "string"
+    },
+    "DirectDependencyCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ecosystem": {
+          "enum": [
+            "python",
+            "ros"
+          ],
+          "title": "Ecosystem",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "specifiers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Specifiers",
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "executable_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Executable Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateResolutionStatus",
+          "default": "UNKNOWN"
+        },
+        "resolved_package_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Package Id"
+        },
+        "resolved_package_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Package Name"
+        },
+        "installed_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Installed Version"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "name",
+        "ecosystem"
+      ],
+      "title": "DirectDependencyCandidate",
+      "type": "object"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-direct-dependency-report/v1",
+      "default": "robot-direct-dependency-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ResolutionStatus"
+    },
+    "omitted_candidate_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Omitted Candidate Count",
+      "type": "integer"
+    },
+    "unresolved_executables": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Executables",
+      "type": "array"
+    },
+    "counts_by_ecosystem": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Ecosystem",
+      "type": "object"
+    },
+    "counts_by_status": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Status",
+      "type": "object"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/DirectDependencyCandidate"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "status",
+    "created_at"
+  ],
+  "title": "DirectDependencyReport",
+  "type": "object"
+}

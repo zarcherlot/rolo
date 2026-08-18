@@ -16,7 +16,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    rolo_env: str = "development"
     rolo_config_dir: Path = Path(".rolo/config")
     rolo_artifact_dir: Path = Path(".rolo/artifacts")
     rolo_host: str = "127.0.0.1"

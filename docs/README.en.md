@@ -12,9 +12,9 @@
 
 ## What is rolo?
 
-rolo (robot only loop once) is an embodied robotics development principle: execute one clearly
-bounded use case, capture its inputs, execution, observations, and results, and enable the robot to
-autonomously explain, close the loop on, and correct problems.
+rolo (robot only loop once) is an embodied robotics development principle: with every use-case
+execution, construct a slice of its inputs, process, results, and external observations so the robot
+can autonomously explain and correct problems.
 
 > [!NOTE]
 > The current version is an MVP under development. The mock backend is suitable for local
@@ -46,10 +46,11 @@ timestamps, error codes, and rollback semantics across four layers:
 
 ### Active discovery
 
-After initial configuration registers a unique `robot_id`, active discovery generates a normalized
-capability manifest, semantic binding candidates, and a CLI tool catalog. Discovery covers compute
-platforms, system versions, sensors, actuators, buses, Linux services, the ROS graph, local source
-projects, and existing vendor or application entry points.
+After initial configuration registers a unique `robot_id`, rolo creates a maintainable robot Wiki.
+It brings compute platforms, system versions, sensors, actuators, buses, Linux services, the ROS
+graph, local source code, startup entry points, communication protocols, dependencies, and risks
+into one full-stack map. Teams no longer need to piece together “how this robot actually works”
+from a senior engineer's memory, scattered READMEs, vendor manuals, and field scripts.
 
 ### `robot_use`
 
@@ -97,7 +98,7 @@ uv sync --frozen
 uv run robotctl init --robot-id your_robot_id
 ```
 
-### Access the control plane
+### Access the management API
 
 The API listens only on the robot's loopback interface by default. For remote access, create an SSH
 port forward:
@@ -117,63 +118,64 @@ the overall status.
 
 | Stage | Primary output | Agent requirement |
 |---|---|---|
-| `build` | registration, probes, capability manifest, semantic binding candidates, tool catalog, canonical CLI, State Graph, build handoff | Coding Agent; Codex by default |
-| `debug` | constrained closed-loop diagnosis, tuning evidence, frozen configuration, debug handoff | Diagnosis Agent; `robot_use` optional |
-| `test` | optional formal cases, full regression, report, and evidence package | Test Agent |
+| `adapt` | editable robot Wiki, machine evidence, canonical CLI, State Graph, conformance, adapt handoff | Adapter Agent; Codex by default |
+| `diagnose` | constrained diagnosis, tuning evidence, frozen configuration, diagnosis handoff | Diagnosis Agent; `robot_use` optional |
+| `verify` | optional formal cases, full regression, report, evidence, verification handoff | Verification Agent |
 
-#### Stage 1: build
+#### Stage 1: adapt
 
-Build combines registration, discovery, canonical CLI construction, and the State Graph gate.
-Initial configuration registers the user-assigned `robot_id`. From the repository, inspect identity
-and discovery state, or rerun bounded read-only discovery against the robot's URDF and local
-application source:
+Adapt aims to deliver two core assets:
+
+1. a maintainable robot Wiki that the R&D team can understand;
+2. an evidence-backed canonical CLI, State Graph, and downstream handoff that pass an independent
+   gate.
+
+It lets an embodied robotics team quickly answer which boards and peripherals make up the robot,
+which programs it runs and how they start, how nodes and protocols connect, which dependencies are
+missing, which capabilities are only inferred, and which interfaces are safe to expose to an
+Agent. New team members, algorithm engineers, embedded developers, operations, and test engineers
+all see the same system-wide picture.
+
+The flow is “discover and generate the Wiki → review or revise → run Adapt”:
 
 ```bash
-uv run robotctl build enroll show
-uv run robotctl build discover show --robot "$ROBOT_ID"
-uv run robotctl build discover run --robot "$ROBOT_ID" \
+uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
   --source-root /path/to/robot-application
+uv run robotctl adapt discover review --robot "$ROBOT_ID"
+uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
 ```
 
-Discovery inventories hardware, the host software stack, the ROS graph, and local source projects.
-It persists the four `hw/linux/ros/application` probes and writes the capability manifest, semantic
-binding candidates, tool catalog, and build inputs.
-
-The Coding Agent then reads the build inputs, creates a build plan, and implements and inspects each
-layer adapter through the canonical CLI. A local `.env` can select the model or configure an API
-key, including for a compatible relay.
-
-```dotenv
-CODING_AGENT_PROVIDER=codex
-CODING_AGENT_EXECUTOR=codex
-CODING_AGENT_AUTO_INSTALL=true
-CODING_AGENT_REQUIRE_AUTH=true
-CODING_AGENT_EXECUTABLE=codex
-
-CODING_AGENT_BASE_URL=
-CODING_AGENT_MODEL=
-CODING_AGENT_API_KEY=
+```text
+robot_wiki.md
+├── Full-stack summary
+│   ├── Discovery status, mode, and confidence
+│   └── Hardware/software compatibility, unknowns, and warnings
+├── Hardware and robot specifications
+│   ├── Compute platform, CPU architecture, and drive model
+│   ├── Key specifications such as velocity limits
+│   └── Sensors, host devices, and hardware buses
+├── Host and software stack
+│   ├── Operating system, ROS distribution, RMW, and Domain ID
+│   └── Tool availability and version evidence
+├── Application and function overview
+│   └── Purpose, entry point, nodes, interfaces, protocols, dependencies, and risks per program
+├── ROS and communication topology
+│   ├── Node, Topic, Service, and Action inventory
+│   └── Program-to-interface relationship graph
+├── Dependencies, differences, and unknowns
+│   └── Missing dependencies, version conflicts, compatibility differences, and risks
+└── Maintenance guidance
+    └── Engineering purpose, owner, deployment relationships, startup order, and version baseline
 ```
 
-```bash
-uv run robotctl build agent-config
-uv run robotctl build agent-prepare
-uv run robotctl build plan --robot "$ROBOT_ID"
-uv run robotctl build execute --robot "$ROBOT_ID" --workspace /path/to/robot-application
-uv run robotctl tool catalog --robot "$ROBOT_ID"
-uv run robotctl hw inventory scan
-uv run robotctl linux host inspect
-uv run robotctl ros graph snapshot
-uv run robotctl app robot discover
-uv run robotctl build status --robot "$ROBOT_ID"
-```
+See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
+[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
+and [`.env.example`](../.env.example) for Adapter Agent configuration.
 
-Debugging is allowed only after canonical CLI conformance and the State Graph baseline pass.
+#### Stage 2: diagnosis
 
-#### Stage 2: closed-loop debugging and diagnosis
-
-The Diagnosis Agent reads the build handoff and user constraints, then performs closed-loop
+The Diagnosis Agent reads the adapt handoff and user constraints, then performs closed-loop
 diagnosis and tuning. When image-model supervision is needed, configure the backend securely
 outside the source repository and submit timestamped images with structured telemetry:
 
@@ -182,39 +184,37 @@ export ROBOT_USE_BACKEND=openai
 export OPENAI_API_KEY="..."
 export OPENAI_MODEL="an-image-capable-model-available-to-your-project"
 
-uv run robotctl debug status --robot "$ROBOT_ID"
-uv run robotctl debug robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.jpg
+uv run robotctl diagnose status --robot "$ROBOT_ID"
+uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.jpg
 ```
 
 `robot_use` provides semantic supervision only. It performs no local visual detection and has no
 authority over robot safety. Tuning must remain within user constraints and hard safety boundaries,
 and every change must run the affected smoke, safety, and regression checks.
 
-#### Stage 3: testing
+#### Stage 3: verification
 
-Stage 3 checks formal acceptance readiness. Once the corresponding Test Skills are implemented, a
-Test Agent generates cases, runs full regression, and packages evidence:
+Stage 3 checks formal acceptance readiness. Once the corresponding Verify Skills are implemented, a
+Verification Agent generates cases, runs full regression, and packages evidence:
 
 ```bash
-uv run robotctl test status --robot "$ROBOT_ID"
+uv run robotctl verify status --robot "$ROBOT_ID"
 ```
 
 ## Project layout
 
 ```text
-src/rolo/stages/build/   Stage 1: registration, probe discovery, CLI construction, State Graph gate
-src/rolo/stages/debug/   Stage 2: Diagnosis Agent loop, tuning, and robot_use
-src/rolo/stages/test/    Stage 3: optional autonomous testing and formal acceptance
+src/rolo/stages/adapt/      Stage 1: discovery, adapters, conformance, and handoff publication
+src/rolo/stages/diagnose/   Stage 2: Diagnosis Agent loop, tuning, and robot_use
+src/rolo/stages/verify/     Stage 3: optional autonomous verification and acceptance
+src/rolo/commands/       robotctl interfaces grouped by command domain
 src/rolo/core/           Shared configuration, domain models, artifacts, and robot registry
-src/rolo/                Shared API, agentd, runtime, and compatibility entry points
-configs/local/           Capability manifests for local mock robots
-configs/profiles/        URDF profile format examples
-configs/platforms/       ARM64 compatibility and compute-platform manifests
-configs/robot_use.yaml
-configs/discovery.yaml
+src/rolo/integrations/robot_use/  External supervision backends for robot_use
+src/rolo/                Shared API, agentd, and runtime
+tests/fixtures/robots/    Mock robot capability fixtures
+tests/fixtures/profiles/  URDF profile fixtures
 schemas/                 Exported JSON Schemas
-tests/                   Offline unit and API tests
-scripts/                 Development helpers
+tests/                   Offline unit tests, API tests, and fixtures
 rolo-logo.svg            Final rolo SVG identity
 ```
 

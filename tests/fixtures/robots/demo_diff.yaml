@@ -1,0 +1,41 @@
+schema_version: robot-capability/v1
+robot_id: demo_diff
+adapter: mock
+platform:
+  architecture: arm64
+  compute: auto_discover
+  os: ubuntu
+  ros_distro: auto_discover
+  drive_model: differential
+geometry:
+  footprint_m: [[0.31, 0.23], [0.31, -0.23], [-0.29, -0.23], [-0.29, 0.23]]
+  hard_max_linear_velocity_mps: 0.8
+  hard_max_angular_velocity_radps: 1.5
+sensors:
+  front_camera:
+    semantic_uri: semantic://sensor/front_camera
+    modality: camera_rgb
+    binding: mock://demo_diff/front_camera
+  range_primary:
+    semantic_uri: semantic://sensor/front_lidar/scan
+    modality: lidar_2d
+    binding: mock://demo_diff/scan
+features:
+  mapping_2d: true
+  navigation_2d: true
+  docking: true
+  enrollment:
+    identity_status: REGISTERED
+    profile_id: differential_drive
+    profile_format: urdf
+    profile_path: tests/fixtures/profiles/differential_drive.urdf
+    profile_sha256: e7dd2595b55d24f669b0e821c05c0614bd57c8bf791f889c5c702261c1f174a7
+    urdf_status: SCANNED
+    semantic_status: RESOLVED
+    motion_safety_status: APPROVED
+    bindings_verified: true
+    calibration_verified: true
+  robot_use:
+    supported: true
+    local_visual_detection: false
+    safety_authority: none

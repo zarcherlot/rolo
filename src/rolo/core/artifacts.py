@@ -32,3 +32,12 @@ class ArtifactStore:
         )
         temporary.replace(path)
         return path
+
+    def write_text(self, relative_path: str, value: str) -> Path:
+        self.ensure()
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(value, encoding="utf-8")
+        temporary.replace(path)
+        return path

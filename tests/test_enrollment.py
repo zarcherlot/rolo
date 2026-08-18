@@ -8,9 +8,9 @@ from typer.testing import CliRunner
 from rolo.agentd import create_agentd_app
 from rolo.cli import app
 from rolo.core.config import get_settings, load_yaml
-from rolo.enrollment import EnrollmentService, list_profiles, load_urdf_profile
+from rolo.stages.adapt.enrollment import EnrollmentService, load_urdf_profile
 
-PROFILE_ROOT = Path("configs/profiles")
+PROFILE_ROOT = Path("tests/fixtures/profiles")
 
 
 def urdf_profile(name: str) -> Path:
@@ -76,19 +76,9 @@ def test_urdf_profile_records_missing_semantics_for_discovery(
 
 
 
-def test_urdf_profile_catalog_is_data_driven() -> None:
-    profiles = list_profiles(PROFILE_ROOT)
-
-    assert {profile["profile_id"] for profile in profiles} == {
-        "ackermann",
-        "differential_drive",
-    }
-    assert {profile["format"] for profile in profiles} == {"urdf"}
-    assert all(str(profile["path"]).endswith(".urdf") for profile in profiles)
-
-
 def test_urdf_profile_hash_is_stable_across_line_endings(tmp_path: Path) -> None:
     source = urdf_profile("differential_drive").read_bytes()
+    source = source.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     crlf_profile = tmp_path / "differential_drive.urdf"
     crlf_profile.write_bytes(source.replace(b"\n", b"\r\n"))
 
@@ -116,14 +106,8 @@ def test_new_enrollment_remains_degraded_until_binding_and_calibration(
     assert state.json()["application"]["navigation"] == "NOT_READY"
 
 
-def test_init_registers_and_runs_all_install_checks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_registers_and_runs_runtime_checks(tmp_path: Path) -> None:
     get_settings.cache_clear()
-    monkeypatch.setattr(
-        "rolo.cli._run_engineering_tests",
-        lambda _workspace: {"status": "PASSED", "exit_code": 0, "summary": "48 passed"},
-    )
     result = CliRunner().invoke(
         app,
         [
@@ -139,7 +123,7 @@ def test_init_registers_and_runs_all_install_checks(
     assert '"robot_id": "customer_rover_42"' in result.output
     assert '"profile_path"' not in result.output
     assert '"status": "READY_FOR_DISCOVERY"' in result.output
-    assert '"engineering_tests"' in result.output
+    assert '"engineering_tests"' not in result.output
     assert '"enrollment_status": "NOT_DISCOVERED"' in result.output
     assert '"motion_safety_status": "UNAPPROVED"' in result.output
     assert (tmp_path / "config/robots/customer_rover_42.yaml").is_file()

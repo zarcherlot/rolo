@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "AdapterAgentDependencyStatus": {
+      "enum": [
+        "READY",
+        "INSTALLED",
+        "INSTALL_REQUIRED",
+        "AUTH_REQUIRED",
+        "UNSUPPORTED",
+        "FAILED"
+      ],
+      "title": "AdapterAgentDependencyStatus",
+      "type": "string"
+    }
+  },
+  "description": "Secret-free installation and authentication readiness evidence.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-agent-dependency/v1",
+      "default": "robot-adapter-agent-dependency/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "executor": {
+      "title": "Executor",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/AdapterAgentDependencyStatus"
+    },
+    "platform": {
+      "title": "Platform",
+      "type": "string"
+    },
+    "architecture": {
+      "title": "Architecture",
+      "type": "string"
+    },
+    "executable": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Executable"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Version"
+    },
+    "installed": {
+      "default": false,
+      "title": "Installed",
+      "type": "boolean"
+    },
+    "install_attempted": {
+      "default": false,
+      "title": "Install Attempted",
+      "type": "boolean"
+    },
+    "install_source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Install Source"
+    },
+    "authentication": {
+      "default": "NOT_CHECKED",
+      "title": "Authentication",
+      "type": "string"
+    },
+    "messages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Messages",
+      "type": "array"
+    },
+    "checked_at": {
+      "format": "date-time",
+      "title": "Checked At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "executor",
+    "provider",
+    "status",
+    "platform",
+    "architecture"
+  ],
+  "title": "AdapterAgentDependencyReport",
+  "type": "object"
+}

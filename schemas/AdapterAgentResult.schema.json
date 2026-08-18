@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "AdapterOutputRefs": {
+      "description": "Workspace-relative outputs proposed for independent promotion.",
+      "properties": {
+        "tool_catalog": {
+          "title": "Tool Catalog",
+          "type": "string"
+        },
+        "state_graph": {
+          "title": "State Graph",
+          "type": "string"
+        },
+        "conformance_report": {
+          "title": "Conformance Report",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_catalog",
+        "state_graph",
+        "conformance_report"
+      ],
+      "title": "AdapterOutputRefs",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured final message produced by the Stage 1 Adapter Agent.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-agent-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "completed_tasks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Completed Tasks",
+      "type": "array"
+    },
+    "changed_files": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Files",
+      "type": "array"
+    },
+    "validation": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Validation",
+      "type": "array"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "handoff_ready": {
+      "title": "Handoff Ready",
+      "type": "boolean"
+    },
+    "outputs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AdapterOutputRefs"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "summary",
+    "completed_tasks",
+    "changed_files",
+    "validation",
+    "blockers",
+    "handoff_ready"
+  ],
+  "title": "AdapterAgentResult",
+  "type": "object"
+}

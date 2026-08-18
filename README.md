@@ -12,7 +12,7 @@
 
 ## rolo 是什么
 
-rolo (robot only loop once) 是一种具身机器人开发原则：每执行一次边界清晰的用例，获得输入、执行、观察和结果的切片，让机器人自主的解释、闭环和修正问题。
+rolo (robot only loop once) 是一种具身机器人开发原则：每一次用例的执行，构建输入、过程、结果和外部观测的切片，让机器人自主解释并修正问题。
 
 > [!NOTE]
 > 当前版本是开发中的 MVP。模拟后端适合本地验证，但不替代真实机器人上的安全控制、急停、碰撞检测或人工授权。
@@ -39,7 +39,10 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 
 ### 主动发现
 
-首次配置时，rolo 为唯一 `robot_id`主动发现生成标准化 capability manifest、语义绑定候选和 CLI tool catalog。发现范围包括计算平台、系统版本、传感器、执行器、总线、Linux 服务、ROS 图、本地源码工程以及已有的厂商和应用入口。
+首次配置时，rolo 为唯一 `robot_id` 建立一份可持续维护的**机器人 Wiki**。它把计算平台、
+系统版本、传感器、执行器、总线、Linux 服务、ROS 图、本地源码、启动入口、通信协议、
+依赖和风险放进同一张全栈地图。团队不再需要从某位资深工程师的记忆、零散 README、
+厂商手册和现场脚本中拼凑“这台机器人到底如何工作”。
 
 ### `robot_use`
 
@@ -75,7 +78,7 @@ uv sync --frozen
 uv run robotctl init --robot-id your_robot_id
 ```
 
-### 访问控制面
+### 访问管理 API
 
 API 默认仅监听机器人本机回环地址。需要远程访问时，建立 SSH 端口转发：
 
@@ -91,93 +94,98 @@ ssh -L 8080:127.0.0.1:8080 robot@ROBOT_IP
 
 | 阶段 | 主要产物 | Agent 要求 |
 |---|---|---|
-| `build` | 注册、探针、capability manifest、候选语义绑定、工具目录、canonical CLI、State Graph、build handoff | Coding Agent；缺省配置 Codex |
-| `debug` | 约束内闭环诊断、调参证据、冻结配置、debug handoff | Diagnosis Agent；`robot_use` 可选 |
-| `test` | 可选正式用例、全量回归、报告和证据包 | Test Agent |
+| `adapt` | 可编辑机器人 Wiki、机器证据、canonical CLI、State Graph、conformance、adapt handoff | Adapter Agent；缺省配置 Codex |
+| `diagnose` | 约束内闭环诊断、调参证据、冻结配置、diagnosis handoff | Diagnosis Agent；`robot_use` 可选 |
+| `verify` | 可选正式用例、全量回归、报告、证据包、verification handoff | Verification Agent |
 
-#### 第一阶段：构建
+上表描述目标阶段契约；当前实现成熟度见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
-Build 阶段合并注册、发现、标准 CLI 构建和 State Graph 门禁。首次配置登记用户指定的 `robot_id`，可在仓库目录检查身份和发现结果，或对机器人本地的URDF应用源码重新运行只读发现：
+#### 第一阶段：适配
+
+Adapt 的目标是交付两样核心资产：
+
+1. 一份研发团队读得懂、可维护的机器人 Wiki；
+2. 一套由证据支撑并通过独立门禁的 canonical CLI、State Graph 和下游 handoff。
+
+它让一个具身研发团队快速回答：机器人由哪些板卡和外设组成、运行哪些程序、如何启动、
+节点和协议怎样连接、哪些依赖缺失、哪些能力只是推断、哪些接口已经可以安全地交给
+Agent。新成员、算法、嵌入式、运维和测试看到的是同一份系统全貌。
+
+“发现并生成 Wiki → 阅读或修订 → 执行适配”的流程如下：
 
 ```bash
-uv run robotctl build enroll show
-uv run robotctl build discover show --robot "$ROBOT_ID"
-uv run robotctl build discover run --robot "$ROBOT_ID" \
+uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
   --source-root /path/to/robot-application
+uv run robotctl adapt discover review --robot "$ROBOT_ID"
+uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
 ```
 
-发现流程采集硬件、主机软件栈、ROS 图和本地源码工程，保存 `hw/linux/ros/application` 四类探针，并将 capability manifest、候选语义绑定、工具目录和 build inputs 写入制品目录。
-
-Coding Agent 随后读取 build inputs，生成构建计划，并通过统一 CLI 实现和检查各层 adapter。可通过本地 `.env` 选择模型或配置 API Key，支持中转站。
-
-```dotenv
-CODING_AGENT_PROVIDER=codex
-CODING_AGENT_EXECUTOR=codex
-CODING_AGENT_AUTO_INSTALL=true
-CODING_AGENT_REQUIRE_AUTH=true
-CODING_AGENT_EXECUTABLE=codex
-
-CODING_AGENT_BASE_URL=
-CODING_AGENT_MODEL=
-CODING_AGENT_API_KEY=
+```text
+robot_wiki.md
+├── 全栈摘要
+│   ├── 发现状态、模式与置信度
+│   └── 软硬件兼容性、未知项和警告
+├── 硬件与机器人规格
+│   ├── 计算平台、CPU 架构与驱动模型
+│   ├── 速度等关键规格
+│   └── 传感器、主机设备与硬件总线
+├── 主机与软件栈
+│   ├── 操作系统、ROS 发行版、RMW 与 Domain ID
+│   └── 工具可用性和版本证据
+├── 应用程序与功能概览
+│   └── 每个程序的用途、入口、节点、接口、协议、依赖与风险
+├── ROS 与通信拓扑
+│   ├── Node、Topic、Service、Action 清单
+│   └── 程序与通信接口关系图
+├── 依赖、差异与未知项
+│   └── 缺失依赖、版本冲突、兼容性差异和风险
+└── 维护建议
+    └── 工程用途、负责人、部署关系、启动顺序和版本基线
 ```
 
-```bash
-uv run robotctl build agent-config
-uv run robotctl build agent-prepare
-uv run robotctl build plan --robot "$ROBOT_ID"
-uv run robotctl build execute --robot "$ROBOT_ID" --workspace /path/to/robot-application
-uv run robotctl tool catalog --robot "$ROBOT_ID"
-uv run robotctl hw inventory scan
-uv run robotctl linux host inspect
-uv run robotctl ros graph snapshot
-uv run robotctl app robot discover
-uv run robotctl build status --robot "$ROBOT_ID"
-```
+主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，软件发现与证据契约见
+[`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见
+[`.env.example`](.env.example)。
 
-只有 canonical CLI conformance 和 State Graph 基线通过后，才允许进入调试阶段。
+#### 第二阶段：诊断
 
-#### 第二阶段：闭环调试与诊断
-
-Diagnosis Agent 读取 build handoff 和用户约束，执行闭环诊断与调参。需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
+Diagnosis Agent 读取 adapt handoff 和用户约束，执行闭环诊断与调参。需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
 
 ```bash
 export ROBOT_USE_BACKEND=openai
 export OPENAI_API_KEY="..."
 export OPENAI_MODEL="an-image-capable-model-available-to-your-project"
 
-uv run robotctl debug status --robot "$ROBOT_ID"
-uv run robotctl debug robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.jpg
+uv run robotctl diagnose status --robot "$ROBOT_ID"
+uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.jpg
 ```
 
 `robot_use` 只提供语义监督，不在本地执行视觉检测，也不拥有机器人的安全决策权。调参必须受用户约束和硬安全边界限制，每次修改后都要运行受影响的 smoke、安全与回归检查。
 
-#### 第三阶段：测试
+#### 第三阶段：验证
 
-第三阶段用于检查正式验收准备度，并在实现相应 Test Skill 后由 Test Agent 生成用例、执行全量回归和打包证据：
+第三阶段用于检查正式验收准备度，并在实现相应 Verify Skill 后由 Verification Agent 生成用例、执行全量回归和打包证据：
 
 ```bash
-uv run robotctl test status --robot "$ROBOT_ID"
+uv run robotctl verify status --robot "$ROBOT_ID"
 ```
 
 ## 工程结构
 
 ```text
-src/rolo/stages/build/   第一阶段：注册、探针发现、CLI 构建与 State Graph 门禁
-src/rolo/stages/debug/   第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
-src/rolo/stages/test/    第三阶段：可选自主测试与正式验收
+src/rolo/stages/adapt/      第一阶段：发现、适配、conformance 与 handoff 发布
+src/rolo/stages/diagnose/   第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
+src/rolo/stages/verify/     第三阶段：可选自主验证与正式验收
+src/rolo/commands/       按命令域拆分的 robotctl 接口
 src/rolo/core/           共享配置、领域模型、制品与机器人注册表
-src/rolo/                共享 API、agentd、runtime 与兼容入口
-configs/local/        本地 mock 示例机器人的能力清单
-configs/profiles/     URDF profile 格式示例
-configs/platforms/    ARM64 兼容性和计算平台清单
-configs/robot_use.yaml
-configs/discovery.yaml
-schemas/              导出的 JSON Schema
-tests/                离线单元测试与 API 测试
-scripts/              开发辅助脚本
-rolo-logo.svg         rolo 最终 SVG 标志
+src/rolo/integrations/robot_use/  robot_use 外部监督后端
+src/rolo/                共享 API、agentd 与 runtime
+tests/fixtures/robots/    测试用 mock 机器人能力清单
+tests/fixtures/profiles/  测试用 URDF profile
+schemas/                 导出的 JSON Schema
+tests/                   离线单元测试、API 测试与测试夹具
+rolo-logo.svg            rolo 最终 SVG 标志
 ```
 
 ## 参与项目

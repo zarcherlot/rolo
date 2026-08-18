@@ -1,0 +1,46 @@
+{
+  "properties": {
+    "schema_version": {
+      "const": "robot-discovery-latest/v1",
+      "default": "robot-discovery-latest/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Report Sha256",
+      "type": "string"
+    },
+    "manifest_ref": {
+      "title": "Manifest Ref",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "published_at": {
+      "format": "date-time",
+      "title": "Published At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "report_sha256",
+    "manifest_ref",
+    "manifest_sha256"
+  ],
+  "title": "DiscoveryLatestIndex",
+  "type": "object"
+}

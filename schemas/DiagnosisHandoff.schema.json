@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-diagnosis-handoff/v1",
+      "default": "robot-diagnosis-handoff/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "source_adapter_handoff_ref": {
+      "title": "Source Adapter Handoff Ref",
+      "type": "string"
+    },
+    "source_adapter_handoff_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Adapter Handoff Sha256",
+      "type": "string"
+    },
+    "frozen_config_ref": {
+      "title": "Frozen Config Ref",
+      "type": "string"
+    },
+    "frozen_config_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Frozen Config Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "source_adapter_handoff_ref",
+    "source_adapter_handoff_sha256",
+    "frozen_config_ref",
+    "frozen_config_sha256"
+  ],
+  "title": "DiagnosisHandoff",
+  "type": "object"
+}

@@ -4,7 +4,7 @@ from rolo.core.registry import RobotRegistry
 
 
 def test_loads_two_heterogeneous_robots() -> None:
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
 
     assert len(registry) == 2

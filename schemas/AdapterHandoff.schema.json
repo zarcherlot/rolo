@@ -1,0 +1,90 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-handoff/v1",
+      "default": "robot-adapter-handoff/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "source_discovery_id": {
+      "title": "Source Discovery Id",
+      "type": "string"
+    },
+    "source_agent_run_id": {
+      "title": "Source Agent Run Id",
+      "type": "string"
+    },
+    "discovery_manifest_ref": {
+      "title": "Discovery Manifest Ref",
+      "type": "string"
+    },
+    "discovery_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Discovery Manifest Sha256",
+      "type": "string"
+    },
+    "tool_catalog_ref": {
+      "title": "Tool Catalog Ref",
+      "type": "string"
+    },
+    "tool_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Tool Catalog Sha256",
+      "type": "string"
+    },
+    "state_graph_ref": {
+      "title": "State Graph Ref",
+      "type": "string"
+    },
+    "state_graph_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "State Graph Sha256",
+      "type": "string"
+    },
+    "conformance_report_ref": {
+      "title": "Conformance Report Ref",
+      "type": "string"
+    },
+    "conformance_report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Conformance Report Sha256",
+      "type": "string"
+    },
+    "gate_report_ref": {
+      "title": "Gate Report Ref",
+      "type": "string"
+    },
+    "gate_report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Gate Report Sha256",
+      "type": "string"
+    },
+    "promoted_at": {
+      "format": "date-time",
+      "title": "Promoted At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "source_discovery_id",
+    "source_agent_run_id",
+    "discovery_manifest_ref",
+    "discovery_manifest_sha256",
+    "tool_catalog_ref",
+    "tool_catalog_sha256",
+    "state_graph_ref",
+    "state_graph_sha256",
+    "conformance_report_ref",
+    "conformance_report_sha256",
+    "gate_report_ref",
+    "gate_report_sha256"
+  ],
+  "title": "AdapterHandoff",
+  "type": "object"
+}

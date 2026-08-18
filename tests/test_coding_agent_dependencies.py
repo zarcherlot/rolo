@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.stages.build.dependencies import (
+from rolo.stages.adapt.dependencies import (
     CODEX_INSTALL_URL,
+    AdapterAgentDependencyManager,
     CodexDependencyAdapter,
-    CodingAgentDependencyManager,
 )
-from rolo.stages.build.models import CodingAgentConfig
+from rolo.stages.adapt.models import AdapterAgentConfig
 
 
 class FakeCodexAdapter:
@@ -42,12 +42,12 @@ class FakeCodexAdapter:
 
 def test_prepare_auto_installs_and_writes_secret_free_audit(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=False, authenticated=False)
-    manager = CodingAgentDependencyManager(
+    manager = AdapterAgentDependencyManager(
         ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
     )
 
     report, artifact = manager.prepare(
-        config=CodingAgentConfig(),
+        config=AdapterAgentConfig(),
         executable="codex",
         auto_install=True,
         require_auth=False,
@@ -65,12 +65,12 @@ def test_prepare_auto_installs_and_writes_secret_free_audit(tmp_path: Path) -> N
 
 def test_prepare_blocks_execution_when_login_is_missing(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=False)
-    manager = CodingAgentDependencyManager(
+    manager = AdapterAgentDependencyManager(
         ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(
-        config=CodingAgentConfig(),
+        config=AdapterAgentConfig(),
         executable="codex",
         auto_install=True,
         require_auth=True,
@@ -86,12 +86,12 @@ def test_prepare_blocks_execution_when_login_is_missing(tmp_path: Path) -> None:
 
 def test_prepare_accepts_installed_and_authenticated_executor(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=True)
-    manager = CodingAgentDependencyManager(
+    manager = AdapterAgentDependencyManager(
         ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(
-        config=CodingAgentConfig(),
+        config=AdapterAgentConfig(),
         executable="codex",
         auto_install=True,
         require_auth=True,
@@ -106,12 +106,12 @@ def test_prepare_accepts_installed_and_authenticated_executor(tmp_path: Path) ->
 
 def test_prepare_accepts_explicit_key_without_persisting_it(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=False)
-    manager = CodingAgentDependencyManager(
+    manager = AdapterAgentDependencyManager(
         ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
     )
 
     report, artifact = manager.prepare(
-        config=CodingAgentConfig(api_key_configured=True),
+        config=AdapterAgentConfig(api_key_configured=True),
         executable="codex",
         auto_install=True,
         require_auth=True,
@@ -125,12 +125,12 @@ def test_prepare_accepts_explicit_key_without_persisting_it(tmp_path: Path) -> N
 
 def test_prepare_rejects_unregistered_executor(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=True)
-    manager = CodingAgentDependencyManager(
+    manager = AdapterAgentDependencyManager(
         ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(
-        config=CodingAgentConfig(executor="unknown-agent"),
+        config=AdapterAgentConfig(executor="unknown-agent"),
         executable="unknown-agent",
         auto_install=True,
         require_auth=True,
@@ -168,9 +168,9 @@ def test_codex_install_uses_fixed_official_source_and_argv(
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("rolo.stages.build.dependencies.platform.system", lambda: "Linux")
-    monkeypatch.setattr("rolo.stages.build.dependencies.urllib.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("rolo.stages.build.dependencies.subprocess.run", fake_run)
+    monkeypatch.setattr("rolo.stages.adapt.dependencies.platform.system", lambda: "Linux")
+    monkeypatch.setattr("rolo.stages.adapt.dependencies.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("rolo.stages.adapt.dependencies.subprocess.run", fake_run)
 
     CodexDependencyAdapter().install(
         home=tmp_path / "home", codex_home=tmp_path / "codex", timeout_s=30
@@ -184,7 +184,7 @@ def test_codex_install_uses_fixed_official_source_and_argv(
 def test_codex_install_rejects_non_linux_before_downloading(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("rolo.stages.build.dependencies.platform.system", lambda: "Windows")
+    monkeypatch.setattr("rolo.stages.adapt.dependencies.platform.system", lambda: "Windows")
 
     with pytest.raises(RuntimeError, match="supported only on Linux"):
         CodexDependencyAdapter().install(

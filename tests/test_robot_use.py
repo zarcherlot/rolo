@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from rolo.adapters.mock_robot_use import MockRobotUseBackend
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import ImageFrame, RobotUseRequest, RobotUseVerdict
 from rolo.core.registry import RobotRegistry
-from rolo.robot_use import RobotUseService
+from rolo.integrations.robot_use.mock import MockRobotUseBackend
+from rolo.stages.diagnose.robot_use import RobotUseService
 
 
 def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotUseRequest:
@@ -34,7 +34,7 @@ def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotU
 
 @pytest.mark.asyncio
 async def test_mock_robot_use_reports_normal(tmp_path: Path) -> None:
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     service = RobotUseService(
         registry=registry,
@@ -50,7 +50,7 @@ async def test_mock_robot_use_reports_normal(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_mock_robot_use_reports_suspected_stall(tmp_path: Path) -> None:
-    registry = RobotRegistry(Path("configs/local/robots"))
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     service = RobotUseService(
         registry=registry,

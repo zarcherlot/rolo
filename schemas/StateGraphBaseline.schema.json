@@ -1,0 +1,43 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "robot-state-graph/v1",
+      "default": "robot-state-graph/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Edges",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "nodes",
+    "edges"
+  ],
+  "title": "StateGraphBaseline",
+  "type": "object"
+}

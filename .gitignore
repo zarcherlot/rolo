@@ -11,8 +11,7 @@ dist/
 build/
 !src/rolo/stages/build/
 !src/rolo/stages/build/**
-__pycache__/
-*.py[cod]
+src/rolo/stages/build/__pycache__/
 *.egg-info/
 artifacts/
 logs/
