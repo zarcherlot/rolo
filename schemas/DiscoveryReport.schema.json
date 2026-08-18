@@ -287,6 +287,21 @@
       "title": "Package Inventory Ref",
       "type": "string"
     },
+    "active_discovery_report_ref": {
+      "default": "",
+      "title": "Active Discovery Report Ref",
+      "type": "string"
+    },
+    "confirmation_status": {
+      "default": "AWAITING_USER_CONFIRMATION",
+      "title": "Confirmation Status",
+      "type": "string"
+    },
+    "discovery_mode": {
+      "default": "",
+      "title": "Discovery Mode",
+      "type": "string"
+    },
     "source_roots": {
       "items": {
         "type": "string"

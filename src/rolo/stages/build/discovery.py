@@ -30,6 +30,14 @@ from rolo.core.models import (
     RobotCapability,
     ToolDescriptor,
 )
+from rolo.stages.build.active_discovery import (
+    ActiveDiscoveryAnalyzer,
+    ActiveDiscoveryInputs,
+    ActiveProbeMode,
+    ConfirmationStatus,
+    SoftwareInventoryMode,
+    render_active_discovery_markdown,
+)
 from rolo.stages.build.enrollment import load_urdf_profile
 from rolo.stages.build.inputs import (
     BuildInputs,
@@ -43,6 +51,7 @@ from rolo.stages.build.software_inventory import (
     DpkgPackageCollector,
     SoftwareInventoryPolicy,
     SoftwareSummary,
+    empty_inventory_index,
 )
 
 MAX_COMMAND_OUTPUT = 200_000
@@ -362,6 +371,34 @@ def _extract_ros_names(text: str) -> dict[str, list[str]]:
     return {key: sorted(set(re.findall(pattern, text))) for key, pattern in patterns.items()}
 
 
+def _extract_ros_interfaces(text: str, source_path: Path) -> list[dict[str, str]]:
+    patterns = {
+        "publisher": r"create_publisher\(\s*([^,]+),\s*['\"]([^'\"]+)",
+        "subscriber": r"create_subscription\(\s*([^,]+),\s*['\"]([^'\"]+)",
+        "service": r"create_service\(\s*([^,]+),\s*['\"]([^'\"]+)",
+        "client": r"create_client\(\s*([^,]+),\s*['\"]([^'\"]+)",
+    }
+    interfaces: list[dict[str, str]] = []
+    for role, pattern in patterns.items():
+        for message_type, name in re.findall(pattern, text):
+            interfaces.append(
+                {
+                    "role": role,
+                    "name": name,
+                    "type": message_type.strip(),
+                    "source": str(source_path),
+                }
+            )
+    return interfaces
+
+
+def _extract_protocols(text: str) -> list[str]:
+    pattern = re.compile(
+        r"(?i)\b(tcp|udp|http|https|grpc|websocket|mqtt|serial|socketcan|can|dbus)\b"
+    )
+    return sorted({match.lower() for match in pattern.findall(text)})
+
+
 def _extract_semantic_candidates(
     text: str, *, source_path: Path, source_kind: str
 ) -> list[dict[str, Any]]:
@@ -419,6 +456,11 @@ class ApplicationProbe:
                 "config_files": [],
                 "semantic_candidates": [],
                 "ros_names": {"topics": [], "services": [], "actions": []},
+                "ros_interfaces": [],
+                "protocols": [],
+                "languages": [],
+                "build_targets": [],
+                "declared_dependencies": [],
                 "manifest_digests": {},
                 "source_revision": None,
             }
@@ -431,6 +473,10 @@ class ApplicationProbe:
                     project_data = metadata.get("project", {})
                     if project_data.get("name"):
                         project["packages"].append(project_data["name"])
+                    for dependency in project_data.get("dependencies", []):
+                        match = re.match(r"[A-Za-z0-9_.-]+", str(dependency))
+                        if match:
+                            project["declared_dependencies"].append(match.group(0))
                     scripts = project_data.get("scripts", {})
                     project["entrypoints"].extend(
                         {"name": name, "target": target, "source": "pyproject"}
@@ -455,6 +501,18 @@ class ApplicationProbe:
                         name = package_root.findtext("name")
                         if name:
                             project["packages"].append(name)
+                        for tag in (
+                            "depend",
+                            "build_depend",
+                            "buildtool_depend",
+                            "exec_depend",
+                            "test_depend",
+                        ):
+                            project["declared_dependencies"].extend(
+                                dependency.text.strip()
+                                for dependency in package_root.findall(tag)
+                                if dependency.text and dependency.text.strip()
+                            )
                     except (OSError, ET.ParseError) as exc:
                         warnings.append(f"cannot parse {path}: {exc}")
                 is_launch_file = path.name.endswith(".launch.py") or path.suffix in {
@@ -496,13 +554,48 @@ class ApplicationProbe:
                 if path.suffix.lower() in source_suffixes and path.stat().st_size <= 2_000_000:
                     text = _read_text(path, 2_000_000)
                     if text:
+                        language = {
+                            ".py": "python",
+                            ".cpp": "cpp",
+                            ".cc": "cpp",
+                            ".cxx": "cpp",
+                            ".hpp": "cpp",
+                            ".h": "c_or_cpp",
+                        }.get(path.suffix.lower())
+                        if language:
+                            project["languages"].append(language)
                         extracted = _extract_ros_names(text)
                         for kind, values in extracted.items():
                             ros_names[kind].update(values)
+                        project["ros_interfaces"].extend(
+                            _extract_ros_interfaces(text, path)
+                        )
+                        project["protocols"].extend(_extract_protocols(text))
+                if path.name == "CMakeLists.txt" and path.stat().st_size <= 2_000_000:
+                    cmake_text = _read_text(path, 2_000_000) or ""
+                    targets = re.findall(
+                        r"(?im)^\s*add_(?:executable|library)\s*\(\s*([A-Za-z0-9_.+-]+)",
+                        cmake_text,
+                    )
+                    project["build_targets"].extend(targets)
+                    project["entrypoints"].extend(
+                        {"name": target, "target": target, "source": "cmake"}
+                        for target in targets
+                    )
 
             for kind, values in ros_names.items():
                 project["ros_names"][kind] = sorted(values)[:MAX_DISCOVERED_ITEMS]
             project["packages"] = sorted(set(project["packages"]))
+            project["languages"] = sorted(set(project["languages"]))
+            project["build_targets"] = sorted(set(project["build_targets"]))
+            project["declared_dependencies"] = sorted(
+                set(project["declared_dependencies"])
+            )
+            project["protocols"] = sorted(set(project["protocols"]))
+            project["ros_interfaces"] = sorted(
+                project["ros_interfaces"],
+                key=lambda item: (item["role"], item["name"], item["type"], item["source"]),
+            )[:MAX_DISCOVERED_ITEMS]
             project["launch_files"] = project["launch_files"][:MAX_DISCOVERED_ITEMS]
             project["config_files"] = project["config_files"][:MAX_DISCOVERED_ITEMS]
             project["semantic_candidates"] = project["semantic_candidates"][
@@ -851,8 +944,17 @@ class DiscoveryService:
         *,
         robot: RobotCapability,
         urdf_path: Path,
-        source_roots: Sequence[Path],
+        source_roots: Sequence[Path] | None = None,
+        active_inputs: ActiveDiscoveryInputs | None = None,
     ) -> tuple[DiscoveryReport, Path]:
+        if active_inputs is not None and source_roots is not None:
+            raise ValueError("pass active_inputs or source_roots, not both")
+        if active_inputs is None:
+            active_inputs = ActiveDiscoveryInputs(
+                source_roots=list(source_roots or []),
+                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+            )
+        active_inputs = active_inputs.resolved()
         robot = _read_discovery_urdf(robot, urdf_path)
         now = datetime.now(timezone.utc)
         discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
@@ -860,37 +962,110 @@ class DiscoveryService:
             f"discovery/{robot.robot_id}/runs/{discovery_id}/package_inventory"
         )
         package_inventory_ref = f"artifact://{inventory_relative}/index.json"
-        inventory_index = DpkgPackageCollector(self.inventory_policy).collect(
-            output_dir=self.artifacts.root / inventory_relative,
-            artifact_prefix=f"artifact://{inventory_relative}",
-            discovery_id=discovery_id,
-            collected_at=now,
-        )
+        if active_inputs.software_inventory == SoftwareInventoryMode.FULL:
+            inventory_index = DpkgPackageCollector(self.inventory_policy).collect(
+                output_dir=self.artifacts.root / inventory_relative,
+                artifact_prefix=f"artifact://{inventory_relative}",
+                discovery_id=discovery_id,
+                collected_at=now,
+            )
+        elif active_inputs.software_inventory == SoftwareInventoryMode.OFF:
+            inventory_index = empty_inventory_index(
+                discovery_id=discovery_id,
+                policy=self.inventory_policy,
+                created_at=now,
+                status=CollectorStatus.BLOCKED_BY_POLICY,
+                reason="full host package inventory was disabled by discovery input policy",
+            )
+        else:
+            inventory_index = empty_inventory_index(
+                discovery_id=discovery_id,
+                policy=self.inventory_policy,
+                created_at=now,
+                status=CollectorStatus.NOT_PROBED,
+                reason=(
+                    "relevant-only package queries are deferred until application evidence "
+                    "identifies dependency candidates"
+                ),
+            )
         software_summary = SoftwareSummary.from_index(
             inventory_index,
             package_inventory_ref,
         )
+        if active_inputs.software_inventory == SoftwareInventoryMode.RELEVANT:
+            software_summary.relevance_resolution_status = "NOT_PROBED"
+            software_summary.warnings.append(
+                "targeted package-manager relevance resolution is deferred; "
+                "declared application dependencies remain in the active discovery report"
+            )
+        elif active_inputs.software_inventory == SoftwareInventoryMode.OFF:
+            software_summary.relevance_resolution_status = "BLOCKED_BY_POLICY"
+        else:
+            software_summary.relevance_resolution_status = "PENDING"
         software_summary_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
+        )
+        ros_probe = (
+            RosProbe().run()
+            if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
+            else ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.UNAVAILABLE,
+                data={"nodes": [], "topics": [], "services": [], "actions": []},
+                warnings=["ROS runtime inspection was not requested"],
+            )
         )
         probes = {
             "hw": HardwareProbe().run(),
             "linux": LinuxProbe().run(),
-            "ros": RosProbe().run(),
-            "application": ApplicationProbe().run(source_roots),
+            "ros": ros_probe,
+            "application": ApplicationProbe().run(active_inputs.source_roots),
         }
         bindings = _semantic_bindings(probes)
         tools = _build_tool_catalog(probes, bindings)
         capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
-        statuses = {probe.status for probe in probes.values()}
+        applicable_probes = {
+            name: probe
+            for name, probe in probes.items()
+            if (name != "application" or active_inputs.source_roots)
+            and (
+                name != "ros"
+                or active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
+            )
+        }
+        statuses = {probe.status for probe in applicable_probes.values()}
         if DiscoveryStatus.FAILED in statuses:
             status = DiscoveryStatus.FAILED
-        elif statuses == {DiscoveryStatus.SUCCEEDED} and software_summary.status in {
-            CollectorStatus.SUCCEEDED,
-            CollectorStatus.NOT_APPLICABLE,
-        }:
+        elif statuses == {DiscoveryStatus.SUCCEEDED} and (
+            active_inputs.software_inventory != SoftwareInventoryMode.FULL
+            or software_summary.status
+            in {CollectorStatus.SUCCEEDED, CollectorStatus.NOT_APPLICABLE}
+        ):
             status = DiscoveryStatus.SUCCEEDED
         else:
+            status = DiscoveryStatus.PARTIAL
+        run_location = f"discovery/{robot.robot_id}/runs/{discovery_id}"
+        active_report_ref = f"artifact://{run_location}/active_discovery_report.json"
+        active_report = ActiveDiscoveryAnalyzer(
+            inputs=active_inputs,
+            projects=probes["application"].data.get("projects", []),
+            ros_probe=probes["ros"],
+            tools=tools,
+            run_root=self.artifacts.root / run_location,
+            artifact_prefix=f"artifact://{run_location}",
+        ).build(
+            discovery_id=discovery_id,
+            robot_id=robot.robot_id,
+            technical_status=status.value,
+            created_at=now,
+        )
+        if not active_report.executables and status != DiscoveryStatus.FAILED:
+            status = DiscoveryStatus.PARTIAL
+            active_report.technical_status = status.value
+        elif (
+            active_report.technical_status == DiscoveryStatus.PARTIAL.value
+            and status == DiscoveryStatus.SUCCEEDED
+        ):
             status = DiscoveryStatus.PARTIAL
         semantic_context = _semantic_context(robot, probes, discovery_id)
         report = DiscoveryReport(
@@ -905,7 +1080,10 @@ class DiscoveryService:
             software_summary=software_summary.model_dump(mode="json"),
             software_summary_ref=software_summary_ref,
             package_inventory_ref=package_inventory_ref,
-            source_roots=[str(path.expanduser().resolve()) for path in source_roots],
+            active_discovery_report_ref=active_report_ref,
+            confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
+            discovery_mode=active_report.discovery_mode.level.value,
+            source_roots=[str(path) for path in active_inputs.source_roots],
             created_at=now,
         )
         payload = report.model_dump(mode="json")
@@ -917,7 +1095,14 @@ class DiscoveryService:
             f"discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json",
             software_summary.model_dump(mode="json"),
         )
-        run_location = f"discovery/{robot.robot_id}/runs/{discovery_id}"
+        self.artifacts.write_json(
+            f"{run_location}/active_discovery_report.json",
+            active_report.model_dump(mode="json"),
+        )
+        self.artifacts.write_text(
+            f"{run_location}/active_discovery_report.md",
+            render_active_discovery_markdown(active_report),
+        )
         self.artifacts.write_json(
             f"{run_location}/capability_manifest.json",
             capability_manifest,
@@ -946,6 +1131,10 @@ class DiscoveryService:
             f"{layer}:{probe.status}"
             for layer, probe in probes.items()
             if probe.status != DiscoveryStatus.SUCCEEDED
+            and not (
+                layer == "ros"
+                and active_inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY
+            )
         ]
         inventory_state = inventory_index.collectors[0]
         if not inventory_state.complete:
@@ -959,11 +1148,11 @@ class DiscoveryService:
         semantic_context_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/semantic_context.json"
         )
-        inputs_status = {
-            DiscoveryStatus.SUCCEEDED: BuildInputsStatus.READY_FOR_CODING,
-            DiscoveryStatus.PARTIAL: BuildInputsStatus.DEGRADED,
-            DiscoveryStatus.FAILED: BuildInputsStatus.BLOCKED,
-        }[status]
+        inputs_status = (
+            BuildInputsStatus.BLOCKED
+            if status == DiscoveryStatus.FAILED
+            else BuildInputsStatus.AWAITING_CONFIRMATION
+        )
         build_inputs = BuildInputs(
             robot_id=robot.robot_id,
             discovery_id=discovery_id,
@@ -984,6 +1173,8 @@ class DiscoveryService:
             package_inventory_ref=package_inventory_ref,
             software_package_count=software_summary.package_count,
             software_inventory_complete=software_summary.complete,
+            active_discovery_report_ref=active_report_ref,
+            confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             probe_refs={
                 layer: (
                     f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/{layer}.json"
@@ -1031,6 +1222,14 @@ class DiscoveryService:
         self.artifacts.write_json(
             f"{latest_location}/software_summary.json",
             software_summary.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/active_discovery_report.json",
+            active_report.model_dump(mode="json"),
+        )
+        self.artifacts.write_text(
+            f"{latest_location}/active_discovery_report.md",
+            render_active_discovery_markdown(active_report),
         )
         self.artifacts.write_json(
             f"{latest_location}/capability_manifest.json",

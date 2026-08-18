@@ -12,6 +12,7 @@ from rolo.stages.contracts import AgentRequirement
 
 class BuildPlanStatus(str, Enum):
     BLOCKED = "BLOCKED"
+    AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"
     REQUIRES_CODING = "REQUIRES_CODING"
     READY_FOR_CONFORMANCE = "READY_FOR_CONFORMANCE"
 
@@ -125,6 +126,9 @@ class BuildPlan(BaseModel):
     semantic_context_ref: str = ""
     unresolved_semantics: list[str] = Field(default_factory=list)
     semantic_value_candidates: int = 0
+    active_discovery_report_ref: str = ""
+    confirmation_status: str = "AWAITING_USER_CONFIRMATION"
+    confirmation_ref: str | None = None
     state_graph_baseline_required: bool = True
     handoff_ref: str
     created_at: datetime = Field(default_factory=utc_now)

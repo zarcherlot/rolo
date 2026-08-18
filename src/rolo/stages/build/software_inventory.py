@@ -28,6 +28,8 @@ class CollectorStatus(str, Enum):
     FAILED = "FAILED"
     UNAVAILABLE = "UNAVAILABLE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
+    NOT_PROBED = "NOT_PROBED"
+    BLOCKED_BY_POLICY = "BLOCKED_BY_POLICY"
 
 
 class SoftwareInventoryPolicy(BaseModel):
@@ -141,7 +143,7 @@ class SoftwareSummary(BaseModel):
     counts_by_manager: dict[str, int] = Field(default_factory=dict)
     counts_by_architecture: dict[str, int] = Field(default_factory=dict)
     counts_by_status: dict[str, int] = Field(default_factory=dict)
-    relevance_resolution_status: Literal["NOT_IMPLEMENTED"] = "NOT_IMPLEMENTED"
+    relevance_resolution_status: str = "PENDING"
     warnings: list[str] = Field(default_factory=list)
 
     @classmethod
@@ -160,6 +162,10 @@ class SoftwareSummary(BaseModel):
             status = CollectorStatus.PARTIAL
         elif any(state.status == CollectorStatus.FAILED for state in states):
             status = CollectorStatus.FAILED
+        elif any(state.status == CollectorStatus.BLOCKED_BY_POLICY for state in states):
+            status = CollectorStatus.BLOCKED_BY_POLICY
+        elif any(state.status == CollectorStatus.NOT_PROBED for state in states):
+            status = CollectorStatus.NOT_PROBED
         else:
             status = CollectorStatus.UNAVAILABLE
         return cls(
@@ -175,6 +181,34 @@ class SoftwareSummary(BaseModel):
             counts_by_status=index.counts_by_status,
             warnings=warnings,
         )
+
+
+def empty_inventory_index(
+    *,
+    discovery_id: str,
+    policy: SoftwareInventoryPolicy,
+    created_at: datetime,
+    status: CollectorStatus,
+    reason: str,
+) -> PackageInventoryIndex:
+    empty_sha256 = hashlib.sha256().hexdigest()
+    state = PackageCollectorState(
+        collector="linux.dpkg",
+        status=status,
+        record_count=0,
+        complete=False,
+        truncated=False,
+        reason=reason,
+    )
+    return PackageInventoryIndex(
+        discovery_id=discovery_id,
+        inventory_sha256=empty_sha256,
+        policy_sha256=policy.sha256(),
+        record_count=0,
+        complete=False,
+        collectors=[state],
+        created_at=created_at,
+    )
 
 
 class _CollectionStopped(RuntimeError):

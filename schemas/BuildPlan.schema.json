@@ -12,6 +12,7 @@
     "BuildPlanStatus": {
       "enum": [
         "BLOCKED",
+        "AWAITING_CONFIRMATION",
         "REQUIRES_CODING",
         "READY_FOR_CONFORMANCE"
       ],
@@ -178,6 +179,28 @@
       "default": 0,
       "title": "Semantic Value Candidates",
       "type": "integer"
+    },
+    "active_discovery_report_ref": {
+      "default": "",
+      "title": "Active Discovery Report Ref",
+      "type": "string"
+    },
+    "confirmation_status": {
+      "default": "AWAITING_USER_CONFIRMATION",
+      "title": "Confirmation Status",
+      "type": "string"
+    },
+    "confirmation_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confirmation Ref"
     },
     "state_graph_baseline_required": {
       "default": true,

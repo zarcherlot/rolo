@@ -13,6 +13,7 @@
       "enum": [
         "READY_FOR_CODING",
         "DEGRADED",
+        "AWAITING_CONFIRMATION",
         "BLOCKED"
       ],
       "title": "BuildInputsStatus",
@@ -76,6 +77,16 @@
       "default": false,
       "title": "Software Inventory Complete",
       "type": "boolean"
+    },
+    "active_discovery_report_ref": {
+      "default": "",
+      "title": "Active Discovery Report Ref",
+      "type": "string"
+    },
+    "confirmation_status": {
+      "default": "AWAITING_USER_CONFIRMATION",
+      "title": "Confirmation Status",
+      "type": "string"
     },
     "probe_refs": {
       "additionalProperties": {

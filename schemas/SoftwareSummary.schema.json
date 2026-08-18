@@ -6,7 +6,9 @@
         "PARTIAL",
         "FAILED",
         "UNAVAILABLE",
-        "NOT_APPLICABLE"
+        "NOT_APPLICABLE",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
       ],
       "title": "CollectorStatus",
       "type": "string"
@@ -70,8 +72,7 @@
       "type": "object"
     },
     "relevance_resolution_status": {
-      "const": "NOT_IMPLEMENTED",
-      "default": "NOT_IMPLEMENTED",
+      "default": "PENDING",
       "title": "Relevance Resolution Status",
       "type": "string"
     },

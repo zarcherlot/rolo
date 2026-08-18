@@ -186,5 +186,8 @@ class DiscoveryReport(BaseModel):
     software_summary: dict[str, Any] = Field(default_factory=dict)
     software_summary_ref: str = ""
     package_inventory_ref: str = ""
+    active_discovery_report_ref: str = ""
+    confirmation_status: str = "AWAITING_USER_CONFIRMATION"
+    discovery_mode: str = ""
     source_roots: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)

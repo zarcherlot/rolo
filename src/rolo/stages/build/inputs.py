@@ -13,6 +13,7 @@ from rolo.stages.contracts import AgentRequirement
 class BuildInputsStatus(str, Enum):
     READY_FOR_CODING = "READY_FOR_CODING"
     DEGRADED = "DEGRADED"
+    AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"
     BLOCKED = "BLOCKED"
 
 
@@ -74,6 +75,8 @@ class BuildInputs(BaseModel):
     package_inventory_ref: str = ""
     software_package_count: int = 0
     software_inventory_complete: bool = False
+    active_discovery_report_ref: str = ""
+    confirmation_status: str = "AWAITING_USER_CONFIRMATION"
     probe_refs: dict[str, str]
     semantic_binding_candidates: int = 0
     semantic_value_candidates: int = 0

@@ -2,9 +2,10 @@
 
 ## Status and scope
 
-This document defines the target design for Build-stage software discovery. The current
-implementation has a streaming, chunked `dpkg-query` baseline inventory and a generated tool
-catalog; it does not yet implement the additional ecosystem collectors, relevance resolver, deep
+This document defines the target design for Build-stage software discovery. The current first-phase
+implementation has three-level active application discovery, immutable report confirmation, a
+generated tool catalog, and an optional streaming/chunked `dpkg-query` inventory. It does not yet
+implement the additional ecosystem collectors, deterministic package relevance resolver, deep
 inspection, or batched agent handoff specified here.
 
 The design has two complementary inputs:
@@ -27,7 +28,8 @@ not responsible for deciding whether collection was complete.
 
 Build discovery MUST:
 
-1. collect baseline metadata for every package visible to each supported and applicable collector;
+1. collect baseline metadata for every package visible to each supported and applicable collector
+   only when full inventory is explicitly requested;
 2. report collector coverage, errors, limits, and completeness without silent truncation;
 3. use the canonical CLI registry as the primary filter for relevant software;
 4. supplement CLI relevance with evidence from source manifests, running processes, ROS, URDF,
@@ -36,6 +38,270 @@ Build discovery MUST:
 6. keep full inventory artifacts outside the Coding Agent prompt;
 7. batch any agent-facing package analysis within an explicit context budget; and
 8. preserve read-only discovery and never execute newly discovered binaries.
+
+## Active application discovery inputs and degradation
+
+Application discovery accepts complementary evidence roots. Every path option may be repeated:
+
+```text
+--source-root PATH       source workspace or overlay
+--build-root PATH        compiler intermediates; supplemental only
+--install-root PATH      installed tree or executable package root
+--executable PATH        an explicitly selected executable
+--doc-root PATH          manuals, READMEs, examples, and interface documents
+--launch-root PATH       launch, configuration, and package manifests
+--active-probe MODE      none, help, or runtime-readonly
+--software-inventory MODE  off, relevant, or full
+```
+
+At least one `--source-root`, `--install-root`, or `--executable` MUST be supplied. Documentation,
+launch, and build-intermediate roots cannot satisfy the minimum input requirement by themselves.
+The command MUST NOT silently substitute the current working directory when `--source-root` is
+omitted.
+
+Paths are normalized to absolute paths. A supplied primary path satisfies CLI input validation, but
+only evidence that can actually be read affects the degradation level. Missing paths, empty source
+trees, file-count limits, and executable-report limits are recorded as partial coverage and
+warnings. A documentation or launch option may name either one file or a directory.
+
+The resolver selects one degradation level from the valid evidence that was actually collected:
+
+| Level | Minimum evidence | Primary analysis | Confidence ceiling |
+|---|---|---|---|
+| `SOURCE_FIRST` | source root | manifests, source, build targets, launch/config, docs, optional artifacts and runtime | high |
+| `ARTIFACT_DOC` | install root or explicit executable, plus usable documentation | binary metadata, docs, static launch, explicit `--help`, existing ROS graph | medium |
+| `BINARY_ONLY` | install root or explicit executable, without usable source or docs | binary metadata, explicit `--help`, existing ROS graph, naming heuristics | low |
+
+All three levels produce a report. Missing evidence lowers confidence and remains visible; it does
+not disappear from the report. `BINARY_ONLY` capability mappings MUST remain
+`DISCOVERED_UNVERIFIED` until the user confirms the discovery and conformance evidence is added.
+
+### Active-probe safety
+
+`none` adds no executable or ROS-runtime active probe; application evidence collection is static.
+The pre-existing read-only hardware and operating-system discovery layers still run independently.
+`help` may run only executables explicitly supplied through `--executable`; executables merely
+found under a root MUST NOT be run. `runtime-readonly` adds read-only inspection of an
+already-running ROS graph. Help probes use a sanitized environment, bounded output, a short
+timeout, and no shell.
+
+Launch files are parsed statically during discovery. Discovery MUST NOT invoke `ros2 launch`, load
+a plugin, start a service, or create a robot process. Launch execution can initialize drivers,
+controllers, or motion and therefore belongs to a separately approved validation workflow after
+the discovery report is confirmed.
+
+The report includes at most 200 executable records. This is a report-size boundary, not silent
+success: additional candidates set artifact coverage to `PARTIAL` and produce a warning. Directory
+walking is independently bounded at 10,000 files per evidence class. Raw `--help` output is capped
+at 200 KiB and stored as a referenced artifact; the report contains only parsed usage, option, and
+subcommand findings. A run executes at most 20 explicit help probes, parses at most 500 external
+documentation files and 500 launch files, hashes no executable larger than 256 MiB, and hashes at
+most 2 GiB of executable bytes in aggregate. Reaching any boundary is visible as partial coverage,
+`BLOCKED_BY_POLICY`, an unresolved item, or a warning as applicable.
+
+### First-phase implementation status
+
+Implemented in the current branch:
+
+- all input options and minimum-input validation above;
+- degradation based on evidence actually collected, including rejection of an empty source tree as
+  high-confidence source evidence;
+- source manifests, entrypoints, CMake targets, declared dependencies, ROS interfaces, protocol
+  tokens, documentation, artifacts, and static launch declarations;
+- bounded `--help` for explicitly supplied executables only and read-only ROS graph attribution;
+- JSON and Markdown reports, an active confirmation prompt, immutable one-decision confirmation,
+  and an exact-report-SHA-256 Build gate; and
+- bounded active-discovery findings in the confirmed Coding Agent handoff without raw source,
+  documentation, help output, or full package inventory content.
+
+Deferred from this first phase are package-manager ownership/linkage resolution for relevant
+artifacts, cross-ecosystem dependency comparison, vulnerability adapters, and runtime launch
+validation. Deferred fields stay empty or `NOT_PROBED`; they are not inferred as clean results.
+
+## Active discovery report and confirmation gate
+
+Every run writes a schema-validated JSON report and a human-readable Markdown rendering:
+
+```text
+artifacts/discovery/<robot_id>/runs/<discovery_id>/
+|-- active_discovery_report.json
+|-- active_discovery_report.md
+`-- confirmation.json                 # created only by the confirmation command
+```
+
+The report status is independent of user confirmation. A technically successful run still starts
+with `confirmation_status: AWAITING_USER_CONFIRMATION`. The normal command output MUST point to the
+report and actively prompt the user to review executable identity, invocation, communication,
+capability, dependency, and safety findings.
+
+```text
+robotctl build discover confirm --robot <id> --discovery-id <discovery-id>
+robotctl build discover confirm --robot <id> --discovery-id <discovery-id> \
+  --decision correct --corrections corrections.yaml
+```
+
+Confirmation is a separate immutable attestation containing the report SHA-256, decision, time,
+and optional corrections-file hash. Build planning MUST remain `AWAITING_CONFIRMATION` unless an
+`accept` attestation matches the exact active-discovery report hash. Rejecting or correcting a
+report does not mutate it; corrections require another discovery run. A formerly accepted
+attestation whose report no longer matches is exposed to Build as `INVALID_OR_STALE`, and execution
+rechecks the hash before any Coding Agent dependency preparation or workspace mutation.
+
+The minimum report contract is:
+
+```yaml
+schema_version: robot-active-discovery-report/v1
+discovery_id: disc-...
+robot_id: rover
+technical_status: SUCCEEDED       # SUCCEEDED, PARTIAL, or FAILED
+confirmation_status: AWAITING_USER_CONFIRMATION
+discovery_mode:
+  level: SOURCE_FIRST             # SOURCE_FIRST, ARTIFACT_DOC, or BINARY_ONLY
+  confidence: HIGH
+  reason: source evidence was collected
+inputs:
+  source_roots: []
+  build_roots: []
+  install_roots: []
+  executables: []
+  document_roots: []
+  launch_roots: []
+  active_probe: none
+  software_inventory: relevant
+coverage:
+  source: {status: COMPLETE, records: 0, truncated: false}
+  artifacts: {status: NOT_PROVIDED, records: 0, truncated: false}
+  documentation: {status: NOT_PROVIDED, records: 0, truncated: false}
+  launch: {status: NOT_PROVIDED, records: 0, truncated: false}
+  help_probes: {status: NOT_PROBED, records: 0, truncated: false}
+  ros_runtime: {status: NOT_PROBED, records: 0, truncated: false}
+executables:
+  - executable_id: exe-navigation
+    name: navigation
+    path: /opt/robot-app/bin/navigation
+    origin: DISCOVERED_ARTIFACT
+    sha256: "..."
+    file_format: ELF
+    architecture: arm64
+    version: {value: null, source: null, confidence: LOW}
+    package_ownership: {manager: null, package: null, version: null}
+    source_analysis:
+      available: true
+      projects: []
+      languages: []
+      build_systems: []
+      build_targets: []
+      entrypoint_symbols: []
+      declared_dependencies: []
+      parameters: []
+      source_revisions: []
+      manifest_sha256: {}
+      evidence_refs: []
+    artifact_analysis:
+      install_root: null
+      build_roots: []
+      intermediate_outputs: []
+      linked_libraries: []
+      plugins: []
+      configuration_files: []
+    documentation_analysis:
+      available: false
+      references: []
+      reference_sha256: {}
+      documented_commands: []
+      documented_parameters: []
+      conflicts: []
+      stale_warnings: []
+    launch_analysis:
+      available: false
+      references: []
+      reference_sha256: {}
+      packages: []
+      declared_executable: null
+      nodes: []
+      arguments: []
+      remappings: []
+    invocation:
+      entrypoint: /opt/robot-app/bin/navigation
+      arguments: []
+      subcommands: []
+      required_environment: {}
+      startup_sequence: []
+      shutdown_method: null
+      exit_codes: []
+      health_check: null
+      help_probe: {status: NOT_PROBED, output_ref: null, timeout_s: 5, usage: [], parameters: [], subcommands: []}
+    communication:
+      ros: {nodes: [], publishers: [], subscribers: [], services: [], actions: [], parameters: [], tf_frames: [], remappings: []}
+      network: {protocols: [], listen_endpoints: [], remote_endpoints: [], authentication: null, schemas: []}
+      ipc: {unix_sockets: [], shared_memory: [], dbus: []}
+      hardware_bus: {serial: [], can: [], i2c: [], spi: []}
+      confidence: LOW
+      evidence_refs: []
+    capability_candidates: []
+    dependencies:
+      declared: []
+      binary_linked: []
+      runtime_observed: []
+      missing: []
+      version_conflicts: []
+      install_candidates: []
+    safety:
+      access: read
+      risk: R0
+      possible_side_effects: []
+      device_access: []
+      network_access: []
+      privilege_required: false
+      motion_possible: false
+    evidence: {source: [], artifacts: [], documentation: [], help: [], ros_runtime: [], conflicts: [], unresolved: []}
+canonical_operation_summary: []
+dependency_summary: {required: [], missing: [], conflicting: [], installation_plan_ref: null}
+global_conflicts: []
+unknowns: []
+warnings: []
+confirmation:
+  required: true
+  prompt: Confirm executable, invocation, communication, capability, dependency, and safety findings.
+  confirm_command: robotctl build discover confirm --robot rover --discovery-id disc-...
+  correction_command: robotctl build discover confirm --robot rover --discovery-id disc-... --decision correct --corrections corrections.yaml
+created_at: 2026-08-18T00:00:00Z
+```
+
+Reports store hashes and artifact references instead of embedding arbitrary document, source, help,
+or binary content. Conflicting source, documentation, help, and runtime claims are retained as
+separate evidence.
+
+## Dependency discovery and installation policy
+
+Full host inventory is supporting evidence, not the primary application-discovery mechanism. The
+default `software-inventory` mode is `relevant`: source manifests, binary ownership/linkage,
+documentation, and runtime observations identify candidates first, after which package metadata is
+queried for those candidates. `full` uses the chunked collector for audit and reproducibility;
+`off` records that inventory was blocked by policy. Full inventory never enters the normal Coding
+Agent prompt.
+
+Consequently, the earlier full `dpkg-query` scan is not required for normal active application
+discovery. It remains available through `--software-inventory full` for host audit and
+reproducibility. Its 1,000-record setting is a chunk rollover boundary: 2,505 packages produce
+1,000/1,000/505-record chunks without loss. In the current first phase, `relevant` records declared
+application dependencies but marks targeted package-manager resolution `NOT_PROBED/PENDING`; it
+does not fall back to a full host scan. Targeted dpkg ownership and exact-candidate queries belong
+to the relevance-resolver phase.
+
+Discovery is always read-only and MUST NOT run `pip install`, `conda install`, `apt`, or any other
+dependency mutation. Missing packages produce `MISSING_DEPENDENCY` plus a separate installation
+plan. Build may execute a plan only after report confirmation and explicit policy approval, and
+only in a project-local virtual environment or dedicated non-base conda environment. Automatic
+installation MUST NOT use `sudo`, mutate global/base environments, mix unpinned pip and conda
+resolution, or use unapproved indexes/channels. Installation is followed by rediscovery and CLI
+conformance.
+
+Application projects remain responsible for declaring reproducible dependencies and their intended
+pip/conda environment. Discovery analyzes those declarations only far enough to report required,
+missing, or conflicting dependencies; it does not analyze every package in an environment and does
+not autonomously repair that environment. Installation is a separate, explicit Build policy action,
+never an implicit discovery side effect.
 
 "Complete inventory" means that every applicable supported collector completed within policy and
 reported all records known to that collector. It does not mean that rolo can prove the absence of
@@ -91,8 +357,9 @@ A collector MUST emit a status record even when it cannot run:
 }
 ```
 
-Collector status values are `SUCCEEDED`, `PARTIAL`, `FAILED`, `UNAVAILABLE`, and
-`NOT_APPLICABLE`. `complete` MUST be false for `PARTIAL`, `FAILED`, or any limit-induced stop.
+Collector status values are `SUCCEEDED`, `PARTIAL`, `FAILED`, `UNAVAILABLE`, `NOT_APPLICABLE`,
+`NOT_PROBED`, and `BLOCKED_BY_POLICY`. `complete` MUST be false for `PARTIAL`, `FAILED`,
+`NOT_PROBED`, `BLOCKED_BY_POLICY`, or any limit-induced stop.
 
 ## Canonical CLI registry
 

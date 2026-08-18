@@ -6,7 +6,9 @@
         "PARTIAL",
         "FAILED",
         "UNAVAILABLE",
-        "NOT_APPLICABLE"
+        "NOT_APPLICABLE",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
       ],
       "title": "CollectorStatus",
       "type": "string"

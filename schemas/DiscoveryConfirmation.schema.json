@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "ConfirmationDecision": {
+      "enum": [
+        "accept",
+        "reject",
+        "correct"
+      ],
+      "title": "ConfirmationDecision",
+      "type": "string"
+    },
+    "ConfirmationStatus": {
+      "enum": [
+        "AWAITING_USER_CONFIRMATION",
+        "ACCEPTED",
+        "REJECTED",
+        "CORRECTION_REQUIRED"
+      ],
+      "title": "ConfirmationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-discovery-confirmation/v1",
+      "default": "robot-discovery-confirmation/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "report_ref": {
+      "title": "Report Ref",
+      "type": "string"
+    },
+    "report_sha256": {
+      "title": "Report Sha256",
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/ConfirmationDecision"
+    },
+    "confirmation_status": {
+      "$ref": "#/$defs/ConfirmationStatus"
+    },
+    "corrections_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Corrections Ref"
+    },
+    "corrections_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Corrections Sha256"
+    },
+    "confirmed_at": {
+      "format": "date-time",
+      "title": "Confirmed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "robot_id",
+    "report_ref",
+    "report_sha256",
+    "decision",
+    "confirmation_status"
+  ],
+  "title": "DiscoveryConfirmation",
+  "type": "object"
+}

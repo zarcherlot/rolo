@@ -1,0 +1,837 @@
+{
+  "$defs": {
+    "ArtifactAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "install_root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Install Root"
+        },
+        "build_roots": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Build Roots",
+          "type": "array"
+        },
+        "intermediate_outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Intermediate Outputs",
+          "type": "array"
+        },
+        "linked_libraries": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Linked Libraries",
+          "type": "array"
+        },
+        "plugins": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Plugins",
+          "type": "array"
+        },
+        "configuration_files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Configuration Files",
+          "type": "array"
+        }
+      },
+      "title": "ArtifactAnalysis",
+      "type": "object"
+    },
+    "CommunicationAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "ros": {
+          "additionalProperties": true,
+          "title": "Ros",
+          "type": "object"
+        },
+        "network": {
+          "additionalProperties": true,
+          "title": "Network",
+          "type": "object"
+        },
+        "ipc": {
+          "additionalProperties": true,
+          "title": "Ipc",
+          "type": "object"
+        },
+        "hardware_bus": {
+          "additionalProperties": true,
+          "title": "Hardware Bus",
+          "type": "object"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "default": "LOW"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "title": "CommunicationAnalysis",
+      "type": "object"
+    },
+    "Confidence": {
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "ConfirmationPrompt": {
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "confirm_command": {
+          "title": "Confirm Command",
+          "type": "string"
+        },
+        "correction_command": {
+          "title": "Correction Command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "confirm_command",
+        "correction_command"
+      ],
+      "title": "ConfirmationPrompt",
+      "type": "object"
+    },
+    "ConfirmationStatus": {
+      "enum": [
+        "AWAITING_USER_CONFIRMATION",
+        "ACCEPTED",
+        "REJECTED",
+        "CORRECTION_REQUIRED"
+      ],
+      "title": "ConfirmationStatus",
+      "type": "string"
+    },
+    "CoverageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/CoverageStatus"
+        },
+        "records": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Records",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CoverageRecord",
+      "type": "object"
+    },
+    "CoverageStatus": {
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "NOT_PROVIDED",
+        "NOT_PROBED",
+        "OBSERVED",
+        "UNAVAILABLE"
+      ],
+      "title": "CoverageStatus",
+      "type": "string"
+    },
+    "DiscoveryMode": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/DiscoveryModeLevel"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "confidence",
+        "reason"
+      ],
+      "title": "DiscoveryMode",
+      "type": "object"
+    },
+    "DiscoveryModeLevel": {
+      "enum": [
+        "SOURCE_FIRST",
+        "ARTIFACT_DOC",
+        "BINARY_ONLY"
+      ],
+      "title": "DiscoveryModeLevel",
+      "type": "string"
+    },
+    "DocumentationAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "default": false,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "References",
+          "type": "array"
+        },
+        "reference_sha256": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Reference Sha256",
+          "type": "object"
+        },
+        "documented_commands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Documented Commands",
+          "type": "array"
+        },
+        "documented_parameters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Documented Parameters",
+          "type": "array"
+        },
+        "conflicts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "stale_warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stale Warnings",
+          "type": "array"
+        }
+      },
+      "title": "DocumentationAnalysis",
+      "type": "object"
+    },
+    "ExecutableDiscovery": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "origin": {
+          "enum": [
+            "EXPLICIT",
+            "DISCOVERED_ARTIFACT",
+            "SOURCE_DECLARED",
+            "LAUNCH_DECLARED"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "file_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Format"
+        },
+        "architecture": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Architecture"
+        },
+        "version": {
+          "additionalProperties": true,
+          "title": "Version",
+          "type": "object"
+        },
+        "package_ownership": {
+          "additionalProperties": true,
+          "title": "Package Ownership",
+          "type": "object"
+        },
+        "source_analysis": {
+          "$ref": "#/$defs/SourceAnalysis"
+        },
+        "artifact_analysis": {
+          "$ref": "#/$defs/ArtifactAnalysis"
+        },
+        "documentation_analysis": {
+          "$ref": "#/$defs/DocumentationAnalysis"
+        },
+        "launch_analysis": {
+          "$ref": "#/$defs/LaunchAnalysis"
+        },
+        "invocation": {
+          "$ref": "#/$defs/InvocationAnalysis"
+        },
+        "communication": {
+          "$ref": "#/$defs/CommunicationAnalysis"
+        },
+        "capability_candidates": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Capability Candidates",
+          "type": "array"
+        },
+        "dependencies": {
+          "additionalProperties": {
+            "items": {},
+            "type": "array"
+          },
+          "title": "Dependencies",
+          "type": "object"
+        },
+        "safety": {
+          "additionalProperties": true,
+          "title": "Safety",
+          "type": "object"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "items": {},
+            "type": "array"
+          },
+          "title": "Evidence",
+          "type": "object"
+        }
+      },
+      "required": [
+        "executable_id",
+        "name",
+        "origin"
+      ],
+      "title": "ExecutableDiscovery",
+      "type": "object"
+    },
+    "HelpProbeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/HelpProbeStatus",
+          "default": "NOT_PROBED"
+        },
+        "output_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Ref"
+        },
+        "timeout_s": {
+          "default": 5.0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "output_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Bytes",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "usage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Usage",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subcommands",
+          "type": "array"
+        }
+      },
+      "title": "HelpProbeResult",
+      "type": "object"
+    },
+    "HelpProbeStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "TIMED_OUT",
+        "OUTPUT_LIMIT",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
+      ],
+      "title": "HelpProbeStatus",
+      "type": "string"
+    },
+    "InvocationAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entrypoint"
+        },
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subcommands",
+          "type": "array"
+        },
+        "required_environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Required Environment",
+          "type": "object"
+        },
+        "startup_sequence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Startup Sequence",
+          "type": "array"
+        },
+        "shutdown_method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shutdown Method"
+        },
+        "exit_codes": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Exit Codes",
+          "type": "array"
+        },
+        "health_check": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Health Check"
+        },
+        "help_probe": {
+          "$ref": "#/$defs/HelpProbeResult"
+        }
+      },
+      "title": "InvocationAnalysis",
+      "type": "object"
+    },
+    "LaunchAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "default": false,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "References",
+          "type": "array"
+        },
+        "reference_sha256": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Reference Sha256",
+          "type": "object"
+        },
+        "packages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Packages",
+          "type": "array"
+        },
+        "declared_executable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Declared Executable"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "remappings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Remappings",
+          "type": "array"
+        }
+      },
+      "title": "LaunchAnalysis",
+      "type": "object"
+    },
+    "SourceAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "default": false,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "projects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Projects",
+          "type": "array"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "build_systems": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Build Systems",
+          "type": "array"
+        },
+        "build_targets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Build Targets",
+          "type": "array"
+        },
+        "entrypoint_symbols": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entrypoint Symbols",
+          "type": "array"
+        },
+        "declared_dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Declared Dependencies",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "source_revisions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Revisions",
+          "type": "array"
+        },
+        "manifest_sha256": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Manifest Sha256",
+          "type": "object"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "title": "SourceAnalysis",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-active-discovery-report/v1",
+      "default": "robot-active-discovery-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "technical_status": {
+      "title": "Technical Status",
+      "type": "string"
+    },
+    "confirmation_status": {
+      "$ref": "#/$defs/ConfirmationStatus",
+      "default": "AWAITING_USER_CONFIRMATION"
+    },
+    "discovery_mode": {
+      "$ref": "#/$defs/DiscoveryMode"
+    },
+    "inputs": {
+      "additionalProperties": true,
+      "title": "Inputs",
+      "type": "object"
+    },
+    "coverage": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CoverageRecord"
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "executables": {
+      "items": {
+        "$ref": "#/$defs/ExecutableDiscovery"
+      },
+      "title": "Executables",
+      "type": "array"
+    },
+    "canonical_operation_summary": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Canonical Operation Summary",
+      "type": "array"
+    },
+    "dependency_summary": {
+      "additionalProperties": true,
+      "title": "Dependency Summary",
+      "type": "object"
+    },
+    "global_conflicts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Global Conflicts",
+      "type": "array"
+    },
+    "unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unknowns",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "confirmation": {
+      "$ref": "#/$defs/ConfirmationPrompt"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "robot_id",
+    "technical_status",
+    "discovery_mode",
+    "inputs",
+    "coverage",
+    "confirmation",
+    "created_at"
+  ],
+  "title": "ActiveDiscoveryReport",
+  "type": "object"
+}

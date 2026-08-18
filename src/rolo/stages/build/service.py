@@ -4,12 +4,44 @@ from pathlib import Path
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryStatus
+from rolo.stages.build.active_discovery import (
+    ConfirmationStatus,
+    DiscoveryConfirmation,
+    confirmation_matches_report,
+)
 from rolo.stages.build.discovery import load_latest_report, load_report
 from rolo.stages.build.inputs import BuildInputs
 from rolo.stages.build.models import BuildPlan, BuildPlanStatus, BuildTask, CodingAgentConfig
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
 BUILD_SKILLS = ["canonical-adapter-builder", "cli-conformance", "state-graph-builder"]
+
+
+def _confirmation_state(
+    artifact_root: Path, robot_id: str, discovery_id: str
+) -> tuple[bool, str, str | None]:
+    report_path = (
+        artifact_root
+        / "discovery"
+        / robot_id
+        / "runs"
+        / discovery_id
+        / "active_discovery_report.json"
+    )
+    confirmation_path = report_path.with_name("confirmation.json")
+    if not report_path.is_file() or not confirmation_path.is_file():
+        return False, ConfirmationStatus.AWAITING_USER_CONFIRMATION.value, None
+    try:
+        confirmation = DiscoveryConfirmation.model_validate_json(
+            confirmation_path.read_text(encoding="utf-8")
+        )
+    except ValueError:
+        return False, ConfirmationStatus.AWAITING_USER_CONFIRMATION.value, str(confirmation_path)
+    matches = confirmation_matches_report(confirmation, report_path)
+    status = confirmation.confirmation_status.value
+    if not matches and confirmation.confirmation_status == ConfirmationStatus.ACCEPTED:
+        status = "INVALID_OR_STALE"
+    return matches, status, str(confirmation_path)
 
 
 class BuildStageService:
@@ -31,6 +63,11 @@ class BuildStageService:
             if tool.availability == "DISCOVERED_UNVERIFIED"
         )
         blocked = report.status == DiscoveryStatus.FAILED
+        confirmed, confirmation_status, confirmation_path = _confirmation_state(
+            self.artifacts.root,
+            robot_id,
+            inputs.discovery_id,
+        )
         tasks = [
             BuildTask(
                 id="canonical-adapters",
@@ -61,7 +98,13 @@ class BuildStageService:
         plan = BuildPlan(
             robot_id=robot_id,
             source_discovery_id=report.discovery_id,
-            status=(BuildPlanStatus.BLOCKED if blocked else BuildPlanStatus.REQUIRES_CODING),
+            status=(
+                BuildPlanStatus.BLOCKED
+                if blocked
+                else BuildPlanStatus.REQUIRES_CODING
+                if confirmed
+                else BuildPlanStatus.AWAITING_CONFIRMATION
+            ),
             tasks=tasks,
             required_skills=BUILD_SKILLS,
             coding_agent=self.coding_agent,
@@ -69,6 +112,13 @@ class BuildStageService:
             semantic_context_ref=inputs.semantic_context_ref,
             unresolved_semantics=inputs.unresolved_semantics,
             semantic_value_candidates=inputs.semantic_value_candidates,
+            active_discovery_report_ref=inputs.active_discovery_report_ref,
+            confirmation_status=confirmation_status,
+            confirmation_ref=(
+                f"artifact://discovery/{robot_id}/runs/{inputs.discovery_id}/confirmation.json"
+                if confirmation_path
+                else None
+            ),
             handoff_ref=f"artifact://build/{robot_id}/latest/handoff.json",
         )
         path = self.artifacts.write_json(
@@ -105,6 +155,27 @@ def assess_build(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="Build discovery probes failed",
             artifacts={"inputs": str(build_inputs), "discovery_report": str(discovery_report)},
             blockers=["Resolve failed discovery probes"],
+            required_skills=BUILD_SKILLS,
+            agent_requirement=AgentRequirement.CODING_AGENT,
+        )
+    confirmed, confirmation_status, confirmation_path = _confirmation_state(
+        artifact_root,
+        robot_id,
+        report.discovery_id,
+    )
+    if not confirmed:
+        return StageAssessment(
+            stage=StageName.BUILD,
+            robot_id=robot_id,
+            status=StageStatus.BLOCKED,
+            summary="Build discovery report requires user confirmation",
+            prerequisites=[report.active_discovery_report_ref],
+            artifacts={
+                "inputs": str(build_inputs),
+                "discovery_report": str(discovery_report),
+                **({"confirmation": confirmation_path} if confirmation_path else {}),
+            },
+            blockers=[f"Discovery confirmation is {confirmation_status}"],
             required_skills=BUILD_SKILLS,
             agent_requirement=AgentRequirement.CODING_AGENT,
         )

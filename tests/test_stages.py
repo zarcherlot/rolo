@@ -10,6 +10,10 @@ from rolo.core.config import get_settings
 from rolo.core.models import utc_now
 from rolo.core.registry import RobotRegistry
 from rolo.discovery import DiscoveryService
+from rolo.stages.build.active_discovery import (
+    ConfirmationDecision,
+    write_confirmation,
+)
 from rolo.stages.build.models import (
     CodingAgentConfig,
     CodingAgentDependencyReport,
@@ -19,28 +23,47 @@ from rolo.stages.build.service import BuildStageService
 from rolo.stages.pipeline import assess_pipeline
 
 
-def discover_demo(artifact_root: Path, source_root: Path) -> None:
+def discover_demo(artifact_root: Path, source_root: Path) -> str:
     registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
-    DiscoveryService(ArtifactStore(artifact_root)).run(
+    report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
         robot=registry.get("demo_diff"),
         urdf_path=Path("configs/profiles/differential_drive.urdf"),
         source_roots=[source_root],
+    )
+    return report.discovery_id
+
+
+def accept_discovery(artifact_root: Path, discovery_id: str) -> None:
+    run_root = artifact_root / "discovery/demo_diff/runs" / discovery_id
+    confirmation = write_confirmation(
+        report_path=run_root / "active_discovery_report.json",
+        robot_id="demo_diff",
+        discovery_id=discovery_id,
+        decision=ConfirmationDecision.ACCEPT,
+        corrections=None,
+    )
+    ArtifactStore(artifact_root).write_json(
+        f"discovery/demo_diff/runs/{discovery_id}/confirmation.json",
+        confirmation.model_dump(mode="json"),
     )
 
 
 def test_discovery_writes_build_inputs_with_probes_and_build_plan(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
-    discover_demo(artifact_root, tmp_path)
+    discovery_id = discover_demo(artifact_root, tmp_path)
 
     build_inputs = json.loads(
         (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
-    plan, plan_path = BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
+    awaiting_plan, _ = BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
 
     assert build_inputs["stage"] == "build"
     assert build_inputs["agent_requirement"] == "coding_agent"
-    assert build_inputs["status"] in {"READY_FOR_CODING", "DEGRADED"}
+    assert build_inputs["status"] == "AWAITING_CONFIRMATION"
+    assert awaiting_plan.status == "AWAITING_CONFIRMATION"
+    accept_discovery(artifact_root, discovery_id)
+    plan, plan_path = BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
     assert set(build_inputs["probe_refs"]) == {"hw", "linux", "ros", "application"}
     assert build_inputs["semantic_context_ref"].endswith("/semantic_context.json")
     assert plan_path.is_file()
@@ -75,6 +98,26 @@ def test_pipeline_exposes_three_ordered_stages(tmp_path: Path) -> None:
     assert "agent_inputs" in pipeline.stages[2].artifacts
 
 
+def test_build_plan_rejects_confirmation_after_report_changes(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    discovery_id = discover_demo(artifact_root, tmp_path)
+    accept_discovery(artifact_root, discovery_id)
+    report_path = (
+        artifact_root
+        / "discovery/demo_diff/runs"
+        / discovery_id
+        / "active_discovery_report.json"
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["warnings"].append("report changed after confirmation")
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    plan, _ = BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
+
+    assert plan.status == "AWAITING_CONFIRMATION"
+    assert plan.confirmation_status == "INVALID_OR_STALE"
+
+
 def test_stage_cli_keeps_legacy_and_nested_build_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -98,6 +141,31 @@ def test_stage_cli_keeps_legacy_and_nested_build_entries(
         ],
     )
     legacy = runner.invoke(app, ["discover", "show", "--robot", "demo_diff"])
+    discovery_id = json.loads(nested.output)["discovery_id"]
+    confirm = runner.invoke(
+        app,
+        [
+            "build",
+            "discover",
+            "confirm",
+            "--robot",
+            "demo_diff",
+            "--discovery-id",
+            discovery_id,
+        ],
+    )
+    duplicate_confirm = runner.invoke(
+        app,
+        [
+            "build",
+            "discover",
+            "confirm",
+            "--robot",
+            "demo_diff",
+            "--discovery-id",
+            discovery_id,
+        ],
+    )
     plan = runner.invoke(app, ["build", "plan", "--robot", "demo_diff"])
     pipeline = runner.invoke(app, ["pipeline-status", "--robot", "demo_diff"])
     removed_deploy_stage = runner.invoke(app, ["deploy", "--help"])
@@ -105,6 +173,10 @@ def test_stage_cli_keeps_legacy_and_nested_build_entries(
     get_settings.cache_clear()
     assert nested.exit_code == 0, nested.output
     assert legacy.exit_code == 0, legacy.output
+    assert confirm.exit_code == 0, confirm.output
+    assert '"status": "ACCEPTED"' in confirm.output
+    assert duplicate_confirm.exit_code == 2
+    assert "confirmation already exists" in duplicate_confirm.output
     assert plan.exit_code == 0, plan.output
     assert '"required_skills"' in plan.output
     assert pipeline.exit_code == 0, pipeline.output
@@ -176,7 +248,8 @@ def test_build_execute_prepares_dependency_before_starting_executor(
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    discover_demo(artifact_root, workspace)
+    discovery_id = discover_demo(artifact_root, workspace)
+    accept_discovery(artifact_root, discovery_id)
     BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     get_settings.cache_clear()
@@ -241,3 +314,42 @@ def test_build_execute_prepares_dependency_before_starting_executor(
     get_settings.cache_clear()
     assert result.exit_code == 0, result.output
     assert calls == ["prepare", "execute"]
+
+
+def test_build_execute_does_not_prepare_dependencies_before_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    discover_demo(artifact_root, workspace)
+    BuildStageService(ArtifactStore(artifact_root)).plan("demo_diff")
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    get_settings.cache_clear()
+    calls: list[str] = []
+
+    def forbidden_prepare(self: object, **kwargs: object) -> tuple[object, Path]:
+        del self, kwargs
+        calls.append("prepare")
+        raise AssertionError("dependency preparation must remain behind confirmation")
+
+    monkeypatch.setattr(
+        "rolo.cli.CodingAgentDependencyManager.prepare", forbidden_prepare
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "build",
+            "execute",
+            "--robot",
+            "demo_diff",
+            "--workspace",
+            str(workspace),
+        ],
+    )
+
+    get_settings.cache_clear()
+    assert result.exit_code == 2
+    assert "AWAITING_CONFIRMATION" in result.output
+    assert calls == []

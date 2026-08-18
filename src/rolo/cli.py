@@ -28,6 +28,15 @@ from rolo.core.models import (
     ToolDescriptor,
 )
 from rolo.runtime import create_runtime
+from rolo.stages.build.active_discovery import (
+    ActiveDiscoveryInputs,
+    ActiveDiscoveryReport,
+    ActiveProbeMode,
+    ConfirmationDecision,
+    DiscoveryConfirmation,
+    SoftwareInventoryMode,
+    write_confirmation,
+)
 from rolo.stages.build.dependencies import CodexDependencyAdapter, CodingAgentDependencyManager
 from rolo.stages.build.discovery import (
     ApplicationProbe,
@@ -42,7 +51,7 @@ from rolo.stages.build.enrollment import (
     list_profiles,
     resolve_profile_root,
 )
-from rolo.stages.build.executor import CodexBuildExecutor
+from rolo.stages.build.executor import CodexBuildExecutor, load_confirmed_build_plan
 from rolo.stages.build.inputs import BuildInputs
 from rolo.stages.build.models import (
     BuildPlan,
@@ -169,8 +178,13 @@ def build_stage_execute(
 ) -> None:
     """Explicitly execute the latest Stage 1 plan with the local Codex CLI."""
     settings = get_settings()
+    artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+    try:
+        load_confirmed_build_plan(artifact_store, robot)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
     dependency, _ = CodingAgentDependencyManager(
-        ArtifactStore(settings.rolo_artifact_dir)
+        artifact_store
     ).prepare(
         config=configured_coding_agent(),
         executable=settings.coding_agent_executable,
@@ -188,7 +202,7 @@ def build_stage_execute(
         emit({"dependency": dependency.model_dump(mode="json")})
         raise typer.Exit(code=1)
     executor = CodexBuildExecutor(
-        ArtifactStore(settings.rolo_artifact_dir),
+        artifact_store,
         executable=dependency.executable or settings.coding_agent_executable,
         api_key=settings.coding_agent_api_key,
     )
@@ -532,6 +546,9 @@ def export_schemas(
         PackageInventoryIndex,
         SoftwareInventoryPolicy,
         SoftwareSummary,
+        ActiveDiscoveryInputs,
+        ActiveDiscoveryReport,
+        DiscoveryConfirmation,
     ]
     written: list[str] = []
     for model in models:
@@ -569,6 +586,34 @@ def discovery_run(
         list[Path] | None,
         typer.Option("--source-root", help="Application source root; repeat for overlays"),
     ] = None,
+    build_root: Annotated[
+        list[Path] | None,
+        typer.Option("--build-root", help="Build intermediate root; repeat as needed"),
+    ] = None,
+    install_root: Annotated[
+        list[Path] | None,
+        typer.Option("--install-root", help="Installed artifact/package root; repeat as needed"),
+    ] = None,
+    executable: Annotated[
+        list[Path] | None,
+        typer.Option("--executable", help="Explicit executable; repeat as needed"),
+    ] = None,
+    doc_root: Annotated[
+        list[Path] | None,
+        typer.Option("--doc-root", help="Documentation root; repeat as needed"),
+    ] = None,
+    launch_root: Annotated[
+        list[Path] | None,
+        typer.Option("--launch-root", help="Launch/configuration root; repeat as needed"),
+    ] = None,
+    active_probe: Annotated[
+        ActiveProbeMode,
+        typer.Option("--active-probe", help="none, help, or runtime-readonly"),
+    ] = ActiveProbeMode.NONE,
+    software_inventory: Annotated[
+        SoftwareInventoryMode,
+        typer.Option("--software-inventory", help="off, relevant, or full"),
+    ] = SoftwareInventoryMode.RELEVANT,
     full: Annotated[bool, typer.Option("--full", help="Print the complete report")] = False,
 ) -> None:
     """Run all safe discovery probes and persist a versioned report."""
@@ -577,8 +622,17 @@ def discovery_run(
         capability = runtime.registry.get(robot)
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    roots = source_root or [Path.cwd()]
     try:
+        active_inputs = ActiveDiscoveryInputs(
+            source_roots=source_root or [],
+            build_roots=build_root or [],
+            install_roots=install_root or [],
+            executables=executable or [],
+            document_roots=doc_root or [],
+            launch_roots=launch_root or [],
+            active_probe=active_probe,
+            software_inventory=software_inventory,
+        )
         inventory_policy = load_software_inventory_policy(
             runtime.settings.rolo_discovery_policy_path
         )
@@ -586,7 +640,9 @@ def discovery_run(
             runtime.robot_use.artifacts,
             inventory_policy=inventory_policy,
         ).run(
-            robot=capability, urdf_path=urdf, source_roots=roots
+            robot=capability,
+            urdf_path=urdf,
+            active_inputs=active_inputs,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -606,11 +662,77 @@ def discovery_run(
             "tools": len(report.tool_catalog),
             "software_packages": report.software_summary.get("package_count", 0),
             "software_inventory_complete": report.software_summary.get("complete", False),
+            "discovery_mode": report.discovery_mode,
+            "confirmation_status": report.confirmation_status,
+            "active_discovery_report": report.active_discovery_report_ref,
+            "confirmation_prompt": (
+                "Review the active discovery report, then run: "
+                f"robotctl build discover confirm --robot {report.robot_id} "
+                f"--discovery-id {report.discovery_id}"
+            ),
             "artifact": str(artifact),
         }
     )
     if report.status == DiscoveryStatus.FAILED:
         raise typer.Exit(code=1)
+
+
+@discover_app.command("confirm")
+def discovery_confirm(
+    robot: Annotated[str, typer.Option("--robot")],
+    discovery_id: Annotated[str, typer.Option("--discovery-id")],
+    decision: Annotated[
+        ConfirmationDecision,
+        typer.Option("--decision", help="accept, reject, or correct"),
+    ] = ConfirmationDecision.ACCEPT,
+    corrections: Annotated[
+        Path | None,
+        typer.Option("--corrections", help="Correction file required for decision=correct"),
+    ] = None,
+) -> None:
+    """Attest to an immutable active-discovery report."""
+    settings = get_settings()
+    report_path = (
+        settings.rolo_artifact_dir
+        / "discovery"
+        / robot
+        / "runs"
+        / discovery_id
+        / "active_discovery_report.json"
+    )
+    if not report_path.is_file():
+        raise typer.BadParameter(f"active discovery report does not exist: {report_path}")
+    confirmation_path = report_path.with_name("confirmation.json")
+    if confirmation_path.exists():
+        raise typer.BadParameter(
+            "confirmation already exists for this immutable discovery run; "
+            "start a new discovery run to submit another decision"
+        )
+    try:
+        confirmation = write_confirmation(
+            report_path=report_path,
+            robot_id=robot,
+            discovery_id=discovery_id,
+            decision=decision,
+            corrections=corrections,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    store = ArtifactStore(settings.rolo_artifact_dir)
+    payload = confirmation.model_dump(mode="json")
+    persisted_confirmation_path = store.write_json(
+        f"discovery/{robot}/runs/{discovery_id}/confirmation.json",
+        payload,
+    )
+    emit(
+        {
+            "status": confirmation.confirmation_status,
+            "decision": confirmation.decision,
+            "discovery_id": discovery_id,
+            "report_sha256": confirmation.report_sha256,
+            "artifact": str(persisted_confirmation_path),
+        }
+    )
 
 
 @discover_app.command("show")
