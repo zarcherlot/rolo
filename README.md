@@ -12,7 +12,7 @@
 
 ## rolo 是什么
 
-rolo (robot only loop once) 是一种具身机器人开发原则：每一次用例的执行，获得输入、过程、结果和外部观测的切片，让机器人自主解释并修正问题。
+rolo (robot only loop once) 是一种具身机器人开发原则：每一次用例的执行，构建输入、过程、结果和外部观测的切片，让机器人自主解释并修正问题。
 
 > [!NOTE]
 > 当前版本是开发中的 MVP。模拟后端适合本地验证，但不替代真实机器人上的安全控制、急停、碰撞检测或人工授权。
@@ -43,9 +43,6 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 系统版本、传感器、执行器、总线、Linux 服务、ROS 图、本地源码、启动入口、通信协议、
 依赖和风险放进同一张全栈地图。团队不再需要从某位资深工程师的记忆、零散 README、
 厂商手册和现场脚本中拼凑“这台机器人到底如何工作”。
-
-Wiki 是给人维护的工程文档：软硬件总工可以直接修正和补充，不需要确认流程，也不参与
-文件哈希。与它并行保存的 JSON 是给机器使用的原始观测和可验证证据。
 
 ### `robot_use`
 
@@ -124,8 +121,6 @@ uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
 ```
 
-`robot_wiki.md` 按照团队理解一台机器人的顺序组织：
-
 ```text
 robot_wiki.md
 ├── 全栈摘要
@@ -145,12 +140,9 @@ robot_wiki.md
 │   └── 程序与通信接口关系图
 ├── 依赖、差异与未知项
 │   └── 缺失依赖、版本冲突、兼容性差异和风险
-└── 总工维护建议
+└── 维护建议
     └── 工程用途、负责人、部署关系、启动顺序和版本基线
 ```
-
-总工可以直接修正和补充这份 Wiki。每次重新发现都会产生一个新的历史版本，因此既允许
-专业维护，也保留机器人软硬件栈的演进轨迹。
 
 主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，软件发现与证据契约见
 [`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见

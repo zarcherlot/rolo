@@ -12,9 +12,9 @@
 
 ## What is rolo?
 
-rolo (robot only loop once) is an embodied robotics development principle: execute one clearly
-bounded use case, capture its inputs, execution, observations, and results, and enable the robot to
-autonomously explain, close the loop on, and correct problems.
+rolo (robot only loop once) is an embodied robotics development principle: with every use-case
+execution, construct a slice of its inputs, process, results, and external observations so the robot
+can autonomously explain and correct problems.
 
 > [!NOTE]
 > The current version is an MVP under development. The mock backend is suitable for local
@@ -46,11 +46,11 @@ timestamps, error codes, and rollback semantics across four layers:
 
 ### Active discovery
 
-After initial configuration registers a unique `robot_id`, active discovery creates an editable
-robot Wiki alongside machine-readable evidence. It maps compute platforms, system versions,
-sensors, actuators, buses, Linux services, the ROS graph, local source projects, communication
-protocols, and vendor or application entry points. The chief engineer may directly correct the
-Wiki; it is deliberately excluded from evidence hashes.
+After initial configuration registers a unique `robot_id`, rolo creates a maintainable robot Wiki.
+It brings compute platforms, system versions, sensors, actuators, buses, Linux services, the ROS
+graph, local source code, startup entry points, communication protocols, dependencies, and risks
+into one full-stack map. Teams no longer need to piece together “how this robot actually works”
+from a senior engineer's memory, scattered READMEs, vendor manuals, and field scripts.
 
 ### `robot_use`
 
@@ -124,16 +124,19 @@ the overall status.
 
 #### Stage 1: adapt
 
-Adapt turns the robot's existing hardware, Linux, ROS, and application capabilities into a
-verifiable unified interface. Read-only discovery produces a capability manifest, semantic binding
-candidates, a tool catalog, and the inputs required by the Adapter Agent. Software dependencies
-come only from source and launch declarations; discovery neither inventories host packages nor
-installs target-project dependencies.
+Adapt aims to deliver two core assets:
 
-Discovery first produces an editable whole-stack robot Wiki. The chief engineer may correct or
-extend it directly, without a separate confirmation step. One `adapt run` then reads the maintained
-Wiki, derives the plan in memory, prepares and runs the Agent, freezes its outputs, applies the
-independent gate, and atomically publishes the handoff:
+1. a maintainable robot Wiki that the R&D team can understand;
+2. an evidence-backed canonical CLI, State Graph, and downstream handoff that pass an independent
+   gate.
+
+It lets an embodied robotics team quickly answer which boards and peripherals make up the robot,
+which programs it runs and how they start, how nodes and protocols connect, which dependencies are
+missing, which capabilities are only inferred, and which interfaces are safe to expose to an
+Agent. New team members, algorithm engineers, embedded developers, operations, and test engineers
+all see the same system-wide picture.
+
+The flow is “discover and generate the Wiki → review or revise → run Adapt”:
 
 ```bash
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
@@ -141,19 +144,36 @@ uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --source-root /path/to/robot-application
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
-uv run robotctl adapt status --robot "$ROBOT_ID"
 ```
 
-Add `--dry-run` to `adapt run` to inspect the derived plan without starting the Agent. The former
-public `plan`, `agent-prepare`, `execute`, and `promote` steps are intentionally absent.
+```text
+robot_wiki.md
+├── Full-stack summary
+│   ├── Discovery status, mode, and confidence
+│   └── Hardware/software compatibility, unknowns, and warnings
+├── Hardware and robot specifications
+│   ├── Compute platform, CPU architecture, and drive model
+│   ├── Key specifications such as velocity limits
+│   └── Sensors, host devices, and hardware buses
+├── Host and software stack
+│   ├── Operating system, ROS distribution, RMW, and Domain ID
+│   └── Tool availability and version evidence
+├── Application and function overview
+│   └── Purpose, entry point, nodes, interfaces, protocols, dependencies, and risks per program
+├── ROS and communication topology
+│   ├── Node, Topic, Service, and Action inventory
+│   └── Program-to-interface relationship graph
+├── Dependencies, differences, and unknowns
+│   └── Missing dependencies, version conflicts, compatibility differences, and risks
+└── Maintenance guidance
+    └── Engineering purpose, owner, deployment relationships, startup order, and version baseline
+```
 
-The editable Wiki is human engineering context, while the hashed JSON manifest preserves machine
-evidence. The robot may enter Diagnose only after independent CLI conformance, the State Graph
-baseline, and the adapt handoff all pass. See
-[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for discovery inputs, evidence degradation, active
-probes, and corrections; see [`.env.example`](../.env.example) for Adapter Agent configuration.
+See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
+[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
+and [`.env.example`](../.env.example) for Adapter Agent configuration.
 
-#### Stage 2: closed-loop debugging and diagnosis
+#### Stage 2: diagnosis
 
 The Diagnosis Agent reads the adapt handoff and user constraints, then performs closed-loop
 diagnosis and tuning. When image-model supervision is needed, configure the backend securely
@@ -172,7 +192,7 @@ uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.j
 authority over robot safety. Tuning must remain within user constraints and hard safety boundaries,
 and every change must run the affected smoke, safety, and regression checks.
 
-#### Stage 3: testing
+#### Stage 3: verification
 
 Stage 3 checks formal acceptance readiness. Once the corresponding Verify Skills are implemented, a
 Verification Agent generates cases, runs full regression, and packages evidence:
