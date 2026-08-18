@@ -73,12 +73,6 @@ class ActiveProbeMode(str, Enum):
     RUNTIME_READONLY = "runtime-readonly"
 
 
-class SoftwareInventoryMode(str, Enum):
-    OFF = "off"
-    RELEVANT = "relevant"
-    FULL = "full"
-
-
 class ConfirmationStatus(str, Enum):
     AWAITING_USER_CONFIRMATION = "AWAITING_USER_CONFIRMATION"
     ACCEPTED = "ACCEPTED"
@@ -120,7 +114,6 @@ class ActiveDiscoveryInputs(BaseModel):
     document_roots: list[Path] = Field(default_factory=list)
     launch_roots: list[Path] = Field(default_factory=list)
     active_probe: ActiveProbeMode = ActiveProbeMode.NONE
-    software_inventory: SoftwareInventoryMode = SoftwareInventoryMode.RELEVANT
 
     @model_validator(mode="after")
     def require_primary_evidence(self) -> ActiveDiscoveryInputs:
@@ -264,7 +257,6 @@ class ExecutableDiscovery(BaseModel):
     file_format: str | None = None
     architecture: str | None = None
     version: dict[str, Any] = Field(default_factory=dict)
-    package_ownership: dict[str, Any] = Field(default_factory=dict)
     source_analysis: SourceAnalysis = Field(default_factory=SourceAnalysis)
     artifact_analysis: ArtifactAnalysis = Field(default_factory=ArtifactAnalysis)
     documentation_analysis: DocumentationAnalysis = Field(
@@ -1016,7 +1008,6 @@ class ActiveDiscoveryAnalyzer:
                     file_format=file_format,
                     architecture=architecture,
                     version={"value": None, "source": None, "confidence": "LOW"},
-                    package_ownership={"manager": None, "package": None, "version": None},
                     source_analysis=source_analysis,
                     artifact_analysis=ArtifactAnalysis(
                         install_root=install_root,
@@ -1434,10 +1425,6 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
                 f"- Format / architecture: `{executable.file_format or 'unknown'}` / "
                 f"`{executable.architecture or 'unknown'}`",
                 f"- SHA-256: `{executable.sha256 or 'not collected'}`",
-                f"- Package ownership: "
-                f"`{executable.package_ownership.get('status', 'unknown')}` / "
-                f"`{executable.package_ownership.get('package') or 'unmanaged'}` / "
-                f"`{executable.package_ownership.get('version') or 'unknown version'}`",
                 f"- Help probe: `{executable.invocation.help_probe.status.value}`",
                 f"- Invocation: `{executable.invocation.entrypoint or 'unknown'}`",
                 f"- Arguments: {summarize(executable.invocation.arguments)}",

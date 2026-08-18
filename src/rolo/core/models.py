@@ -185,7 +185,6 @@ class DiscoveryReport(BaseModel):
     tool_catalog: list[ToolDescriptor] = Field(default_factory=list)
     software_summary: dict[str, Any] = Field(default_factory=dict)
     software_summary_ref: str = ""
-    package_inventory_ref: str = ""
     package_relevance_ref: str = ""
     active_discovery_report_ref: str = ""
     confirmation_status: str = "AWAITING_USER_CONFIRMATION"

@@ -342,11 +342,6 @@
           "title": "Version",
           "type": "object"
         },
-        "package_ownership": {
-          "additionalProperties": true,
-          "title": "Package Ownership",
-          "type": "object"
-        },
         "source_analysis": {
           "$ref": "#/$defs/SourceAnalysis"
         },

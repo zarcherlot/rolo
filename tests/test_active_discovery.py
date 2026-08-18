@@ -20,7 +20,6 @@ from rolo.stages.build.active_discovery import (
     DiscoveryModeLevel,
     HelpProbeResult,
     HelpProbeStatus,
-    SoftwareInventoryMode,
     confirmation_matches_report,
     run_bounded_help,
     write_confirmation,
@@ -406,7 +405,7 @@ def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
     assert "at least one --source-root" in result.output
 
 
-def test_relevant_inventory_mode_never_falls_back_to_full_dpkg_scan(
+def test_discovery_does_not_run_host_package_inventory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source"
@@ -417,16 +416,9 @@ def test_relevant_inventory_mode_never_falls_back_to_full_dpkg_scan(
     registry = RobotRegistry(Path("configs/local/robots"))
     registry.load()
 
-    def forbidden_full_scan(*args: object, **kwargs: object) -> None:
-        raise AssertionError(f"full dpkg scan was unexpectedly called: {args}, {kwargs}")
-
     def forbidden_ros_probe(*args: object, **kwargs: object) -> None:
         raise AssertionError(f"ROS runtime probe was unexpectedly called: {args}, {kwargs}")
 
-    monkeypatch.setattr(
-        "rolo.stages.build.discovery.DpkgPackageCollector.collect",
-        forbidden_full_scan,
-    )
     monkeypatch.setattr(
         "rolo.stages.build.discovery.RosProbe.run",
         forbidden_ros_probe,
@@ -436,13 +428,13 @@ def test_relevant_inventory_mode_never_falls_back_to_full_dpkg_scan(
         urdf_path=Path("configs/profiles/differential_drive.urdf"),
         active_inputs=ActiveDiscoveryInputs(
             source_roots=[source],
-            software_inventory=SoftwareInventoryMode.RELEVANT,
         ),
     )
 
-    assert report.software_summary["status"] == "SUCCEEDED"
-    assert report.software_summary["relevance_resolution_status"] == "SUCCEEDED"
+    assert report.software_summary["status"] == "PARTIAL"
+    assert report.software_summary["relevance_resolution_status"] == "PARTIAL"
     assert report.software_summary["relevant_candidate_count"] == 0
+    assert report.software_summary["unknown_dependency_count"] == 1
     assert (tmp_path / "artifacts/discovery/demo_diff/latest/package_relevance.json").is_file()
     assert report.probes["ros"].status == "UNAVAILABLE"
     assert report.probes["ros"].warnings == ["ROS runtime inspection was not requested"]

@@ -1,4 +1,3 @@
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,11 +8,10 @@ from rolo.stages.build.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
 )
-from rolo.stages.build.software_inventory import SoftwareInventoryPolicy
 from rolo.stages.build.software_relevance import (
     CandidateResolutionStatus,
     RelevantSoftwareResolver,
-    _bounded_command,
+    SoftwareDiscoveryPolicy,
     enrich_active_report,
 )
 
@@ -124,7 +122,7 @@ def test_python_dependencies_resolve_installed_and_missing_without_pip(
         fake_distribution,
     )
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -134,14 +132,11 @@ def test_python_dependencies_resolve_installed_and_missing_without_pip(
     )
     enrich_active_report(report, resolution)
 
-    by_name = {candidate.name: candidate for candidate in resolution.report.candidates}
+    by_name = {candidate.name: candidate for candidate in resolution.candidates}
     assert by_name["installed-lib"].status == CandidateResolutionStatus.INSTALLED
     assert by_name["installed-lib"].installed_version == "2.0"
     assert by_name["missing-lib"].status == CandidateResolutionStatus.MISSING
-    assert resolution.report.status == "SUCCEEDED"
-    assert [record.package_id for record in resolution.records] == [
-        "python:installed-lib"
-    ]
+    assert resolution.status == "SUCCEEDED"
     assert [item["name"] for item in report.dependency_summary["missing"]] == [
         "missing-lib"
     ]
@@ -167,7 +162,7 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
     )
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -177,11 +172,11 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
     )
     enrich_active_report(report, resolution)
 
-    candidate = resolution.report.candidates[0]
+    candidate = resolution.candidates[0]
     assert candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
     assert candidate.installed_version == "2.0"
-    assert resolution.report.conflict_count == 1
-    assert resolution.report.installed_count == 0
+    assert resolution.conflict_count == 1
+    assert resolution.installed_count == 0
     assert report.dependency_summary["conflicting"][0]["name"] == "installed-lib"
     assert report.executables[0].dependencies["version_conflicts"][0]["name"] == (
         "installed-lib"
@@ -227,7 +222,7 @@ def test_ros_dependencies_use_static_ament_index_and_distinguish_missing(
     report = make_report(tmp_path, projects=[project])
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(),
+        SoftwareDiscoveryPolicy(),
         environment={"AMENT_PREFIX_PATH": str(prefix)},
     ).resolve(
         discovery_id="disc-relevance",
@@ -237,12 +232,11 @@ def test_ros_dependencies_use_static_ament_index_and_distinguish_missing(
         enabled=True,
     )
 
-    by_name = {candidate.name: candidate for candidate in resolution.report.candidates}
+    by_name = {candidate.name: candidate for candidate in resolution.candidates}
     assert by_name["demo_msgs"].status == CandidateResolutionStatus.INSTALLED
     assert by_name["demo_msgs"].installed_version == "1.2.3"
     assert by_name["missing_msgs"].status == CandidateResolutionStatus.MISSING
-    assert resolution.report.status == "SUCCEEDED"
-    assert resolution.records[0].manager == "ros"
+    assert resolution.status == "SUCCEEDED"
 
 
 def test_ros_dependency_version_constraint_is_compared_from_static_manifest(
@@ -270,7 +264,7 @@ def test_ros_dependency_version_constraint_is_compared_from_static_manifest(
     report = make_report(tmp_path, projects=[project])
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(),
+        SoftwareDiscoveryPolicy(),
         environment={"AMENT_PREFIX_PATH": str(prefix)},
     ).resolve(
         discovery_id="disc-relevance",
@@ -280,8 +274,8 @@ def test_ros_dependency_version_constraint_is_compared_from_static_manifest(
         enabled=True,
     )
 
-    assert resolution.report.candidates[0].status == "VERSION_CONFLICT"
-    assert resolution.report.conflict_count == 1
+    assert resolution.candidates[0].status == "VERSION_CONFLICT"
+    assert resolution.conflict_count == 1
 
 
 def test_inapplicable_python_marker_is_not_queried(
@@ -309,7 +303,7 @@ def test_inapplicable_python_marker_is_not_queried(
     )
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -318,8 +312,8 @@ def test_inapplicable_python_marker_is_not_queried(
         enabled=True,
     )
 
-    assert resolution.report.candidates == []
-    assert resolution.report.status == "SUCCEEDED"
+    assert resolution.candidates == []
+    assert resolution.status == "SUCCEEDED"
 
 
 def test_python_dependency_name_variants_merge_to_one_candidate(
@@ -344,7 +338,7 @@ def test_python_dependency_name_variants_merge_to_one_candidate(
     )
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -353,9 +347,9 @@ def test_python_dependency_name_variants_merge_to_one_candidate(
         enabled=True,
     )
 
-    assert len(resolution.report.candidates) == 1
-    assert resolution.report.candidates[0].specifiers == ["<3", ">=1"]
-    assert resolution.report.candidates[0].status == "INSTALLED"
+    assert len(resolution.candidates) == 1
+    assert resolution.candidates[0].specifiers == ["<3", ">=1"]
+    assert resolution.candidates[0].status == "INSTALLED"
 
 
 def test_missing_ament_index_is_unknown_not_missing(tmp_path: Path) -> None:
@@ -373,7 +367,7 @@ def test_missing_ament_index_is_unknown_not_missing(tmp_path: Path) -> None:
     report = make_report(tmp_path, projects=[project])
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -382,58 +376,30 @@ def test_missing_ament_index_is_unknown_not_missing(tmp_path: Path) -> None:
         enabled=True,
     )
 
-    candidate = resolution.report.candidates[0]
+    candidate = resolution.candidates[0]
     assert candidate.status == CandidateResolutionStatus.UNKNOWN
-    assert resolution.report.status == "PARTIAL"
-    assert resolution.report.missing_count == 0
+    assert resolution.status == "PARTIAL"
 
 
-def test_executable_ownership_uses_targeted_dpkg_queries_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_binary_without_dependency_declarations_remains_explicitly_unknown(
+    tmp_path: Path,
 ) -> None:
     executable = tmp_path / "vendor-driver"
     executable.write_bytes(b"\x7fELF" + b"\0" * 60)
     report = make_report(tmp_path, projects=[], executables=[executable])
-    commands: list[list[str]] = []
 
-    def fake_command(command: list[str], **kwargs: object):
-        del kwargs
-        commands.append(command)
-        if "-S" in command:
-            return 0, f"vendor-driver: {executable}\n".encode(), None
-        return 0, b"vendor-driver\t3.1\tarm64\tii \n", None
-
-    monkeypatch.setattr("rolo.stages.build.software_relevance.platform.system", lambda: "Linux")
-    monkeypatch.setattr(
-        "rolo.stages.build.software_relevance.DpkgPackageCollector._trusted_executable",
-        staticmethod(lambda: Path("/usr/bin/dpkg-query")),
-    )
-    monkeypatch.setattr(
-        "rolo.stages.build.software_relevance._bounded_command", fake_command
-    )
-    resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
-    ).resolve(
+    resolution = RelevantSoftwareResolver(environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[],
         active_report=report,
         collected_at=COLLECTED_AT,
-        enabled=True,
     )
     enrich_active_report(report, resolution)
 
-    assert len(commands) == 2
-    assert commands[0][1:3] == ["-S", "--"]
-    assert commands[1][1] == "-W"
-    assert all(command[1] != "-W" or command[-1] == "vendor-driver" for command in commands)
-    assert report.executables[0].package_ownership == {
-        "manager": "dpkg",
-        "package": "vendor-driver",
-        "package_id": "dpkg:arm64:vendor-driver",
-        "version": "3.1",
-        "status": "INSTALLED",
-        "reason": None,
-    }
+    assert resolution.status == "PARTIAL"
+    assert resolution.candidates == []
+    assert resolution.unresolved_executables == [report.executables[0].executable_id]
+    assert "dependency declarations unavailable" in report.unknowns[-1]
 
 
 def test_disabled_relevance_records_policy_block_without_queries(
@@ -461,7 +427,7 @@ def test_disabled_relevance_records_policy_block_without_queries(
     )
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(), environment={}
+        SoftwareDiscoveryPolicy(), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -470,9 +436,8 @@ def test_disabled_relevance_records_policy_block_without_queries(
         enabled=False,
     )
 
-    assert resolution.report.status == "BLOCKED_BY_POLICY"
-    assert resolution.report.candidates[0].status == "BLOCKED_BY_POLICY"
-    assert resolution.records == ()
+    assert resolution.status == "BLOCKED_BY_POLICY"
+    assert resolution.candidates[0].status == "BLOCKED_BY_POLICY"
 
 
 def test_relevance_candidate_limit_is_explicitly_partial(
@@ -502,7 +467,7 @@ def test_relevance_candidate_limit_is_explicitly_partial(
     )
 
     resolution = RelevantSoftwareResolver(
-        SoftwareInventoryPolicy(max_relevant_candidates=1), environment={}
+        SoftwareDiscoveryPolicy(max_candidates=1), environment={}
     ).resolve(
         discovery_id="disc-relevance",
         projects=[project],
@@ -511,21 +476,7 @@ def test_relevance_candidate_limit_is_explicitly_partial(
         enabled=True,
     )
 
-    assert resolution.report.status == "PARTIAL"
-    assert resolution.report.candidate_count == 1
-    assert resolution.report.omitted_candidate_count == 1
-    assert "exceeded the configured limit" in resolution.report.warnings[0]
-
-
-def test_targeted_query_output_is_stopped_at_independent_limit() -> None:
-    returncode, stdout, error = _bounded_command(
-        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 10000)"],
-        policy=SoftwareInventoryPolicy(
-            targeted_query_timeout_s=5,
-            max_targeted_query_output_bytes=100,
-        ),
-    )
-
-    assert returncode is None
-    assert len(stdout) <= 100
-    assert error == "targeted package query output exceeded 100 bytes"
+    assert resolution.status == "PARTIAL"
+    assert resolution.candidate_count == 1
+    assert resolution.omitted_candidate_count == 1
+    assert "exceeded the configured limit" in resolution.warnings[0]

@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "description": "Small, direct-candidate bound; no host package inventory is collected.",
+  "properties": {
+    "max_candidates": {
+      "default": 1000,
+      "exclusiveMinimum": 0,
+      "title": "Max Candidates",
+      "type": "integer"
+    }
+  },
+  "title": "SoftwareDiscoveryPolicy",
+  "type": "object"
+}

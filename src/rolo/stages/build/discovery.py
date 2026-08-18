@@ -37,7 +37,6 @@ from rolo.stages.build.active_discovery import (
     ActiveDiscoveryInputs,
     ActiveProbeMode,
     ConfirmationStatus,
-    SoftwareInventoryMode,
     render_active_discovery_markdown,
 )
 from rolo.stages.build.enrollment import load_urdf_profile
@@ -48,17 +47,13 @@ from rolo.stages.build.inputs import (
     SemanticContext,
     StageSemanticInputs,
 )
-from rolo.stages.build.software_inventory import (
-    CollectorStatus,
-    DpkgPackageCollector,
-    SoftwareInventoryPolicy,
-    SoftwareSummary,
-    empty_inventory_index,
-    write_package_records,
-)
 from rolo.stages.build.software_relevance import (
     CandidateResolutionStatus,
     RelevantSoftwareResolver,
+    ResolutionStatus,
+    SoftwareDiscoveryPolicy,
+    SoftwareSummary,
+    build_software_summary,
     enrich_active_report,
 )
 
@@ -252,10 +247,6 @@ class LinuxProbe:
             "environment": {key: os.environ[key] for key in SAFE_ENV_KEYS if key in os.environ},
             "executables": {},
             "processes": [],
-            "package_inventory": {
-                "status": "COLLECTED_SEPARATELY",
-                "detail": "See the immutable package_inventory artifact",
-            },
         }
         warnings: list[str] = []
         executable_checks = {
@@ -786,7 +777,7 @@ def _capability_manifest(
             "software_stack": {
                 "host": probes["linux"].data.get("host", {}),
                 "executables": probes["linux"].data.get("executables", {}),
-                "package_inventory": software_summary.model_dump(mode="json"),
+                "dependency_resolution": software_summary.model_dump(mode="json"),
             },
             "ros_graph": probes["ros"].data,
             "applications": probes["application"].data.get("projects", []),
@@ -1006,10 +997,10 @@ class DiscoveryService:
     def __init__(
         self,
         artifacts: ArtifactStore,
-        inventory_policy: SoftwareInventoryPolicy | None = None,
+        software_policy: SoftwareDiscoveryPolicy | None = None,
     ) -> None:
         self.artifacts = artifacts
-        self.inventory_policy = inventory_policy or SoftwareInventoryPolicy()
+        self.software_policy = software_policy or SoftwareDiscoveryPolicy()
 
     def run(
         self,
@@ -1030,40 +1021,6 @@ class DiscoveryService:
         robot = _read_discovery_urdf(robot, urdf_path)
         now = datetime.now(timezone.utc)
         discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
-        inventory_relative = (
-            f"discovery/{robot.robot_id}/runs/{discovery_id}/package_inventory"
-        )
-        package_inventory_ref = f"artifact://{inventory_relative}/index.json"
-        if active_inputs.software_inventory == SoftwareInventoryMode.FULL:
-            inventory_index = DpkgPackageCollector(self.inventory_policy).collect(
-                output_dir=self.artifacts.root / inventory_relative,
-                artifact_prefix=f"artifact://{inventory_relative}",
-                discovery_id=discovery_id,
-                collected_at=now,
-            )
-        elif active_inputs.software_inventory == SoftwareInventoryMode.OFF:
-            inventory_index = empty_inventory_index(
-                discovery_id=discovery_id,
-                policy=self.inventory_policy,
-                created_at=now,
-                status=CollectorStatus.BLOCKED_BY_POLICY,
-                reason="full host package inventory was disabled by discovery input policy",
-            )
-        else:
-            inventory_index = empty_inventory_index(
-                discovery_id=discovery_id,
-                policy=self.inventory_policy,
-                created_at=now,
-                status=CollectorStatus.NOT_PROBED,
-                reason=(
-                    "relevant-only package queries are deferred until application evidence "
-                    "identifies dependency candidates"
-                ),
-            )
-        software_summary = SoftwareSummary.from_index(
-            inventory_index,
-            package_inventory_ref,
-        )
         software_summary_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
         )
@@ -1089,7 +1046,6 @@ class DiscoveryService:
         }
         bindings = _semantic_bindings(probes)
         tools = _build_tool_catalog(probes, bindings)
-        capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
         applicable_probes = {
             name: probe
             for name, probe in probes.items()
@@ -1102,11 +1058,7 @@ class DiscoveryService:
         statuses = {probe.status for probe in applicable_probes.values()}
         if DiscoveryStatus.FAILED in statuses:
             status = DiscoveryStatus.FAILED
-        elif statuses == {DiscoveryStatus.SUCCEEDED} and (
-            active_inputs.software_inventory != SoftwareInventoryMode.FULL
-            or software_summary.status
-            in {CollectorStatus.SUCCEEDED, CollectorStatus.NOT_APPLICABLE}
-        ):
+        elif statuses == {DiscoveryStatus.SUCCEEDED}:
             status = DiscoveryStatus.SUCCEEDED
         else:
             status = DiscoveryStatus.PARTIAL
@@ -1125,72 +1077,21 @@ class DiscoveryService:
             technical_status=status.value,
             created_at=now,
         )
-        relevance_resolution = RelevantSoftwareResolver(self.inventory_policy).resolve(
+        relevance_report = RelevantSoftwareResolver(self.software_policy).resolve(
             discovery_id=discovery_id,
             projects=probes["application"].data.get("projects", []),
             active_report=active_report,
             collected_at=now,
-            enabled=active_inputs.software_inventory != SoftwareInventoryMode.OFF,
         )
-        enrich_active_report(active_report, relevance_resolution)
-        if active_inputs.software_inventory == SoftwareInventoryMode.RELEVANT:
-            relevance_status = relevance_resolution.report.status
-            inventory_index = write_package_records(
-                records=relevance_resolution.records,
-                output_dir=self.artifacts.root / inventory_relative,
-                artifact_prefix=f"artifact://{inventory_relative}",
-                discovery_id=discovery_id,
-                policy=self.inventory_policy,
-                collector="application.relevant",
-                chunk_prefix="relevant",
-                created_at=now,
-                status=relevance_status,
-                reason=(
-                    "; ".join(relevance_resolution.report.warnings[:10]) or None
-                ),
-                truncated=relevance_resolution.report.omitted_candidate_count > 0,
-            )
-            software_summary = SoftwareSummary.from_index(
-                inventory_index,
-                package_inventory_ref,
-            )
-        software_summary.relevance_resolution_status = (
-            relevance_resolution.report.status.value
-        )
-        software_summary.package_relevance_ref = package_relevance_ref
-        software_summary.relevant_candidate_count = (
-            relevance_resolution.report.candidate_count
-        )
-        software_summary.relevant_resolved_count = (
-            relevance_resolution.report.installed_count
-        )
-        software_summary.missing_dependency_count = sum(
-            candidate.required
-            and candidate.status == CandidateResolutionStatus.MISSING
-            for candidate in relevance_resolution.report.candidates
-        )
-        software_summary.conflicting_dependency_count = sum(
-            candidate.required
-            and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
-            for candidate in relevance_resolution.report.candidates
-        )
-        software_summary.unknown_dependency_count = sum(
-            candidate.required
-            and candidate.status
-            in {
-                CandidateResolutionStatus.UNKNOWN,
-                CandidateResolutionStatus.BLOCKED_BY_POLICY,
-            }
-            for candidate in relevance_resolution.report.candidates
-        )
-        software_summary.warnings = sorted(
-            set(software_summary.warnings)
-            | set(relevance_resolution.report.warnings)
+        enrich_active_report(active_report, relevance_report)
+        software_summary = build_software_summary(
+            discovery_id=discovery_id,
+            report=relevance_report,
+            package_relevance_ref=package_relevance_ref,
         )
         capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
         if (
-            active_inputs.software_inventory != SoftwareInventoryMode.OFF
-            and relevance_resolution.report.status == CollectorStatus.PARTIAL
+            relevance_report.status == ResolutionStatus.PARTIAL
             and status == DiscoveryStatus.SUCCEEDED
         ):
             status = DiscoveryStatus.PARTIAL
@@ -1215,7 +1116,6 @@ class DiscoveryService:
             tool_catalog=tools,
             software_summary=software_summary.model_dump(mode="json"),
             software_summary_ref=software_summary_ref,
-            package_inventory_ref=package_inventory_ref,
             package_relevance_ref=package_relevance_ref,
             active_discovery_report_ref=active_report_ref,
             confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
@@ -1225,16 +1125,12 @@ class DiscoveryService:
         )
         payload = report.model_dump(mode="json")
         self.artifacts.write_json(
-            f"{inventory_relative}/index.json",
-            inventory_index.model_dump(mode="json"),
-        )
-        self.artifacts.write_json(
             f"discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json",
             software_summary.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/package_relevance.json",
-            relevance_resolution.report.model_dump(mode="json"),
+            relevance_report.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/active_discovery_report.json",
@@ -1277,14 +1173,9 @@ class DiscoveryService:
                 and active_inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY
             )
         ]
-        inventory_state = inventory_index.collectors[0]
-        if not inventory_state.complete:
-            unresolved.append(
-                f"software_inventory:{inventory_state.collector}:{inventory_state.status.value}"
-            )
         unresolved.extend(
             f"dependency:{candidate.ecosystem}:{candidate.name}:{candidate.status.value}"
-            for candidate in relevance_resolution.report.candidates
+            for candidate in relevance_report.candidates
             if candidate.required
             and candidate.status
             in {
@@ -1293,6 +1184,10 @@ class DiscoveryService:
                 CandidateResolutionStatus.UNKNOWN,
                 CandidateResolutionStatus.BLOCKED_BY_POLICY,
             }
+        )
+        unresolved.extend(
+            f"dependency:executable:{executable_id}:UNKNOWN"
+            for executable_id in relevance_report.unresolved_executables
         )
         unresolved.extend(
             f"compatibility:{item['field']}"
@@ -1323,10 +1218,7 @@ class DiscoveryService:
                 f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
             ),
             software_summary_ref=software_summary_ref,
-            package_inventory_ref=package_inventory_ref,
             package_relevance_ref=package_relevance_ref,
-            software_package_count=software_summary.package_count,
-            software_inventory_complete=software_summary.complete,
             active_discovery_report_ref=active_report_ref,
             confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             probe_refs={
@@ -1370,16 +1262,12 @@ class DiscoveryService:
         # Publish mutable convenience paths only after the immutable run is complete.
         latest_location = f"discovery/{robot.robot_id}/latest"
         self.artifacts.write_json(
-            f"{latest_location}/package_inventory/index.json",
-            inventory_index.model_dump(mode="json"),
-        )
-        self.artifacts.write_json(
             f"{latest_location}/software_summary.json",
             software_summary.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{latest_location}/package_relevance.json",
-            relevance_resolution.report.model_dump(mode="json"),
+            relevance_report.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{latest_location}/active_discovery_report.json",

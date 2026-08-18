@@ -8,15 +8,6 @@
       ],
       "title": "ActiveProbeMode",
       "type": "string"
-    },
-    "SoftwareInventoryMode": {
-      "enum": [
-        "off",
-        "relevant",
-        "full"
-      ],
-      "title": "SoftwareInventoryMode",
-      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -72,10 +63,6 @@
     "active_probe": {
       "$ref": "#/$defs/ActiveProbeMode",
       "default": "none"
-    },
-    "software_inventory": {
-      "$ref": "#/$defs/SoftwareInventoryMode",
-      "default": "relevant"
     }
   },
   "title": "ActiveDiscoveryInputs",

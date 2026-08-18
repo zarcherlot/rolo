@@ -34,7 +34,6 @@ from rolo.stages.build.active_discovery import (
     ActiveProbeMode,
     ConfirmationDecision,
     DiscoveryConfirmation,
-    SoftwareInventoryMode,
     write_confirmation,
 )
 from rolo.stages.build.dependencies import CodexDependencyAdapter, CodingAgentDependencyManager
@@ -62,17 +61,11 @@ from rolo.stages.build.models import (
     CodingAgentRun,
 )
 from rolo.stages.build.service import BuildStageService
-from rolo.stages.build.software_inventory import (
-    PackageCollectorState,
-    PackageInventoryIndex,
-    PackageRecord,
-    SoftwareInventoryPolicy,
-    SoftwareSummary,
-    load_software_inventory_policy,
-)
 from rolo.stages.build.software_relevance import (
     PackageRelevanceCandidate,
     PackageRelevanceReport,
+    SoftwareDiscoveryPolicy,
+    SoftwareSummary,
 )
 from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
 from rolo.stages.debug.robot_use import create_robot_use_backend
@@ -545,11 +538,8 @@ def export_schemas(
         CodingAgentRun,
         StageAssessment,
         PipelineAssessment,
-        PackageRecord,
-        PackageCollectorState,
-        PackageInventoryIndex,
-        SoftwareInventoryPolicy,
         SoftwareSummary,
+        SoftwareDiscoveryPolicy,
         PackageRelevanceCandidate,
         PackageRelevanceReport,
         ActiveDiscoveryInputs,
@@ -616,10 +606,6 @@ def discovery_run(
         ActiveProbeMode,
         typer.Option("--active-probe", help="none, help, or runtime-readonly"),
     ] = ActiveProbeMode.NONE,
-    software_inventory: Annotated[
-        SoftwareInventoryMode,
-        typer.Option("--software-inventory", help="off, relevant, or full"),
-    ] = SoftwareInventoryMode.RELEVANT,
     full: Annotated[bool, typer.Option("--full", help="Print the complete report")] = False,
 ) -> None:
     """Run all safe discovery probes and persist a versioned report."""
@@ -637,14 +623,9 @@ def discovery_run(
             document_roots=doc_root or [],
             launch_roots=launch_root or [],
             active_probe=active_probe,
-            software_inventory=software_inventory,
-        )
-        inventory_policy = load_software_inventory_policy(
-            runtime.settings.rolo_discovery_policy_path
         )
         report, artifact = DiscoveryService(
             runtime.robot_use.artifacts,
-            inventory_policy=inventory_policy,
         ).run(
             robot=capability,
             urdf_path=urdf,
@@ -666,8 +647,7 @@ def discovery_run(
             "probe_status": {name: probe.status for name, probe in report.probes.items()},
             "semantic_bindings": len(report.semantic_bindings),
             "tools": len(report.tool_catalog),
-            "software_packages": report.software_summary.get("package_count", 0),
-            "software_inventory_complete": report.software_summary.get("complete", False),
+            "dependency_resolution_complete": report.software_summary.get("complete", False),
             "relevant_candidates": report.software_summary.get(
                 "relevant_candidate_count", 0
             ),

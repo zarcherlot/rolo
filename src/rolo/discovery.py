@@ -10,15 +10,7 @@ from rolo.stages.build.discovery import (
     load_latest_report,
     load_report,
 )
-from rolo.stages.build.software_inventory import (
-    CollectorStatus,
-    DpkgPackageCollector,
-    PackageCollectorState,
-    PackageInventoryIndex,
-    PackageRecord,
-    SoftwareInventoryPolicy,
-    SoftwareSummary,
-)
+from rolo.stages.build.software_relevance import SoftwareSummary
 
 __all__ = [
     "ApplicationProbe",
@@ -29,11 +21,5 @@ __all__ = [
     "detect_compute_platform",
     "load_latest_report",
     "load_report",
-    "CollectorStatus",
-    "DpkgPackageCollector",
-    "PackageCollectorState",
-    "PackageInventoryIndex",
-    "PackageRecord",
-    "SoftwareInventoryPolicy",
     "SoftwareSummary",
 ]

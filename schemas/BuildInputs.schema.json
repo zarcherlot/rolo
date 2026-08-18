@@ -63,25 +63,10 @@
       "title": "Software Summary Ref",
       "type": "string"
     },
-    "package_inventory_ref": {
-      "default": "",
-      "title": "Package Inventory Ref",
-      "type": "string"
-    },
     "package_relevance_ref": {
       "default": "",
       "title": "Package Relevance Ref",
       "type": "string"
-    },
-    "software_package_count": {
-      "default": 0,
-      "title": "Software Package Count",
-      "type": "integer"
-    },
-    "software_inventory_complete": {
-      "default": false,
-      "title": "Software Inventory Complete",
-      "type": "boolean"
     },
     "active_discovery_report_ref": {
       "default": "",

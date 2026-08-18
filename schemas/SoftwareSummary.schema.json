@@ -1,16 +1,12 @@
 {
   "$defs": {
-    "CollectorStatus": {
+    "ResolutionStatus": {
       "enum": [
         "SUCCEEDED",
         "PARTIAL",
-        "FAILED",
-        "UNAVAILABLE",
-        "NOT_APPLICABLE",
-        "NOT_PROBED",
         "BLOCKED_BY_POLICY"
       ],
-      "title": "CollectorStatus",
+      "title": "ResolutionStatus",
       "type": "string"
     }
   },
@@ -27,52 +23,13 @@
       "type": "string"
     },
     "status": {
-      "$ref": "#/$defs/CollectorStatus"
+      "$ref": "#/$defs/ResolutionStatus"
     },
     "complete": {
       "title": "Complete",
       "type": "boolean"
     },
-    "package_count": {
-      "minimum": 0,
-      "title": "Package Count",
-      "type": "integer"
-    },
-    "inventory_sha256": {
-      "title": "Inventory Sha256",
-      "type": "string"
-    },
-    "policy_sha256": {
-      "title": "Policy Sha256",
-      "type": "string"
-    },
-    "package_inventory_ref": {
-      "title": "Package Inventory Ref",
-      "type": "string"
-    },
-    "counts_by_manager": {
-      "additionalProperties": {
-        "type": "integer"
-      },
-      "title": "Counts By Manager",
-      "type": "object"
-    },
-    "counts_by_architecture": {
-      "additionalProperties": {
-        "type": "integer"
-      },
-      "title": "Counts By Architecture",
-      "type": "object"
-    },
-    "counts_by_status": {
-      "additionalProperties": {
-        "type": "integer"
-      },
-      "title": "Counts By Status",
-      "type": "object"
-    },
     "relevance_resolution_status": {
-      "default": "PENDING",
       "title": "Relevance Resolution Status",
       "type": "string"
     },
@@ -123,10 +80,7 @@
     "discovery_id",
     "status",
     "complete",
-    "package_count",
-    "inventory_sha256",
-    "policy_sha256",
-    "package_inventory_ref"
+    "relevance_resolution_status"
   ],
   "title": "SoftwareSummary",
   "type": "object"

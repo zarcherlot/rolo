@@ -62,7 +62,7 @@ def test_build_prompt_is_pinned_to_plan_discovery_snapshot(tmp_path: Path) -> No
     latest_report["capability_manifest"]["snapshot_marker"] = "newer-latest-snapshot"
     run_report_path.write_text(json.dumps(planned_report), encoding="utf-8")
     latest_report_path.write_text(json.dumps(latest_report), encoding="utf-8")
-    inventory_chunk = run_report_path.parent / "package_inventory/dpkg-0001.jsonl"
+    inventory_chunk = run_report_path.parent / "unrelated-large-artifact-marker.json"
     inventory_chunk.write_text('{"name":"full-inventory-only-marker"}\n', encoding="utf-8")
     active_report_path = run_report_path.with_name("active_discovery_report.json")
     active_report = json.loads(active_report_path.read_text(encoding="utf-8"))

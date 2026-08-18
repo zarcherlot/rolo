@@ -5,9 +5,7 @@
         "INSTALLED",
         "MISSING",
         "VERSION_CONFLICT",
-        "UNMANAGED",
         "UNKNOWN",
-        "NOT_APPLICABLE",
         "BLOCKED_BY_POLICY"
       ],
       "title": "CandidateResolutionStatus",
@@ -27,9 +25,7 @@
     "ecosystem": {
       "enum": [
         "python",
-        "ros",
-        "dpkg",
-        "executable"
+        "ros"
       ],
       "title": "Ecosystem",
       "type": "string"

@@ -58,7 +58,6 @@ def _active_discovery_agent_context(report: ActiveDiscoveryReport) -> dict[str, 
                 "path": executable.path,
                 "origin": executable.origin,
                 "version": executable.version,
-                "package_ownership": executable.package_ownership,
                 "file_format": executable.file_format,
                 "architecture": executable.architecture,
                 "source": {
