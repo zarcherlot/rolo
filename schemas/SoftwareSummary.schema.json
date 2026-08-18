@@ -76,6 +76,41 @@
       "title": "Relevance Resolution Status",
       "type": "string"
     },
+    "package_relevance_ref": {
+      "default": "",
+      "title": "Package Relevance Ref",
+      "type": "string"
+    },
+    "relevant_candidate_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Relevant Candidate Count",
+      "type": "integer"
+    },
+    "relevant_resolved_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Relevant Resolved Count",
+      "type": "integer"
+    },
+    "missing_dependency_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Missing Dependency Count",
+      "type": "integer"
+    },
+    "conflicting_dependency_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Conflicting Dependency Count",
+      "type": "integer"
+    },
+    "unknown_dependency_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Unknown Dependency Count",
+      "type": "integer"
+    },
     "warnings": {
       "items": {
         "type": "string"

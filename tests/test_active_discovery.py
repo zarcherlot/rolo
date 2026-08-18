@@ -440,7 +440,116 @@ def test_relevant_inventory_mode_never_falls_back_to_full_dpkg_scan(
         ),
     )
 
-    assert report.software_summary["status"] == "NOT_PROBED"
-    assert report.software_summary["relevance_resolution_status"] == "NOT_PROBED"
+    assert report.software_summary["status"] == "SUCCEEDED"
+    assert report.software_summary["relevance_resolution_status"] == "SUCCEEDED"
+    assert report.software_summary["relevant_candidate_count"] == 0
+    assert (tmp_path / "artifacts/discovery/demo_diff/latest/package_relevance.json").is_file()
     assert report.probes["ros"].status == "UNAVAILABLE"
     assert report.probes["ros"].warnings == ["ROS runtime inspection was not requested"]
+
+
+def test_relevant_dependency_findings_flow_to_reports_and_build_inputs(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    missing_name = "rolo-package-that-does-not-exist-7f3d4d"
+    (source / "pyproject.toml").write_text(
+        f"""[project]
+name = "demo"
+dependencies = ["{missing_name}>=1"]
+
+[project.scripts]
+demo = "demo:main"
+""",
+        encoding="utf-8",
+    )
+    registry = RobotRegistry(Path("configs/local/robots"))
+    registry.load()
+    artifact_root = tmp_path / "artifacts"
+
+    report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        active_inputs=ActiveDiscoveryInputs(source_roots=[source]),
+    )
+
+    run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
+    relevance = json.loads(
+        (run_root / "package_relevance.json").read_text(encoding="utf-8")
+    )
+    active = json.loads(
+        (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
+    )
+    build_inputs = json.loads(
+        (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
+    )
+
+    assert relevance["status"] == "SUCCEEDED"
+    assert relevance["missing_count"] == 1
+    assert relevance["candidates"][0]["name"] == missing_name
+    assert relevance["candidates"][0]["status"] == "MISSING"
+    assert active["dependency_summary"]["missing"][0]["name"] == missing_name
+    assert report.software_summary["missing_dependency_count"] == 1
+    assert any(
+        item == f"dependency:python:{missing_name}:MISSING"
+        for item in build_inputs["unresolved_dependencies"]
+    )
+
+
+def test_version_conflicts_flow_to_summary_report_and_build_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyproject.toml").write_text(
+        """[project]
+name = "demo"
+dependencies = ["conflict-lib>=3"]
+
+[project.scripts]
+demo = "demo:main"
+""",
+        encoding="utf-8",
+    )
+
+    class Distribution:
+        metadata = {"Name": "conflict-lib"}
+        version = "2.0"
+
+        @staticmethod
+        def locate_file(_: str) -> Path:
+            return tmp_path / "site-packages"
+
+    monkeypatch.setattr(
+        "rolo.stages.build.software_relevance.importlib_metadata.distribution",
+        lambda _: Distribution(),
+    )
+    registry = RobotRegistry(Path("configs/local/robots"))
+    registry.load()
+    artifact_root = tmp_path / "artifacts"
+
+    report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("configs/profiles/differential_drive.urdf"),
+        active_inputs=ActiveDiscoveryInputs(source_roots=[source]),
+    )
+
+    run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
+    relevance = json.loads(
+        (run_root / "package_relevance.json").read_text(encoding="utf-8")
+    )
+    active = json.loads(
+        (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
+    )
+    build_inputs = json.loads(
+        (artifact_root / "build/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
+    )
+
+    assert relevance["conflict_count"] == 1
+    assert relevance["candidates"][0]["status"] == "VERSION_CONFLICT"
+    assert active["dependency_summary"]["conflicting"][0]["name"] == "conflict-lib"
+    assert report.software_summary["conflicting_dependency_count"] == 1
+    assert "dependency:python:conflict-lib:VERSION_CONFLICT" in build_inputs[
+        "unresolved_dependencies"
+    ]

@@ -106,6 +106,43 @@ def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> No
     assert "pyproject.toml" in project["manifest_digests"]
 
 
+def test_application_probe_normalizes_python_and_ros_dependency_constraints(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        """[project]
+name = "constraint-demo"
+dependencies = [
+  "requests[security]>=2.0; python_version >= '3'",
+  "legacy-only; python_version < '0'",
+]
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "package.xml").write_text(
+        """<package format="3">
+<name>constraint_demo</name><version>1.0.0</version>
+<description>test</description><maintainer email="dev@example.com">dev</maintainer>
+<license>Apache-2.0</license>
+<exec_depend version_gte="1.2" version_lt="2.0">demo_msgs</exec_depend>
+</package>
+""",
+        encoding="utf-8",
+    )
+
+    project = ApplicationProbe().run([tmp_path]).data["projects"][0]
+    declarations = {
+        (item["ecosystem"], item["name"]): item
+        for item in project["dependency_declarations"]
+    }
+
+    assert declarations[("python", "requests")]["specifier"] == ">=2.0"
+    assert declarations[("python", "requests")]["extras"] == ["security"]
+    assert declarations[("python", "requests")]["applicable"] is True
+    assert declarations[("python", "legacy-only")]["applicable"] is False
+    assert declarations[("ros", "demo_msgs")]["specifier"] == "<2.0,>=1.2"
+
+
 def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     project = tmp_path / "application"
     make_application_project(project)

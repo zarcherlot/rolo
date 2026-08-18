@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from packaging.requirements import InvalidRequirement, Requirement
+
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
@@ -52,6 +54,12 @@ from rolo.stages.build.software_inventory import (
     SoftwareInventoryPolicy,
     SoftwareSummary,
     empty_inventory_index,
+    write_package_records,
+)
+from rolo.stages.build.software_relevance import (
+    CandidateResolutionStatus,
+    RelevantSoftwareResolver,
+    enrich_active_report,
 )
 
 MAX_COMMAND_OUTPUT = 200_000
@@ -461,6 +469,7 @@ class ApplicationProbe:
                 "languages": [],
                 "build_targets": [],
                 "declared_dependencies": [],
+                "dependency_declarations": [],
                 "manifest_digests": {},
                 "source_revision": None,
             }
@@ -474,9 +483,38 @@ class ApplicationProbe:
                     if project_data.get("name"):
                         project["packages"].append(project_data["name"])
                     for dependency in project_data.get("dependencies", []):
-                        match = re.match(r"[A-Za-z0-9_.-]+", str(dependency))
-                        if match:
-                            project["declared_dependencies"].append(match.group(0))
+                        declaration = str(dependency)
+                        try:
+                            requirement = Requirement(declaration)
+                        except InvalidRequirement as exc:
+                            requirement = None
+                            warnings.append(
+                                f"cannot parse dependency {declaration!r} in "
+                                f"{pyproject_path}: {exc}"
+                            )
+                        if requirement is not None:
+                            name = requirement.name
+                            project["declared_dependencies"].append(name)
+                            project["dependency_declarations"].append(
+                                {
+                                    "name": name,
+                                    "ecosystem": "python",
+                                    "scope": "runtime",
+                                    "required": True,
+                                    "specifier": str(requirement.specifier) or None,
+                                    "marker": (
+                                        str(requirement.marker)
+                                        if requirement.marker
+                                        else None
+                                    ),
+                                    "applicable": (
+                                        requirement.marker is None
+                                        or requirement.marker.evaluate()
+                                    ),
+                                    "extras": sorted(requirement.extras),
+                                    "source": str(pyproject_path),
+                                }
+                            )
                     scripts = project_data.get("scripts", {})
                     project["entrypoints"].extend(
                         {"name": name, "target": target, "source": "pyproject"}
@@ -513,6 +551,31 @@ class ApplicationProbe:
                                 for dependency in package_root.findall(tag)
                                 if dependency.text and dependency.text.strip()
                             )
+                            for dependency in package_root.findall(tag):
+                                if not dependency.text or not dependency.text.strip():
+                                    continue
+                                operators = {
+                                    "version_lt": "<",
+                                    "version_lte": "<=",
+                                    "version_eq": "==",
+                                    "version_gte": ">=",
+                                    "version_gt": ">",
+                                }
+                                constraints = [
+                                    f"{operator}{dependency.attrib[attribute]}"
+                                    for attribute, operator in operators.items()
+                                    if attribute in dependency.attrib
+                                ]
+                                project["dependency_declarations"].append(
+                                    {
+                                        "name": dependency.text.strip(),
+                                        "ecosystem": "ros",
+                                        "scope": tag,
+                                        "required": tag != "test_depend",
+                                        "specifier": ",".join(constraints) or None,
+                                        "source": str(path),
+                                    }
+                                )
                     except (OSError, ET.ParseError) as exc:
                         warnings.append(f"cannot parse {path}: {exc}")
                 is_launch_file = path.name.endswith(".launch.py") or path.suffix in {
@@ -590,6 +653,15 @@ class ApplicationProbe:
             project["build_targets"] = sorted(set(project["build_targets"]))
             project["declared_dependencies"] = sorted(
                 set(project["declared_dependencies"])
+            )
+            project["dependency_declarations"] = sorted(
+                project["dependency_declarations"],
+                key=lambda item: (
+                    item["ecosystem"],
+                    item["name"].casefold(),
+                    item["scope"],
+                    item["source"],
+                ),
             )
             project["protocols"] = sorted(set(project["protocols"]))
             project["ros_interfaces"] = sorted(
@@ -992,18 +1064,12 @@ class DiscoveryService:
             inventory_index,
             package_inventory_ref,
         )
-        if active_inputs.software_inventory == SoftwareInventoryMode.RELEVANT:
-            software_summary.relevance_resolution_status = "NOT_PROBED"
-            software_summary.warnings.append(
-                "targeted package-manager relevance resolution is deferred; "
-                "declared application dependencies remain in the active discovery report"
-            )
-        elif active_inputs.software_inventory == SoftwareInventoryMode.OFF:
-            software_summary.relevance_resolution_status = "BLOCKED_BY_POLICY"
-        else:
-            software_summary.relevance_resolution_status = "PENDING"
         software_summary_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
+        )
+        package_relevance_ref = (
+            f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
+            "package_relevance.json"
         )
         ros_probe = (
             RosProbe().run()
@@ -1059,6 +1125,75 @@ class DiscoveryService:
             technical_status=status.value,
             created_at=now,
         )
+        relevance_resolution = RelevantSoftwareResolver(self.inventory_policy).resolve(
+            discovery_id=discovery_id,
+            projects=probes["application"].data.get("projects", []),
+            active_report=active_report,
+            collected_at=now,
+            enabled=active_inputs.software_inventory != SoftwareInventoryMode.OFF,
+        )
+        enrich_active_report(active_report, relevance_resolution)
+        if active_inputs.software_inventory == SoftwareInventoryMode.RELEVANT:
+            relevance_status = relevance_resolution.report.status
+            inventory_index = write_package_records(
+                records=relevance_resolution.records,
+                output_dir=self.artifacts.root / inventory_relative,
+                artifact_prefix=f"artifact://{inventory_relative}",
+                discovery_id=discovery_id,
+                policy=self.inventory_policy,
+                collector="application.relevant",
+                chunk_prefix="relevant",
+                created_at=now,
+                status=relevance_status,
+                reason=(
+                    "; ".join(relevance_resolution.report.warnings[:10]) or None
+                ),
+                truncated=relevance_resolution.report.omitted_candidate_count > 0,
+            )
+            software_summary = SoftwareSummary.from_index(
+                inventory_index,
+                package_inventory_ref,
+            )
+        software_summary.relevance_resolution_status = (
+            relevance_resolution.report.status.value
+        )
+        software_summary.package_relevance_ref = package_relevance_ref
+        software_summary.relevant_candidate_count = (
+            relevance_resolution.report.candidate_count
+        )
+        software_summary.relevant_resolved_count = (
+            relevance_resolution.report.installed_count
+        )
+        software_summary.missing_dependency_count = sum(
+            candidate.required
+            and candidate.status == CandidateResolutionStatus.MISSING
+            for candidate in relevance_resolution.report.candidates
+        )
+        software_summary.conflicting_dependency_count = sum(
+            candidate.required
+            and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
+            for candidate in relevance_resolution.report.candidates
+        )
+        software_summary.unknown_dependency_count = sum(
+            candidate.required
+            and candidate.status
+            in {
+                CandidateResolutionStatus.UNKNOWN,
+                CandidateResolutionStatus.BLOCKED_BY_POLICY,
+            }
+            for candidate in relevance_resolution.report.candidates
+        )
+        software_summary.warnings = sorted(
+            set(software_summary.warnings)
+            | set(relevance_resolution.report.warnings)
+        )
+        capability_manifest = _capability_manifest(robot, probes, bindings, software_summary)
+        if (
+            active_inputs.software_inventory != SoftwareInventoryMode.OFF
+            and relevance_resolution.report.status == CollectorStatus.PARTIAL
+            and status == DiscoveryStatus.SUCCEEDED
+        ):
+            status = DiscoveryStatus.PARTIAL
         if not active_report.executables and status != DiscoveryStatus.FAILED:
             status = DiscoveryStatus.PARTIAL
             active_report.technical_status = status.value
@@ -1067,6 +1202,7 @@ class DiscoveryService:
             and status == DiscoveryStatus.SUCCEEDED
         ):
             status = DiscoveryStatus.PARTIAL
+        active_report.technical_status = status.value
         semantic_context = _semantic_context(robot, probes, discovery_id)
         report = DiscoveryReport(
             discovery_id=discovery_id,
@@ -1080,6 +1216,7 @@ class DiscoveryService:
             software_summary=software_summary.model_dump(mode="json"),
             software_summary_ref=software_summary_ref,
             package_inventory_ref=package_inventory_ref,
+            package_relevance_ref=package_relevance_ref,
             active_discovery_report_ref=active_report_ref,
             confirmation_status=ConfirmationStatus.AWAITING_USER_CONFIRMATION.value,
             discovery_mode=active_report.discovery_mode.level.value,
@@ -1094,6 +1231,10 @@ class DiscoveryService:
         self.artifacts.write_json(
             f"discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json",
             software_summary.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{run_location}/package_relevance.json",
+            relevance_resolution.report.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/active_discovery_report.json",
@@ -1142,6 +1283,18 @@ class DiscoveryService:
                 f"software_inventory:{inventory_state.collector}:{inventory_state.status.value}"
             )
         unresolved.extend(
+            f"dependency:{candidate.ecosystem}:{candidate.name}:{candidate.status.value}"
+            for candidate in relevance_resolution.report.candidates
+            if candidate.required
+            and candidate.status
+            in {
+                CandidateResolutionStatus.MISSING,
+                CandidateResolutionStatus.VERSION_CONFLICT,
+                CandidateResolutionStatus.UNKNOWN,
+                CandidateResolutionStatus.BLOCKED_BY_POLICY,
+            }
+        )
+        unresolved.extend(
             f"compatibility:{item['field']}"
             for item in capability_manifest["compatibility"]["mismatches"]
         )
@@ -1171,6 +1324,7 @@ class DiscoveryService:
             ),
             software_summary_ref=software_summary_ref,
             package_inventory_ref=package_inventory_ref,
+            package_relevance_ref=package_relevance_ref,
             software_package_count=software_summary.package_count,
             software_inventory_complete=software_summary.complete,
             active_discovery_report_ref=active_report_ref,
@@ -1222,6 +1376,10 @@ class DiscoveryService:
         self.artifacts.write_json(
             f"{latest_location}/software_summary.json",
             software_summary.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{latest_location}/package_relevance.json",
+            relevance_resolution.report.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{latest_location}/active_discovery_report.json",

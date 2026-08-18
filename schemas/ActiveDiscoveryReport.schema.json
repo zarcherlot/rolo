@@ -699,6 +699,14 @@
           "title": "Declared Dependencies",
           "type": "array"
         },
+        "dependency_declarations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Dependency Declarations",
+          "type": "array"
+        },
         "parameters": {
           "items": {
             "additionalProperties": true,

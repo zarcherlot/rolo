@@ -2,11 +2,13 @@
 
 ## Status and scope
 
-This document defines the target design for Build-stage software discovery. The current first-phase
-implementation has three-level active application discovery, immutable report confirmation, a
-generated tool catalog, and an optional streaming/chunked `dpkg-query` inventory. It does not yet
-implement the additional ecosystem collectors, deterministic package relevance resolver, deep
-inspection, or batched agent handoff specified here.
+This document defines the implemented foundation and target design for Build-stage software
+discovery. The current implementation has three-level active application discovery, immutable
+report confirmation, a generated tool catalog, deterministic direct-package relevance resolution,
+and an optional streaming/chunked full `dpkg-query` inventory. Relevance resolution currently uses
+Python project declarations, ROS package/launch declarations, the static ament index, and targeted
+dpkg metadata/ownership queries. Transitive dependency closure, deep inspection, vulnerability
+adapters, and batched agent review remain roadmap work.
 
 The design has two complementary inputs:
 
@@ -99,7 +101,7 @@ documentation files and 500 launch files, hashes no executable larger than 256 M
 most 2 GiB of executable bytes in aggregate. Reaching any boundary is visible as partial coverage,
 `BLOCKED_BY_POLICY`, an unresolved item, or a warning as applicable.
 
-### First-phase implementation status
+### Current implementation status
 
 Implemented in the current branch:
 
@@ -112,11 +114,21 @@ Implemented in the current branch:
 - JSON and Markdown reports, an active confirmation prompt, immutable one-decision confirmation,
   and an exact-report-SHA-256 Build gate; and
 - bounded active-discovery findings in the confirmed Coding Agent handoff without raw source,
-  documentation, help output, or full package inventory content.
+  documentation, help output, or full package inventory content;
+- PEP 508/440 Python declaration parsing, including environment-marker filtering and installed
+  version comparison through `importlib.metadata`;
+- ROS dependency/version comparison through `package.xml` declarations and read-only ament-index
+  metadata;
+- bounded executable ownership lookup with trusted `/usr/bin/dpkg-query -S`, followed only by an
+  exact `-W` metadata query for the selected owner; and
+- `package_relevance.json`, relevant-package inventory chunks, software-summary counts, and Build
+  unresolved inputs for missing, unknown, policy-blocked, and version-conflicting dependencies.
 
-Deferred from this first phase are package-manager ownership/linkage resolution for relevant
-artifacts, cross-ecosystem dependency comparison, vulnerability adapters, and runtime launch
-validation. Deferred fields stay empty or `NOT_PROBED`; they are not inferred as clean results.
+Deferred work includes transitive dependency closure, binary linkage-to-package resolution,
+canonical-registry package selectors beyond currently discovered direct evidence, cross-ecosystem
+package equivalence, package file/checksum inspection, vulnerability adapters, optional agent
+batching, and runtime launch validation. Deferred or unavailable evidence stays empty, `UNKNOWN`,
+or `NOT_PROBED`; it is never inferred as a clean result.
 
 ## Active discovery report and confirmation gate
 
@@ -184,7 +196,13 @@ executables:
     file_format: ELF
     architecture: arm64
     version: {value: null, source: null, confidence: LOW}
-    package_ownership: {manager: null, package: null, version: null}
+    package_ownership:
+      manager: dpkg
+      package: robot-navigation
+      package_id: "dpkg:arm64:robot-navigation"
+      version: "1.2.0"
+      status: INSTALLED
+      reason: null
     source_analysis:
       available: true
       projects: []
@@ -193,6 +211,7 @@ executables:
       build_targets: []
       entrypoint_symbols: []
       declared_dependencies: []
+      dependency_declarations: []
       parameters: []
       source_revisions: []
       manifest_sha256: {}
@@ -241,9 +260,11 @@ executables:
     capability_candidates: []
     dependencies:
       declared: []
+      resolved: []
       binary_linked: []
       runtime_observed: []
       missing: []
+      unknown: []
       version_conflicts: []
       install_candidates: []
     safety:
@@ -256,7 +277,13 @@ executables:
       motion_possible: false
     evidence: {source: [], artifacts: [], documentation: [], help: [], ros_runtime: [], conflicts: [], unresolved: []}
 canonical_operation_summary: []
-dependency_summary: {required: [], missing: [], conflicting: [], installation_plan_ref: null}
+dependency_summary:
+  required: []
+  resolved: []
+  missing: []
+  unknown: []
+  conflicting: []
+  installation_plan_ref: null
 global_conflicts: []
 unknowns: []
 warnings: []
@@ -275,33 +302,45 @@ separate evidence.
 ## Dependency discovery and installation policy
 
 Full host inventory is supporting evidence, not the primary application-discovery mechanism. The
-default `software-inventory` mode is `relevant`: source manifests, binary ownership/linkage,
-documentation, and runtime observations identify candidates first, after which package metadata is
-queried for those candidates. `full` uses the chunked collector for audit and reproducibility;
-`off` records that inventory was blocked by policy. Full inventory never enters the normal Coding
-Agent prompt.
+default `software-inventory` mode is `relevant`: source manifests, static launch declarations, and
+executable evidence identify direct candidates first, after which local package metadata is queried
+only for those candidates. `full` uses the chunked collector for audit and reproducibility; `off`
+records that inventory was blocked by policy. Full inventory never enters the normal Coding Agent
+prompt.
 
 Consequently, the earlier full `dpkg-query` scan is not required for normal active application
 discovery. It remains available through `--software-inventory full` for host audit and
 reproducibility. Its 1,000-record setting is a chunk rollover boundary: 2,505 packages produce
-1,000/1,000/505-record chunks without loss. In the current first phase, `relevant` records declared
-application dependencies but marks targeted package-manager resolution `NOT_PROBED/PENDING`; it
-does not fall back to a full host scan. Targeted dpkg ownership and exact-candidate queries belong
-to the relevance-resolver phase.
+1,000/1,000/505-record chunks without loss.
+
+The default `relevant` mode is implemented and never falls back to a full host scan. It builds a
+bounded direct-candidate set from applicable Python and ROS declarations, launch packages, and
+explicit/discovered executable paths. Python candidates are resolved with `importlib.metadata`;
+ROS candidates are resolved by statically reading the sourced ament prefixes; executable ownership
+uses targeted dpkg `-S` plus exact `-W`; and explicit dpkg candidates use exact `-W`. The resulting
+records use the same 1,000-record chunk rollover contract in `relevant-NNNN.jsonl`. A run considers
+at most 1,000 direct relevance candidates and 200 executable ownership queries by default. A
+candidate-limit or query-limit hit is explicit and makes relevance coverage `PARTIAL`.
+
+`MISSING` is emitted only when an authoritative local index confirms absence. No readable ament
+index, unavailable trusted dpkg tooling, invalid/uncomparable version metadata, and bounded-query
+failures remain `UNKNOWN`; non-dpkg executables are `UNMANAGED`. An installed Python or ROS package
+that fails all applicable declared constraints is `VERSION_CONFLICT`. Python declarations whose
+environment marker evaluates false are omitted as not applicable to the current interpreter.
 
 Discovery is always read-only and MUST NOT run `pip install`, `conda install`, `apt`, or any other
-dependency mutation. Missing packages produce `MISSING_DEPENDENCY` plus a separate installation
-plan. Build may execute a plan only after report confirmation and explicit policy approval, and
-only in a project-local virtual environment or dedicated non-base conda environment. Automatic
-installation MUST NOT use `sudo`, mutate global/base environments, mix unpinned pip and conda
-resolution, or use unapproved indexes/channels. Installation is followed by rediscovery and CLI
-conformance.
+dependency mutation. The current implementation emits missing/conflicting findings and unresolved
+Build inputs but does not generate or execute an installation plan. A future Build installation
+plan may execute only after report confirmation and explicit policy approval, and only in a
+project-local virtual environment or dedicated non-base conda environment. Automatic installation
+MUST NOT use `sudo`, mutate global/base environments, mix unpinned pip and conda resolution, or use
+unapproved indexes/channels. Installation is followed by rediscovery and CLI conformance.
 
 Application projects remain responsible for declaring reproducible dependencies and their intended
 pip/conda environment. Discovery analyzes those declarations only far enough to report required,
-missing, or conflicting dependencies; it does not analyze every package in an environment and does
-not autonomously repair that environment. Installation is a separate, explicit Build policy action,
-never an implicit discovery side effect.
+missing, unknown, or conflicting direct dependencies; it does not compute a transitive closure,
+analyze every package in an environment, or autonomously repair that environment. Installation is
+a separate, explicit Build policy action, never an implicit discovery side effect.
 
 "Complete inventory" means that every applicable supported collector completed within policy and
 reported all records known to that collector. It does not mean that rolo can prove the absence of
@@ -410,7 +449,7 @@ catalog is not a valid substitute for `UNSUPPORTED` or `NOT_PROBED`.
 
 ## Relevance resolution
 
-The resolver assigns package relevance using deterministic evidence in this order:
+The target resolver assigns package relevance using deterministic evidence in this order:
 
 1. direct match to a canonical CLI package, ROS, plugin, executable, or source selector;
 2. direct declaration in a discovered source manifest for a matching operation;
@@ -428,6 +467,14 @@ Normalized relevance levels are:
 Canonical CLI selectors are the primary filter. Runtime, source, and URDF evidence may add relevant
 packages when a vendor-specific implementation is not yet represented in the registry. Such
 additions MUST be attributed and remain unverified until the registry or an adapter is updated.
+
+The current resolver implements the `DIRECT` subset from Python/ROS manifests, static launch
+packages, explicit/discovered executable paths, and accepted internal dpkg candidates. It does not
+yet compute `TRANSITIVE`, `ENVIRONMENT`, or `INVENTORY_ONLY` relationships and does not yet feed
+canonical-registry package selectors, running processes, URDF package references, linked libraries,
+services, or loaded plugins into candidate generation. Each candidate records its source evidence,
+scope, affected executable IDs, requested constraints, installed identity/version, terminal status,
+and diagnostic reason in `package_relevance.json`.
 
 ## Deep inspection
 
@@ -471,6 +518,10 @@ Recommended initial defaults are:
 | raw bytes per collector | 50 MiB | finish current record; close chunk; mark `PARTIAL` if more records remain |
 | records per artifact chunk | 1,000 | open the next chunk; do not truncate |
 | bytes per artifact chunk | 2 MiB | open the next chunk; do not truncate |
+| direct relevance candidates | 1,000 | record omitted count; mark `PARTIAL` |
+| executable ownership queries | 200 | mark remaining ownership candidates `BLOCKED_BY_POLICY`; mark `PARTIAL` |
+| targeted query timeout | 10 s | terminate query; mark candidate `UNKNOWN` |
+| targeted query output | 200 KiB | stop accepting output; mark candidate `UNKNOWN` |
 | dependency nodes | 20,000 | mark closure incomplete |
 | dependency edges | 100,000 | mark closure incomplete |
 | dependency depth | unlimited while node/edge/time limits permit | report the stopping limit |
@@ -497,8 +548,14 @@ streaming and chunk limits. The target policy shape is:
 software_inventory:
   collector_timeout_s: 30
   max_raw_bytes_per_collector: 52428800
+  max_record_bytes: 65536
   records_per_chunk: 1000
   bytes_per_chunk: 2097152
+  max_relevant_candidates: 1000
+  max_ownership_queries: 200
+  targeted_query_timeout_s: 10
+  max_targeted_query_output_bytes: 200000
+  # Planned deep-inspection limits; not implemented yet:
   dependency_max_nodes: 20000
   dependency_max_edges: 100000
   hash_max_files_per_package: 10000
@@ -556,17 +613,22 @@ estimate is permitted only as a fallback.
 
 ## Artifacts
 
-The target artifact layout is:
+The implemented package artifact layout is:
 
 ```text
 artifacts/discovery/<robot_id>/latest/
 |-- software_summary.json
 |-- package_inventory/
 |   |-- index.json
-|   |-- dpkg-0001.jsonl
-|   |-- python-0001.jsonl
-|   `-- ros-0001.jsonl
-|-- package_relevance.json
+|   `-- relevant-0001.jsonl          # relevant mode; mixed normalized managers
+|                                    # or dpkg-0001.jsonl ... in full mode
+`-- package_relevance.json
+```
+
+Planned deep-inspection and optional agent-review artifacts extend it as follows:
+
+```text
+artifacts/discovery/<robot_id>/latest/
 |-- dependency_graph.json
 |-- dependency_findings.json
 |-- deep_inspection/
@@ -589,6 +651,8 @@ context. Other artifacts are accessed by reference when a task specifically requ
 Discovery and Build assessment use these rules:
 
 - a missing `DIRECT` dependency for a required standard operation blocks that operation;
+- an installed direct dependency with an unsatisfied version constraint remains an explicit
+  `VERSION_CONFLICT` unresolved Build input;
 - a collector that is applicable but incomplete makes software discovery `PARTIAL`;
 - unknown vulnerability state produces a warning, not a clean result;
 - a critical vulnerability in a directly relevant runtime package is a policy finding and may block
@@ -599,7 +663,9 @@ Discovery and Build assessment use these rules:
 
 ## Implementation sequence and acceptance criteria
 
-Implementation should proceed in this order:
+Implementation proceeds in this order. The normalized/chunked inventory, direct Python/ROS/dpkg
+relevance subset, bounded handoff, and report references are implemented; the remaining items keep
+their order as roadmap work:
 
 1. introduce normalized package, collector-status, chunk-index, relevance, and finding schemas;
 2. replace bounded in-memory `dpkg-query` capture with a streaming, chunked collector;

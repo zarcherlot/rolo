@@ -58,6 +58,7 @@ def _active_discovery_agent_context(report: ActiveDiscoveryReport) -> dict[str, 
                 "path": executable.path,
                 "origin": executable.origin,
                 "version": executable.version,
+                "package_ownership": executable.package_ownership,
                 "file_format": executable.file_format,
                 "architecture": executable.architecture,
                 "source": {
@@ -68,6 +69,9 @@ def _active_discovery_agent_context(report: ActiveDiscoveryReport) -> dict[str, 
                     "entrypoint_symbols": executable.source_analysis.entrypoint_symbols[:100],
                     "declared_dependencies": (
                         executable.source_analysis.declared_dependencies[:200]
+                    ),
+                    "dependency_declarations": (
+                        executable.source_analysis.dependency_declarations[:200]
                     ),
                 },
                 "launch": {

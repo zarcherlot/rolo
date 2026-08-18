@@ -31,6 +31,30 @@
       "exclusiveMinimum": 0,
       "title": "Bytes Per Chunk",
       "type": "integer"
+    },
+    "max_relevant_candidates": {
+      "default": 1000,
+      "exclusiveMinimum": 0,
+      "title": "Max Relevant Candidates",
+      "type": "integer"
+    },
+    "max_ownership_queries": {
+      "default": 200,
+      "exclusiveMinimum": 0,
+      "title": "Max Ownership Queries",
+      "type": "integer"
+    },
+    "targeted_query_timeout_s": {
+      "default": 10.0,
+      "exclusiveMinimum": 0,
+      "title": "Targeted Query Timeout S",
+      "type": "number"
+    },
+    "max_targeted_query_output_bytes": {
+      "default": 200000,
+      "exclusiveMinimum": 0,
+      "title": "Max Targeted Query Output Bytes",
+      "type": "integer"
     }
   },
   "title": "SoftwareInventoryPolicy",

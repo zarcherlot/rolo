@@ -68,6 +68,11 @@
       "title": "Package Inventory Ref",
       "type": "string"
     },
+    "package_relevance_ref": {
+      "default": "",
+      "title": "Package Relevance Ref",
+      "type": "string"
+    },
     "software_package_count": {
       "default": 0,
       "title": "Software Package Count",

@@ -42,6 +42,10 @@ class SoftwareInventoryPolicy(BaseModel):
     max_record_bytes: int = Field(default=64 * 1024, gt=0)
     records_per_chunk: int = Field(default=1_000, gt=0)
     bytes_per_chunk: int = Field(default=2 * 1024 * 1024, gt=0)
+    max_relevant_candidates: int = Field(default=1_000, gt=0)
+    max_ownership_queries: int = Field(default=200, gt=0)
+    targeted_query_timeout_s: float = Field(default=10.0, gt=0)
+    max_targeted_query_output_bytes: int = Field(default=200_000, gt=0)
 
     def sha256(self) -> str:
         encoded = json.dumps(
@@ -144,6 +148,12 @@ class SoftwareSummary(BaseModel):
     counts_by_architecture: dict[str, int] = Field(default_factory=dict)
     counts_by_status: dict[str, int] = Field(default_factory=dict)
     relevance_resolution_status: str = "PENDING"
+    package_relevance_ref: str = ""
+    relevant_candidate_count: int = Field(default=0, ge=0)
+    relevant_resolved_count: int = Field(default=0, ge=0)
+    missing_dependency_count: int = Field(default=0, ge=0)
+    conflicting_dependency_count: int = Field(default=0, ge=0)
+    unknown_dependency_count: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
 
     @classmethod
@@ -225,10 +235,12 @@ class _ChunkWriter:
         output_dir: Path,
         artifact_prefix: str,
         policy: SoftwareInventoryPolicy,
+        chunk_prefix: str = "dpkg",
     ) -> None:
         self.output_dir = output_dir
         self.artifact_prefix = artifact_prefix.rstrip("/")
         self.policy = policy
+        self.chunk_prefix = chunk_prefix
         self.chunks: list[InventoryChunk] = []
         self.record_count = 0
         self.counts_by_manager: Counter[str] = Counter()
@@ -247,7 +259,7 @@ class _ChunkWriter:
     def _open_chunk(self) -> None:
         sequence = len(self.chunks) + 1
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._final_path = self.output_dir / f"dpkg-{sequence:04d}.jsonl"
+        self._final_path = self.output_dir / f"{self.chunk_prefix}-{sequence:04d}.jsonl"
         self._temporary_path = self._final_path.with_suffix(".jsonl.tmp")
         self._stream = self._temporary_path.open("wb")
         self._chunk_digest = hashlib.sha256()
@@ -329,6 +341,54 @@ def load_software_inventory_policy(path: Path | None) -> SoftwareInventoryPolicy
     if not isinstance(raw_policy, dict):
         raise ValueError(f"software_inventory must be an object in {path}")
     return SoftwareInventoryPolicy.model_validate(raw_policy)
+
+
+def write_package_records(
+    *,
+    records: Iterable[PackageRecord],
+    output_dir: Path,
+    artifact_prefix: str,
+    discovery_id: str,
+    policy: SoftwareInventoryPolicy,
+    collector: str,
+    chunk_prefix: str,
+    created_at: datetime,
+    status: CollectorStatus = CollectorStatus.SUCCEEDED,
+    reason: str | None = None,
+    truncated: bool = False,
+) -> PackageInventoryIndex:
+    """Write a deterministic bounded package subset using the inventory chunk contract."""
+    writer = _ChunkWriter(
+        output_dir=output_dir,
+        artifact_prefix=artifact_prefix,
+        policy=policy,
+        chunk_prefix=chunk_prefix,
+    )
+    for record in sorted(records, key=lambda item: item.package_id):
+        writer.add(record)
+    writer.finish()
+    complete = status in {CollectorStatus.SUCCEEDED, CollectorStatus.NOT_APPLICABLE}
+    state = PackageCollectorState(
+        collector=collector,
+        status=status,
+        record_count=writer.record_count,
+        complete=complete,
+        truncated=truncated,
+        reason=reason,
+    )
+    return PackageInventoryIndex(
+        discovery_id=discovery_id,
+        inventory_sha256=writer.inventory_sha256(),
+        policy_sha256=policy.sha256(),
+        record_count=writer.record_count,
+        complete=complete,
+        counts_by_manager=dict(sorted(writer.counts_by_manager.items())),
+        counts_by_architecture=dict(sorted(writer.counts_by_architecture.items())),
+        counts_by_status=dict(sorted(writer.counts_by_status.items())),
+        collectors=[state],
+        chunks=writer.chunks,
+        created_at=created_at,
+    )
 
 
 class DpkgPackageCollector:

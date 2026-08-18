@@ -70,6 +70,10 @@ from rolo.stages.build.software_inventory import (
     SoftwareSummary,
     load_software_inventory_policy,
 )
+from rolo.stages.build.software_relevance import (
+    PackageRelevanceCandidate,
+    PackageRelevanceReport,
+)
 from rolo.stages.contracts import PipelineAssessment, StageAssessment, StageName
 from rolo.stages.debug.robot_use import create_robot_use_backend
 from rolo.stages.pipeline import assess_pipeline, assess_stage
@@ -546,6 +550,8 @@ def export_schemas(
         PackageInventoryIndex,
         SoftwareInventoryPolicy,
         SoftwareSummary,
+        PackageRelevanceCandidate,
+        PackageRelevanceReport,
         ActiveDiscoveryInputs,
         ActiveDiscoveryReport,
         DiscoveryConfirmation,
@@ -662,6 +668,16 @@ def discovery_run(
             "tools": len(report.tool_catalog),
             "software_packages": report.software_summary.get("package_count", 0),
             "software_inventory_complete": report.software_summary.get("complete", False),
+            "relevant_candidates": report.software_summary.get(
+                "relevant_candidate_count", 0
+            ),
+            "missing_dependencies": report.software_summary.get(
+                "missing_dependency_count", 0
+            ),
+            "conflicting_dependencies": report.software_summary.get(
+                "conflicting_dependency_count", 0
+            ),
+            "package_relevance": report.package_relevance_ref,
             "discovery_mode": report.discovery_mode,
             "confirmation_status": report.confirmation_status,
             "active_discovery_report": report.active_discovery_report_ref,

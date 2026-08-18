@@ -180,6 +180,7 @@ class SourceAnalysis(BaseModel):
     build_targets: list[str] = Field(default_factory=list)
     entrypoint_symbols: list[str] = Field(default_factory=list)
     declared_dependencies: list[str] = Field(default_factory=list)
+    dependency_declarations: list[dict[str, Any]] = Field(default_factory=list)
     parameters: list[dict[str, Any]] = Field(default_factory=list)
     source_revisions: list[str] = Field(default_factory=list)
     manifest_sha256: dict[str, str] = Field(default_factory=dict)
@@ -716,6 +717,11 @@ def _source_analysis(projects: list[dict[str, Any]]) -> SourceAnalysis:
                 for dependency in project.get("declared_dependencies", [])
             }
         ),
+        dependency_declarations=[
+            declaration
+            for project in projects
+            for declaration in project.get("dependency_declarations", [])
+        ],
         parameters=[
             parameter
             for project in projects
@@ -1428,6 +1434,10 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
                 f"- Format / architecture: `{executable.file_format or 'unknown'}` / "
                 f"`{executable.architecture or 'unknown'}`",
                 f"- SHA-256: `{executable.sha256 or 'not collected'}`",
+                f"- Package ownership: "
+                f"`{executable.package_ownership.get('status', 'unknown')}` / "
+                f"`{executable.package_ownership.get('package') or 'unmanaged'}` / "
+                f"`{executable.package_ownership.get('version') or 'unknown version'}`",
                 f"- Help probe: `{executable.invocation.help_probe.status.value}`",
                 f"- Invocation: `{executable.invocation.entrypoint or 'unknown'}`",
                 f"- Arguments: {summarize(executable.invocation.arguments)}",

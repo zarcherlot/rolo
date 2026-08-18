@@ -1,0 +1,254 @@
+{
+  "$defs": {
+    "CandidateResolutionStatus": {
+      "enum": [
+        "INSTALLED",
+        "MISSING",
+        "VERSION_CONFLICT",
+        "UNMANAGED",
+        "UNKNOWN",
+        "NOT_APPLICABLE",
+        "BLOCKED_BY_POLICY"
+      ],
+      "title": "CandidateResolutionStatus",
+      "type": "string"
+    },
+    "CollectorStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "UNAVAILABLE",
+        "NOT_APPLICABLE",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
+      ],
+      "title": "CollectorStatus",
+      "type": "string"
+    },
+    "PackageRelevanceCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ecosystem": {
+          "enum": [
+            "python",
+            "ros",
+            "dpkg",
+            "executable"
+          ],
+          "title": "Ecosystem",
+          "type": "string"
+        },
+        "relevance": {
+          "const": "DIRECT",
+          "default": "DIRECT",
+          "title": "Relevance",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "specifiers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Specifiers",
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "executable_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Executable Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateResolutionStatus",
+          "default": "UNKNOWN"
+        },
+        "resolved_package_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Package Id"
+        },
+        "resolved_package_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Package Name"
+        },
+        "installed_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Installed Version"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "name",
+        "ecosystem"
+      ],
+      "title": "PackageRelevanceCandidate",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-package-relevance/v1",
+      "default": "robot-package-relevance/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/CollectorStatus"
+    },
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "candidate_count": {
+      "minimum": 0,
+      "title": "Candidate Count",
+      "type": "integer"
+    },
+    "omitted_candidate_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Omitted Candidate Count",
+      "type": "integer"
+    },
+    "installed_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Installed Count",
+      "type": "integer"
+    },
+    "missing_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Missing Count",
+      "type": "integer"
+    },
+    "conflict_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Conflict Count",
+      "type": "integer"
+    },
+    "unknown_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Unknown Count",
+      "type": "integer"
+    },
+    "unmanaged_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Unmanaged Count",
+      "type": "integer"
+    },
+    "counts_by_ecosystem": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Ecosystem",
+      "type": "object"
+    },
+    "counts_by_status": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts By Status",
+      "type": "object"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/PackageRelevanceCandidate"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery_id",
+    "status",
+    "complete",
+    "candidate_count",
+    "created_at"
+  ],
+  "title": "PackageRelevanceReport",
+  "type": "object"
+}

@@ -287,6 +287,11 @@
       "title": "Package Inventory Ref",
       "type": "string"
     },
+    "package_relevance_ref": {
+      "default": "",
+      "title": "Package Relevance Ref",
+      "type": "string"
+    },
     "active_discovery_report_ref": {
       "default": "",
       "title": "Active Discovery Report Ref",

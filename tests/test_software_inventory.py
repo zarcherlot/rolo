@@ -9,8 +9,10 @@ import pytest
 from rolo.stages.build.software_inventory import (
     CollectorStatus,
     DpkgPackageCollector,
+    PackageRecord,
     SoftwareInventoryPolicy,
     load_software_inventory_policy,
+    write_package_records,
 )
 
 COLLECTED_AT = datetime(2026, 8, 18, tzinfo=timezone.utc)
@@ -149,6 +151,8 @@ def test_checked_in_policy_uses_1000_record_chunk_rollover() -> None:
 
     assert policy.records_per_chunk == 1_000
     assert policy.max_raw_bytes_per_collector == 50 * 1024 * 1024
+    assert policy.max_relevant_candidates == 1_000
+    assert policy.max_ownership_queries == 200
 
 
 def test_not_applicable_is_distinct_from_successfully_empty(
@@ -215,3 +219,41 @@ def test_command_start_failure_becomes_a_failed_collector_state(
     assert state.complete is False
     assert state.truncated is True
     assert "permission denied" in (state.reason or "")
+
+
+def test_targeted_records_use_same_1000_record_chunk_contract(tmp_path: Path) -> None:
+    records = [
+        PackageRecord(
+            package_id=f"python:package-{index:04d}",
+            name=f"package-{index:04d}",
+            version="1.0",
+            status="installed",
+            manager="python",
+            collector="python.metadata",
+            collector_provenance="test",
+            collected_at=COLLECTED_AT,
+        )
+        for index in range(1_001)
+    ]
+
+    index = write_package_records(
+        records=records,
+        output_dir=tmp_path / "relevant",
+        artifact_prefix="artifact://relevant",
+        discovery_id="disc-relevant",
+        policy=SoftwareInventoryPolicy(
+            records_per_chunk=1_000,
+            bytes_per_chunk=10_000_000,
+        ),
+        collector="application.relevant",
+        chunk_prefix="relevant",
+        created_at=COLLECTED_AT,
+    )
+
+    assert index.complete is True
+    assert index.record_count == 1_001
+    assert [chunk.record_count for chunk in index.chunks] == [1_000, 1]
+    assert [Path(chunk.artifact_ref).name for chunk in index.chunks] == [
+        "relevant-0001.jsonl",
+        "relevant-0002.jsonl",
+    ]

@@ -21,6 +21,10 @@ software_inventory:
   # records continue in dpkg-0002.jsonl, dpkg-0003.jsonl, and so on.
   records_per_chunk: 1000
   bytes_per_chunk: 2097152
+  max_relevant_candidates: 1000
+  max_ownership_queries: 200
+  targeted_query_timeout_s: 10
+  max_targeted_query_output_bytes: 200000
 application:
   default_source_root: /opt/robot-application
   execute_discovered_binaries: false
