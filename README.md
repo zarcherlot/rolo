@@ -93,15 +93,17 @@ ssh -L 8080:127.0.0.1:8080 robot@ROBOT_IP
 
 ### 三阶段工作流
 
-完成机器人配置后，按三阶段推进；任意时刻可在仓库目录执行 `uv run robotctl pipeline-status --robot "$ROBOT_ID"` 查看总状态。
-
 | 阶段 | 主要产物 | Agent 要求 |
 |---|---|---|
 | `adapt` | 可编辑机器人 Wiki、机器证据、canonical CLI、State Graph、conformance、adapt handoff | Adapter Agent；缺省配置 Codex |
 | `diagnose` | 约束内闭环诊断、调参证据、冻结配置、diagnosis handoff | Diagnosis Agent；`robot_use` 可选 |
 | `verify` | 可选正式用例、全量回归、报告、证据包、verification handoff | Verification Agent |
 
-上表描述目标阶段契约；当前实现成熟度见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+状态查看：
+
+```bash
+uv run robotctl pipeline-status --robot "$ROBOT_ID"
+```
 
 #### 第一阶段：适配
 
@@ -114,7 +116,7 @@ Adapt 的目标是交付两样核心资产：
 节点和协议怎样连接、哪些依赖缺失、哪些能力只是推断、哪些接口已经完成门禁注册并可交给
 Agent。新成员、算法、嵌入式、运维和测试看到的是同一份系统全貌。
 
-“发现并生成 Wiki → 由 Adapter Agent 按需检索证据并执行适配”的流程如下：
+“发现并生成 Wiki → Adapter Agent 检索证据 → 执行适配”的流程如下：
 
 ```bash
 # --urdf 可省略；缺失硬件规格保持未解析
@@ -160,12 +162,6 @@ robot_wiki.md
 [`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见
 [`.env.example`](.env.example)。
 
-Adapter Agent 的初始 prompt 不再包含 297 个 operation、完整 Wiki 或 executable 全表；它只
-获得本次 discovery 的摘要、候选 operation 名称和一个固定到该快照的只读查询入口。Agent
-可按需查询 operation contract、candidate、executable、launch、dependency、Wiki section 和
-有界证据片段。完整的 297 项产品定义见
-[`docs/CANONICAL_OPERATIONS.md`](docs/CANONICAL_OPERATIONS.md)。
-
 #### 第二阶段：诊断
 
 Diagnosis Agent 读取 adapt handoff 和用户约束，执行闭环诊断与调参。需要图像模型监督时，在源码仓库之外安全设置后端，再提交带时间戳的画面和结构化遥测：
@@ -183,7 +179,7 @@ uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.j
 
 #### 第三阶段：验证
 
-第三阶段用于检查正式验收准备度，并在实现相应 Verify Skill 后由 Verification Agent 生成用例、执行全量回归和打包证据：
+第三阶段用于检查正式验收准备度，并在实现相应 Verification Agent 能力后生成用例、执行全量回归和打包证据：
 
 ```bash
 uv run robotctl verify status --robot "$ROBOT_ID"
@@ -192,18 +188,15 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 ## 工程结构
 
 ```text
-src/rolo/stages/adapt/      第一阶段：发现、适配、conformance 与 handoff 发布
-src/rolo/stages/diagnose/   第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
-src/rolo/stages/verify/     第三阶段：可选自主验证与正式验收
-src/rolo/commands/       按命令域拆分的 robotctl 接口
-src/rolo/core/           共享配置、领域模型、制品与机器人注册表
+src/rolo/stages/adapt/            第一阶段：发现、适配、conformance 与 handoff 发布
+src/rolo/stages/diagnose/         第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
+src/rolo/stages/verify/           第三阶段：可选自主验证与正式验收
+src/rolo/commands/                按命令域拆分的 robotctl 接口
+src/rolo/core/                    共享配置、领域模型、制品与机器人注册表
 src/rolo/integrations/robot_use/  robot_use 外部监督后端
-src/rolo/                共享 API、agentd 与 runtime
-tests/fixtures/robots/    测试用 mock 机器人能力清单
-tests/fixtures/profiles/  测试用 URDF profile
-schemas/                 导出的 JSON Schema
-tests/                   离线单元测试、API 测试与测试夹具
-rolo-logo.svg            rolo 最终 SVG 标志
+src/rolo/                         共享 API、agentd 与 runtime
+tests/                            离线单元测试、API 测试与测试夹具
+schemas/                          导出的 JSON Schema
 ```
 
 ## 参与项目

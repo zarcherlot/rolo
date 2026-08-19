@@ -4,6 +4,13 @@
 罗列；代码内部仍保留 `control`、`hw`、`linux`、`middleware`、`ros`、`app` 六个命名空间，
 用于实现路由和策略校验。
 
+清单表示稳定的产品词汇，不表示 297 项都已经具有可发布契约。每个 operation 必须显式
+定义输入/输出 Schema、错误契约、读写属性、风险、幂等性和取消语义，才能通过 Adapt
+门禁成为 `VERIFIED`；契约处于 `DRAFT` 的条目保持 `UNAVAILABLE`。已编写的正式契约见
+[OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)，可通过 `robotctl tool contract validate`
+编译校验。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
+[OPERATION_CONTRACT_STANDARDIZATION.md](OPERATION_CONTRACT_STANDARDIZATION.md)。
+
 这是一份产品能力词汇表，不表示每台机器人都已激活全部操作。陌生主机只能提供候选绑定
 和证据；只有通过 Adapt conformance 门禁后，operation 才能在该机器人的 Active Tool
 Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。

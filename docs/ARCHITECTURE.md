@@ -49,14 +49,20 @@ stage packages.
    inventory. A read-only launcher pinned to that discovery lets the Agent retrieve one contract,
    candidate, executable, launch record, dependency view, Wiki section, or evidence snippet at a time.
 5. The product-owned Canonical Operation Registry defines the complete operation vocabulary,
-   canonical CLI, schemas, error contract, risk and access policy. Discovery cannot add operations
+   while independently versioned YAML contracts define canonical CLI, schemas, errors, semantics,
+   risk and access policy. Each adapter entry and Tool Catalog descriptor binds the exact contract
+   version and SHA-256; runtime rejects mismatches. Discovery cannot add operations
    to this Registry; it can only associate host evidence with existing operation IDs.
+   The standardization scope and maturity gates are documented in
+   [`OPERATION_CONTRACT_STANDARDIZATION.md`](OPERATION_CONTRACT_STANDARDIZATION.md).
 6. `adapt run` creates a fresh temporary adapter project outside the rolo source tree. The Adapter
    Agent writes only a standalone `robot-adapter-rpc/v1` package, bundle manifest, State Graph, and
    conformance files. It never writes a Tool Catalog. The project is deleted after the run.
 7. The same `adapt run` freezes those proposed files before an independent rolo gate validates
-   identities, exact operation coverage, schemas, errors, idempotency, cancellation, declared
-   risk/access metadata, and verified route availability. It also executes the
+   identities, exact operation coverage, complete product-owned schemas and policy metadata,
+   package bindings, and verified route availability. The Adapter Agent's local-static booleans
+   are retained as advisory audit input; they are not represented as Rolo proof of runtime
+   behavior, idempotency, cancellation, reliability, or safety. The gate also executes the
    package's bounded `describe` command and requires every
    generated operation to resolve to exactly one bundle entrypoint. The Agent reports only
    `LOCAL_STATIC` deterministic tests. Rolo independently establishes that an exactly normalized,
@@ -68,6 +74,8 @@ stage packages.
    Source, documentation, mocks, and simulation cannot satisfy target-runtime availability.
    Rolo composes the Active Tool Catalog from the product Registry, discovery candidates, builtin
    implementations and the verified bundle; unknown or extra bundle operations are rejected.
+   A discovered operation whose product contract is still `DRAFT` cannot be promoted and stays
+   `UNAVAILABLE` even when a route was observed.
 8. A passed gate publishes an immutable release under external `ROLO_OUTPUT_DIR`, binds the package,
    Active Tool Catalog, State Graph, conformance and gate report by hash, writes the audit handoff, and only
    then transactionally updates both current indexes with compensation rollback. A failed publication

@@ -97,6 +97,8 @@ class AdapterBundleOperation(BaseModel):
 
     operation: str
     entrypoint: str
+    contract_version: str
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class AdapterBundleManifest(BaseModel):
@@ -157,6 +159,7 @@ class ConformanceScope(str, Enum):
 
 
 class OperationConformance(BaseModel):
+    """Adapter Agent local-static declarations; never physical or runtime proof."""
     model_config = ConfigDict(extra="forbid")
 
     operation: str
@@ -183,7 +186,7 @@ class OperationConformance(BaseModel):
         return migrated
 
     @property
-    def passed(self) -> bool:
+    def agent_reported_passed(self) -> bool:
         return all(
             (
                 self.schema_valid,
@@ -195,6 +198,7 @@ class OperationConformance(BaseModel):
 
 
 class AdapterConformanceReport(BaseModel):
+    """Advisory Agent report retained as audit input to the independent Rolo gate."""
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["robot-adapter-conformance/v1", "robot-adapter-conformance/v2"] = (
@@ -221,6 +225,7 @@ class ToolCatalog(BaseModel):
     schema_version: Literal["robot-tool-catalog/v1"] = "robot-tool-catalog/v1"
     robot_id: str
     discovery_id: str
+    contract_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     tools: list[ToolDescriptor]
 
 

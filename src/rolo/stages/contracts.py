@@ -38,7 +38,6 @@ class StageAssessment(BaseModel):
     prerequisites: list[str] = Field(default_factory=list)
     artifacts: dict[str, str] = Field(default_factory=dict)
     blockers: list[str] = Field(default_factory=list)
-    required_skills: list[str] = Field(default_factory=list)
     agent_requirement: AgentRequirement
     observed_at: datetime = Field(default_factory=utc_now)
 

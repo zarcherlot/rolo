@@ -14,7 +14,10 @@ from rolo.stages.adapt.conformance import (
 )
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun
-from rolo.stages.adapt.operation_registry import required_conformance_operations
+from rolo.stages.adapt.operation_registry import (
+    canonical_operation_registry,
+    required_conformance_operations,
+)
 
 
 def _prepare_promotion(
@@ -61,10 +64,15 @@ def _prepare_promotion(
             urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
             source_roots=[workspace],
         )
+    definitions = {
+        item.operation: item for item in canonical_operation_registry().operations
+    }
     bundle_operations = [
         {
             "operation": candidate.operation,
             "entrypoint": candidate.operation.replace(".", "_"),
+            "contract_version": definitions[candidate.operation].contract_version,
+            "contract_sha256": definitions[candidate.operation].contract_sha256,
         }
         for candidate in report.operation_candidates
     ]
@@ -246,7 +254,9 @@ def test_v1_conformance_runtime_and_physical_claims_are_ignored(
     _, _, gate, _ = service.promote_run(run, snapshot)
 
     assert gate.status == "PASSED"
-    assert "operation contract and route-existence conformance" in gate.checks
+    assert "product-owned operation contracts" in gate.checks
+    assert "Adapter Agent local-static declarations (advisory)" in gate.checks
+    assert "target route existence without outcome execution" in gate.checks
 
 
 def test_runtime_presence_without_candidate_route_cannot_be_promoted(tmp_path: Path) -> None:

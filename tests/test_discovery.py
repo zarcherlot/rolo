@@ -475,3 +475,43 @@ def test_product_registry_conservatively_classifies_motion_operations() -> None:
     assert operations["app.base.velocity"].risk == "R3"
     assert operations["app.base.status"].access == "read"
     assert operations["app.base.status"].risk == "R0"
+    assert operations["app.safety.emergency_stop"].access == "write"
+    assert operations["app.safety.emergency_stop"].risk == "R3"
+    assert operations["app.safety.emergency_stop"].cancelable is False
+    assert operations["linux.host.reboot"].cancelable is False
+
+
+def test_product_registry_exposes_only_authored_contracts_as_gateable() -> None:
+    from rolo.stages.adapt.operation_registry import canonical_operation_registry
+
+    operations = {item.operation: item for item in canonical_operation_registry().operations}
+    velocity = operations["app.teleop.velocity"]
+    assert velocity.contract_lifecycle.value == "GATEABLE"
+    assert velocity.contract_version == "1.0.0"
+    assert velocity.contract_sha256 is not None
+    assert velocity.input_schema["required"] == ["linear_x_mps", "angular_z_radps"]
+    assert velocity.canonical_cli[-4:] == [
+        "--robot",
+        "{robot_id}",
+        "--input",
+        "{input_json}",
+    ]
+    assert operations["app.navigation.start"].contract_lifecycle.value == "DRAFT"
+
+
+def test_incomplete_product_contract_cannot_enter_conformance() -> None:
+    from rolo.core.models import DiscoveryReport, OperationCandidate
+    from rolo.stages.adapt.operation_registry import required_conformance_operations
+
+    report = DiscoveryReport(
+        discovery_id="disc-incomplete",
+        robot_id="demo",
+        status="PARTIAL",
+        platform={},
+        capability_manifest={},
+        probes={},
+        operation_candidates=[OperationCandidate(operation="app.navigation.start")],
+    )
+
+    with pytest.raises(ValueError, match="lack complete product contracts"):
+        required_conformance_operations(report)

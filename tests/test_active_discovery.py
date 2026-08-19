@@ -430,7 +430,9 @@ def test_artifact_documents_and_configs_are_isolated_per_executable(tmp_path: Pa
     assert executables["beta.exe"].artifact_analysis.configuration_files == [
         str((install / "config" / "beta.yaml").resolve())
     ]
-    assert all("capability_candidates" not in item.model_fields for item in executables.values())
+    assert all(
+        "capability_candidates" not in type(item).model_fields for item in executables.values()
+    )
 
 
 def test_help_probe_runs_only_explicit_executable_and_report_omits_raw_output(

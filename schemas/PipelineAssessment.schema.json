@@ -56,13 +56,6 @@
           "title": "Blockers",
           "type": "array"
         },
-        "required_skills": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Required Skills",
-          "type": "array"
-        },
         "agent_requirement": {
           "$ref": "#/$defs/AgentRequirement"
         },

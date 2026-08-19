@@ -1,0 +1,36 @@
+schema_version: robot-operation-contract-set/v1
+
+contracts:
+  - schema_version: robot-operation-contract/v1
+    contract_id: hw.inventory.scan
+    version: 1.0.0
+    lifecycle: RELEASED
+    operation: hw.inventory.scan
+    layer: hw
+    description: Perform bounded read-only inventory of compute, buses, and attached hardware.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    max_duration_s: 30
+    canonical_cli: [robotctl, hw, inventory, scan]
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        layer: {type: string, enum: [hw]}
+        status: {type: string}
+        data:
+          type: object
+          properties: {}
+          additionalProperties: true
+        warnings: {type: array, items: {type: string}}
+        errors: {type: array, items: {type: string}}
+        observed_at: {type: string}
+      required: [layer, status, data, warnings, errors, observed_at]
+      additionalProperties: false
+    error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
+    retry_policy: bounded_exponential_backoff

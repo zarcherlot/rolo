@@ -24,16 +24,6 @@ class RobotUseVerdict(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-class RobotUseModeState(str, Enum):
-    DISABLED = "DISABLED"
-    RECORDING = "RECORDING"
-    POLLING = "POLLING"
-    SUSPECTED = "SUSPECTED"
-    CORROBORATING = "CORROBORATING"
-    DEGRADED = "DEGRADED"
-    ARCHIVED = "ARCHIVED"
-
-
 class ImageFrame(BaseModel):
     timestamp: datetime
     image_url: str | None = None
@@ -146,12 +136,18 @@ class ToolDescriptor(BaseModel):
     cancelable: bool = False
     availability: str
     adapter: str
+    contract_lifecycle: Literal["DRAFT", "GATEABLE", "RELEASED", "DEPRECATED"] = "DRAFT"
+    contract_version: str | None = None
+    contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     input_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
     output_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
     capability_requirements: list[str] = Field(default_factory=list)
     preconditions: list[str] = Field(default_factory=list)
     postconditions: list[str] = Field(default_factory=list)
     semantic_bindings: list[str] = Field(default_factory=list)
+    semantic_units: dict[str, str] = Field(default_factory=dict)
+    coordinate_frames: list[str] = Field(default_factory=list)
+    time_semantics: str = ""
     side_effects: list[str] = Field(default_factory=list)
     resource_locks: list[str] = Field(default_factory=list)
     max_duration_s: float = 30.0

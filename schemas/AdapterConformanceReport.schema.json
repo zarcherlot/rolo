@@ -9,6 +9,7 @@
     },
     "OperationConformance": {
       "additionalProperties": false,
+      "description": "Adapter Agent local-static declarations; never physical or runtime proof.",
       "properties": {
         "operation": {
           "title": "Operation",
@@ -57,6 +58,7 @@
     }
   },
   "additionalProperties": false,
+  "description": "Advisory Agent report retained as audit input to the independent Rolo gate.",
   "properties": {
     "schema_version": {
       "default": "robot-adapter-conformance/v2",

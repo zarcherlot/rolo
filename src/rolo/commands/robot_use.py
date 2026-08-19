@@ -11,7 +11,7 @@ import typer
 
 from rolo.commands.common import emit
 from rolo.core.models import ImageFrame, RobotUseRequest
-from rolo.runtime import create_runtime
+from rolo.runtime import create_robot_use_runtime
 
 robot_use_app = typer.Typer(help="Run robot_use semantic visual supervision.")
 
@@ -34,7 +34,7 @@ def robot_use_poll(
     """Submit a timestamped storyboard to the configured robot_use backend."""
     if not image:
         raise typer.BadParameter("At least one --image is required")
-    runtime = create_runtime()
+    runtime = create_robot_use_runtime()
     now = datetime.now(timezone.utc)
     request = RobotUseRequest(
         request_id=f"local-{int(now.timestamp() * 1000)}",

@@ -6,14 +6,14 @@ from fastapi import FastAPI, HTTPException, Request
 
 from rolo import __version__
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
-from rolo.runtime import Runtime, create_runtime
+from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
 from rolo.stages.contracts import PipelineAssessment
 from rolo.stages.pipeline import assess_pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.runtime = create_runtime()
+    app.state.runtime = create_robot_use_runtime()
     yield
 
 
@@ -24,7 +24,7 @@ app = FastAPI(
 )
 
 
-def get_runtime(request: Request) -> Runtime:
+def get_runtime(request: Request) -> RobotUseRuntime:
     return request.app.state.runtime
 
 

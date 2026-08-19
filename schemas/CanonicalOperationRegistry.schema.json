@@ -71,6 +71,111 @@
           },
           "title": "Error Codes",
           "type": "array"
+        },
+        "contract_lifecycle": {
+          "$ref": "#/$defs/ContractLifecycle",
+          "default": "DRAFT"
+        },
+        "contract_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract Version"
+        },
+        "contract_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract Sha256"
+        },
+        "capability_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Capability Requirements",
+          "type": "array"
+        },
+        "preconditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Preconditions",
+          "type": "array"
+        },
+        "postconditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Postconditions",
+          "type": "array"
+        },
+        "semantic_units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Semantic Units",
+          "type": "object"
+        },
+        "coordinate_frames": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Coordinate Frames",
+          "type": "array"
+        },
+        "time_semantics": {
+          "default": "",
+          "title": "Time Semantics",
+          "type": "string"
+        },
+        "side_effects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Side Effects",
+          "type": "array"
+        },
+        "resource_locks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Locks",
+          "type": "array"
+        },
+        "rate_limit": {
+          "default": "on_demand",
+          "title": "Rate Limit",
+          "type": "string"
+        },
+        "retry_policy": {
+          "default": "none",
+          "title": "Retry Policy",
+          "type": "string"
+        },
+        "compensation_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compensation Operation"
         }
       },
       "required": [
@@ -81,6 +186,16 @@
       ],
       "title": "CanonicalOperationDefinition",
       "type": "object"
+    },
+    "ContractLifecycle": {
+      "enum": [
+        "DRAFT",
+        "GATEABLE",
+        "RELEASED",
+        "DEPRECATED"
+      ],
+      "title": "ContractLifecycle",
+      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -89,6 +204,11 @@
       "const": "robot-canonical-operation-registry/v1",
       "default": "robot-canonical-operation-registry/v1",
       "title": "Schema Version",
+      "type": "string"
+    },
+    "contract_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Contract Catalog Sha256",
       "type": "string"
     },
     "operations": {
@@ -100,6 +220,7 @@
     }
   },
   "required": [
+    "contract_catalog_sha256",
     "operations"
   ],
   "title": "CanonicalOperationRegistry",

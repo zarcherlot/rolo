@@ -1,0 +1,71 @@
+schema_version: robot-operation-contract-set/v1
+
+probe_defaults: &probe
+  schema_version: robot-operation-contract/v1
+  version: 1.0.0
+  lifecycle: RELEASED
+  layer: ros
+  risk: R0
+  access: read
+  idempotent: true
+  cancelable: false
+  max_duration_s: 15
+  error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
+  retry_policy: bounded_exponential_backoff
+
+contracts:
+  - <<: *probe
+    contract_id: ros.graph.snapshot
+    operation: ros.graph.snapshot
+    description: Capture a bounded read-only snapshot of the currently observable ROS graph.
+    canonical_cli: [robotctl, ros, graph, snapshot]
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        layer: {type: string, enum: [ros]}
+        status: {type: string}
+        data:
+          type: object
+          properties: {}
+          additionalProperties: true
+        warnings: {type: array, items: {type: string}}
+        errors: {type: array, items: {type: string}}
+        observed_at: {type: string}
+      required: [layer, status, data, warnings, errors, observed_at]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.node.status
+    operation: ros.node.status
+    description: Inspect the observed status and interfaces of one existing ROS node.
+    canonical_cli: [robotctl, ros, node, status, "{name}"]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+      required: [name]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        schema_version: {type: string}
+        operation: {type: string, enum: [ros.node.status]}
+        status: {type: string}
+        observed_at: {type: string}
+        data:
+          type: object
+          properties: {}
+          additionalProperties: true
+        evidence:
+          type: array
+          items:
+            type: object
+            properties: {}
+            additionalProperties: true
+        warnings: {type: array, items: {type: string}}
+      required: [schema_version, operation, status, observed_at, data, evidence, warnings]
+      additionalProperties: false

@@ -26,7 +26,12 @@ def test_exported_tool_catalog_schema_covers_the_complete_artifact() -> None:
     schema = ToolCatalog.model_json_schema()
 
     assert schema["properties"]["schema_version"]["const"] == "robot-tool-catalog/v1"
-    assert set(schema["required"]) == {"robot_id", "discovery_id", "tools"}
+    assert set(schema["required"]) == {
+        "robot_id",
+        "discovery_id",
+        "contract_catalog_sha256",
+        "tools",
+    }
     assert schema["properties"]["tools"]["items"]["$ref"].endswith("/ToolDescriptor")
 
 

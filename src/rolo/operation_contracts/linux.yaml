@@ -1,0 +1,177 @@
+schema_version: robot-operation-contract-set/v1
+
+no_input: &no_input
+  type: object
+  properties: {}
+  additionalProperties: false
+
+introspection_output: &introspection_output
+  type: object
+  properties:
+    schema_version: {type: string}
+    operation: {type: string}
+    status: {type: string}
+    observed_at: {type: string}
+    data:
+      type: object
+      properties: {}
+      additionalProperties: true
+    evidence:
+      type: array
+      items:
+        type: object
+        properties: {}
+        additionalProperties: true
+    warnings: {type: array, items: {type: string}}
+  required: [schema_version, operation, status, observed_at, data, evidence, warnings]
+  additionalProperties: false
+
+defaults: &defaults
+  schema_version: robot-operation-contract/v1
+  version: 1.0.0
+  lifecycle: RELEASED
+  layer: linux
+  risk: R0
+  access: read
+  idempotent: true
+  cancelable: false
+  max_duration_s: 10
+  output_schema: *introspection_output
+  error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
+  retry_policy: bounded_exponential_backoff
+
+contracts:
+  - <<: *defaults
+    contract_id: linux.host.inventory
+    operation: linux.host.inventory
+    description: Inventory host identity and available local control planes without mutation.
+    canonical_cli: [robotctl, linux, host, inventory]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.host.inspect
+    operation: linux.host.inspect
+    description: Read the host inventory through the compatibility inspection command.
+    canonical_cli: [robotctl, linux, host, inspect]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.service.list
+    operation: linux.service.list
+    description: List bounded service metadata through the native service manager.
+    canonical_cli: [robotctl, linux, service, list]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.service.inspect
+    operation: linux.service.inspect
+    description: Inspect one service definition, state, dependencies, and launch context.
+    canonical_cli: [robotctl, linux, service, inspect, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.container.list
+    operation: linux.container.list
+    description: List bounded metadata for local containers without changing their state.
+    canonical_cli: [robotctl, linux, container, list]
+    input_schema:
+      type: object
+      properties: {runtime: {type: string}}
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.container.inspect
+    operation: linux.container.inspect
+    description: Inspect one local container using an optional explicit runtime selection.
+    canonical_cli: [robotctl, linux, container, inspect, "{name}"]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        runtime: {type: string}
+      required: [name]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.schedule.list
+    operation: linux.schedule.list
+    description: List bounded system timer, cron, or scheduled task metadata.
+    canonical_cli: [robotctl, linux, schedule, list]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.schedule.inspect
+    operation: linux.schedule.inspect
+    description: Inspect one system timer or scheduled task without running it.
+    canonical_cli: [robotctl, linux, schedule, inspect, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.process.list
+    operation: linux.process.list
+    description: List bounded and redacted process metadata from the local host.
+    canonical_cli: [robotctl, linux, process, list]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.process.inspect
+    operation: linux.process.inspect
+    description: Inspect one process tree anchor and its bounded execution context.
+    canonical_cli: [robotctl, linux, process, inspect, "{pid}"]
+    input_schema:
+      type: object
+      properties: {pid: {type: integer, minimum: 1}}
+      required: [pid]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.binary.describe
+    operation: linux.binary.describe
+    description: Describe one binary statically without invoking its operational interface.
+    canonical_cli: [robotctl, linux, binary, describe, "{path}"]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      required: [path]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.cli.probe
+    operation: linux.cli.probe
+    description: Run bounded self-description arguments against one explicit executable.
+    canonical_cli: [robotctl, linux, cli, probe, "{path}"]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        args: {type: array, items: {type: string}, maxItems: 8}
+      required: [path]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.config.locate
+    operation: linux.config.locate
+    description: Locate bounded configuration candidates for a process or binary.
+    canonical_cli: [robotctl, linux, config, locate]
+    preconditions: [At least one of process or binary is supplied.]
+    input_schema:
+      type: object
+      properties:
+        process: {type: integer, minimum: 1}
+        binary: {type: string, minLength: 1}
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.network.listeners
+    operation: linux.network.listeners
+    description: List bounded local listening sockets and owning processes when available.
+    canonical_cli: [robotctl, linux, network, listeners]
+    input_schema: *no_input

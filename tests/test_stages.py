@@ -17,7 +17,10 @@ from rolo.stages.adapt.models import (
     AdapterAgentResult,
     AdapterAgentRun,
 )
-from rolo.stages.adapt.operation_registry import required_conformance_operations
+from rolo.stages.adapt.operation_registry import (
+    canonical_operation_registry,
+    required_conformance_operations,
+)
 from rolo.stages.adapt.service import AdaptStageService
 from rolo.stages.pipeline import assess_pipeline
 
@@ -269,10 +272,15 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
         assert calls == ["prepare"]
         calls.append("execute")
         report = load_report(artifact_root, "demo_diff", discovery_id)
+        definitions = {
+            item.operation: item for item in canonical_operation_registry().operations
+        }
         bundle_operations = [
             {
                 "operation": candidate.operation,
                 "entrypoint": candidate.operation.replace(".", "_"),
+                "contract_version": definitions[candidate.operation].contract_version,
+                "contract_sha256": definitions[candidate.operation].contract_sha256,
             }
             for candidate in report.operation_candidates
         ]

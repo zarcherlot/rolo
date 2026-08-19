@@ -1,0 +1,225 @@
+schema_version: robot-operation-contract-set/v1
+
+no_input: &no_input
+  type: object
+  properties: {}
+  additionalProperties: false
+
+status_output: &status_output
+  type: object
+  properties:
+    status: {type: string}
+  required: [status]
+  additionalProperties: false
+
+adapter_defaults: &adapter_defaults
+  schema_version: robot-operation-contract/v1
+  version: 1.0.0
+  lifecycle: GATEABLE
+  layer: app
+  max_duration_s: 30
+  canonical_cli:
+    [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+  error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, OPERATION_FAILED]
+  retry_policy: none
+
+contracts:
+  - schema_version: robot-operation-contract/v1
+    contract_id: app.robot.discover
+    version: 1.0.0
+    lifecycle: RELEASED
+    operation: app.robot.discover
+    layer: app
+    description: Discover bounded application entrypoints and declared interfaces from supplied roots.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    max_duration_s: 30
+    canonical_cli: [robotctl, app, robot, discover]
+    input_schema:
+      type: object
+      properties:
+        source_roots: {type: array, items: {type: string}}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        layer: {type: string, enum: [application]}
+        status: {type: string}
+        data:
+          type: object
+          properties: {}
+          additionalProperties: true
+        warnings: {type: array, items: {type: string}}
+        errors: {type: array, items: {type: string}}
+        observed_at: {type: string}
+      required: [layer, status, data, warnings, errors, observed_at]
+      additionalProperties: false
+    error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.teleop.velocity
+    operation: app.teleop.velocity
+    description: Submit a bounded planar base velocity command in base_link coordinates.
+    risk: R3
+    access: write
+    idempotent: false
+    cancelable: false
+    capability_requirements: [planar mobile base velocity command route]
+    preconditions: [Motion authorization and watchdog are active.]
+    postconditions: [A command acknowledgement is returned; motion outcome is not asserted.]
+    semantic_units: {linear_x_mps: m/s, angular_z_radps: rad/s}
+    coordinate_frames: [base_link]
+    time_semantics: The command is a transient setpoint governed by the target watchdog.
+    side_effects: [May cause physical base motion.]
+    resource_locks: [mobile_base_motion]
+    input_schema:
+      type: object
+      properties:
+        linear_x_mps: {type: number}
+        angular_z_radps: {type: number}
+      required: [linear_x_mps, angular_z_radps]
+      additionalProperties: false
+    output_schema: *status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.localization.status
+    operation: app.localization.status
+    description: Read localization readiness and bounded quality metadata without changing state.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [localization or odometry status route]
+    coordinate_frames: [map, odom, base_link]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        localized: {type: boolean}
+        quality: {type: number, minimum: 0, maximum: 1}
+        frame_id: {type: string}
+      required: [status]
+      additionalProperties: false
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.map.inspect
+    operation: app.map.inspect
+    description: Read bounded metadata for the active or selected two-dimensional map.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [two-dimensional map metadata route]
+    semantic_units: {resolution_m: m/cell}
+    coordinate_frames: [map]
+    input_schema:
+      type: object
+      properties: {map_id: {type: string}}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        map_id: {type: string}
+        frame_id: {type: string}
+        resolution_m: {type: number, minimum: 0}
+        width: {type: integer, minimum: 0}
+        height: {type: integer, minimum: 0}
+      required: [status]
+      additionalProperties: false
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.snapshot
+    operation: app.camera.snapshot
+    description: Capture or reference one bounded frame from a selected camera stream.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [camera image route]
+    input_schema:
+      type: object
+      properties: {camera: {type: string}}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        camera: {type: string}
+        artifact_ref: {type: string}
+        timestamp: {type: string}
+        frame_id: {type: string}
+      required: [status]
+      additionalProperties: false
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.emergency_stop
+    operation: app.safety.emergency_stop
+    description: Request the target safety controller to enter its emergency-stop state.
+    risk: R3
+    access: write
+    idempotent: true
+    cancelable: false
+    preconditions: [A verified emergency-stop request route exists.]
+    postconditions: [Only request acknowledgement is asserted in Adapt.]
+    side_effects: [May stop all physical motion immediately.]
+    resource_locks: [robot_safety_state]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        stop_state: {type: string}
+      required: [status]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.protective_stop
+    operation: app.safety.protective_stop
+    description: Request the target safety controller to enter a protective-stop state.
+    risk: R3
+    access: write
+    idempotent: true
+    cancelable: false
+    preconditions: [A verified protective-stop request route exists.]
+    postconditions: [Only request acknowledgement is asserted in Adapt.]
+    side_effects: [May stop physical motion.]
+    resource_locks: [robot_safety_state]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        stop_state: {type: string}
+      required: [status]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.stop.clear
+    operation: app.safety.stop.clear
+    description: Request clearance of a previously established target safety stop state.
+    risk: R3
+    access: write
+    idempotent: false
+    cancelable: false
+    preconditions:
+      - Explicit safety authorization exists.
+      - The cause of the stop has been resolved outside Adapt.
+    postconditions: [Only request acknowledgement is asserted in Adapt.]
+    side_effects: [May permit subsequent physical motion.]
+    resource_locks: [robot_safety_state]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        stop_state: {type: string}
+      required: [status]
+      additionalProperties: false

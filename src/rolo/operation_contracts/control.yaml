@@ -1,0 +1,66 @@
+schema_version: robot-operation-contract-set/v1
+
+defaults: &defaults
+  schema_version: robot-operation-contract/v1
+  version: 1.0.0
+  lifecycle: RELEASED
+  layer: control
+  risk: R0
+  access: read
+  idempotent: true
+  cancelable: false
+  max_duration_s: 5
+  error_codes: [UNAVAILABLE, TIMEOUT, CONTRACT_MISMATCH]
+  retry_policy: bounded_exponential_backoff
+
+contracts:
+  - <<: *defaults
+    contract_id: tool.catalog
+    operation: tool.catalog
+    description: Read the active gated Tool Catalog for one robot identity.
+    canonical_cli: [robotctl, tool, catalog, --robot, "{robot_id}"]
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        schema_version: {type: string}
+        robot_id: {type: string}
+        discovery_id: {type: string}
+        tools:
+          type: array
+          items:
+            type: object
+            properties: {}
+            additionalProperties: true
+      required: [schema_version, robot_id, discovery_id, tools]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: tool.schema
+    operation: tool.schema
+    description: Read the active input and output contract for one canonical operation.
+    canonical_cli: [robotctl, tool, schema, "{operation}", --robot, "{robot_id}"]
+    input_schema:
+      type: object
+      properties:
+        operation: {type: string, minLength: 1}
+      required: [operation]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        operation: {type: string}
+        input_schema:
+          type: object
+          properties: {}
+          additionalProperties: true
+        output_schema:
+          type: object
+          properties: {}
+          additionalProperties: true
+        availability: {type: string}
+      required: [operation, input_schema, output_schema, availability]
+      additionalProperties: false

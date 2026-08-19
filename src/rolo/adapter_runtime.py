@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from rolo.core.hashing import sha256_file
+from rolo.schema_subset import validate_object
 from rolo.stages.adapt.models import (
     AdapterBundleManifest,
     AdapterReleaseIndex,
@@ -92,6 +93,18 @@ def load_current_release(
         raise ValueError("active Tool Catalog identity mismatch")
     if bundle.package_sha256 != release.adapter_package_sha256:
         raise ValueError("adapter bundle and release package hashes differ")
+    descriptors = {item.operation: item for item in catalog.tools}
+    for entry in bundle.operations:
+        descriptor = descriptors.get(entry.operation)
+        if descriptor is None:
+            raise ValueError(
+                f"adapter bundle operation missing from Tool Catalog: {entry.operation}"
+            )
+        if (
+            descriptor.contract_version != entry.contract_version
+            or descriptor.contract_sha256 != entry.contract_sha256
+        ):
+            raise ValueError(f"adapter contract binding mismatch: {entry.operation}")
     return release_root, release, bundle, catalog
 
 
@@ -116,6 +129,11 @@ def invoke_adapter(
     expected_adapter = f"bundle:{bundle.bundle_id}#{entry.entrypoint}"
     if descriptor.adapter != expected_adapter:
         raise ValueError(f"Tool Catalog adapter binding mismatch: {operation}")
+    if (
+        descriptor.contract_version != entry.contract_version
+        or descriptor.contract_sha256 != entry.contract_sha256
+    ):
+        raise ValueError(f"adapter contract binding mismatch: {operation}")
     _validate_object_schema(payload, descriptor.input_schema, "adapter input")
     package_path = _relative_file(release_root, release.adapter_package)
     try:
@@ -148,33 +166,7 @@ def invoke_adapter(
 
 
 def _validate_object_schema(value: dict[str, Any], schema: dict[str, Any], label: str) -> None:
-    """Enforce the bounded object subset used by canonical operation contracts."""
-    if schema.get("type", "object") != "object":
-        raise ValueError(f"{label} schema must describe an object")
-    properties = schema.get("properties", {})
-    required = schema.get("required", [])
-    missing = [name for name in required if name not in value]
-    if missing:
-        raise ValueError(f"{label} is missing required fields: {missing}")
-    if schema.get("additionalProperties") is False:
-        extra = sorted(set(value) - set(properties))
-        if extra:
-            raise ValueError(f"{label} contains unknown fields: {extra}")
-    python_types = {
-        "string": str,
-        "number": (int, float),
-        "integer": int,
-        "boolean": bool,
-        "object": dict,
-        "array": list,
-    }
-    for name, item in value.items():
-        expected = properties.get(name, {}).get("type")
-        if isinstance(expected, str) and expected in python_types:
-            if not isinstance(item, python_types[expected]) or (
-                expected in {"number", "integer"} and isinstance(item, bool)
-            ):
-                raise ValueError(f"{label} field has wrong type: {name}")
+    validate_object(value, schema, label)
 
 
 def adapter_command(package_path: Path) -> list[str]:

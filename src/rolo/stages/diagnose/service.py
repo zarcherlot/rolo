@@ -7,8 +7,6 @@ from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 from rolo.stages.handoffs import validate_diagnosis_handoff
 
-DIAGNOSIS_SKILLS = ["robot-diagnosis", "robot-use-supervisor"]
-
 
 def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
     layout = ArtifactLayout(artifact_root)
@@ -26,7 +24,6 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
             prerequisites=[str(adapt_handoff)],
             artifacts={"agent_inputs": str(agent_inputs)} if agent_inputs.is_file() else {},
             blockers=[f"Adapter handoff is unavailable or invalid: {exc}"],
-            required_skills=DIAGNOSIS_SKILLS,
             agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
         )
     handoff_valid = False
@@ -52,6 +49,5 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
             **({"handoff": str(diagnosis_handoff)} if diagnosis_handoff.is_file() else {}),
         },
         blockers=[] if handoff_valid else [handoff_error or "Missing diagnosis handoff"],
-        required_skills=DIAGNOSIS_SKILLS,
         agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
     )

@@ -36,6 +36,7 @@ from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
     materialize_active_catalog,
     required_conformance_operations,
+    validate_definition_contract,
 )
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
@@ -323,13 +324,17 @@ class AdapterPromotionService:
             checks.append("robot and discovery identity")
 
             expected_operations = required_conformance_operations(discovery)
+            definitions_by_operation = {
+                definition.operation: definition
+                for definition in canonical_operation_registry().operations
+            }
             source_by_operation = {
                 tool.operation: tool for tool in materialize_active_catalog(discovery).tools
             }
             expected_bundle_operations = {
                 candidate.operation for candidate in discovery.operation_candidates
             }
-            bundle_entries = {item.operation: item.entrypoint for item in bundle.operations}
+            bundle_entries = {item.operation: item for item in bundle.operations}
             if set(bundle_entries) != expected_bundle_operations:
                 raise ValueError(
                     "adapter bundle operation coverage must exactly match generated candidates"
@@ -353,10 +358,21 @@ class AdapterPromotionService:
             }
             candidate_operations = set(candidates)
             for operation in expected_operations:
+                definition = definitions_by_operation[operation]
+                validate_definition_contract(definition)
+                if operation in bundle_entries:
+                    entry = bundle_entries[operation]
+                    if (
+                        entry.contract_version != definition.contract_version
+                        or entry.contract_sha256 != definition.contract_sha256
+                    ):
+                        raise ValueError(f"adapter bundle contract binding mismatch: {operation}")
                 source = source_by_operation[operation]
                 check = actual[operation]
-                if not check.passed:
-                    raise ValueError(f"conformance failed for operation: {operation}")
+                if not check.agent_reported_passed:
+                    raise ValueError(
+                        f"Adapter Agent reported failed local static checks: {operation}"
+                    )
                 scopes = set(check.validation_scopes)
                 if ConformanceScope.LOCAL_STATIC not in scopes:
                     raise ValueError(f"local static validation scope is missing: {operation}")
@@ -370,7 +386,9 @@ class AdapterPromotionService:
                         )
                     if not _candidate_route_observed(candidates[operation], probe.data):
                         raise ValueError(f"target operation route was not observed: {operation}")
-            checks.append("operation contract and route-existence conformance")
+            checks.append("product-owned operation contracts")
+            checks.append("Adapter Agent local-static declarations (advisory)")
+            checks.append("target route existence without outcome execution")
 
             _, manifest_path = load_and_verify_discovery_manifest(
                 self.artifacts.root, run.robot_id, run.source_discovery_id
@@ -387,11 +405,40 @@ class AdapterPromotionService:
                 or set(catalog_by_operation) != registry_operations
             ):
                 raise ValueError("Active Tool Catalog must exactly match the product registry")
-            for operation, entrypoint in bundle_entries.items():
+            for operation, entry in bundle_entries.items():
                 descriptor = catalog_by_operation[operation]
-                expected_adapter = f"bundle:{bundle.bundle_id}#{entrypoint}"
+                expected_adapter = f"bundle:{bundle.bundle_id}#{entry.entrypoint}"
                 if descriptor.adapter != expected_adapter or descriptor.availability != "VERIFIED":
                     raise ValueError(f"adapter bundle binding mismatch: {operation}")
+            for operation, descriptor in catalog_by_operation.items():
+                definition = definitions_by_operation[operation]
+                if (
+                    descriptor.input_schema != definition.input_schema
+                    or descriptor.output_schema != definition.output_schema
+                    or descriptor.error_codes != definition.error_codes
+                    or descriptor.risk != definition.risk
+                    or descriptor.access != definition.access
+                    or descriptor.idempotent != definition.idempotent
+                    or descriptor.cancelable != definition.cancelable
+                    or descriptor.contract_lifecycle
+                    != definition.contract_lifecycle.value
+                    or descriptor.contract_version != definition.contract_version
+                    or descriptor.contract_sha256 != definition.contract_sha256
+                    or descriptor.capability_requirements
+                    != definition.capability_requirements
+                    or descriptor.preconditions != definition.preconditions
+                    or descriptor.postconditions != definition.postconditions
+                    or descriptor.semantic_units != definition.semantic_units
+                    or descriptor.coordinate_frames != definition.coordinate_frames
+                    or descriptor.time_semantics != definition.time_semantics
+                    or descriptor.side_effects != definition.side_effects
+                    or descriptor.resource_locks != definition.resource_locks
+                    or descriptor.rate_limit != definition.rate_limit
+                    or descriptor.retry_policy != definition.retry_policy
+                    or descriptor.compensation_operation
+                    != definition.compensation_operation
+                ):
+                    raise ValueError(f"Tool Catalog contract differs from Registry: {operation}")
             if any(tool.availability == "DISCOVERED_UNVERIFIED" for tool in catalog.tools):
                 raise ValueError("gated Tool Catalog still contains unverified operations")
             run_root = self.layout.stage_run("adapt", run.robot_id, run.run_id)

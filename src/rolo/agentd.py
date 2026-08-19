@@ -122,20 +122,22 @@ def create_agentd_app(robot_id: str) -> FastAPI:
 
     @agentd.get("/v1/state/snapshot")
     async def state_snapshot() -> dict[str, object]:
-        ready, phase = readiness()
+        _, phase = readiness()
         return {
             "robot_id": robot_id,
             "graph_version": 1,
             "runtime_phase": phase,
+            "observation_status": "UNOBSERVED",
+            "source": "no_live_state_provider",
             "safety": {
-                "estop": False,
+                "estop": "UNKNOWN",
                 "motion_lease": None,
-                "watchdog": "ARMED" if ready else "DISARMED",
+                "watchdog": "UNKNOWN",
             },
             "application": {
-                "state": "IDLE",
-                "localization": "READY" if ready else "NOT_READY",
-                "navigation": "READY" if ready else "NOT_READY",
+                "state": "UNKNOWN",
+                "localization": "UNKNOWN",
+                "navigation": "UNKNOWN",
             },
             "timestamp": utc_now(),
         }

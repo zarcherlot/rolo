@@ -118,15 +118,17 @@ the target robot.
 
 ### Three-stage workflow
 
-After configuring the robot, advance through the three stages. Run
-`uv run robotctl pipeline-status --robot "$ROBOT_ID"` from the repository at any time to inspect
-the overall status.
-
 | Stage | Primary output | Agent requirement |
 |---|---|---|
 | `adapt` | editable robot Wiki, machine evidence, canonical CLI, State Graph, conformance, adapt handoff | Adapter Agent; Codex by default |
 | `diagnose` | constrained diagnosis, tuning evidence, frozen configuration, diagnosis handoff | Diagnosis Agent; `robot_use` optional |
 | `verify` | optional formal cases, full regression, report, evidence, verification handoff | Verification Agent |
+
+Check the overall status:
+
+```bash
+uv run robotctl pipeline-status --robot "$ROBOT_ID"
+```
 
 #### Stage 1: adapt
 
@@ -142,7 +144,7 @@ missing, which capabilities are only inferred, and which interfaces are safe to 
 Agent. New team members, algorithm engineers, embedded developers, operations, and test engineers
 all see the same system-wide picture.
 
-The flow is “discover and generate the Wiki → let Adapt retrieve focused evidence on demand”:
+The flow is “discover and generate the Wiki → Adapter Agent retrieves evidence → perform adapt”:
 
 ```bash
 # --urdf is optional; missing hardware semantics remain unresolved
@@ -208,8 +210,8 @@ and every change must run the affected smoke, safety, and regression checks.
 
 #### Stage 3: verification
 
-Stage 3 checks formal acceptance readiness. Once the corresponding Verify Skills are implemented, a
-Verification Agent generates cases, runs full regression, and packages evidence:
+Stage 3 checks formal acceptance readiness. Once the corresponding Verification Agent capabilities
+are implemented, it generates cases, runs full regression, and packages evidence:
 
 ```bash
 uv run robotctl verify status --robot "$ROBOT_ID"
@@ -218,18 +220,15 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 ## Project layout
 
 ```text
-src/rolo/stages/adapt/      Stage 1: discovery, adapters, conformance, and handoff publication
-src/rolo/stages/diagnose/   Stage 2: Diagnosis Agent loop, tuning, and robot_use
-src/rolo/stages/verify/     Stage 3: optional autonomous verification and acceptance
-src/rolo/commands/       robotctl interfaces grouped by command domain
-src/rolo/core/           Shared configuration, domain models, artifacts, and robot registry
+src/rolo/stages/adapt/            Stage 1: discovery, adapters, conformance, and handoff publication
+src/rolo/stages/diagnose/         Stage 2: Diagnosis Agent loop, tuning, and robot_use
+src/rolo/stages/verify/           Stage 3: optional autonomous verification and acceptance
+src/rolo/commands/                robotctl interfaces grouped by command domain
+src/rolo/core/                    Shared configuration, domain models, artifacts, and robot registry
 src/rolo/integrations/robot_use/  External supervision backends for robot_use
-src/rolo/                Shared API, agentd, and runtime
-tests/fixtures/robots/    Mock robot capability fixtures
-tests/fixtures/profiles/  URDF profile fixtures
-schemas/                 Exported JSON Schemas
-tests/                   Offline unit tests, API tests, and fixtures
-rolo-logo.svg            Final rolo SVG identity
+src/rolo/                         Shared API, agentd, and runtime
+tests/                            Offline unit tests, API tests, and fixtures
+schemas/                          Exported JSON Schemas
 ```
 
 ## Contributing

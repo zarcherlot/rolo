@@ -13,6 +13,11 @@ from rolo.stages.diagnose.robot_use import RobotUseService, create_robot_use_bac
 class Runtime:
     settings: Settings
     registry: RobotRegistry
+    artifacts: ArtifactStore
+
+
+@dataclass
+class RobotUseRuntime(Runtime):
     robot_use_backend: RobotUseBackend
     robot_use: RobotUseService
 
@@ -22,14 +27,24 @@ def create_runtime(settings: Settings | None = None) -> Runtime:
     registry = RobotRegistry(settings.robot_config_dir)
     registry.load()
     artifacts = ArtifactStore(settings.rolo_artifact_dir)
-    backend = create_robot_use_backend(settings)
     return Runtime(
         settings=settings,
         registry=registry,
+        artifacts=artifacts,
+    )
+
+
+def create_robot_use_runtime(settings: Settings | None = None) -> RobotUseRuntime:
+    runtime = create_runtime(settings)
+    backend = create_robot_use_backend(runtime.settings)
+    return RobotUseRuntime(
+        settings=runtime.settings,
+        registry=runtime.registry,
+        artifacts=runtime.artifacts,
         robot_use_backend=backend,
         robot_use=RobotUseService(
-            registry=registry,
+            registry=runtime.registry,
             backend=backend,
-            artifacts=artifacts,
+            artifacts=runtime.artifacts,
         ),
     )

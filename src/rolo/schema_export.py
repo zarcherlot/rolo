@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from rolo.contract_catalog import OperationContract, OperationContractCatalog
 from rolo.core.models import (
     DiscoveryLatestIndex,
     DiscoveryReport,
@@ -44,6 +45,8 @@ from rolo.stages.discovery_manifest import DiscoveryRunManifest
 from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
 
 CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
+    OperationContract,
+    OperationContractCatalog,
     RobotCapability,
     RobotUseRequest,
     RobotUseSupervision,

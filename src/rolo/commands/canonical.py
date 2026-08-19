@@ -8,6 +8,7 @@ import typer
 from rolo import host_introspection
 from rolo.adapter_runtime import invoke_adapter, load_current_release
 from rolo.commands.common import emit
+from rolo.contract_catalog import load_operation_contracts, render_contract_catalog
 from rolo.core.config import get_settings
 from rolo.stages.adapt.discovery import (
     ApplicationProbe,
@@ -18,6 +19,7 @@ from rolo.stages.adapt.models import ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 
 tool_app = typer.Typer(help="Inspect the generated canonical tool catalog.")
+contract_app = typer.Typer(help="Validate and inspect product-owned operation contracts.")
 hw_app = typer.Typer(help="Canonical hardware-layer tools.")
 hw_inventory_app = typer.Typer(help="Hardware inventory operations.")
 linux_app = typer.Typer(help="Canonical Linux-layer tools.")
@@ -50,6 +52,57 @@ linux_app.add_typer(linux_network_app, name="network")
 ros_app.add_typer(ros_graph_app, name="graph")
 ros_app.add_typer(ros_node_app, name="node")
 application_app.add_typer(app_robot_cli, name="robot")
+tool_app.add_typer(contract_app, name="contract")
+
+
+@contract_app.command("validate")
+def contract_validate() -> None:
+    """Compile all contract files and validate them against the product vocabulary."""
+    catalog = load_operation_contracts()
+    registry = canonical_operation_registry()
+    counts: dict[str, int] = {}
+    for operation in registry.operations:
+        counts[operation.contract_lifecycle.value] = (
+            counts.get(operation.contract_lifecycle.value, 0) + 1
+        )
+    emit(
+        {
+            "status": "SUCCEEDED",
+            "registry_operations": len(registry.operations),
+            "authored_contracts": len(catalog.contracts),
+            "contract_lifecycle_counts": counts,
+            "contract_catalog_sha256": catalog.sha256,
+        }
+    )
+
+
+@contract_app.command("show")
+def contract_show(operation: Annotated[str, typer.Argument()]) -> None:
+    """Show the compiled product contract or DRAFT vocabulary entry."""
+    definition = next(
+        (
+            item
+            for item in canonical_operation_registry().operations
+            if item.operation == operation
+        ),
+        None,
+    )
+    if definition is None:
+        raise typer.BadParameter(f"unknown canonical operation: {operation}")
+    emit(definition)
+
+
+@contract_app.command("export")
+def contract_export(
+    output: Annotated[
+        Path, typer.Option(help="Generated Markdown contract catalog path")
+    ] = Path("docs/OPERATION_CONTRACTS.md"),
+) -> None:
+    """Generate the reviewable contract lifecycle and digest catalog."""
+    catalog = load_operation_contracts()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(render_contract_catalog(catalog), encoding="utf-8")
+    emit({"status": "SUCCEEDED", "output": str(output), "sha256": catalog.sha256})
 
 
 @tool_app.command("registry")
@@ -244,6 +297,7 @@ def tool_catalog(
         ToolCatalog(
             robot_id=robot,
             discovery_id=catalog.discovery_id,
+            contract_catalog_sha256=catalog.contract_catalog_sha256,
             tools=tools,
         )
     )

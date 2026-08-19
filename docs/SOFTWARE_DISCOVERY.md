@@ -348,5 +348,7 @@ Tests must prove that:
 - `latest.json` resolves to an immutable report with a matching SHA-256; and
 - Adapt rejects changed machine evidence but accepts professional edits to `robot_wiki.md`; and
 - Adapter Agent completion cannot publish a handoff; the independent gate inside `adapt run`
-  validates frozen output, exact operation coverage, State Graph identity, schemas, declared
-  risk/access metadata, and target route existence before updating `adapt/<robot>/latest.json`.
+  validates frozen output, exact operation coverage, State Graph identity, complete product-owned
+  schemas and policy metadata, package binding, and target route existence before updating
+  `adapt/<robot>/latest.json`. Agent local-static booleans remain advisory and are not proof of
+  runtime behavior or physical outcome.

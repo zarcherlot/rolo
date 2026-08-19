@@ -5,7 +5,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from rolo.contract_catalog import ContractLifecycle, load_operation_contracts
 from rolo.core.models import DiscoveryReport, OperationCandidate, ToolDescriptor
+from rolo.schema_subset import validate_schema_definition
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 
 
@@ -28,6 +30,20 @@ class CanonicalOperationDefinition(BaseModel):
     error_codes: list[str] = Field(
         default_factory=lambda: ["UNAVAILABLE", "TIMEOUT", "OPERATION_FAILED"]
     )
+    contract_lifecycle: ContractLifecycle = ContractLifecycle.DRAFT
+    contract_version: str | None = None
+    contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    capability_requirements: list[str] = Field(default_factory=list)
+    preconditions: list[str] = Field(default_factory=list)
+    postconditions: list[str] = Field(default_factory=list)
+    semantic_units: dict[str, str] = Field(default_factory=dict)
+    coordinate_frames: list[str] = Field(default_factory=list)
+    time_semantics: str = ""
+    side_effects: list[str] = Field(default_factory=list)
+    resource_locks: list[str] = Field(default_factory=list)
+    rate_limit: str = "on_demand"
+    retry_policy: str = "none"
+    compensation_operation: str | None = None
 
 
 class CanonicalOperationRegistry(BaseModel):
@@ -36,6 +52,7 @@ class CanonicalOperationRegistry(BaseModel):
     schema_version: Literal["robot-canonical-operation-registry/v1"] = (
         "robot-canonical-operation-registry/v1"
     )
+    contract_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     operations: list[CanonicalOperationDefinition]
 
 
@@ -352,7 +369,7 @@ _GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 _BUILTIN_CLI: dict[str, str] = {
-    "tool.schema": "robotctl tool schema OPERATION",
+    "tool.schema": "robotctl tool schema OPERATION --robot ROBOT_ID",
     "hw.inventory.scan": "robotctl hw inventory scan",
     "linux.host.inventory": "robotctl linux host inventory",
     "linux.host.inspect": "robotctl linux host inspect",
@@ -372,13 +389,17 @@ _BUILTIN_CLI: dict[str, str] = {
     "ros.node.status": "robotctl ros node status NAME",
     "ros.graph.snapshot": "robotctl ros graph snapshot",
     "app.robot.discover": "robotctl app robot discover",
-    "tool.catalog": "robotctl tool catalog",
+    "tool.catalog": "robotctl tool catalog --robot ROBOT_ID",
 }
+
+
+_DRAFT_INPUT_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
+_DRAFT_OUTPUT_SCHEMA = {"type": "object"}
 
 
 def _is_write(operation: str) -> bool:
     verb = operation.rsplit(".", 1)[-1]
-    return verb in {
+    return operation.endswith((".emergency_stop", ".protective_stop")) or verb in {
         "apply",
         "calibrate",
         "call",
@@ -463,27 +484,88 @@ def _is_physical(operation: str) -> bool:
 
 
 def canonical_operation_registry() -> CanonicalOperationRegistry:
+    catalog = load_operation_contracts()
+    contracts = {contract.operation: contract for contract in catalog.contracts}
+    vocabulary = {operation for operations in _GROUPS.values() for operation in operations}
+    unknown_contracts = sorted(set(contracts) - vocabulary)
+    if unknown_contracts:
+        raise RuntimeError(f"contracts are outside the product vocabulary: {unknown_contracts}")
     definitions: list[CanonicalOperationDefinition] = []
     for layer, operations in _GROUPS.items():
         for operation in operations:
             write = _is_write(operation) or _is_physical(operation)
+            contract = contracts.get(operation)
+            if contract is not None and contract.layer != layer:
+                raise RuntimeError(f"contract layer mismatch: {operation}")
             definitions.append(
                 CanonicalOperationDefinition(
                     operation=operation,
                     layer=layer,  # type: ignore[arg-type]
-                    description=operation.replace(".", " "),
-                    risk="R3" if _is_physical(operation) else ("R2" if write else "R0"),
-                    access="write" if write else "read",
-                    idempotent=not write,
-                    cancelable=write,
-                    canonical_cli=_BUILTIN_CLI.get(
-                        operation, f"robotctl tool invoke {operation}"
-                    ).split(),
+                    description=(
+                        contract.description if contract else operation.replace(".", " ")
+                    ),
+                    risk=(
+                        contract.risk
+                        if contract
+                        else "R3"
+                        if _is_physical(operation) or operation.startswith("app.safety.") and write
+                        else "R2"
+                        if write
+                        else "R0"
+                    ),
+                    access=contract.access if contract else "write" if write else "read",
+                    idempotent=contract.idempotent if contract else not write,
+                    cancelable=contract.cancelable if contract else False,
+                    max_duration_s=contract.max_duration_s if contract else 30.0,
+                    canonical_cli=(
+                        contract.canonical_cli
+                        if contract
+                        else [
+                            "robotctl",
+                            "tool",
+                            "invoke",
+                            "{operation}",
+                            "--robot",
+                            "{robot_id}",
+                            "--input",
+                            "{input_json}",
+                        ]
+                    ),
+                    input_schema=contract.input_schema if contract else _DRAFT_INPUT_SCHEMA,
+                    output_schema=contract.output_schema if contract else _DRAFT_OUTPUT_SCHEMA,
+                    error_codes=(
+                        contract.error_codes
+                        if contract
+                        else ["UNAVAILABLE", "CONTRACT_INCOMPLETE"]
+                    ),
+                    contract_lifecycle=(
+                        contract.lifecycle if contract else ContractLifecycle.DRAFT
+                    ),
+                    contract_version=contract.version if contract else None,
+                    contract_sha256=contract.sha256 if contract else None,
+                    capability_requirements=(
+                        contract.capability_requirements if contract else []
+                    ),
+                    preconditions=contract.preconditions if contract else [],
+                    postconditions=contract.postconditions if contract else [],
+                    semantic_units=contract.semantic_units if contract else {},
+                    coordinate_frames=contract.coordinate_frames if contract else [],
+                    time_semantics=contract.time_semantics if contract else "",
+                    side_effects=contract.side_effects if contract else [],
+                    resource_locks=contract.resource_locks if contract else [],
+                    rate_limit=contract.rate_limit if contract else "on_demand",
+                    retry_policy=contract.retry_policy if contract else "none",
+                    compensation_operation=(
+                        contract.compensation_operation if contract else None
+                    ),
                 )
             )
     if len({item.operation for item in definitions}) != len(definitions):
         raise RuntimeError("canonical operation registry contains duplicates")
-    return CanonicalOperationRegistry(operations=definitions)
+    return CanonicalOperationRegistry(
+        contract_catalog_sha256=catalog.sha256,
+        operations=definitions,
+    )
 
 
 def builtin_operations() -> set[str]:
@@ -491,7 +573,44 @@ def builtin_operations() -> set[str]:
 
 
 def required_conformance_operations(report: DiscoveryReport) -> set[str]:
+    definitions = {item.operation: item for item in canonical_operation_registry().operations}
+    incomplete = sorted(
+        candidate.operation
+        for candidate in report.operation_candidates
+        if definitions[candidate.operation].contract_lifecycle
+        not in {ContractLifecycle.GATEABLE, ContractLifecycle.RELEASED}
+    )
+    if incomplete:
+        raise ValueError(
+            "discovered operations lack complete product contracts: " + ", ".join(incomplete)
+        )
     return builtin_operations() | {item.operation for item in report.operation_candidates}
+
+
+def validate_definition_contract(definition: CanonicalOperationDefinition) -> None:
+    """Validate the product-owned declaration without executing a target operation."""
+    if definition.contract_lifecycle not in {
+        ContractLifecycle.GATEABLE,
+        ContractLifecycle.RELEASED,
+    }:
+        raise ValueError(f"canonical operation contract is incomplete: {definition.operation}")
+    for label, schema in (
+        ("input", definition.input_schema),
+        ("output", definition.output_schema),
+    ):
+        validate_schema_definition(schema, f"{definition.operation} {label}")
+        if schema["type"] != "object":
+            raise ValueError(f"{definition.operation} {label} schema must describe an object")
+    if not definition.output_schema["properties"]:
+        raise ValueError(f"{definition.operation} output schema is not explicit")
+    if not definition.error_codes:
+        raise ValueError(f"canonical operation has no error contract: {definition.operation}")
+    if definition.access == "read" and definition.risk != "R0":
+        raise ValueError(f"read operation has a non-R0 risk: {definition.operation}")
+    if definition.cancelable and definition.access != "write":
+        raise ValueError(f"cancelable operation must be a write: {definition.operation}")
+    if definition.contract_version is None or definition.contract_sha256 is None:
+        raise ValueError(f"canonical operation lacks version/hash binding: {definition.operation}")
 
 
 def materialize_active_catalog(
@@ -500,14 +619,21 @@ def materialize_active_catalog(
     bundle: AdapterBundleManifest | None = None,
 ) -> ToolCatalog:
     """Trusted composition of product definitions, host evidence, and a gated bundle."""
+    registry = canonical_operation_registry()
     candidates = {item.operation: item for item in report.operation_candidates}
     bundle_entries = (
-        {item.operation: item.entrypoint for item in bundle.operations} if bundle else {}
+        {item.operation: item for item in bundle.operations} if bundle else {}
     )
     tools: list[ToolDescriptor] = []
-    for definition in canonical_operation_registry().operations:
+    for definition in registry.operations:
         candidate = candidates.get(definition.operation)
-        if definition.operation in _BUILTIN_CLI:
+        if definition.contract_lifecycle not in {
+            ContractLifecycle.GATEABLE,
+            ContractLifecycle.RELEASED,
+        }:
+            availability = "UNAVAILABLE"
+            adapter = "unbound"
+        elif definition.operation in _BUILTIN_CLI:
             availability = "AVAILABLE"
             adapter = (
                 "builtin.host_introspection"
@@ -524,7 +650,7 @@ def materialize_active_catalog(
                 "VERIFIED" if definition.operation in bundle_entries else candidate.status
             )
             adapter = (
-                f"bundle:{bundle.bundle_id}#{bundle_entries[definition.operation]}"
+                f"bundle:{bundle.bundle_id}#{bundle_entries[definition.operation].entrypoint}"
                 if definition.operation in bundle_entries and bundle is not None
                 else "generated.binding_candidate"
             )
@@ -544,15 +670,45 @@ def materialize_active_catalog(
                 max_duration_s=definition.max_duration_s,
                 availability=availability,
                 adapter=adapter,
+                contract_lifecycle=definition.contract_lifecycle.value,
+                contract_version=definition.contract_version,
+                contract_sha256=definition.contract_sha256,
+                capability_requirements=definition.capability_requirements,
+                preconditions=definition.preconditions,
+                postconditions=definition.postconditions,
                 semantic_bindings=candidate.semantic_bindings if candidate else [],
+                semantic_units=definition.semantic_units,
+                coordinate_frames=definition.coordinate_frames,
+                time_semantics=definition.time_semantics,
+                side_effects=definition.side_effects,
+                resource_locks=definition.resource_locks,
+                rate_limit=definition.rate_limit,
+                retry_policy=definition.retry_policy,
+                compensation_operation=definition.compensation_operation,
                 evidence=candidate.evidence if candidate else [],
-                limitations=candidate.limitations if candidate else [],
+                limitations=[
+                    *(candidate.limitations if candidate else []),
+                    *(
+                        [
+                            "Product contract is not gateable "
+                            f"({definition.contract_lifecycle.value}); promotion is prohibited"
+                        ]
+                        if definition.contract_lifecycle
+                        not in {ContractLifecycle.GATEABLE, ContractLifecycle.RELEASED}
+                        else []
+                    ),
+                ],
                 error_codes=definition.error_codes,
                 input_schema=definition.input_schema,
                 output_schema=definition.output_schema,
             )
         )
-    return ToolCatalog(robot_id=report.robot_id, discovery_id=report.discovery_id, tools=tools)
+    return ToolCatalog(
+        robot_id=report.robot_id,
+        discovery_id=report.discovery_id,
+        contract_catalog_sha256=registry.contract_catalog_sha256,
+        tools=tools,
+    )
 
 
 def validate_candidate_operations(candidates: Iterable[OperationCandidate]) -> None:

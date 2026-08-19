@@ -188,8 +188,8 @@ def test_new_enrollment_remains_degraded_until_binding_and_calibration(
 
     get_settings.cache_clear()
     assert health.json()["status"] == "DEGRADED"
-    assert state.json()["safety"]["watchdog"] == "DISARMED"
-    assert state.json()["application"]["navigation"] == "NOT_READY"
+    assert state.json()["safety"]["watchdog"] == "UNKNOWN"
+    assert state.json()["application"]["navigation"] == "UNKNOWN"
 
 
 def test_init_registers_and_runs_runtime_checks(tmp_path: Path) -> None:

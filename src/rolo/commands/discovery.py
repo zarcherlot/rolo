@@ -92,7 +92,7 @@ def discovery_run(
             else None
         )
         report, artifact = DiscoveryService(
-            runtime.robot_use.artifacts,
+            runtime.artifacts,
             wiki_polisher=wiki_polisher,
         ).run(
             robot=capability,

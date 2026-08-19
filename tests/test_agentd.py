@@ -69,7 +69,9 @@ def test_full_agentd_waits_for_discovery(tmp_path: Path, monkeypatch: pytest.Mon
     assert health.json()["status"] == "DEGRADED"
     assert health.json()["phase"] == "DISCOVERY_PENDING"
     assert capability.json()["platform"]["drive_model"] == "differential"
-    assert snapshot.json()["safety"]["watchdog"] == "DISARMED"
+    assert snapshot.json()["observation_status"] == "UNOBSERVED"
+    assert snapshot.json()["safety"]["watchdog"] == "UNKNOWN"
+    assert snapshot.json()["application"]["navigation"] == "UNKNOWN"
 
 
 def test_full_agentd_observes_discovery_result_without_restart(

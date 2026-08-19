@@ -1,7 +1,7 @@
 [project]
 name = "rolo"
 version = "0.1.0"
-description = "Local development harness for the Robot Debugging Agent 6-hour demo"
+description = "Evidence-backed robot adaptation, diagnosis, and verification toolkit"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,7 +22,6 @@ robotctl = "rolo.cli:app"
 
 [dependency-groups]
 dev = [
-  "httpx2>=2,<3",
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",
   "pytest-cov>=6.2,<7",

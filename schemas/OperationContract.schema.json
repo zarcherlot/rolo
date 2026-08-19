@@ -1,92 +1,95 @@
 {
-  "properties": {
-    "schema_version": {
-      "default": "robot-tool/v1",
-      "title": "Schema Version",
-      "type": "string"
-    },
-    "operation": {
-      "title": "Operation",
-      "type": "string"
-    },
-    "canonical_cli": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Canonical Cli",
-      "type": "array"
-    },
-    "layer": {
-      "title": "Layer",
-      "type": "string"
-    },
-    "description": {
-      "title": "Description",
-      "type": "string"
-    },
-    "risk": {
-      "default": "R0",
-      "title": "Risk",
-      "type": "string"
-    },
-    "access": {
-      "default": "read",
-      "title": "Access",
-      "type": "string"
-    },
-    "idempotent": {
-      "default": true,
-      "title": "Idempotent",
-      "type": "boolean"
-    },
-    "cancelable": {
-      "default": false,
-      "title": "Cancelable",
-      "type": "boolean"
-    },
-    "availability": {
-      "title": "Availability",
-      "type": "string"
-    },
-    "adapter": {
-      "title": "Adapter",
-      "type": "string"
-    },
-    "contract_lifecycle": {
-      "default": "DRAFT",
+  "$defs": {
+    "ContractLifecycle": {
       "enum": [
         "DRAFT",
         "GATEABLE",
         "RELEASED",
         "DEPRECATED"
       ],
-      "title": "Contract Lifecycle",
+      "title": "ContractLifecycle",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Product-owned semantics for one canonical operation.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-operation-contract/v1",
+      "default": "robot-operation-contract/v1",
+      "title": "Schema Version",
       "type": "string"
     },
-    "contract_version": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Contract Version"
+    "contract_id": {
+      "title": "Contract Id",
+      "type": "string"
     },
-    "contract_sha256": {
-      "anyOf": [
-        {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
+    "version": {
+      "title": "Version",
+      "type": "string"
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/ContractLifecycle"
+    },
+    "operation": {
+      "title": "Operation",
+      "type": "string"
+    },
+    "layer": {
+      "enum": [
+        "control",
+        "hw",
+        "linux",
+        "middleware",
+        "ros",
+        "app"
       ],
-      "default": null,
-      "title": "Contract Sha256"
+      "title": "Layer",
+      "type": "string"
+    },
+    "description": {
+      "minLength": 8,
+      "title": "Description",
+      "type": "string"
+    },
+    "risk": {
+      "enum": [
+        "R0",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "title": "Risk",
+      "type": "string"
+    },
+    "access": {
+      "enum": [
+        "read",
+        "write"
+      ],
+      "title": "Access",
+      "type": "string"
+    },
+    "idempotent": {
+      "title": "Idempotent",
+      "type": "boolean"
+    },
+    "cancelable": {
+      "title": "Cancelable",
+      "type": "boolean"
+    },
+    "max_duration_s": {
+      "exclusiveMinimum": 0,
+      "title": "Max Duration S",
+      "type": "number"
+    },
+    "canonical_cli": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Canonical Cli",
+      "type": "array"
     },
     "input_schema": {
       "additionalProperties": true,
@@ -97,6 +100,14 @@
       "additionalProperties": true,
       "title": "Output Schema",
       "type": "object"
+    },
+    "error_codes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Error Codes",
+      "type": "array"
     },
     "capability_requirements": {
       "items": {
@@ -119,13 +130,6 @@
       "title": "Postconditions",
       "type": "array"
     },
-    "semantic_bindings": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Semantic Bindings",
-      "type": "array"
-    },
     "semantic_units": {
       "additionalProperties": {
         "type": "string"
@@ -141,7 +145,7 @@
       "type": "array"
     },
     "time_semantics": {
-      "default": "",
+      "default": "response observed_at uses UTC",
       "title": "Time Semantics",
       "type": "string"
     },
@@ -159,25 +163,13 @@
       "title": "Resource Locks",
       "type": "array"
     },
-    "max_duration_s": {
-      "default": 30.0,
-      "title": "Max Duration S",
-      "type": "number"
-    },
     "rate_limit": {
       "default": "on_demand",
       "title": "Rate Limit",
       "type": "string"
     },
-    "error_codes": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Error Codes",
-      "type": "array"
-    },
     "retry_policy": {
-      "default": "bounded_exponential_backoff_for_read_only_probe",
+      "default": "none",
       "title": "Retry Policy",
       "type": "string"
     },
@@ -192,35 +184,25 @@
       ],
       "default": null,
       "title": "Compensation Operation"
-    },
-    "observation_overhead": {
-      "default": "bounded read-only probe",
-      "title": "Observation Overhead",
-      "type": "string"
-    },
-    "evidence": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Evidence",
-      "type": "array"
-    },
-    "limitations": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Limitations",
-      "type": "array"
     }
   },
   "required": [
+    "contract_id",
+    "version",
+    "lifecycle",
     "operation",
-    "canonical_cli",
     "layer",
     "description",
-    "availability",
-    "adapter"
+    "risk",
+    "access",
+    "idempotent",
+    "cancelable",
+    "max_duration_s",
+    "canonical_cli",
+    "input_schema",
+    "output_schema",
+    "error_codes"
   ],
-  "title": "ToolDescriptor",
+  "title": "OperationContract",
   "type": "object"
 }

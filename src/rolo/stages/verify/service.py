@@ -6,8 +6,6 @@ from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 from rolo.stages.handoffs import validate_diagnosis_handoff, validate_verification_handoff
 
-VERIFICATION_SKILLS = ["robot-test-designer", "robot-test-runner"]
-
 
 def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
     layout = ArtifactLayout(artifact_root)
@@ -26,7 +24,6 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
             prerequisites=[str(diagnosis_handoff)],
             artifacts={"agent_inputs": str(agent_inputs)} if agent_inputs.is_file() else {},
             blockers=[f"Diagnosis handoff is unavailable or invalid: {exc}"],
-            required_skills=VERIFICATION_SKILLS,
             agent_requirement=AgentRequirement.VERIFICATION_AGENT,
         )
     handoff_valid = False
@@ -55,6 +52,5 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
         blockers=[]
         if handoff_valid
         else [handoff_error or "Verification was not requested or has not run"],
-        required_skills=VERIFICATION_SKILLS,
         agent_requirement=AgentRequirement.VERIFICATION_AGENT,
     )

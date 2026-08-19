@@ -10,9 +10,15 @@ from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import ToolDescriptor
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
+from rolo.stages.adapt.operation_registry import canonical_operation_registry
 
 
 def _publish_demo_release(tmp_path: Path) -> Path:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.snapshot"
+    )
     source = tmp_path / "source"
     source.mkdir()
     package = source / "demo_adapter.py"
@@ -33,21 +39,56 @@ def _publish_demo_release(tmp_path: Path) -> Path:
         discovery_id="disc-1",
         package_file=package.name,
         package_sha256=sha256_file(package),
-        operations=[{"operation": "app.camera.snapshot", "entrypoint": "camera_snapshot"}],
+        operations=[
+            {
+                "operation": "app.camera.snapshot",
+                "entrypoint": "camera_snapshot",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
     )
     bundle_path = source / "adapter-manifest.json"
     bundle_path.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
     catalog = ToolCatalog(
         robot_id="demo",
         discovery_id="disc-1",
+        contract_catalog_sha256=canonical_operation_registry().contract_catalog_sha256,
         tools=[
             ToolDescriptor(
                 operation="app.camera.snapshot",
-                canonical_cli=["robotctl", "tool", "invoke", "app.camera.snapshot"],
+                canonical_cli=[
+                    "robotctl",
+                    "tool",
+                    "invoke",
+                    "app.camera.snapshot",
+                    "--robot",
+                    "ROBOT_ID",
+                    "--input",
+                    "JSON",
+                ],
                 layer="app",
                 description="Read one bounded camera frame",
                 availability="VERIFIED",
                 adapter="bundle:demo-camera#camera_snapshot",
+                contract_lifecycle=definition.contract_lifecycle.value,
+                contract_version=definition.contract_version,
+                contract_sha256=definition.contract_sha256,
+                input_schema={
+                    "type": "object",
+                    "properties": {"camera": {"type": "string"}},
+                    "required": ["camera"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string"},
+                        "camera": {"type": "string"},
+                    },
+                    "required": ["status", "camera"],
+                    "additionalProperties": False,
+                },
             )
         ],
     )
@@ -110,6 +151,13 @@ def test_runtime_rejects_operation_missing_from_active_catalog(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="not in the active Tool Catalog"):
         invoke_adapter(output, "demo", "app.navigation.start", {})
+
+
+def test_runtime_enforces_registered_input_field_types(tmp_path: Path) -> None:
+    output = _publish_demo_release(tmp_path)
+
+    with pytest.raises(ValueError, match="adapter input.camera has wrong type"):
+        invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": 7})
 
 
 def test_generic_tool_invoke_cli_routes_through_active_release(
