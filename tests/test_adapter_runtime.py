@@ -1,4 +1,6 @@
+import getpass
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -74,6 +76,11 @@ def _publish_demo_release(tmp_path: Path) -> Path:
                 contract_lifecycle=definition.contract_lifecycle.value,
                 contract_version=definition.contract_version,
                 contract_sha256=definition.contract_sha256,
+                data_classification=definition.data_classification.value,
+                result_semantics=definition.result_semantics.value,
+                observation_overhead=definition.observation_overhead.value,
+                execution_mode=definition.execution_mode.value,
+                paired_operation=definition.paired_operation,
                 input_schema={
                     "type": "object",
                     "properties": {"camera": {"type": "string"}},
@@ -124,17 +131,75 @@ def _publish_demo_release(tmp_path: Path) -> Path:
     return output
 
 
+def _sensitive_access(
+    tmp_path: Path, *, allowed_user: str | None = None
+) -> tuple[Path, Path]:
+    policy = tmp_path / "invocation-policy.yaml"
+    policy.write_text(
+        "schema_version: rolo-invocation-policy/v1\n"
+        "sensitive:\n"
+        f"  allowed_users: [{json.dumps(allowed_user or getpass.getuser())}]\n"
+        "  allowed_groups: []\n",
+        encoding="utf-8",
+    )
+    if os.name == "posix":
+        policy.chmod(0o600)
+    return policy, tmp_path / "invocation-audit.jsonl"
+
+
 def test_runtime_invokes_only_the_entrypoint_bound_in_active_catalog(tmp_path: Path) -> None:
     output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
 
     result = invoke_adapter(
         output,
         "demo",
         "app.camera.snapshot",
         {"camera": "front_camera"},
+        policy_path=policy,
+        audit_path=audit,
     )
 
     assert result == {"status": "SUCCEEDED", "camera": "front_camera"}
+    audit_record = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert audit_record["outcome"] == "ALLOWED"
+    assert "front_camera" not in audit.read_text(encoding="utf-8")
+
+
+def test_runtime_denies_sensitive_operation_without_protected_policy(tmp_path: Path) -> None:
+    output = _publish_demo_release(tmp_path)
+    audit = tmp_path / "invocation-audit.jsonl"
+
+    with pytest.raises(ValueError, match="policy is missing"):
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front_camera"},
+            audit_path=audit,
+        )
+
+    record = json.loads(audit.read_text(encoding="utf-8"))
+    assert record["outcome"] == "DENIED"
+    assert "front_camera" not in audit.read_text(encoding="utf-8")
+
+
+def test_runtime_denies_sensitive_operation_for_unlisted_os_identity(tmp_path: Path) -> None:
+    output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path, allowed_user="not-the-current-user")
+
+    with pytest.raises(ValueError, match="host principal is not authorized"):
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front_camera"},
+            policy_path=policy,
+            audit_path=audit,
+        )
+
+    record = json.loads(audit.read_text(encoding="utf-8"))
+    assert record["outcome"] == "DENIED"
 
 
 def test_runtime_rejects_a_tampered_adapter_package(tmp_path: Path) -> None:
@@ -155,16 +220,27 @@ def test_runtime_rejects_operation_missing_from_active_catalog(tmp_path: Path) -
 
 def test_runtime_enforces_registered_input_field_types(tmp_path: Path) -> None:
     output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
 
     with pytest.raises(ValueError, match="adapter input.camera has wrong type"):
-        invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": 7})
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": 7},
+            policy_path=policy,
+            audit_path=audit,
+        )
 
 
 def test_generic_tool_invoke_cli_routes_through_active_release(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(output))
+    monkeypatch.setenv("ROLO_INVOCATION_POLICY", str(policy))
+    monkeypatch.setenv("ROLO_INVOCATION_AUDIT_LOG", str(audit))
     get_settings.cache_clear()
 
     result = CliRunner().invoke(
@@ -186,3 +262,25 @@ def test_generic_tool_invoke_cli_routes_through_active_release(
         "status": "SUCCEEDED",
         "camera": "front_camera",
     }
+
+
+def test_state_graph_cli_reads_only_the_active_gated_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(output))
+    monkeypatch.setenv("ROLO_INVOCATION_POLICY", str(policy))
+    monkeypatch.setenv("ROLO_INVOCATION_AUDIT_LOG", str(audit))
+    get_settings.cache_clear()
+
+    snapshot = CliRunner().invoke(app, ["state", "graph", "snapshot", "--robot", "demo"])
+    query = CliRunner().invoke(
+        app, ["state", "graph", "query", "camera", "--robot", "demo"]
+    )
+
+    get_settings.cache_clear()
+    assert snapshot.exit_code == 0, snapshot.output
+    assert json.loads(snapshot.output)["schema_version"] == "robot-state-graph/v1"
+    assert query.exit_code == 0, query.output
+    assert json.loads(query.output)["query"] == "camera"

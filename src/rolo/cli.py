@@ -9,6 +9,7 @@ from rolo.commands.canonical import (
     linux_app,
     middleware_app,
     ros_app,
+    state_app,
     tool_app,
 )
 from rolo.commands.discovery import discover_app
@@ -35,6 +36,7 @@ app.add_typer(linux_app, name="linux")
 app.add_typer(middleware_app, name="middleware")
 app.add_typer(ros_app, name="ros")
 app.add_typer(application_app, name="app")
+app.add_typer(state_app, name="state")
 
 
 if __name__ == "__main__":

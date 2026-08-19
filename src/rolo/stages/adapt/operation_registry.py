@@ -5,7 +5,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rolo.contract_catalog import ContractLifecycle, load_operation_contracts
+from rolo.contract_catalog import (
+    ContractLifecycle,
+    DataClassification,
+    ExecutionMode,
+    ObservationOverhead,
+    ResultSemantics,
+    load_operation_contracts,
+)
 from rolo.core.models import DiscoveryReport, OperationCandidate, ToolDescriptor
 from rolo.schema_subset import validate_schema_definition
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
@@ -33,6 +40,12 @@ class CanonicalOperationDefinition(BaseModel):
     contract_lifecycle: ContractLifecycle = ContractLifecycle.DRAFT
     contract_version: str | None = None
     contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    data_classification: DataClassification | None = None
+    result_semantics: ResultSemantics | None = None
+    observation_overhead: ObservationOverhead = ObservationOverhead.BOUNDED
+    execution_mode: ExecutionMode = ExecutionMode.REQUEST_RESPONSE
+    paired_operation: str | None = None
+    replacement_operation: str | None = None
     capability_requirements: list[str] = Field(default_factory=list)
     preconditions: list[str] = Field(default_factory=list)
     postconditions: list[str] = Field(default_factory=list)
@@ -116,7 +129,6 @@ _GROUPS: dict[str, tuple[str, ...]] = {
     ),
     "linux": (
         "linux.host.inventory",
-        "linux.host.inspect",
         "linux.host.status",
         "linux.host.uptime",
         "linux.host.reboot",
@@ -199,7 +211,6 @@ _GROUPS: dict[str, tuple[str, ...]] = {
         "ros.topic.rate",
         "ros.topic.bandwidth",
         "ros.topic.publish",
-        "ros.topic.echo",
         "ros.service.list",
         "ros.service.describe",
         "ros.service.call",
@@ -221,8 +232,6 @@ _GROUPS: dict[str, tuple[str, ...]] = {
         "ros.parameter.rollback",
         "ros.diagnostics.snapshot",
         "ros.diagnostics.watch",
-        "ros.diagnostics.hardware",
-        "ros.diagnostics.software",
         "ros.clock.status",
         "ros.bag.inspect",
         "ros.bag.record",
@@ -338,6 +347,7 @@ _GROUPS: dict[str, tuple[str, ...]] = {
         "app.test.evidence",
         "app.regression.plan",
         "app.regression.run",
+        "app.regression.cancel",
         "app.regression.status",
         "app.regression.result",
         "app.diagnosis.snapshot",
@@ -370,23 +380,64 @@ _GROUPS: dict[str, tuple[str, ...]] = {
 
 _BUILTIN_CLI: dict[str, str] = {
     "tool.schema": "robotctl tool schema OPERATION --robot ROBOT_ID",
+    "runtime.health": "robotctl runtime health",
+    "runtime.version": "robotctl runtime version",
+    "state.graph.snapshot": "robotctl state graph snapshot --robot ROBOT_ID",
+    "state.graph.query": "robotctl state graph query QUERY --robot ROBOT_ID",
+    "evidence.resolve": "robotctl adapt evidence resolve REFERENCE --robot ROBOT_ID",
     "hw.inventory.scan": "robotctl hw inventory scan",
     "linux.host.inventory": "robotctl linux host inventory",
-    "linux.host.inspect": "robotctl linux host inspect",
+    "linux.host.status": "robotctl linux host status",
+    "linux.host.uptime": "robotctl linux host uptime",
     "linux.service.list": "robotctl linux service list",
     "linux.service.inspect": "robotctl linux service inspect NAME",
     "linux.container.list": "robotctl linux container list",
     "linux.container.inspect": "robotctl linux container inspect NAME",
+    "linux.container.stats": "robotctl linux container stats",
     "linux.schedule.list": "robotctl linux schedule list",
     "linux.schedule.inspect": "robotctl linux schedule inspect NAME",
     "linux.process.list": "robotctl linux process list",
     "linux.process.inspect": "robotctl linux process inspect PID",
+    "linux.process.resources": "robotctl linux process resources PID",
     "linux.binary.describe": "robotctl linux binary describe PATH",
+    "linux.binary.verify": "robotctl linux binary verify PATH --expected-sha256 SHA256",
+    "linux.package.inspect": "robotctl linux package inspect NAME",
+    "linux.package.verify": "robotctl linux package verify NAME",
     "linux.cli.probe": "robotctl linux cli probe PATH --arg=--help",
     "linux.config.locate": "robotctl linux config locate --process PID",
+    "linux.file.inspect": "robotctl linux file inspect PATH",
+    "linux.file.hash": "robotctl linux file hash PATH",
+    "linux.file.list": "robotctl linux file list PATH",
+    "linux.network.interfaces": "robotctl linux network interfaces",
     "linux.network.listeners": "robotctl linux network listeners",
+    "linux.network.routes": "robotctl linux network routes",
+    "linux.network.connections": "robotctl linux network connections",
+    "linux.network.statistics": "robotctl linux network statistics",
+    "linux.network.dns": "robotctl linux network dns",
+    "linux.resource.snapshot": "robotctl linux resource snapshot",
+    "linux.resource.cpu": "robotctl linux resource cpu",
+    "linux.resource.memory": "robotctl linux resource memory",
+    "linux.resource.disk": "robotctl linux resource disk",
+    "linux.resource.gpu": "robotctl linux resource gpu",
+    "linux.time.status": "robotctl linux time status",
     "middleware.inspect": "robotctl middleware inspect",
+    "middleware.status": "robotctl middleware status",
+    "middleware.graph.snapshot": "robotctl middleware graph snapshot",
     "ros.node.status": "robotctl ros node status NAME",
+    "ros.node.list": "robotctl ros node list",
+    "ros.node.inspect": "robotctl ros node inspect NAME",
+    "ros.node.lifecycle": "robotctl ros node lifecycle NAME",
+    "ros.topic.list": "robotctl ros topic list",
+    "ros.topic.describe": "robotctl ros topic describe NAME",
+    "ros.service.list": "robotctl ros service list",
+    "ros.service.describe": "robotctl ros service describe NAME",
+    "ros.action.list": "robotctl ros action list",
+    "ros.action.describe": "robotctl ros action describe NAME",
+    "ros.parameter.list": "robotctl ros parameter list",
+    "ros.parameter.get": "robotctl ros parameter get NAME --node NODE",
+    "ros.parameter.describe": "robotctl ros parameter describe NAME --node NODE",
+    "ros.clock.status": "robotctl ros clock status",
+    "ros.bag.inspect": "robotctl ros bag inspect PATH",
     "ros.graph.snapshot": "robotctl ros graph snapshot",
     "app.robot.discover": "robotctl app robot discover",
     "tool.catalog": "robotctl tool catalog --robot ROBOT_ID",
@@ -400,6 +451,7 @@ _DRAFT_OUTPUT_SCHEMA = {"type": "object"}
 def _is_write(operation: str) -> bool:
     verb = operation.rsplit(".", 1)[-1]
     return operation.endswith((".emergency_stop", ".protective_stop")) or verb in {
+        "activate",
         "apply",
         "calibrate",
         "call",
@@ -543,6 +595,22 @@ def canonical_operation_registry() -> CanonicalOperationRegistry:
                     ),
                     contract_version=contract.version if contract else None,
                     contract_sha256=contract.sha256 if contract else None,
+                    data_classification=(contract.data_classification if contract else None),
+                    result_semantics=(contract.result_semantics if contract else None),
+                    observation_overhead=(
+                        contract.observation_overhead
+                        if contract
+                        else ObservationOverhead.BOUNDED
+                    ),
+                    execution_mode=(
+                        contract.execution_mode
+                        if contract
+                        else ExecutionMode.REQUEST_RESPONSE
+                    ),
+                    paired_operation=contract.paired_operation if contract else None,
+                    replacement_operation=(
+                        contract.replacement_operation if contract else None
+                    ),
                     capability_requirements=(
                         contract.capability_requirements if contract else []
                     ),
@@ -605,12 +673,88 @@ def validate_definition_contract(definition: CanonicalOperationDefinition) -> No
         raise ValueError(f"{definition.operation} output schema is not explicit")
     if not definition.error_codes:
         raise ValueError(f"canonical operation has no error contract: {definition.operation}")
-    if definition.access == "read" and definition.risk != "R0":
-        raise ValueError(f"read operation has a non-R0 risk: {definition.operation}")
-    if definition.cancelable and definition.access != "write":
-        raise ValueError(f"cancelable operation must be a write: {definition.operation}")
+    if definition.access == "read" and definition.risk in {"R2", "R3"}:
+        raise ValueError(f"read operation exceeds R1 risk: {definition.operation}")
+    if definition.access == "read" and definition.risk == "R1" and (
+        definition.observation_overhead != ObservationOverhead.ELEVATED
+        or not definition.side_effects
+        or definition.rate_limit == "on_demand"
+    ):
+        raise ValueError(f"R1 read operation lacks overhead controls: {definition.operation}")
+    if (
+        definition.access == "read"
+        and definition.risk == "R0"
+        and definition.observation_overhead == ObservationOverhead.ELEVATED
+    ):
+        raise ValueError(f"R0 read operation has elevated overhead: {definition.operation}")
+    if (
+        definition.cancelable
+        and definition.access != "write"
+        and definition.execution_mode != ExecutionMode.BOUNDED_STREAM
+    ):
+        raise ValueError(
+            f"cancelable operation must be a write or bounded stream: {definition.operation}"
+        )
     if definition.contract_version is None or definition.contract_sha256 is None:
         raise ValueError(f"canonical operation lacks version/hash binding: {definition.operation}")
+    if definition.data_classification is None:
+        raise ValueError(f"canonical operation lacks data classification: {definition.operation}")
+    if definition.result_semantics is None:
+        raise ValueError(f"canonical operation lacks result semantics: {definition.operation}")
+    expected_result = (
+        ResultSemantics.SESSION_HANDLE
+        if definition.execution_mode == ExecutionMode.SESSION_START
+        else ResultSemantics.OBSERVATION
+        if definition.access == "read"
+        else ResultSemantics.ACKNOWLEDGEMENT_ONLY
+    )
+    if definition.result_semantics != expected_result:
+        raise ValueError(
+            f"canonical operation has invalid result semantics: {definition.operation}"
+        )
+    if definition.access == "write" and "status" not in definition.output_schema.get(
+        "required", []
+    ):
+        raise ValueError(
+            f"write operation does not require acknowledgement: {definition.operation}"
+        )
+    if definition.risk == "R3" and any(
+        not values
+        for values in (
+            definition.preconditions,
+            definition.postconditions,
+            definition.side_effects,
+            definition.resource_locks,
+        )
+    ):
+        raise ValueError(f"R3 operation lacks safety contract fields: {definition.operation}")
+    input_required = set(definition.input_schema.get("required", []))
+    output_required = set(definition.output_schema.get("required", []))
+    if definition.execution_mode == ExecutionMode.BOUNDED_STREAM:
+        if (
+            definition.access != "read"
+            or not definition.cancelable
+            or definition.risk != "R1"
+            or definition.observation_overhead != ObservationOverhead.ELEVATED
+            or not {"duration_s", "max_items", "max_bytes"} <= input_required
+            or not {"status", "observed_at", "truncated"} <= output_required
+        ):
+            raise ValueError(f"bounded stream contract is incomplete: {definition.operation}")
+    elif definition.execution_mode in {ExecutionMode.SESSION_START, ExecutionMode.SESSION_STOP}:
+        if definition.access != "write" or not definition.paired_operation:
+            raise ValueError(f"session control contract is incomplete: {definition.operation}")
+        if definition.execution_mode == ExecutionMode.SESSION_START and (
+            not {"ttl_s", "max_bytes"} <= input_required
+            or not {"status", "session_id", "expires_at"} <= output_required
+        ):
+            raise ValueError(f"session start contract is incomplete: {definition.operation}")
+        if definition.execution_mode == ExecutionMode.SESSION_STOP and (
+            "session_id" not in input_required
+            or not {"status", "session_id"} <= output_required
+        ):
+            raise ValueError(f"session stop contract is incomplete: {definition.operation}")
+    elif definition.paired_operation is not None:
+        raise ValueError(f"request contract has an invalid session pair: {definition.operation}")
 
 
 def materialize_active_catalog(
@@ -673,6 +817,20 @@ def materialize_active_catalog(
                 contract_lifecycle=definition.contract_lifecycle.value,
                 contract_version=definition.contract_version,
                 contract_sha256=definition.contract_sha256,
+                data_classification=(
+                    definition.data_classification.value
+                    if definition.data_classification is not None
+                    else None
+                ),
+                result_semantics=(
+                    definition.result_semantics.value
+                    if definition.result_semantics is not None
+                    else None
+                ),
+                observation_overhead=definition.observation_overhead.value,
+                execution_mode=definition.execution_mode.value,
+                paired_operation=definition.paired_operation,
+                replacement_operation=definition.replacement_operation,
                 capability_requirements=definition.capability_requirements,
                 preconditions=definition.preconditions,
                 postconditions=definition.postconditions,

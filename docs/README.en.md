@@ -44,11 +44,13 @@ timestamps, error codes, and rollback semantics across four layers:
 - **Middleware**: nodes, topics, services, actions, TF, parameters, and diagnostics;
 - **Application**: mapping, localization, navigation, manipulation, testing, tuning, and task state.
 
-The product Canonical Operation Registry currently defines **297 operations**: 40 Hardware,
-64 Linux, 44 Middleware, and 149 Application operations (including 13 rolo control-plane
+The product Canonical Operation Registry currently defines **294 operations**: 40 Hardware,
+63 Linux, 41 Middleware, and 150 Application operations (including 13 rolo control-plane
 operations). See the [complete four-layer list](CANONICAL_OPERATIONS.md). This is the product
 vocabulary, not a claim that every robot implements every operation; a robot-specific Active Tool
 Catalog is created only after the Adapt gate passes.
+See the [Registry Operation guide](REGISTRY_OPERATION_GUIDE.md) for contract lifecycle,
+promotion/demotion, R0-R3 risk, data classification, and invocation rules.
 
 ### Active discovery
 

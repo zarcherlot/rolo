@@ -88,6 +88,76 @@
       "default": null,
       "title": "Contract Sha256"
     },
+    "data_classification": {
+      "anyOf": [
+        {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "SENSITIVE",
+            "SECRET"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Data Classification"
+    },
+    "result_semantics": {
+      "anyOf": [
+        {
+          "enum": [
+            "OBSERVATION",
+            "ACKNOWLEDGEMENT_ONLY",
+            "SESSION_HANDLE"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Semantics"
+    },
+    "execution_mode": {
+      "default": "REQUEST_RESPONSE",
+      "enum": [
+        "REQUEST_RESPONSE",
+        "BOUNDED_STREAM",
+        "SESSION_START",
+        "SESSION_STOP"
+      ],
+      "title": "Execution Mode",
+      "type": "string"
+    },
+    "paired_operation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Paired Operation"
+    },
+    "replacement_operation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replacement Operation"
+    },
     "input_schema": {
       "additionalProperties": true,
       "title": "Input Schema",
@@ -194,7 +264,12 @@
       "title": "Compensation Operation"
     },
     "observation_overhead": {
-      "default": "bounded read-only probe",
+      "default": "BOUNDED",
+      "enum": [
+        "NEGLIGIBLE",
+        "BOUNDED",
+        "ELEVATED"
+      ],
       "title": "Observation Overhead",
       "type": "string"
     },

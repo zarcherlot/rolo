@@ -424,6 +424,23 @@ class AdapterPromotionService:
                     != definition.contract_lifecycle.value
                     or descriptor.contract_version != definition.contract_version
                     or descriptor.contract_sha256 != definition.contract_sha256
+                    or descriptor.data_classification
+                    != (
+                        definition.data_classification.value
+                        if definition.data_classification is not None
+                        else None
+                    )
+                    or descriptor.result_semantics
+                    != (
+                        definition.result_semantics.value
+                        if definition.result_semantics is not None
+                        else None
+                    )
+                    or descriptor.observation_overhead
+                    != definition.observation_overhead.value
+                    or descriptor.execution_mode != definition.execution_mode.value
+                    or descriptor.paired_operation != definition.paired_operation
+                    or descriptor.replacement_operation != definition.replacement_operation
                     or descriptor.capability_requirements
                     != definition.capability_requirements
                     or descriptor.preconditions != definition.preconditions

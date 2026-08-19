@@ -49,7 +49,7 @@ def test_workset_joins_registry_candidates_and_registration(tmp_path: Path) -> N
     workset = build_operation_workset(artifact_root, tmp_path / "output", "demo_diff", discovery_id)
     velocity = next(item for item in workset.operations if item.operation == "app.teleop.velocity")
 
-    assert workset.registry_operation_count == 297
+    assert workset.registry_operation_count == 294
     assert workset.candidate_operation_count >= 1
     assert velocity.applicability == "OBSERVED"
     assert velocity.implementation == "UNBOUND"
@@ -129,7 +129,7 @@ def test_adapt_operation_cli_uses_compact_workset(tmp_path: Path, monkeypatch) -
     result = CliRunner().invoke(app, ["adapt", "operations", "summary", "--robot", "demo_diff"])
 
     assert result.exit_code == 0, result.output
-    assert '"registry_operation_count": 297' in result.output
+    assert '"registry_operation_count": 294' in result.output
     assert '"operations"' not in result.output
 
 

@@ -6,14 +6,50 @@ from typing import Annotated
 import httpx
 import typer
 
+from rolo import __version__
 from rolo.commands.common import emit
 from rolo.core.config import get_settings
 from rolo.doctor import build_doctor_report
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.enrollment import EnrollmentService
 
+runtime_app = typer.Typer(help="Inspect the local Rolo runtime without starting services.")
+
+
+@runtime_app.command("health")
+def runtime_health() -> None:
+    """Read local runtime readiness and registered robot count."""
+    try:
+        runtime = create_runtime()
+        emit(
+            {
+                "status": "HEALTHY",
+                "version": __version__,
+                "registered_robots": len(runtime.registry),
+                "artifact_root": str(runtime.artifacts.root),
+            }
+        )
+    except (OSError, ValueError) as exc:
+        emit({"status": "UNAVAILABLE", "version": __version__, "error": str(exc)})
+        raise typer.Exit(code=1) from exc
+
+
+@runtime_app.command("version")
+def runtime_version() -> None:
+    """Read the installed Rolo product and contract protocol versions."""
+    emit(
+        {
+            "status": "SUCCEEDED",
+            "version": __version__,
+            "operation_contract_schema": "robot-operation-contract/v1",
+            "adapter_protocol": "robot-adapter-rpc/v1",
+            "tool_catalog_schema": "robot-tool-catalog/v1",
+        }
+    )
+
 
 def register_runtime_commands(root: typer.Typer) -> None:
+    root.add_typer(runtime_app, name="runtime")
     @root.command()
     def doctor() -> None:
         """Check local prerequisites and canonical configuration."""

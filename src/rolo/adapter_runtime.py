@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from rolo.core.hashing import sha256_file
+from rolo.invocation_policy import (
+    authorize_invocation,
+    validate_config_mutation_input,
+    validate_config_mutation_result,
+    validate_content_result,
+    validate_map_import_input,
+)
 from rolo.schema_subset import validate_object
 from rolo.stages.adapt.models import (
     AdapterBundleManifest,
@@ -115,6 +122,10 @@ def invoke_adapter(
     payload: dict[str, Any],
     *,
     timeout_s: float = 30.0,
+    policy_path: Path | None = None,
+    audit_path: Path | None = None,
+    r3_authorizer_path: Path | None = None,
+    artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     """Invoke one catalogued operation through the immutable adapter RPC bundle."""
     release_root, release, bundle, catalog = load_current_release(output_root, robot_id)
@@ -135,6 +146,24 @@ def invoke_adapter(
     ):
         raise ValueError(f"adapter contract binding mismatch: {operation}")
     _validate_object_schema(payload, descriptor.input_schema, "adapter input")
+    authorize_invocation(
+        descriptor,
+        robot_id=robot_id,
+        policy_path=policy_path,
+        audit_path=audit_path,
+        payload=payload,
+        r3_authorizer_path=r3_authorizer_path,
+    )
+    validate_config_mutation_input(
+        descriptor,
+        payload=payload,
+        artifact_root=artifact_root,
+    )
+    validate_map_import_input(
+        descriptor,
+        payload=payload,
+        artifact_root=artifact_root,
+    )
     package_path = _relative_file(release_root, release.adapter_package)
     try:
         completed = subprocess.run(
@@ -162,6 +191,8 @@ def invoke_adapter(
     if not isinstance(result, dict):
         raise RuntimeError("adapter result must be a JSON object")
     _validate_object_schema(result, descriptor.output_schema, "adapter output")
+    validate_content_result(descriptor, payload=payload, result=result)
+    validate_config_mutation_result(descriptor, result=result)
     return result
 
 

@@ -43,5 +43,5 @@ def test_four_layer_operation_document_covers_the_product_registry() -> None:
     }
     registered = {operation.operation for operation in canonical_operation_registry().operations}
 
-    assert len(registered) == 297
+    assert len(registered) == 294
     assert documented == registered

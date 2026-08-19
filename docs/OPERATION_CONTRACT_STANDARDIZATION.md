@@ -3,10 +3,109 @@
 ## 定位
 
 Rolo Operation Contract 当前是产品内部的、机器可校验的机器人操作契约。长期目标不是把
-297 个 operation 名称直接宣布为行业标准，而是以多厂商、多机器人实现和 conformance
+294 个 operation 名称直接宣布为行业标准，而是以多厂商、多机器人实现和 conformance
 数据为基础，将其中稳定的公共语义发展为开放互操作规范，并在条件成熟后推动行业标准化。
 
 当前成熟度：**内部参考规范（Internal Reference Specification）**。
+
+Registry Operation 的日常治理、生命周期升级/降级和运行时使用规则见
+[REGISTRY_OPERATION_GUIDE.md](REGISTRY_OPERATION_GUIDE.md)。
+
+可复制的 R0、R1、R3 与数据敏感度最小模板见
+[OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
+
+当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、166 个为 `GATEABLE`、
+66 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
+容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
+契约及 builtin 不依赖
+具体机器人型号；目标主机只决定调用时返回 `SUCCEEDED`、`PARTIAL` 或 `UNAVAILABLE`。
+Rolo runtime health/version、Active State Graph snapshot/query、证据元数据解析以及 middleware
+status/graph snapshot 也已形成相同的产品契约与 builtin 闭环。
+ROS node/topic/service/action 的第一批通用只读发现接口也已发布；没有 ROS CLI 时明确降级。
+目标相关的 compute、clock、thermal、storage、sensor、actuator、bus、firmware 和 power
+只读语义已形成 `GATEABLE` 契约；它们需要 discovery candidate、adapter 绑定和目标通路
+证据后才能在具体机器人上成为 `VERIFIED`，不会因为产品契约已明确而伪装成通用 builtin。
+应用层的 robot、camera、lidar、IMU、GNSS、odometry、base、manipulation、gripper、
+localization、map、navigation 和 safety 观测语义也按相同原则进入 `GATEABLE`；位姿、地图
+标识和安全区几何被标记为 `SENSITIVE`。
+校准、任务、测试、回归、诊断、参数元数据和调优 workflow 的低敏感读取语义已进入
+`GATEABLE`。在 SENSITIVE 默认拒绝、受保护 OS 身份策略和无 payload 审计链路完成后，
+任务/测试/回归结果、测试与诊断证据引用、诊断结论、参数值、状态快照、事件查询和遥测
+快照/导出也已进入 `GATEABLE`；它们仍需目标 discovery、adapter 绑定和门禁证据才能在
+具体机器人上成为 `VERIFIED`。
+ROS action goal 状态、TF tree/snapshot/lookup/monitor 和节点参数导出，以及应用层 lidar
+snapshot、navigation costmap/path inspect 已形成同样的 `GATEABLE` 敏感只读契约。空间
+位置、路径、坐标变换和批量参数均不得因“只读”而绕过 SENSITIVE 授权；monitor 使用有界
+流，批量参数导出使用 R1 观测负载控制。
+Navigation/manipulation/test/regression 的 plan operation 仅计算或返回有界计划，不调度、
+启动或授权执行；calibration/parameter validate 只返回校验结果，不 apply/set；map export
+只创建有界 artifact，不切换 active map。这些 operation 因计算或序列化负载使用 R1 时，
+仍保持 `access=read`，并通过 postcondition 明确排除执行和目标状态变更。
+
+正式契约以 `1.1.0` 为当前基线；`linux.host.inspect` 完成迁移后已退出产品 Registry，
+其 CLI 兼容别名仍转发到 `linux.host.inventory`；`ros.node.status` 以 `2.0.0` 收敛为紧凑
+可见性状态。数据敏感度
+纳入契约摘要、Registry、Tool Catalog 和独立门禁：
+
+- `PUBLIC`：允许公开传播的产品版本和协议信息；
+- `INTERNAL`：主机、网络、ROS、硬件和机器人运行元数据；
+- `SENSITIVE`：图像、地图、配置内容、日志和文件内容；
+- `SECRET`：凭据、密钥和认证材料，禁止通过通用 operation 输出。
+
+`risk` 表示物理动作和系统变更风险，`data_classification` 表示信息泄露风险。降低数据
+分类属于破坏性安全策略变更；Adapter bundle 通过契约摘要间接绑定分类，运行时 Tool
+Catalog 则显式暴露分类供调用方执行访问、留存和审计策略。
+
+分类字段本身不是身份认证。契约编译器禁止任何通用 operation 声明或输出 `SECRET`；
+Rolo runtime 对 `SENSITIVE` 默认拒绝，只接受由主机保护的策略文件中的 OS 用户/组授权，
+并将允许与拒绝结果写入不含业务 payload 的审计日志。策略文件可被普通用户组修改、缺少
+策略或缺少审计路径时均闭锁拒绝，不能用普通布尔参数冒充认证。部署要求见
+[SENSITIVE_INVOCATION_POLICY.md](SENSITIVE_INVOCATION_POLICY.md)。
+
+Write operation 独立于数据分类执行默认拒绝。R1/R2 只能通过受保护 OS 策略中的精确
+operation 白名单放行；R3 静态策略无权放行，必须由管理员所有的外部提供器返回与单次
+request、robot、operation、输入 SHA-256 和五分钟内 expiry 绑定的能力。Adapt 的
+“operation 存在”验证不执行或绕过该 runtime 授权。
+
+文件、配置和日志正文还需第二层受保护资源分类：显式路径根或稳定 resource ID、SENSITIVE
+声明和最大字节数缺一不可；可能包含 SECRET 的资源不配置。相关 Tool 只返回 protected
+artifact 引用，不将正文直接放入通用调用结果或 Agent prompt。
+因此 `linux.file.read`、config inspect/validate/diff、process/service/container logs 以及通用
+log query/follow 只进入 `GATEABLE`，不会发布为无条件跨主机 builtin。
+
+通用 Linux host power、process、service、container、schedule 和 time synchronization 写操作
+已形成 `GATEABLE` 1.1.0 契约。输入使用发现得到的稳定资源身份，运行时仍要求精确 operation
+白名单；输出仅确认请求被接受，目标状态必须通过 status/inspect 另行观测。ROS 2 managed
+node activate/deactivate 采用同一边界，修正了 activate 被名称启发式误判为只读的历史问题。
+
+`linux.config.apply` 不接受可变路径：输入必须包含 protected artifact 引用、当前内容
+SHA-256、最大字节数和稳定目标资源身份，runtime 在授权后、adapter 执行前重新解析并核对
+artifact。apply 返回 `rollback://` opaque token；该 token 只定位 adapter 保存的回滚状态，
+自身不授予权限，rollback 仍必须重新通过 SENSITIVE 与 write 授权。两者都只确认请求接受，
+不把配置加载成功、服务重载成功或运行状态收敛写入 Adapt 结论。
+
+Odometry reset、localization initialize/reset/relocalize 以及 map create/save/load/clear/import 已形成
+非直接运动状态变更契约。它们禁止暗含速度、导航或建图执行；map create/import 只创建非激活
+记录，import 使用与 config apply 相同的 digest-pinned protected artifact 边界。Tuning candidate
+evaluate 固定为对既有候选、基线和证据的 R1 有界只读计算，不 apply 参数、不运行测试，也不
+触发机器人运动。
+
+`task.start`、`test.run`、`regression.run` 和 `diagnosis.run` 可能通过目标定义间接触发执行器，
+统一采用 R3，不因外层名称是 workflow 而降为 R2。它们只返回 run ID 和接受确认，必须绑定
+普通 cancel operation；为补齐该不变量，Registry 新增 `app.regression.cancel`。普通 cancel
+为 R2 且只请求中止，不冒充 protective/emergency stop，也不声称目标已经停止。契约编译器
+现在拒绝任何缺少 active write compensation contract 的 cancelable write。
+
+`access=read` 不再被错误地等同于 `risk=R0`。只读 operation 可以因总线探测流量、持续
+采样负载等原因成为 R1，但必须声明 `ELEVATED` observation overhead、具体副作用和非
+`on_demand` 的速率上限；read 仍禁止 R2/R3。`hw.bus.scan` 是当前首个受该门禁约束的
+GATEABLE 契约。
+
+短时采样、watch 和 rate/bandwidth 观测采用 `BOUNDED_STREAM`：输入必须同时限制时长、
+条数和字节数，调用可取消，输出必须报告截断状态。真正持续的摄像头流采用互为配对的
+`SESSION_START` / `SESSION_STOP`，start 返回带过期时间的 opaque session handle。通用
+runtime 不允许把无限输出伪装成普通 request/response。
 
 ## 标准化范围
 
@@ -67,7 +166,7 @@ Rolo Registry 是完整产品词汇；只有具备明确契约的 operation 才�
 
 ### 阶段 A：内部参考规范
 
-- 保持 297 项产品词汇稳定；
+- 对 294 项产品词汇持续执行显式保留、迁移和移除审计；
 - 将 operation 从 `DRAFT` 逐项提升为 `GATEABLE`；
 - 为契约建立固定 Schema、语义版本和 SHA-256 绑定；
 - 使用至少两个不同开源机器人项目验证 discovery、adapter 和静态 conformance；
@@ -128,9 +227,15 @@ Rolo Registry 是完整产品词汇；只有具备明确契约的 operation 才�
 Adapt 阶段只负责前三项，并且 Route conformance 只证明通路存在，不以一次调用的
 success/failure 判断行为正确性。Behavior、可靠性、性能和安全结论属于后续阶段。
 
+写 operation 的 `result_semantics` 必须为 `ACKNOWLEDGEMENT_ONLY`：Adapt 最多证明请求
+能够到达等价目标通路并获得接受或拒绝响应，不能把响应解释为动作完成、状态收敛、可靠性
+或安全性成立。R3 契约必须同时声明前置条件、确认后置条件、副作用和资源锁，输出必须要求
+`status`，并显式包含 `NOT_AUTHORIZED` 与 `PRECONDITION_FAILED` 等安全拒绝路径。上述字段
+缺失时，契约编译和独立 conformance 门禁都会拒绝发布。
+
 ## 近期工作
 
-1. 完成高复用 operation 的契约：设备状态、传感器读取、底盘状态、导航和诊断。
+1. 继续完成高复用 operation 的契约：设备状态、传感器读取、底盘状态、导航和诊断。
 2. 建立契约历史基线，使 CI 自动检查版本递增和破坏性变更。
 3. 用真实 ROS 1、ROS 2 和非 ROS 设备验证相同 Domain Profile。
 4. 将单位、frame、时间和错误语义映射到 ROS REP 与 OPC UA 信息模型。

@@ -1,15 +1,20 @@
 # Canonical Operation Registry 完整清单
 
-当前产品 Registry 共定义 **297** 个 canonical operations。本文按照 README 的四层产品视图
+当前产品 Registry 共定义 **294** 个 canonical operations。本文按照 README 的四层产品视图
 罗列；代码内部仍保留 `control`、`hw`、`linux`、`middleware`、`ros`、`app` 六个命名空间，
 用于实现路由和策略校验。
 
-清单表示稳定的产品词汇，不表示 297 项都已经具有可发布契约。每个 operation 必须显式
+Registry Operation、契约生命周期、升级/降级规则、R0-R3、数据分级和调用方法见
+[REGISTRY_OPERATION_GUIDE.md](REGISTRY_OPERATION_GUIDE.md)。
+
+清单表示稳定的产品词汇，不表示 294 项都已经具有可发布契约。每个 operation 必须显式
 定义输入/输出 Schema、错误契约、读写属性、风险、幂等性和取消语义，才能通过 Adapt
 门禁成为 `VERIFIED`；契约处于 `DRAFT` 的条目保持 `UNAVAILABLE`。已编写的正式契约见
 [OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)，可通过 `robotctl tool contract validate`
 编译校验。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
 [OPERATION_CONTRACT_STANDARDIZATION.md](OPERATION_CONTRACT_STANDARDIZATION.md)。
+已发现的实现重复、近义 operation 边界和待决策项见
+[OPERATION_TAXONOMY_AUDIT.md](OPERATION_TAXONOMY_AUDIT.md)。
 
 这是一份产品能力词汇表，不表示每台机器人都已激活全部操作。陌生主机只能提供候选绑定
 和证据；只有通过 Adapt conformance 门禁后，operation 才能在该机器人的 Active Tool
@@ -58,10 +63,9 @@ Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。
 - `hw.power.rail.disable`
 - `hw.power.cycle`
 
-## Linux（64）
+## Linux（63）
 
 - `linux.host.inventory`
-- `linux.host.inspect`
 - `linux.host.status`
 - `linux.host.uptime`
 - `linux.host.reboot`
@@ -125,7 +129,7 @@ Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。
 - `linux.time.status`
 - `linux.time.synchronize`
 
-## Middleware（44）
+## Middleware（41）
 
 - `middleware.inspect`
 - `middleware.status`
@@ -143,7 +147,6 @@ Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。
 - `ros.topic.rate`
 - `ros.topic.bandwidth`
 - `ros.topic.publish`
-- `ros.topic.echo`
 - `ros.service.list`
 - `ros.service.describe`
 - `ros.service.call`
@@ -165,14 +168,12 @@ Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。
 - `ros.parameter.rollback`
 - `ros.diagnostics.snapshot`
 - `ros.diagnostics.watch`
-- `ros.diagnostics.hardware`
-- `ros.diagnostics.software`
 - `ros.clock.status`
 - `ros.bag.inspect`
 - `ros.bag.record`
 - `ros.bag.play`
 
-## Application（149，包含 rolo 控制面）
+## Application（150，包含 rolo 控制面）
 
 - `tool.catalog`
 - `tool.schema`
@@ -296,6 +297,7 @@ Catalog 中成为 `AVAILABLE` 或 `VERIFIED`。
 - `app.test.evidence`
 - `app.regression.plan`
 - `app.regression.run`
+- `app.regression.cancel`
 - `app.regression.status`
 - `app.regression.result`
 - `app.diagnosis.snapshot`

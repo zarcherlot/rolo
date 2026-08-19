@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "ContentResourceRule": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "classification": {
+          "const": "SENSITIVE",
+          "title": "Classification",
+          "type": "string"
+        },
+        "allowed_roots": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Roots",
+          "type": "array"
+        },
+        "allowed_resources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Resources",
+          "type": "array"
+        },
+        "max_bytes": {
+          "exclusiveMinimum": 0,
+          "maximum": 100000000,
+          "title": "Max Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation",
+        "classification",
+        "max_bytes"
+      ],
+      "title": "ContentResourceRule",
+      "type": "object"
+    },
+    "InvocationRule": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_users": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Users",
+          "type": "array"
+        },
+        "allowed_groups": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Groups",
+          "type": "array"
+        }
+      },
+      "title": "InvocationRule",
+      "type": "object"
+    },
+    "WriteInvocationRule": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_users": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Users",
+          "type": "array"
+        },
+        "allowed_groups": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Groups",
+          "type": "array"
+        },
+        "allowed_operations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Operations",
+          "type": "array"
+        }
+      },
+      "title": "WriteInvocationRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-invocation-policy/v1",
+      "default": "rolo-invocation-policy/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sensitive": {
+      "$ref": "#/$defs/InvocationRule"
+    },
+    "writes": {
+      "$ref": "#/$defs/WriteInvocationRule"
+    },
+    "content_resources": {
+      "items": {
+        "$ref": "#/$defs/ContentResourceRule"
+      },
+      "title": "Content Resources",
+      "type": "array"
+    }
+  },
+  "title": "InvocationPolicy",
+  "type": "object"
+}

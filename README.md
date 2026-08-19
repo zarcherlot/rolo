@@ -37,7 +37,7 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 - **Middleware**：节点、Topic、Service、Action、TF、参数与诊断信息；
 - **Application**：建图、定位、导航、操作、测试、调优与任务状态。
 
-当前产品共定义 **297 个操作**：
+当前产品共定义 **294 个操作**：
 [`docs/CANONICAL_OPERATIONS.md`](docs/CANONICAL_OPERATIONS.md)。
 
 ### 主动发现

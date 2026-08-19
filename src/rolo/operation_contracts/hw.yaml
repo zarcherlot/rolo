@@ -1,12 +1,91 @@
 schema_version: robot-operation-contract-set/v1
 
+no_input: &no_input
+  type: object
+  properties: {}
+  additionalProperties: false
+
+selector_input: &selector_input
+  type: object
+  properties: {id: {type: string, minLength: 1}}
+  required: [id]
+  additionalProperties: false
+
+inventory_item: &inventory_item
+  type: object
+  properties:
+    id: {type: string}
+    name: {type: string}
+    vendor: {type: string}
+    model: {type: string}
+    serial: {type: string}
+    health: {type: string}
+  required: [id]
+  additionalProperties: true
+
+collection_output: &collection_output
+  type: object
+  properties:
+    status: {type: string}
+    items: {type: array, items: *inventory_item}
+    observed_at: {type: string}
+  required: [status, items, observed_at]
+  additionalProperties: false
+
+detail_output: &detail_output
+  type: object
+  properties:
+    status: {type: string}
+    item: *inventory_item
+    observed_at: {type: string}
+  required: [status, item, observed_at]
+  additionalProperties: false
+
+measurement: &measurement
+  type: object
+  properties:
+    name: {type: string}
+    value: {type: number}
+    unit: {type: string}
+    timestamp: {type: string}
+  required: [name, value, unit]
+  additionalProperties: false
+
+metrics_output: &metrics_output
+  type: object
+  properties:
+    status: {type: string}
+    id: {type: string}
+    health: {type: string}
+    metrics: {type: array, items: *measurement}
+    observed_at: {type: string}
+  required: [status, metrics, observed_at]
+  additionalProperties: false
+
+adapter_defaults: &adapter_defaults
+  schema_version: robot-operation-contract/v1
+  version: 1.1.0
+  lifecycle: GATEABLE
+  layer: hw
+  data_classification: INTERNAL
+  risk: R0
+  access: read
+  idempotent: true
+  cancelable: false
+  max_duration_s: 15
+  canonical_cli:
+    [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+  error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, OPERATION_FAILED]
+  retry_policy: bounded_exponential_backoff
+
 contracts:
   - schema_version: robot-operation-contract/v1
     contract_id: hw.inventory.scan
-    version: 1.0.0
+    version: 1.1.0
     lifecycle: RELEASED
     operation: hw.inventory.scan
     layer: hw
+    data_classification: INTERNAL
     description: Perform bounded read-only inventory of compute, buses, and attached hardware.
     risk: R0
     access: read
@@ -34,3 +113,225 @@ contracts:
       additionalProperties: false
     error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
     retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: hw.compute.list
+    operation: hw.compute.list
+    description: List compute modules with stable identity and declared health metadata.
+    capability_requirements: [compute inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.compute.inspect
+    operation: hw.compute.inspect
+    description: Inspect identity, model, and bounded metadata for one compute module.
+    capability_requirements: [compute inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.compute.status
+    operation: hw.compute.status
+    description: Read health and numeric resource metrics for one compute module.
+    capability_requirements: [compute health route]
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.clock.status
+    operation: hw.clock.status
+    description: Read hardware clock source, offset, and synchronization metrics.
+    capability_requirements: [hardware clock status route]
+    input_schema: *no_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.thermal.status
+    operation: hw.thermal.status
+    description: Read bounded temperatures, limits, and thermal health metrics.
+    capability_requirements: [thermal telemetry route]
+    input_schema: *no_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.storage.status
+    operation: hw.storage.status
+    description: Read bounded capacity, wear, and health metrics for attached storage.
+    capability_requirements: [storage telemetry route]
+    input_schema: *no_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.sensor.list
+    operation: hw.sensor.list
+    description: List sensors with stable identity, model, and declared health metadata.
+    capability_requirements: [sensor inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.sensor.inspect
+    operation: hw.sensor.inspect
+    description: Inspect identity, model, channels, and bounded metadata for one sensor.
+    capability_requirements: [sensor inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.sensor.status
+    operation: hw.sensor.status
+    description: Read health and bounded diagnostic metrics for one sensor.
+    capability_requirements: [sensor health route]
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.sensor.read
+    operation: hw.sensor.read
+    data_classification: SENSITIVE
+    description: Read one bounded numeric sample set from an explicit sensor.
+    capability_requirements: [bounded sensor read route]
+    time_semantics: Each sample timestamp identifies its observation time when available.
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.actuator.list
+    operation: hw.actuator.list
+    description: List actuators with stable identity, model, and declared health metadata.
+    capability_requirements: [actuator inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.actuator.inspect
+    operation: hw.actuator.inspect
+    description: Inspect identity, model, limits, and bounded metadata for one actuator.
+    capability_requirements: [actuator inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.actuator.status
+    operation: hw.actuator.status
+    description: Read health and bounded diagnostic metrics for one actuator.
+    capability_requirements: [actuator health route]
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.bus.list
+    operation: hw.bus.list
+    description: List hardware buses with stable identity, type, and declared health metadata.
+    capability_requirements: [hardware bus inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.bus.inspect
+    operation: hw.bus.inspect
+    description: Inspect identity, type, topology, and bounded metadata for one hardware bus.
+    capability_requirements: [hardware bus inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.bus.status
+    operation: hw.bus.status
+    description: Read health and bounded diagnostic metrics for one hardware bus.
+    capability_requirements: [hardware bus health route]
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.bus.statistics
+    operation: hw.bus.statistics
+    description: Read bounded traffic and error counters for one hardware bus.
+    capability_requirements: [hardware bus statistics route]
+    input_schema: *selector_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.bus.scan
+    operation: hw.bus.scan
+    description: Perform one bounded discovery scan on an explicit hardware bus.
+    risk: R1
+    observation_overhead: ELEVATED
+    capability_requirements: [bounded hardware bus discovery route]
+    side_effects: [Generates bounded probe traffic on the selected hardware bus.]
+    resource_locks: [hardware_bus_scan]
+    rate_limit: one scan per bus per 30 seconds
+    input_schema: *selector_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.firmware.list
+    operation: hw.firmware.list
+    description: List firmware-bearing components and their reported versions.
+    capability_requirements: [firmware inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.firmware.inspect
+    operation: hw.firmware.inspect
+    description: Inspect version, vendor, and bounded metadata for one firmware component.
+    capability_requirements: [firmware inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.firmware.verify
+    operation: hw.firmware.verify
+    description: Verify reported firmware identity or digest without changing the component.
+    capability_requirements: [firmware verification route]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        expected_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [id]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        verified: {type: boolean}
+        observed_sha256: {type: string}
+        observed_at: {type: string}
+      required: [status, id, verified, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: hw.power.status
+    operation: hw.power.status
+    description: Read overall robot power-source, voltage, current, and health metrics.
+    capability_requirements: [power telemetry route]
+    input_schema: *no_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.power.battery.status
+    operation: hw.power.battery.status
+    description: Read bounded battery charge, voltage, current, temperature, and health metrics.
+    capability_requirements: [battery telemetry route]
+    input_schema: *no_input
+    output_schema: *metrics_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.power.rail.list
+    operation: hw.power.rail.list
+    description: List controllable or observable power rails with stable identity metadata.
+    capability_requirements: [power rail inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: hw.power.rail.inspect
+    operation: hw.power.rail.inspect
+    description: Inspect identity, limits, and bounded metadata for one power rail.
+    capability_requirements: [power rail inventory route]
+    input_schema: *selector_input
+    output_schema: *detail_output

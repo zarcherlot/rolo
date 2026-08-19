@@ -26,11 +26,53 @@ introspection_output: &introspection_output
   required: [schema_version, operation, status, observed_at, data, evidence, warnings]
   additionalProperties: false
 
+artifact_output: &artifact_output
+  type: object
+  properties:
+    status: {type: string}
+    artifact_ref: {type: string}
+    media_type: {type: string}
+    bytes: {type: integer, minimum: 0}
+    observed_at: {type: string}
+  required: [status, artifact_ref, media_type, bytes, observed_at]
+  additionalProperties: false
+
+bounded_artifact_output: &bounded_artifact_output
+  type: object
+  properties:
+    status: {type: string}
+    artifact_ref: {type: string}
+    bytes: {type: integer, minimum: 0}
+    observed_at: {type: string}
+    truncated: {type: boolean}
+  required: [status, artifact_ref, bytes, observed_at, truncated]
+  additionalProperties: false
+
+write_ack_output: &write_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    target: {type: string}
+    observed_at: {type: string}
+  required: [status, target, observed_at]
+  additionalProperties: false
+
+config_apply_output: &config_apply_output
+  type: object
+  properties:
+    status: {type: string}
+    target: {type: string}
+    rollback_token: {type: string, minLength: 12}
+    observed_at: {type: string}
+  required: [status, target, rollback_token, observed_at]
+  additionalProperties: false
+
 defaults: &defaults
   schema_version: robot-operation-contract/v1
-  version: 1.0.0
+  version: 1.1.0
   lifecycle: RELEASED
   layer: linux
+  data_classification: INTERNAL
   risk: R0
   access: read
   idempotent: true
@@ -40,19 +82,32 @@ defaults: &defaults
   error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
   retry_policy: bounded_exponential_backoff
 
+write_defaults: &write_defaults
+  <<: *defaults
+  lifecycle: GATEABLE
+  risk: R2
+  access: write
+  idempotent: false
+  result_semantics: ACKNOWLEDGEMENT_ONLY
+  max_duration_s: 30
+  canonical_cli:
+    [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+  output_schema: *write_ack_output
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT,
+      OPERATION_FAILED]
+  capability_requirements:
+    [protected OS write policy and exact operation allowlist, gated adapter binding]
+  postconditions:
+    [The response acknowledges command acceptance only; resulting state must be observed separately.]
+  retry_policy: none
+
 contracts:
   - <<: *defaults
     contract_id: linux.host.inventory
     operation: linux.host.inventory
     description: Inventory host identity and available local control planes without mutation.
     canonical_cli: [robotctl, linux, host, inventory]
-    input_schema: *no_input
-
-  - <<: *defaults
-    contract_id: linux.host.inspect
-    operation: linux.host.inspect
-    description: Read the host inventory through the compatibility inspection command.
-    canonical_cli: [robotctl, linux, host, inspect]
     input_schema: *no_input
 
   - <<: *defaults
@@ -175,3 +230,765 @@ contracts:
     description: List bounded local listening sockets and owning processes when available.
     canonical_cli: [robotctl, linux, network, listeners]
     input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.host.status
+    operation: linux.host.status
+    description: Read compact host identity, platform, architecture, and uptime status.
+    canonical_cli: [robotctl, linux, host, status]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.host.uptime
+    operation: linux.host.uptime
+    description: Read elapsed seconds since the local host booted when supported.
+    canonical_cli: [robotctl, linux, host, uptime]
+    input_schema: *no_input
+    semantic_units: {uptime_s: s}
+
+  - <<: *defaults
+    contract_id: linux.file.hash
+    operation: linux.file.hash
+    description: Calculate a bounded SHA-256 digest for one explicit regular file.
+    canonical_cli: [robotctl, linux, file, hash, "{path}"]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      required: [path]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.network.routes
+    operation: linux.network.routes
+    description: List bounded local routing-table entries without changing network state.
+    canonical_cli: [robotctl, linux, network, routes]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.resource.cpu
+    operation: linux.resource.cpu
+    description: Read bounded CPU topology, architecture, and load metadata.
+    canonical_cli: [robotctl, linux, resource, cpu]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.resource.memory
+    operation: linux.resource.memory
+    description: Read physical memory totals and current availability when supported.
+    canonical_cli: [robotctl, linux, resource, memory]
+    input_schema: *no_input
+    semantic_units:
+      total_bytes: byte
+      available_bytes: byte
+      used_bytes: byte
+
+  - <<: *defaults
+    contract_id: linux.resource.disk
+    operation: linux.resource.disk
+    description: Read filesystem capacity for one explicit existing path.
+    canonical_cli: [robotctl, linux, resource, disk]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      additionalProperties: false
+    semantic_units:
+      total_bytes: byte
+      used_bytes: byte
+      free_bytes: byte
+
+  - <<: *defaults
+    contract_id: linux.resource.snapshot
+    operation: linux.resource.snapshot
+    description: Read one bounded CPU, memory, and filesystem resource snapshot.
+    canonical_cli: [robotctl, linux, resource, snapshot]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.time.status
+    operation: linux.time.status
+    description: Read wall-clock, timezone, and monotonic-clock metadata without synchronization.
+    canonical_cli: [robotctl, linux, time, status]
+    input_schema: *no_input
+    semantic_units:
+      utc_offset_s: s
+      wall_clock_resolution_s: s
+      monotonic_resolution_s: s
+
+  - <<: *defaults
+    contract_id: linux.process.resources
+    operation: linux.process.resources
+    description: Read bounded resource counters for one explicit process identifier.
+    canonical_cli: [robotctl, linux, process, resources, "{pid}"]
+    input_schema:
+      type: object
+      properties: {pid: {type: integer, minimum: 1}}
+      required: [pid]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.container.stats
+    operation: linux.container.stats
+    description: Read one non-streaming resource snapshot from Docker or Podman.
+    canonical_cli: [robotctl, linux, container, stats]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        runtime: {type: string, enum: [docker, podman]}
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.package.inspect
+    operation: linux.package.inspect
+    description: Read installed-package identity and version metadata without mutation.
+    canonical_cli: [robotctl, linux, package, inspect, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.file.inspect
+    operation: linux.file.inspect
+    description: Read metadata for one explicit filesystem entry without reading its content.
+    canonical_cli: [robotctl, linux, file, inspect, "{path}"]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      required: [path]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.file.list
+    operation: linux.file.list
+    description: List one directory level with a strict caller-controlled result bound.
+    canonical_cli: [robotctl, linux, file, list, "{path}"]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        limit: {type: integer, minimum: 1, maximum: 1000}
+      required: [path]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.network.interfaces
+    operation: linux.network.interfaces
+    description: List bounded network-interface and assigned-address metadata.
+    canonical_cli: [robotctl, linux, network, interfaces]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.network.statistics
+    operation: linux.network.statistics
+    description: Read bounded per-interface packet, error, and byte counters.
+    canonical_cli: [robotctl, linux, network, statistics]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.resource.gpu
+    operation: linux.resource.gpu
+    description: Read available GPU identity, driver, memory, thermal, and utilization metadata.
+    canonical_cli: [robotctl, linux, resource, gpu]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.binary.verify
+    operation: linux.binary.verify
+    description: Compare one explicit binary against a caller-supplied SHA-256 digest.
+    canonical_cli: [robotctl, linux, binary, verify, "{path}", --expected-sha256,
+      "{expected_sha256}"]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        expected_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [path, expected_sha256]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.package.verify
+    operation: linux.package.verify
+    description: Run a native read-only integrity check for one installed package.
+    canonical_cli: [robotctl, linux, package, verify, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.network.connections
+    operation: linux.network.connections
+    description: List bounded connection metadata and owning processes when available.
+    canonical_cli: [robotctl, linux, network, connections]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.network.dns
+    operation: linux.network.dns
+    description: Read bounded local DNS resolver configuration metadata.
+    canonical_cli: [robotctl, linux, network, dns]
+    input_schema: *no_input
+
+  - <<: *defaults
+    contract_id: linux.file.read
+    operation: linux.file.read
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Copy one policy-classified bounded file into a protected artifact without inline content.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected content-resource path classification]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [path, max_bytes]
+      additionalProperties: false
+    output_schema: *artifact_output
+
+  - <<: *defaults
+    contract_id: linux.config.inspect
+    operation: linux.config.inspect
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Parse one policy-classified bounded configuration into a protected artifact.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected configuration path classification]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        format: {type: string, enum: [auto, json, yaml, toml]}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [path, format, max_bytes]
+      additionalProperties: false
+    output_schema: *artifact_output
+
+  - <<: *defaults
+    contract_id: linux.config.validate
+    operation: linux.config.validate
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Validate one policy-classified bounded configuration without applying it.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected configuration path classification]
+    postconditions: [Validation findings are returned; target configuration is not changed.]
+    input_schema:
+      type: object
+      properties:
+        path: {type: string, minLength: 1}
+        format: {type: string, enum: [auto, json, yaml, toml]}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [path, format, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        valid: {type: boolean}
+        findings: {type: array, maxItems: 100, items: {type: string}}
+        observed_at: {type: string}
+      required: [status, valid, findings, observed_at]
+      additionalProperties: false
+
+  - <<: *defaults
+    contract_id: linux.config.diff
+    operation: linux.config.diff
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Compare two policy-classified bounded configurations into a protected artifact.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected configuration path classification]
+    input_schema:
+      type: object
+      properties:
+        left_path: {type: string, minLength: 1}
+        right_path: {type: string, minLength: 1}
+        format: {type: string, enum: [auto, json, yaml, toml]}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [left_path, right_path, format, max_bytes]
+      additionalProperties: false
+    output_schema: *artifact_output
+
+  - <<: *defaults
+    contract_id: linux.process.logs
+    operation: linux.process.logs
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Query bounded logs for one policy-classified stable process resource identity.
+    risk: R1
+    observation_overhead: ELEVATED
+    max_duration_s: 30
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected process log resource classification]
+    side_effects: [Queries and serializes bounded process logs into a protected artifact.]
+    rate_limit: one log query per process resource at a time
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        since: {type: string}
+        until: {type: string}
+        max_items: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [resource_id, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_artifact_output
+
+  - <<: *defaults
+    contract_id: linux.service.logs
+    operation: linux.service.logs
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Query bounded logs for one policy-classified stable service resource identity.
+    risk: R1
+    observation_overhead: ELEVATED
+    max_duration_s: 30
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected service log resource classification]
+    side_effects: [Queries and serializes bounded service logs into a protected artifact.]
+    rate_limit: one log query per service resource at a time
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        since: {type: string}
+        until: {type: string}
+        max_items: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [resource_id, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_artifact_output
+
+  - <<: *defaults
+    contract_id: linux.container.logs
+    operation: linux.container.logs
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Query bounded logs for one policy-classified stable container resource identity.
+    risk: R1
+    observation_overhead: ELEVATED
+    max_duration_s: 30
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected container log resource classification]
+    side_effects: [Queries and serializes bounded container logs into a protected artifact.]
+    rate_limit: one log query per container resource at a time
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        since: {type: string}
+        until: {type: string}
+        max_items: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [resource_id, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_artifact_output
+
+  - <<: *defaults
+    contract_id: linux.log.query
+    operation: linux.log.query
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Query one policy-classified log resource within explicit result bounds.
+    risk: R1
+    observation_overhead: ELEVATED
+    max_duration_s: 30
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected generic log resource classification]
+    side_effects: [Queries and serializes bounded log records into a protected artifact.]
+    rate_limit: one generic log query per resource at a time
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        query: {type: string}
+        since: {type: string}
+        until: {type: string}
+        max_items: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [resource_id, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_artifact_output
+
+  - <<: *defaults
+    contract_id: linux.log.follow
+    operation: linux.log.follow
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Follow one policy-classified log resource within explicit stream bounds.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [protected generic log resource classification]
+    side_effects: [Creates a temporary log follower and protected bounded artifact.]
+    rate_limit: one active log follower per resource
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [resource_id, duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_artifact_output
+
+  - <<: *write_defaults
+    contract_id: linux.host.reboot
+    operation: linux.host.reboot
+    description: Request a bounded-delay reboot of the target host through its gated control plane.
+    preconditions: [The target host exposes an authorized reboot control plane.]
+    side_effects: [Schedules a host reboot and interrupts local robot software.]
+    resource_locks: [host power-state control]
+    rate_limit: one pending host power-state command
+    input_schema:
+      type: object
+      properties:
+        delay_s: {type: integer, minimum: 0, maximum: 300}
+        reason: {type: string}
+      required: [delay_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.host.shutdown
+    operation: linux.host.shutdown
+    description: Request a bounded-delay shutdown of the target host through its gated control plane.
+    preconditions: [The target host exposes an authorized shutdown control plane.]
+    side_effects: [Schedules host shutdown and stops local robot software.]
+    resource_locks: [host power-state control]
+    rate_limit: one pending host power-state command
+    input_schema:
+      type: object
+      properties:
+        delay_s: {type: integer, minimum: 0, maximum: 300}
+        reason: {type: string}
+      required: [delay_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.process.start
+    operation: linux.process.start
+    description: Request startup of one discovered process resource through a gated adapter binding.
+    preconditions: [resource_id resolves to a discovered process launch profile.]
+    side_effects: [Creates a new process instance from the registered launch profile.]
+    resource_locks: [process resource identified by resource_id]
+    compensation_operation: linux.process.stop
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        args: {type: array, items: {type: string}, maxItems: 32}
+      required: [resource_id]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.process.stop
+    operation: linux.process.stop
+    description: Request bounded termination of one discovered process resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered process resource.]
+    side_effects: [Requests graceful process termination and may escalate after timeout_s.]
+    resource_locks: [process resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.process.restart
+    operation: linux.process.restart
+    description: Request bounded restart of one discovered process resource.
+    preconditions: [resource_id resolves to a discovered restartable process resource.]
+    side_effects: [Stops the current process instance and creates a replacement instance.]
+    resource_locks: [process resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.process.signal
+    operation: linux.process.signal
+    description: Send one bounded non-KILL signal to a discovered process resource.
+    preconditions: [resource_id resolves to a discovered process resource.]
+    side_effects: [Delivers the selected operating-system signal to the process resource.]
+    resource_locks: [process resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        signal: {type: string, enum: [HUP, TERM, USR1, USR2]}
+      required: [resource_id, signal]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.service.start
+    operation: linux.service.start
+    description: Request startup of one discovered operating-system service resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered service resource.]
+    side_effects: [Requests transition of the service into its running state.]
+    resource_locks: [service resource identified by resource_id]
+    compensation_operation: linux.service.stop
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.service.stop
+    operation: linux.service.stop
+    description: Request bounded stop of one discovered operating-system service resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered service resource.]
+    side_effects: [Requests transition of the service into its stopped state.]
+    resource_locks: [service resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.service.restart
+    operation: linux.service.restart
+    description: Request bounded restart of one discovered operating-system service resource.
+    preconditions: [resource_id resolves to a discovered restartable service resource.]
+    side_effects: [Requests a stop and subsequent start of the service resource.]
+    resource_locks: [service resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.service.enable
+    operation: linux.service.enable
+    description: Request persistent enablement of one discovered operating-system service resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered service resource.]
+    side_effects: [Changes persistent service-manager startup configuration.]
+    resource_locks: [service configuration identified by resource_id]
+    compensation_operation: linux.service.disable
+    input_schema:
+      type: object
+      properties: {resource_id: {type: string, minLength: 1}}
+      required: [resource_id]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.service.disable
+    operation: linux.service.disable
+    description: Request persistent disablement of one discovered operating-system service resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered service resource.]
+    side_effects: [Changes persistent service-manager startup configuration.]
+    resource_locks: [service configuration identified by resource_id]
+    input_schema:
+      type: object
+      properties: {resource_id: {type: string, minLength: 1}}
+      required: [resource_id]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.container.start
+    operation: linux.container.start
+    description: Request startup of one discovered container resource through its native runtime.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered container resource.]
+    side_effects: [Requests transition of the container into its running state.]
+    resource_locks: [container resource identified by resource_id]
+    compensation_operation: linux.container.stop
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        runtime: {type: string, enum: [docker, podman]}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.container.stop
+    operation: linux.container.stop
+    description: Request bounded stop of one discovered container resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered container resource.]
+    side_effects: [Requests transition of the container into its stopped state.]
+    resource_locks: [container resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        runtime: {type: string, enum: [docker, podman]}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.container.restart
+    operation: linux.container.restart
+    description: Request bounded restart of one discovered container resource.
+    preconditions: [resource_id resolves to a discovered restartable container resource.]
+    side_effects: [Requests a stop and subsequent start of the container resource.]
+    resource_locks: [container resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        runtime: {type: string, enum: [docker, podman]}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.schedule.enable
+    operation: linux.schedule.enable
+    description: Request persistent enablement of one discovered schedule resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered schedule resource.]
+    side_effects: [Changes persistent scheduler enablement state.]
+    resource_locks: [schedule resource identified by resource_id]
+    compensation_operation: linux.schedule.disable
+    input_schema:
+      type: object
+      properties: {resource_id: {type: string, minLength: 1}}
+      required: [resource_id]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.schedule.disable
+    operation: linux.schedule.disable
+    description: Request persistent disablement of one discovered schedule resource.
+    idempotent: true
+    preconditions: [resource_id resolves to a discovered schedule resource.]
+    side_effects: [Changes persistent scheduler enablement state.]
+    resource_locks: [schedule resource identified by resource_id]
+    input_schema:
+      type: object
+      properties: {resource_id: {type: string, minLength: 1}}
+      required: [resource_id]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.schedule.run
+    operation: linux.schedule.run
+    description: Request one immediate run of a discovered schedule resource without changing its cadence.
+    preconditions: [resource_id resolves to a discovered runnable schedule resource.]
+    side_effects: [Starts one workload instance associated with the schedule resource.]
+    resource_locks: [schedule resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [resource_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.time.synchronize
+    operation: linux.time.synchronize
+    description: Request one bounded host clock synchronization through an available time service.
+    preconditions: [The selected time source is installed and configured on the target host.]
+    side_effects: [May slew or step the host clock and affect time-correlated observations.]
+    resource_locks: [host time synchronization]
+    rate_limit: one host clock synchronization at a time
+    input_schema:
+      type: object
+      properties:
+        source: {type: string, enum: [system, ntp, ptp, chrony]}
+        timeout_s: {type: number, minimum: 0.1, maximum: 120}
+      required: [source, timeout_s]
+      additionalProperties: false
+
+  - <<: *write_defaults
+    contract_id: linux.config.apply
+    operation: linux.config.apply
+    data_classification: SENSITIVE
+    description: Apply one digest-pinned configuration artifact to a discovered target resource.
+    preconditions:
+      [target_resource_id resolves to a discovered configuration target,
+        artifact_ref resolves inside the protected artifact root and matches artifact_sha256]
+    postconditions:
+      [The response acknowledges apply acceptance and returns a non-authorizing rollback token;
+        resulting configuration state must be observed separately.]
+    side_effects: [May replace persistent target configuration and trigger target-specific reload behavior.]
+    resource_locks: [configuration target identified by target_resource_id]
+    compensation_operation: linux.config.rollback
+    capability_requirements:
+      [protected OS write policy and exact operation allowlist, gated adapter binding,
+        protected artifact resolver with SHA-256 verification, protected rollback token store]
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_ARTIFACT, DIGEST_MISMATCH,
+        PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+    input_schema:
+      type: object
+      properties:
+        target_resource_id: {type: string, minLength: 1}
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        format: {type: string, enum: [auto, json, yaml, toml]}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [target_resource_id, artifact_ref, artifact_sha256, format, max_bytes]
+      additionalProperties: false
+    output_schema: *config_apply_output
+
+  - <<: *write_defaults
+    contract_id: linux.config.rollback
+    operation: linux.config.rollback
+    data_classification: SENSITIVE
+    description: Request rollback of one configuration target using its system-issued opaque token.
+    preconditions:
+      [target_resource_id resolves to the token-bound configuration target,
+        rollback_token was issued by the gated adapter and has not been consumed or expired]
+    postconditions:
+      [The response acknowledges rollback acceptance only; resulting configuration state must be
+        observed separately.]
+    side_effects: [May restore persistent target configuration and trigger target-specific reload behavior.]
+    resource_locks: [configuration target identified by target_resource_id]
+    capability_requirements:
+      [protected OS write policy and exact operation allowlist, gated adapter binding,
+        protected rollback token store]
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_ROLLBACK_TOKEN, TOKEN_EXPIRED,
+        PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+    input_schema:
+      type: object
+      properties:
+        target_resource_id: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+      required: [target_resource_id, rollback_token]
+      additionalProperties: false

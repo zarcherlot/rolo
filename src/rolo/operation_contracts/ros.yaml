@@ -2,9 +2,10 @@ schema_version: robot-operation-contract-set/v1
 
 probe_defaults: &probe
   schema_version: robot-operation-contract/v1
-  version: 1.0.0
+  version: 1.1.0
   lifecycle: RELEASED
   layer: ros
+  data_classification: INTERNAL
   risk: R0
   access: read
   idempotent: true
@@ -12,6 +13,45 @@ probe_defaults: &probe
   max_duration_s: 15
   error_codes: [UNAVAILABLE, TIMEOUT, PROBE_FAILED]
   retry_policy: bounded_exponential_backoff
+
+no_input: &no_input
+  type: object
+  properties: {}
+  additionalProperties: false
+
+introspection_output: &introspection_output
+  type: object
+  properties:
+    schema_version: {type: string}
+    operation: {type: string}
+    status: {type: string}
+    observed_at: {type: string}
+    data: {type: object, properties: {}, additionalProperties: true}
+    evidence: {type: array, items: {type: object, properties: {}, additionalProperties: true}}
+    warnings: {type: array, items: {type: string}}
+  required: [schema_version, operation, status, observed_at, data, evidence, warnings]
+  additionalProperties: false
+
+bounded_stream_output: &bounded_stream_output
+  type: object
+  properties:
+    status: {type: string}
+    observed_at: {type: string}
+    truncated: {type: boolean}
+    items:
+      type: array
+      items: {type: object, properties: {}, additionalProperties: true}
+  required: [status, observed_at, truncated, items]
+  additionalProperties: false
+
+node_transition_output: &node_transition_output
+  type: object
+  properties:
+    status: {type: string}
+    node: {type: string}
+    observed_at: {type: string}
+  required: [status, node, observed_at]
+  additionalProperties: false
 
 contracts:
   - <<: *probe
@@ -40,8 +80,9 @@ contracts:
 
   - <<: *probe
     contract_id: ros.node.status
+    version: 2.0.0
     operation: ros.node.status
-    description: Inspect the observed status and interfaces of one existing ROS node.
+    description: Read compact visibility status for one ROS node without interface inspection.
     canonical_cli: [robotctl, ros, node, status, "{name}"]
     input_schema:
       type: object
@@ -58,8 +99,12 @@ contracts:
         observed_at: {type: string}
         data:
           type: object
-          properties: {}
-          additionalProperties: true
+          properties:
+            name: {type: string}
+            visible: {type: boolean}
+            ros_version: {type: integer, minimum: 1, maximum: 2}
+          required: [name, visible]
+          additionalProperties: false
         evidence:
           type: array
           items:
@@ -68,4 +113,573 @@ contracts:
             additionalProperties: true
         warnings: {type: array, items: {type: string}}
       required: [schema_version, operation, status, observed_at, data, evidence, warnings]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.node.list
+    operation: ros.node.list
+    description: List bounded node names from the observable ROS graph.
+    canonical_cli: [robotctl, ros, node, list]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.node.inspect
+    operation: ros.node.inspect
+    description: Inspect one observed ROS node and its declared interfaces.
+    canonical_cli: [robotctl, ros, node, inspect, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.node.lifecycle
+    operation: ros.node.lifecycle
+    description: Read one ROS 2 managed node lifecycle state when available.
+    canonical_cli: [robotctl, ros, node, lifecycle, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.node.activate
+    operation: ros.node.activate
+    lifecycle: GATEABLE
+    description: Request activation of one ROS 2 managed-lifecycle node.
+    risk: R2
+    access: write
+    idempotent: false
+    result_semantics: ACKNOWLEDGEMENT_ONLY
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements:
+      [ROS 2 managed lifecycle transition route, protected OS write policy and exact operation allowlist]
+    preconditions: [The node is a managed-lifecycle node in a state that permits activation.]
+    postconditions:
+      [The response acknowledges transition acceptance only; lifecycle state must be observed separately.]
+    side_effects: [Requests transition of the managed node into its active state.]
+    resource_locks: [ROS managed node identified by name]
+    compensation_operation: ros.node.deactivate
+    retry_policy: none
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_TRANSITION, TIMEOUT,
+        OPERATION_FAILED]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *node_transition_output
+
+  - <<: *probe
+    contract_id: ros.node.deactivate
+    operation: ros.node.deactivate
+    lifecycle: GATEABLE
+    description: Request deactivation of one ROS 2 managed-lifecycle node.
+    risk: R2
+    access: write
+    idempotent: false
+    result_semantics: ACKNOWLEDGEMENT_ONLY
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements:
+      [ROS 2 managed lifecycle transition route, protected OS write policy and exact operation allowlist]
+    preconditions: [The node is a managed-lifecycle node in a state that permits deactivation.]
+    postconditions:
+      [The response acknowledges transition acceptance only; lifecycle state must be observed separately.]
+    side_effects: [Requests transition of the managed node into its inactive state.]
+    resource_locks: [ROS managed node identified by name]
+    retry_policy: none
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_TRANSITION, TIMEOUT,
+        OPERATION_FAILED]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *node_transition_output
+
+  - <<: *probe
+    contract_id: ros.topic.list
+    operation: ros.topic.list
+    description: List bounded topic names and declared types from the observable ROS graph.
+    canonical_cli: [robotctl, ros, topic, list]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.topic.describe
+    operation: ros.topic.describe
+    description: Read publisher, subscriber, and type metadata for one observed topic.
+    canonical_cli: [robotctl, ros, topic, describe, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.topic.sample
+    operation: ros.topic.sample
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Collect a bounded set of structured samples from one explicit ROS topic.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    side_effects: [Creates a temporary topic subscription and consumes host resources.]
+    rate_limit: one active sampler per topic
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [name, duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.topic.rate
+    operation: ros.topic.rate
+    lifecycle: GATEABLE
+    description: Measure bounded topic publication-rate intervals without returning payload values.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    side_effects: [Creates a temporary topic subscription and consumes host resources.]
+    rate_limit: one active rate observer per topic
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [name, duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.topic.bandwidth
+    operation: ros.topic.bandwidth
+    lifecycle: GATEABLE
+    description: Measure bounded topic bandwidth intervals without retaining message payloads.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    side_effects: [Creates a temporary topic subscription and consumes host resources.]
+    rate_limit: one active bandwidth observer per topic
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [name, duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.diagnostics.snapshot
+    version: 2.0.0
+    operation: ros.diagnostics.snapshot
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Collect a bounded category-filtered diagnostic snapshot from the observable ROS graph.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    side_effects: [Creates a temporary diagnostics subscription and consumes host resources.]
+    rate_limit: one active diagnostic observer per robot
+    input_schema:
+      type: object
+      properties:
+        category: {type: string, enum: [all, hardware, software]}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [category, duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.diagnostics.watch
+    operation: ros.diagnostics.watch
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Watch diagnostic messages within explicit time, item, and byte limits.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    side_effects: [Creates a temporary diagnostics subscription and consumes host resources.]
+    rate_limit: one active diagnostic observer per robot
+    input_schema:
+      type: object
+      properties:
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.service.list
+    operation: ros.service.list
+    description: List bounded ROS service names and declared types.
+    canonical_cli: [robotctl, ros, service, list]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.service.describe
+    operation: ros.service.describe
+    description: Read declared type metadata for one observed ROS service.
+    canonical_cli: [robotctl, ros, service, describe, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.action.list
+    operation: ros.action.list
+    description: List bounded ROS 2 action names and declared types.
+    canonical_cli: [robotctl, ros, action, list]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.action.describe
+    operation: ros.action.describe
+    description: Read client, server, and type metadata for one observed ROS 2 action.
+    canonical_cli: [robotctl, ros, action, describe, "{name}"]
+    input_schema:
+      type: object
+      properties: {name: {type: string, minLength: 1}}
+      required: [name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.parameter.list
+    operation: ros.parameter.list
+    description: List bounded parameter names visible through the active ROS graph.
+    canonical_cli: [robotctl, ros, parameter, list]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.parameter.get
+    operation: ros.parameter.get
+    description: Read one parameter value from an explicit ROS node namespace.
+    data_classification: SENSITIVE
+    canonical_cli: [robotctl, ros, parameter, get, "{name}", --node, "{node}"]
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        name: {type: string, minLength: 1}
+      required: [node, name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.parameter.describe
+    operation: ros.parameter.describe
+    description: Read one ROS 2 parameter descriptor without changing its value.
+    canonical_cli: [robotctl, ros, parameter, describe, "{name}", --node, "{node}"]
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        name: {type: string, minLength: 1}
+      required: [node, name]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.clock.status
+    operation: ros.clock.status
+    description: Inspect ROS clock-topic availability without sampling or changing time.
+    canonical_cli: [robotctl, ros, clock, status]
+    input_schema: *no_input
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.bag.inspect
+    operation: ros.bag.inspect
+    description: Read bounded metadata for one explicit ROS 2 or ROS 1 bag path.
+    canonical_cli: [robotctl, ros, bag, inspect, "{path}"]
+    input_schema:
+      type: object
+      properties: {path: {type: string, minLength: 1}}
+      required: [path]
+      additionalProperties: false
+    output_schema: *introspection_output
+
+  - <<: *probe
+    contract_id: ros.action.status
+    operation: ros.action.status
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Read bounded goal-status observations for one explicit ROS action endpoint.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS action goal-status observation route]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        goal_id: {type: string}
+        limit: {type: integer, minimum: 1, maximum: 100}
+      required: [name, limit]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        action: {type: string}
+        goals:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            properties:
+              goal_id: {type: string}
+              state: {type: string}
+              observed_at: {type: string}
+            required: [goal_id, state, observed_at]
+            additionalProperties: false
+        observed_at: {type: string}
+      required: [status, action, goals, observed_at]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.tf.tree
+    operation: ros.tf.tree
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Read a bounded parent-child frame tree from the observable ROS transform graph.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS transform graph route]
+    input_schema:
+      type: object
+      properties:
+        max_items: {type: integer, minimum: 1, maximum: 2000}
+      required: [max_items]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        frames: {type: array, maxItems: 2000, items: {type: string}}
+        edges:
+          type: array
+          maxItems: 2000
+          items:
+            type: object
+            properties:
+              parent: {type: string}
+              child: {type: string}
+            required: [parent, child]
+            additionalProperties: false
+        truncated: {type: boolean}
+        observed_at: {type: string}
+      required: [status, frames, edges, truncated, observed_at]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.tf.snapshot
+    operation: ros.tf.snapshot
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Read a bounded instantaneous transform snapshot with explicit frame identities.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS transform snapshot route]
+    coordinate_frames: [target-declared ROS frames]
+    input_schema:
+      type: object
+      properties:
+        max_items: {type: integer, minimum: 1, maximum: 2000}
+      required: [max_items]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        transforms:
+          type: array
+          maxItems: 2000
+          items:
+            type: object
+            properties:
+              parent: {type: string}
+              child: {type: string}
+              translation_m:
+                type: object
+                properties:
+                  x: {type: number}
+                  y: {type: number}
+                  z: {type: number}
+                required: [x, y, z]
+                additionalProperties: false
+              rotation_xyzw:
+                type: object
+                properties:
+                  x: {type: number}
+                  y: {type: number}
+                  z: {type: number}
+                  w: {type: number}
+                required: [x, y, z, w]
+                additionalProperties: false
+              observed_at: {type: string}
+            required: [parent, child, translation_m, rotation_xyzw, observed_at]
+            additionalProperties: false
+        truncated: {type: boolean}
+        observed_at: {type: string}
+      required: [status, transforms, truncated, observed_at]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.tf.lookup
+    operation: ros.tf.lookup
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Read one bounded transform between explicit source and target ROS frames.
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS transform lookup route]
+    coordinate_frames: [source_frame, target_frame]
+    input_schema:
+      type: object
+      properties:
+        source_frame: {type: string, minLength: 1}
+        target_frame: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 10}
+      required: [source_frame, target_frame, timeout_s]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        source_frame: {type: string}
+        target_frame: {type: string}
+        translation_m:
+          type: object
+          properties:
+            x: {type: number}
+            y: {type: number}
+            z: {type: number}
+          required: [x, y, z]
+          additionalProperties: false
+        rotation_xyzw:
+          type: object
+          properties:
+            x: {type: number}
+            y: {type: number}
+            z: {type: number}
+            w: {type: number}
+          required: [x, y, z, w]
+          additionalProperties: false
+        observed_at: {type: string}
+      required:
+        [status, source_frame, target_frame, translation_m, rotation_xyzw, observed_at]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.tf.monitor
+    operation: ros.tf.monitor
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Monitor ROS transforms within explicit time, item, and byte limits.
+    risk: R1
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    cancelable: true
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS transform monitoring route]
+    coordinate_frames: [source_frame, target_frame]
+    side_effects: [Creates a temporary transform subscription and consumes host resources.]
+    rate_limit: one active transform monitor per frame pair
+    input_schema:
+      type: object
+      properties:
+        source_frame: {type: string}
+        target_frame: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *probe
+    contract_id: ros.parameter.dump
+    operation: ros.parameter.dump
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Export bounded parameter values for one explicit ROS node to an artifact reference.
+    risk: R1
+    observation_overhead: ELEVATED
+    max_duration_s: 30
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements: [ROS node parameter export route]
+    side_effects: [Reads multiple parameter values and creates a bounded artifact.]
+    rate_limit: one parameter export per node at a time
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [node, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        node: {type: string}
+        artifact_ref: {type: string}
+        media_type: {type: string, enum: [application/yaml]}
+        bytes: {type: integer, minimum: 0}
+        observed_at: {type: string}
+      required: [status, node, artifact_ref, media_type, bytes, observed_at]
       additionalProperties: false

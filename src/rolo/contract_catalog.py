@@ -24,6 +24,32 @@ class ContractLifecycle(str, Enum):
     DEPRECATED = "DEPRECATED"
 
 
+class DataClassification(str, Enum):
+    PUBLIC = "PUBLIC"
+    INTERNAL = "INTERNAL"
+    SENSITIVE = "SENSITIVE"
+    SECRET = "SECRET"
+
+
+class ResultSemantics(str, Enum):
+    OBSERVATION = "OBSERVATION"
+    ACKNOWLEDGEMENT_ONLY = "ACKNOWLEDGEMENT_ONLY"
+    SESSION_HANDLE = "SESSION_HANDLE"
+
+
+class ObservationOverhead(str, Enum):
+    NEGLIGIBLE = "NEGLIGIBLE"
+    BOUNDED = "BOUNDED"
+    ELEVATED = "ELEVATED"
+
+
+class ExecutionMode(str, Enum):
+    REQUEST_RESPONSE = "REQUEST_RESPONSE"
+    BOUNDED_STREAM = "BOUNDED_STREAM"
+    SESSION_START = "SESSION_START"
+    SESSION_STOP = "SESSION_STOP"
+
+
 class OperationContract(BaseModel):
     """Product-owned semantics for one canonical operation."""
 
@@ -36,6 +62,12 @@ class OperationContract(BaseModel):
     operation: str
     layer: Literal["control", "hw", "linux", "middleware", "ros", "app"]
     description: str = Field(min_length=8)
+    data_classification: DataClassification
+    result_semantics: ResultSemantics = ResultSemantics.OBSERVATION
+    observation_overhead: ObservationOverhead = ObservationOverhead.BOUNDED
+    execution_mode: ExecutionMode = ExecutionMode.REQUEST_RESPONSE
+    paired_operation: str | None = None
+    replacement_operation: str | None = None
     risk: Literal["R0", "R1", "R2", "R3"]
     access: Literal["read", "write"]
     idempotent: bool
@@ -63,10 +95,39 @@ class OperationContract(BaseModel):
             raise ValueError("contract_id must equal the canonical operation")
         if not _SEMVER.fullmatch(self.version):
             raise ValueError("contract version must be semantic version MAJOR.MINOR.PATCH")
-        if self.access == "read" and self.risk != "R0":
-            raise ValueError("read operations must be R0")
-        if self.cancelable and self.access != "write":
-            raise ValueError("only write operations may be cancelable")
+        if self.data_classification == DataClassification.SECRET:
+            raise ValueError("SECRET data cannot be exposed by a generic operation contract")
+        if self.lifecycle == ContractLifecycle.DEPRECATED:
+            if not self.replacement_operation or self.replacement_operation == self.operation:
+                raise ValueError("deprecated contract requires a distinct replacement_operation")
+        elif self.replacement_operation is not None:
+            raise ValueError("only deprecated contracts may declare replacement_operation")
+        if self.access == "read" and self.risk in {"R2", "R3"}:
+            raise ValueError("read operations may only use R0 or R1 risk")
+        if self.access == "read" and self.risk == "R1":
+            if self.observation_overhead != ObservationOverhead.ELEVATED:
+                raise ValueError("R1 read operations require ELEVATED observation overhead")
+            if not self.side_effects or self.rate_limit == "on_demand":
+                raise ValueError("R1 read operations require side effects and a bounded rate limit")
+        if self.access == "read" and self.risk == "R0" and (
+            self.observation_overhead == ObservationOverhead.ELEVATED
+        ):
+            raise ValueError("ELEVATED observation overhead requires R1 risk")
+        expected_result = (
+            ResultSemantics.SESSION_HANDLE
+            if self.execution_mode == ExecutionMode.SESSION_START
+            else ResultSemantics.OBSERVATION
+            if self.access == "read"
+            else ResultSemantics.ACKNOWLEDGEMENT_ONLY
+        )
+        if self.result_semantics != expected_result:
+            raise ValueError(
+                f"{self.access} operations require {expected_result.value} result semantics"
+            )
+        if self.cancelable and self.access != "write" and (
+            self.execution_mode != ExecutionMode.BOUNDED_STREAM
+        ):
+            raise ValueError("only writes and bounded streams may be cancelable")
         placeholders = {
             match
             for token in self.canonical_cli
@@ -81,7 +142,78 @@ class OperationContract(BaseModel):
         validate_schema_definition(self.output_schema, f"{self.operation} output")
         if not self.output_schema.get("properties"):
             raise ValueError("output schema must declare at least one property")
+        if self.access == "write" and "status" not in self.output_schema.get("required", []):
+            raise ValueError("write operation output must require status acknowledgement")
+        if self.risk == "R3":
+            missing = [
+                label
+                for label, values in (
+                    ("preconditions", self.preconditions),
+                    ("postconditions", self.postconditions),
+                    ("side_effects", self.side_effects),
+                    ("resource_locks", self.resource_locks),
+                )
+                if not values
+            ]
+            if missing:
+                raise ValueError(f"R3 operation lacks safety contract fields: {missing}")
+        self._validate_execution_mode()
         return self
+
+    def _validate_execution_mode(self) -> None:
+        input_properties = self.input_schema.get("properties", {})
+        input_required = set(self.input_schema.get("required", []))
+        output_properties = self.output_schema.get("properties", {})
+        output_required = set(self.output_schema.get("required", []))
+        if self.execution_mode == ExecutionMode.REQUEST_RESPONSE:
+            if self.paired_operation is not None:
+                raise ValueError("request-response operation cannot declare paired_operation")
+            return
+        if self.execution_mode == ExecutionMode.BOUNDED_STREAM:
+            if self.access != "read" or not self.cancelable:
+                raise ValueError("bounded streams must be cancelable read operations")
+            if self.risk != "R1" or self.observation_overhead != ObservationOverhead.ELEVATED:
+                raise ValueError("bounded streams require R1 risk and ELEVATED overhead")
+            required_bounds = {"duration_s", "max_items", "max_bytes"}
+            if not required_bounds <= input_required:
+                raise ValueError(
+                    "bounded stream input must require duration_s, max_items, max_bytes"
+                )
+            for name in required_bounds:
+                schema = input_properties.get(name, {})
+                if schema.get("minimum", 0) <= 0 or schema.get("maximum") is None:
+                    raise ValueError(f"bounded stream {name} requires positive minimum and maximum")
+            if self.max_duration_s < input_properties["duration_s"]["maximum"]:
+                raise ValueError("max_duration_s must cover the bounded stream duration maximum")
+            required_output = {"status", "observed_at", "truncated"}
+            if not required_output <= output_required or not (
+                {"items", "artifact_ref"} & set(output_properties)
+            ):
+                raise ValueError(
+                    "bounded stream output must expose bounds and items or artifact_ref"
+                )
+            if self.paired_operation is not None:
+                raise ValueError("bounded stream cannot declare paired_operation")
+            return
+        if self.access != "write" or not self.paired_operation:
+            raise ValueError("session control requires write access and paired_operation")
+        if not self.side_effects or not self.resource_locks:
+            raise ValueError("session control requires side effects and resource locks")
+        if self.execution_mode == ExecutionMode.SESSION_START:
+            required_bounds = {"ttl_s", "max_bytes"}
+            if not required_bounds <= input_required:
+                raise ValueError("session start input must require ttl_s and max_bytes")
+            for name in required_bounds:
+                schema = input_properties.get(name, {})
+                if schema.get("minimum", 0) <= 0 or schema.get("maximum") is None:
+                    raise ValueError(f"session start {name} requires positive minimum and maximum")
+            if not {"status", "session_id", "expires_at"} <= output_required:
+                raise ValueError("session start output must require status, session_id, expires_at")
+        elif self.execution_mode == ExecutionMode.SESSION_STOP:
+            if "session_id" not in input_required:
+                raise ValueError("session stop input must require session_id")
+            if not {"status", "session_id"} <= output_required:
+                raise ValueError("session stop output must require status and session_id")
 
     @property
     def sha256(self) -> str:
@@ -104,6 +236,47 @@ class OperationContractCatalog(BaseModel):
         operations = [contract.operation for contract in self.contracts]
         if len(operations) != len(set(operations)):
             raise ValueError("operation contract catalog contains duplicates")
+        by_operation = {contract.operation: contract for contract in self.contracts}
+        for contract in self.contracts:
+            if contract.replacement_operation is not None:
+                replacement = by_operation.get(contract.replacement_operation)
+                if replacement is None or replacement.lifecycle == ContractLifecycle.DEPRECATED:
+                    raise ValueError(
+                        f"active replacement contract is missing: {contract.operation}"
+                    )
+            if contract.compensation_operation is not None:
+                compensation = by_operation.get(contract.compensation_operation)
+                if (
+                    compensation is None
+                    or compensation.lifecycle == ContractLifecycle.DEPRECATED
+                    or compensation.access != "write"
+                ):
+                    raise ValueError(
+                        f"active write compensation contract is missing: {contract.operation}"
+                    )
+            if (
+                contract.access == "write"
+                and contract.cancelable
+                and contract.compensation_operation is None
+            ):
+                raise ValueError(
+                    f"cancelable write contract lacks compensation: {contract.operation}"
+                )
+            if contract.paired_operation is None:
+                continue
+            paired = by_operation.get(contract.paired_operation)
+            if paired is None:
+                raise ValueError(f"paired operation contract is missing: {contract.operation}")
+            expected_mode = (
+                ExecutionMode.SESSION_STOP
+                if contract.execution_mode == ExecutionMode.SESSION_START
+                else ExecutionMode.SESSION_START
+            )
+            if (
+                paired.execution_mode != expected_mode
+                or paired.paired_operation != contract.operation
+            ):
+                raise ValueError(f"session operation pair is not reciprocal: {contract.operation}")
         return self
 
     @property
@@ -156,6 +329,25 @@ def compatibility_issues(previous: OperationContract, current: OperationContract
         issues.append("contract major version decreased")
     if previous.access != current.access or previous.risk != current.risk:
         issues.append("access or risk policy changed")
+    if previous.result_semantics != current.result_semantics:
+        issues.append("result semantics changed")
+    if previous.observation_overhead != current.observation_overhead:
+        issues.append("observation overhead changed")
+    if (
+        previous.execution_mode != current.execution_mode
+        or previous.paired_operation != current.paired_operation
+    ):
+        issues.append("execution mode or session pairing changed")
+    classification_rank = {
+        DataClassification.PUBLIC: 0,
+        DataClassification.INTERNAL: 1,
+        DataClassification.SENSITIVE: 2,
+        DataClassification.SECRET: 3,
+    }
+    if classification_rank[current.data_classification] < classification_rank[
+        previous.data_classification
+    ]:
+        issues.append("data classification was weakened")
     old_input = previous.input_schema.get("properties", {})
     new_input = current.input_schema.get("properties", {})
     removed_input = sorted(set(old_input) - set(new_input))
@@ -213,11 +405,12 @@ def render_contract_catalog(catalog: OperationContractCatalog) -> str:
         "",
         f"Catalog SHA-256: `{catalog.sha256}`",
         "",
-        "| Operation | Lifecycle | Version | Contract SHA-256 |",
-        "|---|---|---|---|",
+        "| Operation | Lifecycle | Version | Data | Contract SHA-256 |",
+        "|---|---|---|---|---|",
     ]
     lines.extend(
         f"| `{contract.operation}` | {contract.lifecycle.value} | `{contract.version}` | "
+        f"`{contract.data_classification.value}` | "
         f"`{contract.sha256}` |"
         for contract in catalog.contracts
     )
@@ -232,6 +425,12 @@ def render_contract_catalog(catalog: OperationContractCatalog) -> str:
                 f"- Lifecycle/version: `{contract.lifecycle.value}` / `{contract.version}`",
                 f"- Layer/access/risk: `{contract.layer}` / `{contract.access}` / "
                 f"`{contract.risk}`",
+                f"- Data classification: `{contract.data_classification.value}`",
+                f"- Result semantics: `{contract.result_semantics.value}`",
+                f"- Observation overhead: `{contract.observation_overhead.value}`",
+                f"- Execution mode: `{contract.execution_mode.value}`",
+                f"- Paired operation: `{contract.paired_operation or 'none'}`",
+                f"- Replacement operation: `{contract.replacement_operation or 'none'}`",
                 f"- Idempotent/cancelable: `{str(contract.idempotent).lower()}` / "
                 f"`{str(contract.cancelable).lower()}`",
                 f"- Maximum duration: `{contract.max_duration_s:g}s`",

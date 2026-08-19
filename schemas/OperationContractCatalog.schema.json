@@ -10,6 +10,35 @@
       "title": "ContractLifecycle",
       "type": "string"
     },
+    "DataClassification": {
+      "enum": [
+        "PUBLIC",
+        "INTERNAL",
+        "SENSITIVE",
+        "SECRET"
+      ],
+      "title": "DataClassification",
+      "type": "string"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "REQUEST_RESPONSE",
+        "BOUNDED_STREAM",
+        "SESSION_START",
+        "SESSION_STOP"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "ObservationOverhead": {
+      "enum": [
+        "NEGLIGIBLE",
+        "BOUNDED",
+        "ELEVATED"
+      ],
+      "title": "ObservationOverhead",
+      "type": "string"
+    },
     "OperationContract": {
       "additionalProperties": false,
       "description": "Product-owned semantics for one canonical operation.",
@@ -51,6 +80,45 @@
           "minLength": 8,
           "title": "Description",
           "type": "string"
+        },
+        "data_classification": {
+          "$ref": "#/$defs/DataClassification"
+        },
+        "result_semantics": {
+          "$ref": "#/$defs/ResultSemantics",
+          "default": "OBSERVATION"
+        },
+        "observation_overhead": {
+          "$ref": "#/$defs/ObservationOverhead",
+          "default": "BOUNDED"
+        },
+        "execution_mode": {
+          "$ref": "#/$defs/ExecutionMode",
+          "default": "REQUEST_RESPONSE"
+        },
+        "paired_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paired Operation"
+        },
+        "replacement_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement Operation"
         },
         "risk": {
           "enum": [
@@ -193,6 +261,7 @@
         "operation",
         "layer",
         "description",
+        "data_classification",
         "risk",
         "access",
         "idempotent",
@@ -205,6 +274,15 @@
       ],
       "title": "OperationContract",
       "type": "object"
+    },
+    "ResultSemantics": {
+      "enum": [
+        "OBSERVATION",
+        "ACKNOWLEDGEMENT_ONLY",
+        "SESSION_HANDLE"
+      ],
+      "title": "ResultSemantics",
+      "type": "string"
     }
   },
   "additionalProperties": false,

@@ -139,6 +139,15 @@ class ToolDescriptor(BaseModel):
     contract_lifecycle: Literal["DRAFT", "GATEABLE", "RELEASED", "DEPRECATED"] = "DRAFT"
     contract_version: str | None = None
     contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    data_classification: Literal["PUBLIC", "INTERNAL", "SENSITIVE", "SECRET"] | None = None
+    result_semantics: Literal[
+        "OBSERVATION", "ACKNOWLEDGEMENT_ONLY", "SESSION_HANDLE"
+    ] | None = None
+    execution_mode: Literal[
+        "REQUEST_RESPONSE", "BOUNDED_STREAM", "SESSION_START", "SESSION_STOP"
+    ] = "REQUEST_RESPONSE"
+    paired_operation: str | None = None
+    replacement_operation: str | None = None
     input_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
     output_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
     capability_requirements: list[str] = Field(default_factory=list)
@@ -157,7 +166,7 @@ class ToolDescriptor(BaseModel):
     )
     retry_policy: str = "bounded_exponential_backoff_for_read_only_probe"
     compensation_operation: str | None = None
-    observation_overhead: str = "bounded read-only probe"
+    observation_overhead: Literal["NEGLIGIBLE", "BOUNDED", "ELEVATED"] = "BOUNDED"
     evidence: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
 

@@ -238,7 +238,7 @@ created_at: 2026-08-18T00:00:00Z
 ```
 
 Raw source, documentation and help output are not embedded in the normal Adapter Agent context.
-Neither are the complete 297-operation Registry, whole Wiki, or executable inventory. Bounded hashes
+Neither are the complete 294-operation Registry, whole Wiki, or executable inventory. Bounded hashes
 and artifact references preserve traceability.
 
 Source is supporting evidence rather than a request for the Agent to understand the entire tree.

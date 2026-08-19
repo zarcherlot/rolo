@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -21,6 +22,284 @@ def test_host_inventory_exposes_bootstrap_control_planes() -> None:
         "schedulers",
         "container_markers",
     }
+
+
+def test_retired_host_inspect_operation_keeps_cli_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"operation": "linux.host.inventory", "status": "SUCCEEDED"}
+    monkeypatch.setattr(host_introspection, "host_inventory", lambda: payload)
+    runner = CliRunner()
+
+    inspect_result = runner.invoke(app, ["linux", "host", "inspect"])
+    inventory_result = runner.invoke(app, ["linux", "host", "inventory"])
+
+    assert inspect_result.exit_code == 0
+    assert inventory_result.exit_code == 0
+    assert json.loads(inspect_result.output) == json.loads(inventory_result.output) == payload
+
+
+def test_generic_host_resource_and_time_operations_are_callable(tmp_path: Path) -> None:
+    target = tmp_path / "payload.bin"
+    target.write_bytes(b"rolo")
+
+    results = [
+        host_introspection.host_status(),
+        host_introspection.host_uptime(),
+        host_introspection.file_hash(target),
+        host_introspection.resource_cpu(),
+        host_introspection.resource_memory(),
+        host_introspection.resource_disk(tmp_path),
+        host_introspection.resource_snapshot(tmp_path),
+        host_introspection.time_status(),
+    ]
+
+    assert all(result["operation"].startswith("linux.") for result in results)
+    assert all(result["status"] in {"SUCCEEDED", "PARTIAL", "UNAVAILABLE"} for result in results)
+    assert results[2]["data"]["sha256"] == (
+        "b5beb35d79007f63bf1029e61b635d309eca02ac0c5459ee691c53a35e0089fa"
+    )
+    assert results[5]["data"]["total_bytes"] > 0
+    assert results[7]["data"]["monotonic_ns"] > 0
+
+
+def test_network_routes_degrades_when_platform_has_no_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "UnknownOS")
+
+    result = host_introspection.network_routes()
+
+    assert result["operation"] == "linux.network.routes"
+    assert result["status"] == "UNAVAILABLE"
+    assert result["data"] == {"routes": []}
+    assert host_introspection.network_connections()["status"] == "UNAVAILABLE"
+    assert host_introspection.network_dns()["status"] == "UNAVAILABLE"
+
+
+def test_second_linux_metadata_batch_is_bounded_and_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = tmp_path / "payload.txt"
+    payload.write_text("content is not returned", encoding="utf-8")
+    (tmp_path / "second.txt").write_text("two", encoding="utf-8")
+
+    inspected = host_introspection.file_inspect(payload)
+    listed = host_introspection.file_list(tmp_path, limit=1)
+    verified = host_introspection.binary_verify(
+        payload,
+        hashlib.sha256(payload.read_bytes()).hexdigest(),
+    )
+
+    assert inspected["data"]["kind"] == "file"
+    assert "content" not in inspected["data"]
+    assert len(listed["data"]["entries"]) == 1
+    assert verified["data"]["verified"] is True
+    with pytest.raises(ValueError, match="64 hexadecimal"):
+        host_introspection.binary_verify(payload, "not-a-digest")
+    with pytest.raises(ValueError, match="limit must be between"):
+        host_introspection.file_list(tmp_path, limit=1_001)
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        host_introspection.shutil,
+        "which",
+        lambda name: (
+            f"/usr/bin/{name}" if name in {"docker", "dpkg-query", "dpkg"} else None
+        ),
+    )
+
+    def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
+        del kwargs
+        calls.append(argv)
+        if argv[0] == "docker":
+            return {
+                "status": "SUCCEEDED",
+                "returncode": 0,
+                "stdout": '{"Name":"drive","CPUPerc":"1.0%"}\n',
+            }
+        if argv[0] == "dpkg-query":
+            return {
+                "status": "SUCCEEDED",
+                "returncode": 0,
+                "stdout": "drive\t1.2.3\tamd64\tinstall ok installed\n",
+            }
+        return {"status": "SUCCEEDED", "returncode": 0, "stdout": ""}
+
+    monkeypatch.setattr(host_introspection, "_command", fake_command)
+
+    stats = host_introspection.container_stats("drive")
+    package = host_introspection.package_inspect("drive")
+    integrity = host_introspection.package_verify("drive")
+
+    assert stats["data"]["containers"] == [{"Name": "drive", "CPUPerc": "1.0%"}]
+    assert package["data"]["manager"] == "dpkg"
+    assert integrity["data"]["verified"] is True
+    assert calls[0] == [
+        "docker",
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{json .}}",
+        "drive",
+    ]
+
+
+def test_network_metadata_uses_structured_linux_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Linux")
+
+    def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
+        del kwargs
+        return {
+            "status": "SUCCEEDED",
+            "stdout": '[{"ifindex":1,"ifname":"lo"}]',
+            "argv": argv,
+        }
+
+    monkeypatch.setattr(host_introspection, "_command", fake_command)
+
+    interfaces = host_introspection.network_interfaces()
+    statistics = host_introspection.network_statistics()
+
+    assert interfaces["data"]["interfaces"][0]["ifname"] == "lo"
+    assert statistics["data"]["interfaces"][0]["ifindex"] == 1
+
+
+def test_process_resource_parser_normalizes_proc_byte_values() -> None:
+    values = host_introspection._proc_key_values(
+        "Name:\tdriver\nVmRSS:\t12 kB\nThreads:\t4\n", byte_values=True
+    )
+
+    assert values == {"Name": "driver", "VmRSS_bytes": 12 * 1024, "Threads": 4}
+
+
+def test_middleware_status_and_graph_are_derived_from_bounded_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inspection = {
+        "status": "SUCCEEDED",
+        "data": {
+            "installed_interfaces": {"ros2": "/usr/bin/ros2", "mqtt": None},
+            "process_candidates": [
+                {
+                    "process": {"pid": 42, "name": "robot_bridge"},
+                    "protocol_tokens": ["ros", "dds"],
+                }
+            ],
+            "listeners": [{"local_port": 7400}],
+        },
+        "warnings": [],
+    }
+    monkeypatch.setattr(host_introspection, "middleware_inspect", lambda: inspection)
+
+    status = host_introspection.middleware_status()
+    graph = host_introspection.middleware_graph_snapshot()
+
+    assert status["data"] == {
+        "installed_interfaces": {"ros2": "/usr/bin/ros2"},
+        "process_candidate_count": 1,
+        "listener_count": 1,
+    }
+    node_ids = {node["id"] for node in graph["data"]["nodes"]}
+    assert {"interface:ros2", "interface:ros", "interface:dds", "process:42"} <= node_ids
+    assert len(graph["data"]["edges"]) == 2
+
+
+def test_ros_read_only_discovery_uses_ros2_cli_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        host_introspection.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name == "ros2" else None,
+    )
+
+    def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
+        del kwargs
+        calls.append(argv)
+        return {"status": "SUCCEEDED", "stdout": "/alpha\n/beta\n"}
+
+    monkeypatch.setattr(host_introspection, "_command", fake_command)
+
+    nodes = host_introspection.ros_node_list()
+    topic = host_introspection.ros_topic_describe("/camera/image")
+    actions = host_introspection.ros_action_list()
+
+    assert nodes["data"] == {"ros_version": 2, "nodes": ["/alpha", "/beta"]}
+    assert topic["operation"] == "ros.topic.describe"
+    assert actions["data"]["ros_version"] == 2
+    assert calls == [
+        ["ros2", "node", "list"],
+        ["ros2", "topic", "info", "/camera/image", "--verbose"],
+        ["ros2", "action", "list", "-t"],
+    ]
+
+
+def test_ros_node_status_is_compact_visibility_not_interface_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        host_introspection.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name == "ros2" else None,
+    )
+
+    def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
+        del kwargs
+        calls.append(argv)
+        return {"status": "SUCCEEDED", "stdout": "/alpha\n/beta\n"}
+
+    monkeypatch.setattr(host_introspection, "_command", fake_command)
+
+    result = host_introspection.ros_node_status("/alpha")
+
+    assert result["data"] == {"name": "/alpha", "visible": True, "ros_version": 2}
+    assert "details" not in result["data"]
+    assert calls == [["ros2", "node", "list"]]
+
+
+def test_ros_action_discovery_degrades_without_ros2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.shutil, "which", lambda name: None)
+
+    result = host_introspection.ros_action_list()
+
+    assert result["status"] == "UNAVAILABLE"
+    assert result["data"] == {"ros_version": None, "actions": []}
+
+
+def test_ros_parameter_reads_require_explicit_node_and_remain_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        host_introspection.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name == "ros2" else None,
+    )
+
+    def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
+        del kwargs
+        calls.append(argv)
+        return {"status": "SUCCEEDED", "stdout": "Integer value is: 7\n"}
+
+    monkeypatch.setattr(host_introspection, "_command", fake_command)
+
+    value = host_introspection.ros_parameter_get("/controller", "rate")
+    descriptor = host_introspection.ros_parameter_describe("/controller", "rate")
+
+    assert value["data"]["value"] == "Integer value is: 7"
+    assert descriptor["data"]["ros_version"] == 2
+    assert calls == [
+        ["ros2", "param", "get", "/controller", "rate"],
+        ["ros2", "param", "describe", "/controller", "rate"],
+    ]
 
 
 def test_service_list_normalizes_linux_systemd_output(
@@ -97,6 +376,7 @@ def test_cli_exposes_introspection_command_tree() -> None:
 
     linux_help = runner.invoke(app, ["linux", "--help"])
     middleware = runner.invoke(app, ["middleware", "inspect"])
+    runtime_version = runner.invoke(app, ["runtime", "version"])
     binary = runner.invoke(app, ["linux", "binary", "describe", sys.executable])
 
     assert linux_help.exit_code == 0, linux_help.output
@@ -107,12 +387,18 @@ def test_cli_exposes_introspection_command_tree() -> None:
         "schedule",
         "process",
         "binary",
+        "package",
         "cli",
         "config",
+        "file",
         "network",
+        "resource",
+        "time",
     ):
         assert command in linux_help.output
     assert middleware.exit_code == 0, middleware.output
     assert json.loads(middleware.output)["operation"] == "middleware.inspect"
     assert binary.exit_code == 0, binary.output
     assert json.loads(binary.output)["operation"] == "linux.binary.describe"
+    assert runtime_version.exit_code == 0, runtime_version.output
+    assert json.loads(runtime_version.output)["version"]

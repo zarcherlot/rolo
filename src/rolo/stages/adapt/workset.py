@@ -351,14 +351,15 @@ def evidence_metadata(
     path, authority = resolve_evidence_path(artifact_root, robot_id, reference, discovery_id)
     if not path.exists():
         raise FileNotFoundError(path)
-    return {
+    result: dict[str, Any] = {
         "reference": reference,
         "resolved_path": str(path),
         "authority": authority,
         "kind": "directory" if path.is_dir() else "file",
-        "size_bytes": path.stat().st_size if path.is_file() else None,
-        "sha256": sha256_file(path) if path.is_file() else None,
     }
+    if path.is_file():
+        result.update(size_bytes=path.stat().st_size, sha256=sha256_file(path))
+    return result
 
 
 def evidence_snippet(

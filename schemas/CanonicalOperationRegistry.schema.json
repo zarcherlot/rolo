@@ -101,6 +101,60 @@
           "default": null,
           "title": "Contract Sha256"
         },
+        "data_classification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DataClassification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "result_semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultSemantics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "observation_overhead": {
+          "$ref": "#/$defs/ObservationOverhead",
+          "default": "BOUNDED"
+        },
+        "execution_mode": {
+          "$ref": "#/$defs/ExecutionMode",
+          "default": "REQUEST_RESPONSE"
+        },
+        "paired_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paired Operation"
+        },
+        "replacement_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement Operation"
+        },
         "capability_requirements": {
           "items": {
             "type": "string"
@@ -195,6 +249,44 @@
         "DEPRECATED"
       ],
       "title": "ContractLifecycle",
+      "type": "string"
+    },
+    "DataClassification": {
+      "enum": [
+        "PUBLIC",
+        "INTERNAL",
+        "SENSITIVE",
+        "SECRET"
+      ],
+      "title": "DataClassification",
+      "type": "string"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "REQUEST_RESPONSE",
+        "BOUNDED_STREAM",
+        "SESSION_START",
+        "SESSION_STOP"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "ObservationOverhead": {
+      "enum": [
+        "NEGLIGIBLE",
+        "BOUNDED",
+        "ELEVATED"
+      ],
+      "title": "ObservationOverhead",
+      "type": "string"
+    },
+    "ResultSemantics": {
+      "enum": [
+        "OBSERVATION",
+        "ACKNOWLEDGEMENT_ONLY",
+        "SESSION_HANDLE"
+      ],
+      "title": "ResultSemantics",
       "type": "string"
     }
   },

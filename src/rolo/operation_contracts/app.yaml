@@ -12,24 +12,201 @@ status_output: &status_output
   required: [status]
   additionalProperties: false
 
+ack_output: &ack_output
+  type: object
+  properties:
+    status: {type: string}
+    observed_at: {type: string}
+  required: [status, observed_at]
+  additionalProperties: false
+
+map_ack_output: &map_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    map_id: {type: string}
+    observed_at: {type: string}
+  required: [status, map_id, observed_at]
+  additionalProperties: false
+
+run_ack_output: &run_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    run_id: {type: string}
+    observed_at: {type: string}
+  required: [status, run_id, observed_at]
+  additionalProperties: false
+
+selector_input: &selector_input
+  type: object
+  properties: {id: {type: string, minLength: 1}}
+  required: [id]
+  additionalProperties: false
+
+observable_item: &observable_item
+  type: object
+  properties:
+    id: {type: string}
+    name: {type: string}
+    status: {type: string}
+    health: {type: string}
+    frame_id: {type: string}
+  required: [id]
+  additionalProperties: true
+
+collection_output: &collection_output
+  type: object
+  properties:
+    status: {type: string}
+    items: {type: array, items: *observable_item}
+    observed_at: {type: string}
+  required: [status, items, observed_at]
+  additionalProperties: false
+
+detail_output: &detail_output
+  type: object
+  properties:
+    status: {type: string}
+    item: *observable_item
+    observed_at: {type: string}
+  required: [status, item, observed_at]
+  additionalProperties: false
+
+observed_status_output: &observed_status_output
+  type: object
+  properties:
+    status: {type: string}
+    id: {type: string}
+    health: {type: string}
+    details:
+      type: object
+      properties: {}
+      additionalProperties: true
+    observed_at: {type: string}
+  required: [status, observed_at]
+  additionalProperties: false
+
+document_output: &document_output
+  type: object
+  properties:
+    status: {type: string}
+    data:
+      type: object
+      properties: {}
+      additionalProperties: true
+    observed_at: {type: string}
+  required: [status, data, observed_at]
+  additionalProperties: false
+
+result_output: &result_output
+  type: object
+  properties:
+    status: {type: string}
+    id: {type: string}
+    result: {type: object, properties: {}, additionalProperties: true}
+    observed_at: {type: string}
+  required: [status, id, result, observed_at]
+  additionalProperties: false
+
+evidence_output: &evidence_output
+  type: object
+  properties:
+    status: {type: string}
+    id: {type: string}
+    artifacts:
+      type: array
+      maxItems: 256
+      items:
+        type: object
+        properties:
+          artifact_ref: {type: string, minLength: 1}
+          media_type: {type: string}
+          observed_at: {type: string}
+        required: [artifact_ref]
+        additionalProperties: false
+    observed_at: {type: string}
+  required: [status, id, artifacts, observed_at]
+  additionalProperties: false
+
+bounded_stream_output: &bounded_stream_output
+  type: object
+  properties:
+    status: {type: string}
+    observed_at: {type: string}
+    truncated: {type: boolean}
+    items:
+      type: array
+      items: {type: object, properties: {}, additionalProperties: true}
+  required: [status, observed_at, truncated, items]
+  additionalProperties: false
+
 adapter_defaults: &adapter_defaults
   schema_version: robot-operation-contract/v1
-  version: 1.0.0
+  version: 1.1.0
   lifecycle: GATEABLE
   layer: app
+  data_classification: INTERNAL
   max_duration_s: 30
   canonical_cli:
     [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
   error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, OPERATION_FAILED]
   retry_policy: none
 
+observation_defaults: &observation_defaults
+  <<: *adapter_defaults
+  risk: R0
+  access: read
+  idempotent: true
+  cancelable: false
+  retry_policy: bounded_exponential_backoff
+
+mutation_defaults: &mutation_defaults
+  <<: *adapter_defaults
+  risk: R2
+  access: write
+  idempotent: false
+  cancelable: false
+  result_semantics: ACKNOWLEDGEMENT_ONLY
+  output_schema: *ack_output
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT,
+      OPERATION_FAILED]
+  postconditions:
+    [The response acknowledges command acceptance only; resulting state must be observed separately.]
+  retry_policy: none
+
+r3_run_defaults: &r3_run_defaults
+  <<: *mutation_defaults
+  data_classification: SENSITIVE
+  risk: R3
+  cancelable: true
+  max_duration_s: 30
+  output_schema: *run_ack_output
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY,
+      PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
+cancel_defaults: &cancel_defaults
+  <<: *mutation_defaults
+  data_classification: SENSITIVE
+  idempotent: true
+  output_schema: *run_ack_output
+  capability_requirements:
+    [target-bound run cancellation route, protected OS write policy and exact operation allowlist]
+  postconditions:
+    [The response acknowledges cancellation acceptance only; stopped state must be observed separately.]
+  retry_policy: none
+
 contracts:
   - schema_version: robot-operation-contract/v1
     contract_id: app.robot.discover
-    version: 1.0.0
+    version: 1.1.0
     lifecycle: RELEASED
     operation: app.robot.discover
     layer: app
+    data_classification: INTERNAL
     description: Discover bounded application entrypoints and declared interfaces from supplied roots.
     risk: R0
     access: read
@@ -65,6 +242,7 @@ contracts:
     description: Submit a bounded planar base velocity command in base_link coordinates.
     risk: R3
     access: write
+    result_semantics: ACKNOWLEDGEMENT_ONLY
     idempotent: false
     cancelable: false
     capability_requirements: [planar mobile base velocity command route]
@@ -75,6 +253,8 @@ contracts:
     time_semantics: The command is a transient setpoint governed by the target watchdog.
     side_effects: [May cause physical base motion.]
     resource_locks: [mobile_base_motion]
+    error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, NOT_AUTHORIZED,
+      PRECONDITION_FAILED, OPERATION_FAILED]
     input_schema:
       type: object
       properties:
@@ -109,6 +289,7 @@ contracts:
   - <<: *adapter_defaults
     contract_id: app.map.inspect
     operation: app.map.inspect
+    data_classification: SENSITIVE
     description: Read bounded metadata for the active or selected two-dimensional map.
     risk: R0
     access: read
@@ -137,6 +318,7 @@ contracts:
   - <<: *adapter_defaults
     contract_id: app.camera.snapshot
     operation: app.camera.snapshot
+    data_classification: SENSITIVE
     description: Capture or reference one bounded frame from a selected camera stream.
     risk: R0
     access: read
@@ -165,12 +347,15 @@ contracts:
     description: Request the target safety controller to enter its emergency-stop state.
     risk: R3
     access: write
+    result_semantics: ACKNOWLEDGEMENT_ONLY
     idempotent: true
     cancelable: false
     preconditions: [A verified emergency-stop request route exists.]
     postconditions: [Only request acknowledgement is asserted in Adapt.]
     side_effects: [May stop all physical motion immediately.]
     resource_locks: [robot_safety_state]
+    error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, NOT_AUTHORIZED,
+      PRECONDITION_FAILED, OPERATION_FAILED]
     input_schema: *no_input
     output_schema:
       type: object
@@ -186,12 +371,15 @@ contracts:
     description: Request the target safety controller to enter a protective-stop state.
     risk: R3
     access: write
+    result_semantics: ACKNOWLEDGEMENT_ONLY
     idempotent: true
     cancelable: false
     preconditions: [A verified protective-stop request route exists.]
     postconditions: [Only request acknowledgement is asserted in Adapt.]
     side_effects: [May stop physical motion.]
     resource_locks: [robot_safety_state]
+    error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, NOT_AUTHORIZED,
+      PRECONDITION_FAILED, OPERATION_FAILED]
     input_schema: *no_input
     output_schema:
       type: object
@@ -207,6 +395,7 @@ contracts:
     description: Request clearance of a previously established target safety stop state.
     risk: R3
     access: write
+    result_semantics: ACKNOWLEDGEMENT_ONLY
     idempotent: false
     cancelable: false
     preconditions:
@@ -215,6 +404,8 @@ contracts:
     postconditions: [Only request acknowledgement is asserted in Adapt.]
     side_effects: [May permit subsequent physical motion.]
     resource_locks: [robot_safety_state]
+    error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, NOT_AUTHORIZED,
+      PRECONDITION_FAILED, OPERATION_FAILED]
     input_schema: *no_input
     output_schema:
       type: object
@@ -222,4 +413,1728 @@ contracts:
         status: {type: string}
         stop_state: {type: string}
       required: [status]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.robot.status
+    operation: app.robot.status
+    description: Read the target robot application lifecycle state without changing it.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [robot application status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.stream.start
+    operation: app.camera.stream.start
+    data_classification: SENSITIVE
+    description: Start a bounded camera stream session with explicit lifetime and byte limits.
+    result_semantics: SESSION_HANDLE
+    execution_mode: SESSION_START
+    paired_operation: app.camera.stream.stop
+    risk: R1
+    access: write
+    idempotent: false
+    cancelable: false
+    max_duration_s: 10
+    capability_requirements: [camera streaming route with bounded session controls]
+    postconditions: [A session handle and expiry are acknowledged; frame quality is not asserted.]
+    side_effects: [Opens a camera stream and consumes camera, compute, and storage resources.]
+    resource_locks: [camera_stream]
+    rate_limit: one active session per camera
+    input_schema:
+      type: object
+      properties:
+        camera: {type: string, minLength: 1}
+        ttl_s: {type: number, minimum: 1, maximum: 300}
+        max_bytes: {type: integer, minimum: 1024, maximum: 100000000}
+      required: [camera, ttl_s, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        session_id: {type: string}
+        expires_at: {type: string}
+        stream_ref: {type: string}
+      required: [status, session_id, expires_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.stream.stop
+    operation: app.camera.stream.stop
+    data_classification: SENSITIVE
+    description: Stop one camera stream session identified by its opaque session handle.
+    execution_mode: SESSION_STOP
+    paired_operation: app.camera.stream.start
+    result_semantics: ACKNOWLEDGEMENT_ONLY
+    risk: R1
+    access: write
+    idempotent: true
+    cancelable: false
+    max_duration_s: 10
+    capability_requirements: [camera streaming route with bounded session controls]
+    postconditions: [Session-stop acknowledgement is returned; resource release is not asserted.]
+    side_effects: [Requests closure of an active camera stream.]
+    resource_locks: [camera_stream]
+    rate_limit: one stop request per session at a time
+    input_schema:
+      type: object
+      properties: {session_id: {type: string, minLength: 1}}
+      required: [session_id]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        session_id: {type: string}
+      required: [status, session_id]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.robot.health
+    operation: app.robot.health
+    description: Read the aggregated application health and bounded supporting details.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [robot application health route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+    retry_policy: bounded_exponential_backoff
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.list
+    operation: app.camera.list
+    description: List application-visible cameras with stable identity and frame metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [camera inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.status
+    operation: app.camera.status
+    description: Read stream availability and health for one application-visible camera.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [camera status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.inspect
+    operation: app.camera.inspect
+    description: Inspect identity, frame, format, and bounded metadata for one camera.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [camera metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: app.camera.calibration.status
+    operation: app.camera.calibration.status
+    description: Read calibration availability, identity, and age for one camera.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [camera calibration status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.lidar.list
+    operation: app.lidar.list
+    description: List application-visible lidars with stable identity and frame metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [lidar inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: app.lidar.status
+    operation: app.lidar.status
+    description: Read stream availability and health for one application-visible lidar.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [lidar status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.lidar.inspect
+    operation: app.lidar.inspect
+    description: Inspect identity, frame, scan geometry, and bounded metadata for one lidar.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [lidar metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: app.lidar.calibration.status
+    operation: app.lidar.calibration.status
+    description: Read calibration availability, identity, and age for one lidar.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [lidar calibration status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.imu.list
+    operation: app.imu.list
+    description: List application-visible inertial units with stable identity and frame metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [IMU inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: app.imu.status
+    operation: app.imu.status
+    description: Read stream availability and health for one inertial measurement unit.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [IMU status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.imu.inspect
+    operation: app.imu.inspect
+    description: Inspect identity, frame, ranges, and bounded metadata for one inertial unit.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [IMU metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: app.imu.calibration.status
+    operation: app.imu.calibration.status
+    description: Read calibration availability, identity, and age for one inertial unit.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [IMU calibration status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.gnss.list
+    operation: app.gnss.list
+    description: List application-visible GNSS receivers with stable identity metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [GNSS inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: app.gnss.status
+    operation: app.gnss.status
+    description: Read fix availability and receiver health without returning a position sample.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [GNSS status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.gnss.inspect
+    operation: app.gnss.inspect
+    description: Inspect identity, supported constellations, and metadata for one GNSS receiver.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [GNSS metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *adapter_defaults
+    contract_id: app.odometry.status
+    operation: app.odometry.status
+    description: Read odometry stream availability, frames, and bounded quality metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [odometry status route]
+    coordinate_frames: [odom, base_link]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.base.status
+    operation: app.base.status
+    description: Read mobile-base readiness, control mode, and bounded health metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [mobile base status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.manipulation.status
+    operation: app.manipulation.status
+    description: Read manipulator readiness, control mode, and bounded health metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [manipulator status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.gripper.status
+    operation: app.gripper.status
+    description: Read gripper readiness, opening state, and bounded health metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [gripper status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.localization.pose
+    operation: app.localization.pose
+    data_classification: SENSITIVE
+    description: Read one timestamped robot pose in the declared localization frame.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [localization pose route]
+    coordinate_frames: [map, base_link]
+    semantic_units:
+      x_m: m
+      y_m: m
+      z_m: m
+      orientation_x: quaternion
+      orientation_y: quaternion
+      orientation_z: quaternion
+      orientation_w: quaternion
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        frame_id: {type: string}
+        child_frame_id: {type: string}
+        x_m: {type: number}
+        y_m: {type: number}
+        z_m: {type: number}
+        orientation_x: {type: number}
+        orientation_y: {type: number}
+        orientation_z: {type: number}
+        orientation_w: {type: number}
+        timestamp: {type: string}
+        observed_at: {type: string}
+      required: [status, frame_id, x_m, y_m, orientation_x, orientation_y, orientation_z,
+        orientation_w, timestamp, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.localization.quality
+    operation: app.localization.quality
+    description: Read normalized localization quality and the frame to which it applies.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [localization quality route]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        quality: {type: number, minimum: 0, maximum: 1}
+        frame_id: {type: string}
+        observed_at: {type: string}
+      required: [status, quality, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.map.list
+    operation: app.map.list
+    data_classification: SENSITIVE
+    description: List bounded identifiers and metadata for maps visible to the application.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [map inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *adapter_defaults
+    contract_id: app.navigation.status
+    operation: app.navigation.status
+    description: Read navigation lifecycle, current activity, and bounded readiness metadata.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [navigation status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.status
+    operation: app.safety.status
+    description: Read aggregated stop, interlock, and safety-controller state.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [safety status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.limits.inspect
+    operation: app.safety.limits.inspect
+    description: Read bounded configured motion and operating limits without changing them.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [safety limits inspection route]
+    input_schema: *no_input
+    output_schema: *document_output
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.zones.inspect
+    operation: app.safety.zones.inspect
+    data_classification: SENSITIVE
+    description: Read bounded configured safety-zone geometry without changing it.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [safety zone inspection route]
+    coordinate_frames: [map, base_link]
+    input_schema: *no_input
+    output_schema: *document_output
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.interlocks.inspect
+    operation: app.safety.interlocks.inspect
+    description: Read bounded configured interlocks and their observed states.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [safety interlock inspection route]
+    input_schema: *no_input
+    output_schema: *document_output
+
+  - <<: *adapter_defaults
+    contract_id: app.safety.approval.status
+    operation: app.safety.approval.status
+    description: Read whether required operational safety approval is currently present.
+    risk: R0
+    access: read
+    idempotent: true
+    cancelable: false
+    capability_requirements: [safety approval status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.calibration.list
+    operation: app.calibration.list
+    description: List target-defined calibration procedures and their stable identifiers.
+    capability_requirements: [calibration inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *observation_defaults
+    contract_id: app.calibration.inspect
+    operation: app.calibration.inspect
+    description: Inspect scope, prerequisites, and bounded metadata for one calibration.
+    capability_requirements: [calibration metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *observation_defaults
+    contract_id: app.calibration.status
+    operation: app.calibration.status
+    description: Read lifecycle state and last known outcome for one calibration.
+    capability_requirements: [calibration status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.task.list
+    operation: app.task.list
+    description: List target-defined task types and active task instances with stable identifiers.
+    capability_requirements: [task inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *observation_defaults
+    contract_id: app.task.describe
+    operation: app.task.describe
+    description: Describe inputs, lifecycle, and bounded metadata for one target-defined task.
+    capability_requirements: [task metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *observation_defaults
+    contract_id: app.task.status
+    operation: app.task.status
+    description: Read lifecycle state and bounded progress metadata for one task instance.
+    capability_requirements: [task status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.test.list
+    operation: app.test.list
+    description: List target-defined tests with stable identifiers and availability metadata.
+    capability_requirements: [test inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *observation_defaults
+    contract_id: app.test.describe
+    operation: app.test.describe
+    description: Describe inputs, scope, and bounded metadata for one target-defined test.
+    capability_requirements: [test metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *observation_defaults
+    contract_id: app.test.status
+    operation: app.test.status
+    description: Read lifecycle state and bounded progress metadata for one test run.
+    capability_requirements: [test status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.regression.status
+    operation: app.regression.status
+    description: Read lifecycle state and bounded progress metadata for one regression run.
+    capability_requirements: [regression status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.diagnosis.status
+    operation: app.diagnosis.status
+    description: Read lifecycle state and bounded progress metadata for one diagnosis run.
+    capability_requirements: [diagnosis status route]
+    input_schema: *selector_input
+    output_schema: *observed_status_output
+
+  - <<: *observation_defaults
+    contract_id: app.parameter.list
+    operation: app.parameter.list
+    description: List application parameter names and non-value metadata without returning values.
+    capability_requirements: [application parameter inventory route]
+    input_schema: *no_input
+    output_schema: *collection_output
+
+  - <<: *observation_defaults
+    contract_id: app.parameter.inspect
+    operation: app.parameter.inspect
+    description: Inspect type, bounds, mutability, and metadata for one application parameter.
+    capability_requirements: [application parameter metadata route]
+    input_schema: *selector_input
+    output_schema: *detail_output
+
+  - <<: *observation_defaults
+    contract_id: app.tuning.status
+    operation: app.tuning.status
+    description: Read lifecycle state and bounded metadata for the active tuning workflow.
+    capability_requirements: [tuning status route]
+    input_schema: *no_input
+    output_schema: *observed_status_output
+
+  - <<: *adapter_defaults
+    contract_id: app.imu.sample
+    operation: app.imu.sample
+    data_classification: SENSITIVE
+    description: Collect bounded application-normalized inertial samples from one IMU route.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: true
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    max_duration_s: 35
+    capability_requirements: [application-normalized IMU sample route]
+    coordinate_frames: [sensor frame, base_link]
+    side_effects: [Creates a temporary IMU subscription and consumes host resources.]
+    rate_limit: one active sampler per IMU
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *adapter_defaults
+    contract_id: app.gnss.sample
+    operation: app.gnss.sample
+    data_classification: SENSITIVE
+    description: Collect bounded application-normalized position samples from one GNSS route.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: true
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    max_duration_s: 35
+    capability_requirements: [application-normalized GNSS sample route]
+    side_effects: [Creates a temporary GNSS subscription and consumes host resources.]
+    rate_limit: one active sampler per GNSS receiver
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *adapter_defaults
+    contract_id: app.odometry.sample
+    operation: app.odometry.sample
+    data_classification: SENSITIVE
+    description: Collect bounded application-normalized odometry samples with frame metadata.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: true
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    max_duration_s: 35
+    capability_requirements: [application-normalized odometry sample route]
+    coordinate_frames: [odom, base_link]
+    side_effects: [Creates a temporary odometry subscription and consumes host resources.]
+    rate_limit: one active odometry sampler per robot
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *adapter_defaults
+    contract_id: app.state.watch
+    operation: app.state.watch
+    data_classification: SENSITIVE
+    description: Watch bounded application state observations within explicit resource limits.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: true
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    max_duration_s: 35
+    capability_requirements: [application state observation route]
+    side_effects: [Creates temporary state observers and consumes host resources.]
+    rate_limit: one active state watcher per robot
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *adapter_defaults
+    contract_id: app.telemetry.watch
+    operation: app.telemetry.watch
+    data_classification: SENSITIVE
+    description: Watch bounded application telemetry within explicit time, item, and byte limits.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: true
+    observation_overhead: ELEVATED
+    execution_mode: BOUNDED_STREAM
+    max_duration_s: 35
+    capability_requirements: [application telemetry observation route]
+    side_effects: [Creates temporary telemetry observers and consumes host resources.]
+    rate_limit: one active telemetry watcher per robot
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_items: {type: integer, minimum: 1, maximum: 1000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000}
+      required: [duration_s, max_items, max_bytes]
+      additionalProperties: false
+    output_schema: *bounded_stream_output
+
+  - <<: *observation_defaults
+    contract_id: app.task.result
+    operation: app.task.result
+    data_classification: SENSITIVE
+    description: Read the bounded target-defined result document for one completed task instance.
+    capability_requirements: [task result route with stable task instance identity]
+    input_schema: *selector_input
+    output_schema: *result_output
+
+  - <<: *observation_defaults
+    contract_id: app.test.result
+    operation: app.test.result
+    data_classification: SENSITIVE
+    description: Read the bounded verdict and result document for one target-defined test run.
+    capability_requirements: [test result route with stable test run identity]
+    input_schema: *selector_input
+    output_schema: *result_output
+
+  - <<: *observation_defaults
+    contract_id: app.test.evidence
+    operation: app.test.evidence
+    data_classification: SENSITIVE
+    description: List bounded artifact references associated with one target-defined test run.
+    capability_requirements: [test evidence route with stable test run identity]
+    input_schema: *selector_input
+    output_schema: *evidence_output
+
+  - <<: *observation_defaults
+    contract_id: app.regression.result
+    operation: app.regression.result
+    data_classification: SENSITIVE
+    description: Read the bounded aggregate result document for one target-defined regression run.
+    capability_requirements: [regression result route with stable regression run identity]
+    input_schema: *selector_input
+    output_schema: *result_output
+
+  - <<: *observation_defaults
+    contract_id: app.diagnosis.snapshot
+    operation: app.diagnosis.snapshot
+    data_classification: SENSITIVE
+    description: Read a bounded diagnostic evidence snapshot without asserting a diagnosis conclusion.
+    capability_requirements: [diagnostic snapshot route]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        snapshot: {type: object, properties: {}, additionalProperties: true}
+        observed_at: {type: string}
+      required: [status, snapshot, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.diagnosis.result
+    operation: app.diagnosis.result
+    data_classification: SENSITIVE
+    description: Read the bounded conclusion document for one completed diagnosis run.
+    capability_requirements: [diagnosis result route with stable diagnosis run identity]
+    input_schema: *selector_input
+    output_schema: *result_output
+
+  - <<: *observation_defaults
+    contract_id: app.diagnosis.evidence
+    operation: app.diagnosis.evidence
+    data_classification: SENSITIVE
+    description: List bounded artifact references associated with one diagnosis run.
+    capability_requirements: [diagnosis evidence route with stable diagnosis run identity]
+    input_schema: *selector_input
+    output_schema: *evidence_output
+
+  - <<: *observation_defaults
+    contract_id: app.parameter.get
+    operation: app.parameter.get
+    data_classification: SENSITIVE
+    description: Read one typed application parameter value through a stable parameter identity.
+    capability_requirements: [application parameter value route]
+    input_schema: *selector_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        value:
+          type: object
+          properties:
+            type: {type: string}
+            value_json: {type: string}
+          required: [type, value_json]
+          additionalProperties: false
+        observed_at: {type: string}
+      required: [status, id, value, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.state.snapshot
+    operation: app.state.snapshot
+    data_classification: SENSITIVE
+    description: Read one bounded application state snapshot without changing target state.
+    capability_requirements: [application state snapshot route]
+    input_schema: *no_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        state: {type: object, properties: {}, additionalProperties: true}
+        observed_at: {type: string}
+      required: [status, state, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.event.list
+    operation: app.event.list
+    data_classification: SENSITIVE
+    description: List bounded application event metadata with optional time and cursor filters.
+    capability_requirements: [application event query route]
+    input_schema:
+      type: object
+      properties:
+        since: {type: string}
+        until: {type: string}
+        cursor: {type: string}
+        limit: {type: integer, minimum: 1, maximum: 1000}
+      required: [limit]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        items:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              type: {type: string}
+              occurred_at: {type: string}
+              source: {type: string}
+              severity: {type: string}
+            required: [id, type, occurred_at]
+            additionalProperties: false
+        next_cursor: {type: string}
+        observed_at: {type: string}
+      required: [status, items, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.event.inspect
+    operation: app.event.inspect
+    data_classification: SENSITIVE
+    description: Read the bounded structured details for one application event identity.
+    capability_requirements: [application event detail route]
+    input_schema: *selector_input
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        event:
+          type: object
+          properties:
+            id: {type: string}
+            type: {type: string}
+            occurred_at: {type: string}
+            source: {type: string}
+            severity: {type: string}
+            details: {type: object, properties: {}, additionalProperties: true}
+          required: [id, type, occurred_at, details]
+          additionalProperties: false
+        observed_at: {type: string}
+      required: [status, event, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.telemetry.snapshot
+    operation: app.telemetry.snapshot
+    data_classification: SENSITIVE
+    description: Read a bounded set of named application telemetry observations with units.
+    capability_requirements: [application telemetry snapshot route]
+    input_schema:
+      type: object
+      properties:
+        names: {type: array, maxItems: 256, items: {type: string}}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        metrics:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              value_json: {type: string}
+              unit: {type: string}
+              observed_at: {type: string}
+            required: [name, value_json, observed_at]
+            additionalProperties: false
+        observed_at: {type: string}
+      required: [status, metrics, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.telemetry.export
+    operation: app.telemetry.export
+    data_classification: SENSITIVE
+    description: Export bounded application telemetry to an artifact without changing the target.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [bounded application telemetry export route]
+    side_effects: [Creates a bounded telemetry artifact and consumes host resources.]
+    rate_limit: one export per robot at a time
+    input_schema:
+      type: object
+      properties:
+        since: {type: string}
+        until: {type: string}
+        format: {type: string, enum: [json, jsonl, csv]}
+        max_bytes: {type: integer, minimum: 1024, maximum: 100000000}
+      required: [format, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        artifact_ref: {type: string}
+        media_type: {type: string}
+        bytes: {type: integer, minimum: 0}
+        observed_at: {type: string}
+      required: [status, artifact_ref, media_type, bytes, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.lidar.snapshot
+    operation: app.lidar.snapshot
+    data_classification: SENSITIVE
+    description: Capture or reference one bounded application-normalized lidar observation.
+    capability_requirements: [application-normalized lidar snapshot route]
+    coordinate_frames: [sensor frame, base_link]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        max_bytes: {type: integer, minimum: 1024, maximum: 100000000}
+      required: [id, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        artifact_ref: {type: string}
+        media_type: {type: string}
+        frame_id: {type: string}
+        observed_at: {type: string}
+      required: [status, id, artifact_ref, media_type, frame_id, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.navigation.costmap.inspect
+    operation: app.navigation.costmap.inspect
+    data_classification: SENSITIVE
+    description: Inspect bounded costmap metadata and a protected artifact reference.
+    capability_requirements: [navigation costmap inspection route]
+    semantic_units: {resolution_m: m/cell}
+    coordinate_frames: [map, odom, base_link]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        max_bytes: {type: integer, minimum: 1024, maximum: 100000000}
+      required: [id, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        frame_id: {type: string}
+        resolution_m: {type: number, minimum: 0}
+        width: {type: integer, minimum: 0}
+        height: {type: integer, minimum: 0}
+        artifact_ref: {type: string}
+        observed_at: {type: string}
+      required:
+        [status, id, frame_id, resolution_m, width, height, artifact_ref, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.navigation.path.inspect
+    operation: app.navigation.path.inspect
+    data_classification: SENSITIVE
+    description: Inspect one bounded navigation path with explicit frame and metric coordinates.
+    capability_requirements: [navigation path inspection route]
+    semantic_units: {x_m: m, y_m: m, z_m: m, yaw_rad: rad}
+    coordinate_frames: [map, odom]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        max_points: {type: integer, minimum: 1, maximum: 5000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [id, max_points, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        frame_id: {type: string}
+        points:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            properties:
+              x_m: {type: number}
+              y_m: {type: number}
+              z_m: {type: number}
+              yaw_rad: {type: number}
+            required: [x_m, y_m]
+            additionalProperties: false
+        truncated: {type: boolean}
+        observed_at: {type: string}
+      required: [status, id, frame_id, points, truncated, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.navigation.plan
+    operation: app.navigation.plan
+    data_classification: SENSITIVE
+    description: Compute a bounded navigation plan without starting or authorizing robot motion.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [navigation planning route without execution]
+    semantic_units: {x_m: m, y_m: m, yaw_rad: rad}
+    coordinate_frames: [map, odom]
+    postconditions: [A plan observation is returned; navigation execution is not started.]
+    side_effects: [Consumes planner resources and may create a bounded plan artifact.]
+    rate_limit: one navigation planning request per robot at a time
+    input_schema:
+      type: object
+      properties:
+        start:
+          type: object
+          properties:
+            frame_id: {type: string}
+            x_m: {type: number}
+            y_m: {type: number}
+            yaw_rad: {type: number}
+          required: [frame_id, x_m, y_m, yaw_rad]
+          additionalProperties: false
+        goal:
+          type: object
+          properties:
+            frame_id: {type: string}
+            x_m: {type: number}
+            y_m: {type: number}
+            yaw_rad: {type: number}
+          required: [frame_id, x_m, y_m, yaw_rad]
+          additionalProperties: false
+        planner_id: {type: string}
+        max_points: {type: integer, minimum: 1, maximum: 5000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [goal, max_points, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        plan_id: {type: string}
+        frame_id: {type: string}
+        points:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            properties:
+              x_m: {type: number}
+              y_m: {type: number}
+              yaw_rad: {type: number}
+            required: [x_m, y_m]
+            additionalProperties: false
+        truncated: {type: boolean}
+        artifact_ref: {type: string}
+        observed_at: {type: string}
+      required: [status, plan_id, frame_id, points, truncated, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.manipulation.plan
+    operation: app.manipulation.plan
+    data_classification: SENSITIVE
+    description: Compute a bounded manipulation plan without executing actuator commands.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [manipulation planning route without execution]
+    coordinate_frames: [target-declared planning frames]
+    postconditions: [A plan observation is returned; manipulation execution is not started.]
+    side_effects: [Consumes planner resources and may create a bounded plan artifact.]
+    rate_limit: one manipulation planning request per group at a time
+    input_schema:
+      type: object
+      properties:
+        group: {type: string, minLength: 1}
+        goal:
+          type: object
+          properties:
+            representation: {type: string, enum: [joint, pose, named]}
+            value_json: {type: string, minLength: 1}
+            frame_id: {type: string}
+          required: [representation, value_json]
+          additionalProperties: false
+        planner_id: {type: string}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [group, goal, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        plan_id: {type: string}
+        group: {type: string}
+        artifact_ref: {type: string}
+        summary: {type: object, properties: {}, additionalProperties: true}
+        observed_at: {type: string}
+      required: [status, plan_id, group, artifact_ref, summary, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.test.plan
+    operation: app.test.plan
+    data_classification: SENSITIVE
+    description: Compute a bounded test plan artifact without scheduling or running the test.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [test planning route without execution]
+    postconditions: [A plan artifact is returned; no test run is scheduled or started.]
+    side_effects: [Consumes planning resources and creates a bounded test plan artifact.]
+    rate_limit: one test planning request per test definition at a time
+    input_schema:
+      type: object
+      properties:
+        test_id: {type: string, minLength: 1}
+        inputs_json: {type: string}
+        max_cases: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [test_id, max_cases, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        plan_id: {type: string}
+        test_id: {type: string}
+        case_count: {type: integer, minimum: 0}
+        artifact_ref: {type: string}
+        observed_at: {type: string}
+      required: [status, plan_id, test_id, case_count, artifact_ref, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.regression.plan
+    operation: app.regression.plan
+    data_classification: SENSITIVE
+    description: Compute a bounded regression-suite plan without scheduling or running tests.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [regression planning route without execution]
+    postconditions: [A plan artifact is returned; no regression run is scheduled or started.]
+    side_effects: [Consumes planning resources and creates a bounded regression plan artifact.]
+    rate_limit: one regression planning request per suite at a time
+    input_schema:
+      type: object
+      properties:
+        suite_id: {type: string, minLength: 1}
+        max_tests: {type: integer, minimum: 1, maximum: 10000}
+        max_bytes: {type: integer, minimum: 1024, maximum: 10000000}
+      required: [suite_id, max_tests, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        plan_id: {type: string}
+        suite_id: {type: string}
+        test_count: {type: integer, minimum: 0}
+        artifact_ref: {type: string}
+        observed_at: {type: string}
+      required: [status, plan_id, suite_id, test_count, artifact_ref, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.calibration.validate
+    operation: app.calibration.validate
+    data_classification: SENSITIVE
+    description: Validate one calibration candidate without applying it to target hardware.
+    capability_requirements: [calibration candidate validation route without apply]
+    postconditions: [Validation findings are returned; calibration state is not changed.]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        candidate_ref: {type: string, minLength: 1}
+      required: [id, candidate_ref]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        valid: {type: boolean}
+        findings: {type: array, maxItems: 100, items: {type: string}}
+        observed_at: {type: string}
+      required: [status, id, valid, findings, observed_at]
+      additionalProperties: false
+
+  - <<: *observation_defaults
+    contract_id: app.parameter.validate
+    operation: app.parameter.validate
+    data_classification: SENSITIVE
+    description: Validate a typed application parameter candidate without setting its value.
+    capability_requirements: [application parameter validation route without set]
+    postconditions: [Validation findings are returned; the parameter value is not changed.]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        value:
+          type: object
+          properties:
+            type: {type: string}
+            value_json: {type: string}
+          required: [type, value_json]
+          additionalProperties: false
+      required: [id, value]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        valid: {type: boolean}
+        findings: {type: array, maxItems: 100, items: {type: string}}
+        observed_at: {type: string}
+      required: [status, id, valid, findings, observed_at]
+      additionalProperties: false
+
+  - <<: *adapter_defaults
+    contract_id: app.map.export
+    operation: app.map.export
+    data_classification: SENSITIVE
+    description: Export one bounded map artifact without changing the active map or target state.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [bounded map export route without active-map mutation]
+    postconditions: [A map artifact is returned; active map state is not changed.]
+    side_effects: [Consumes map serialization resources and creates a bounded artifact.]
+    rate_limit: one map export per robot at a time
+    input_schema:
+      type: object
+      properties:
+        map_id: {type: string, minLength: 1}
+        format: {type: string, enum: [native, occupancy_grid, geojson]}
+        max_bytes: {type: integer, minimum: 1024, maximum: 100000000}
+      required: [map_id, format, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        map_id: {type: string}
+        artifact_ref: {type: string}
+        media_type: {type: string}
+        bytes: {type: integer, minimum: 0}
+        observed_at: {type: string}
+      required: [status, map_id, artifact_ref, media_type, bytes, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.odometry.reset
+    operation: app.odometry.reset
+    description: Request reset of the application odometry origin without commanding robot motion.
+    capability_requirements:
+      [odometry reset route without motion command, protected OS write policy and exact operation allowlist]
+    preconditions: [The selected reset mode is supported by the active odometry provider.]
+    side_effects: [Changes the odom-to-base_link reference used by subsequent observations.]
+    resource_locks: [application odometry state]
+    coordinate_frames: [odom, base_link]
+    input_schema:
+      type: object
+      properties: {mode: {type: string, enum: [zero, current_pose]}}
+      required: [mode]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.localization.initialize
+    operation: app.localization.initialize
+    data_classification: SENSITIVE
+    description: Request localization initialization from one bounded pose hypothesis.
+    capability_requirements:
+      [localization initialization route without motion command,
+        protected OS write policy and exact operation allowlist]
+    preconditions: [The declared frame and map are available to the localization provider.]
+    side_effects: [Changes the localization hypothesis used for subsequent pose estimates.]
+    resource_locks: [application localization state]
+    coordinate_frames: [map, base_link]
+    semantic_units: {x_m: m, y_m: m, yaw_rad: rad}
+    input_schema:
+      type: object
+      properties:
+        map_id: {type: string, minLength: 1}
+        frame_id: {type: string, minLength: 1}
+        x_m: {type: number}
+        y_m: {type: number}
+        yaw_rad: {type: number}
+        covariance:
+          type: array
+          items: {type: number}
+          minItems: 36
+          maxItems: 36
+      required: [map_id, frame_id, x_m, y_m, yaw_rad]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.localization.reset
+    operation: app.localization.reset
+    description: Request reset of application localization to an explicitly uninitialized state.
+    idempotent: true
+    capability_requirements:
+      [localization reset route without motion command, protected OS write policy and exact operation allowlist]
+    side_effects: [Clears the active localization hypothesis and invalidates localized pose readiness.]
+    resource_locks: [application localization state]
+    coordinate_frames: [map, base_link]
+    input_schema: *no_input
+
+  - <<: *mutation_defaults
+    contract_id: app.localization.relocalize
+    operation: app.localization.relocalize
+    data_classification: SENSITIVE
+    description: Request bounded global relocalization against one selected map without commanding motion.
+    max_duration_s: 60
+    capability_requirements:
+      [bounded relocalization route without motion command,
+        protected OS write policy and exact operation allowlist]
+    preconditions: [The selected map is available and the localization provider supports relocalization.]
+    side_effects: [Starts bounded localization search and may replace the current pose hypothesis.]
+    resource_locks: [application localization state]
+    coordinate_frames: [map, base_link]
+    input_schema:
+      type: object
+      properties:
+        map_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 60}
+      required: [map_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.map.create
+    operation: app.map.create
+    data_classification: SENSITIVE
+    description: Create one inactive empty map record without starting mapping or robot motion.
+    capability_requirements:
+      [inactive map record creation route, protected OS write policy and exact operation allowlist]
+    postconditions:
+      [The response acknowledges record creation and returns its map_id; the map is not activated and
+        mapping or robot motion is not started.]
+    side_effects: [Allocates persistent metadata and storage for a new inactive map record.]
+    resource_locks: [application map repository]
+    coordinate_frames: [map]
+    semantic_units: {resolution_m: m/cell}
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        frame_id: {type: string, minLength: 1}
+        resolution_m: {type: number, minimum: 0.001, maximum: 1}
+      required: [name, frame_id, resolution_m]
+      additionalProperties: false
+    output_schema: *map_ack_output
+
+  - <<: *mutation_defaults
+    contract_id: app.map.save
+    operation: app.map.save
+    data_classification: SENSITIVE
+    description: Request persistence of one application map into the internal map repository.
+    capability_requirements:
+      [internal map persistence route, protected OS write policy and exact operation allowlist]
+    preconditions: [map_id resolves to a mutable map visible to the application.]
+    side_effects: [Updates persistent internal representation for the selected map.]
+    resource_locks: [map resource identified by map_id]
+    input_schema:
+      type: object
+      properties: {map_id: {type: string, minLength: 1}}
+      required: [map_id]
+      additionalProperties: false
+    output_schema: *map_ack_output
+
+  - <<: *mutation_defaults
+    contract_id: app.map.load
+    operation: app.map.load
+    data_classification: SENSITIVE
+    description: Request activation of one existing internal map without starting navigation or motion.
+    capability_requirements:
+      [active map selection route without navigation start,
+        protected OS write policy and exact operation allowlist]
+    preconditions: [map_id resolves to a compatible map visible to the application.]
+    side_effects: [Requests replacement of the active map used by localization and planning.]
+    resource_locks: [active application map state]
+    input_schema:
+      type: object
+      properties: {map_id: {type: string, minLength: 1}}
+      required: [map_id]
+      additionalProperties: false
+    output_schema: *map_ack_output
+
+  - <<: *mutation_defaults
+    contract_id: app.map.clear
+    operation: app.map.clear
+    data_classification: SENSITIVE
+    description: Request clearing of one map resource without deleting its stable identity.
+    idempotent: true
+    capability_requirements:
+      [map content clear route, protected OS write policy and exact operation allowlist]
+    preconditions: [map_id resolves to a mutable map visible to the application.]
+    side_effects: [Removes map content while preserving the map record identity.]
+    resource_locks: [map resource identified by map_id]
+    input_schema:
+      type: object
+      properties: {map_id: {type: string, minLength: 1}}
+      required: [map_id]
+      additionalProperties: false
+    output_schema: *map_ack_output
+
+  - <<: *mutation_defaults
+    contract_id: app.map.import
+    operation: app.map.import
+    data_classification: SENSITIVE
+    description: Import one digest-pinned protected artifact as a new inactive map record.
+    max_duration_s: 60
+    capability_requirements:
+      [protected artifact resolver with SHA-256 verification, inactive map import route,
+        protected OS write policy and exact operation allowlist]
+    preconditions:
+      [artifact_ref resolves inside the protected artifact root and matches artifact_sha256.]
+    postconditions:
+      [The response acknowledges import acceptance and returns its map_id; the imported map is not
+        activated and navigation or robot motion is not started.]
+    side_effects: [Creates a new inactive map record and copies validated map data into its storage.]
+    resource_locks: [application map repository]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        format: {type: string, enum: [ros_yaml, nav2, occupancy_grid, vendor]}
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        max_bytes: {type: integer, minimum: 1, maximum: 100000000}
+      required: [name, format, artifact_ref, artifact_sha256, max_bytes]
+      additionalProperties: false
+    output_schema: *map_ack_output
+
+  - <<: *adapter_defaults
+    contract_id: app.tuning.candidate.evaluate
+    operation: app.tuning.candidate.evaluate
+    data_classification: SENSITIVE
+    description: Evaluate one tuning candidate against existing bounded evidence without applying or running it.
+    risk: R1
+    access: read
+    idempotent: true
+    cancelable: false
+    observation_overhead: ELEVATED
+    max_duration_s: 60
+    capability_requirements: [bounded offline tuning evaluation route]
+    postconditions:
+      [Evaluation findings are returned; candidate parameters are not applied and tests or robot motion
+        are not started.]
+    side_effects: [Consumes bounded compute and reads previously recorded tuning evidence.]
+    rate_limit: one tuning evaluation per robot at a time
+    input_schema:
+      type: object
+      properties:
+        candidate_id: {type: string, minLength: 1}
+        baseline_id: {type: string, minLength: 1}
+        metric_set_id: {type: string, minLength: 1}
+        max_metrics: {type: integer, minimum: 1, maximum: 256}
+        timeout_s: {type: number, minimum: 0.1, maximum: 60}
+      required: [candidate_id, baseline_id, metric_set_id, max_metrics, timeout_s]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        candidate_id: {type: string}
+        baseline_id: {type: string}
+        verdict: {type: string, enum: [BETTER, EQUIVALENT, WORSE, INCONCLUSIVE]}
+        metrics:
+          type: array
+          maxItems: 256
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              value: {type: number}
+              baseline_value: {type: number}
+              unit: {type: string}
+            required: [name, value]
+            additionalProperties: false
+        findings: {type: array, maxItems: 100, items: {type: string}}
+        observed_at: {type: string}
+      required: [status, candidate_id, baseline_id, verdict, metrics, findings, observed_at]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.task.start
+    operation: app.task.start
+    description: Submit one bounded target-defined task run under external R3 authorization.
+    compensation_operation: app.task.cancel
+    capability_requirements:
+      [target-defined task execution route, external R3 authorization provider,
+        runtime supervision and ordinary cancellation route]
+    preconditions:
+      [The task, input set, and execution profile are valid for this robot,
+        external R3 authorization and required physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; execution start, completion, correctness and
+        physical outcome must be observed separately.]
+    side_effects: [May schedule software changes, actuator commands and physical robot motion.]
+    resource_locks: [robot task execution supervisor]
+    rate_limit: one task submission per robot at a time
+    input_schema:
+      type: object
+      properties:
+        task_id: {type: string, minLength: 1}
+        input_set_id: {type: string, minLength: 1}
+        execution_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 86400}
+      required: [task_id, input_set_id, execution_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.test.run
+    operation: app.test.run
+    description: Submit one bounded test plan under external R3 authorization.
+    compensation_operation: app.test.cancel
+    capability_requirements:
+      [target-defined test execution route, external R3 authorization provider,
+        runtime supervision and ordinary cancellation route]
+    preconditions:
+      [The test plan is valid, immutable and compatible with this robot,
+        external R3 authorization and required physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; test start, verdict, correctness and physical
+        outcome must be observed separately.]
+    side_effects: [May execute software probes, actuator commands, data capture and physical robot motion.]
+    resource_locks: [robot test execution supervisor]
+    rate_limit: one test submission per robot at a time
+    input_schema:
+      type: object
+      properties:
+        test_id: {type: string, minLength: 1}
+        plan_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 86400}
+      required: [test_id, plan_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.regression.run
+    operation: app.regression.run
+    description: Submit one bounded regression-suite plan under external R3 authorization.
+    compensation_operation: app.regression.cancel
+    capability_requirements:
+      [target-defined regression execution route, external R3 authorization provider,
+        runtime supervision and ordinary cancellation route]
+    preconditions:
+      [The regression plan is valid, immutable and compatible with this robot,
+        external R3 authorization and required physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; suite start, aggregate verdict, correctness and
+        physical outcome must be observed separately.]
+    side_effects: [May schedule multiple tests, actuator commands, data capture and physical robot motion.]
+    resource_locks: [robot regression execution supervisor]
+    rate_limit: one regression submission per robot at a time
+    input_schema:
+      type: object
+      properties:
+        suite_id: {type: string, minLength: 1}
+        plan_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 86400}
+      required: [suite_id, plan_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.diagnosis.run
+    operation: app.diagnosis.run
+    description: Submit one bounded diagnostic run under external R3 authorization.
+    compensation_operation: app.diagnosis.cancel
+    capability_requirements:
+      [target-defined diagnostic execution route, external R3 authorization provider,
+        runtime supervision and ordinary cancellation route]
+    preconditions:
+      [The diagnosis profile and evidence set are valid for this robot,
+        external R3 authorization and required physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; probe execution, diagnosis correctness and
+        physical outcome must be observed separately.]
+    side_effects: [May execute active probes, collect evidence, change software load and move the robot.]
+    resource_locks: [robot diagnosis execution supervisor]
+    rate_limit: one diagnosis submission per robot at a time
+    input_schema:
+      type: object
+      properties:
+        diagnosis_profile_id: {type: string, minLength: 1}
+        evidence_set_id: {type: string, minLength: 1}
+        mode: {type: string, enum: [passive, active]}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 86400}
+      required: [diagnosis_profile_id, evidence_set_id, mode, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *cancel_defaults
+    contract_id: app.task.cancel
+    operation: app.task.cancel
+    description: Request ordinary cancellation of one target-bound task run.
+    preconditions: [run_id identifies a task run visible to this robot execution supervisor.]
+    side_effects: [Requests interruption of the task and its non-safety execution resources.]
+    resource_locks: [robot task execution supervisor]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        reason: {type: string, maxLength: 512}
+      required: [run_id]
+      additionalProperties: false
+
+  - <<: *cancel_defaults
+    contract_id: app.test.cancel
+    operation: app.test.cancel
+    description: Request ordinary cancellation of one target-bound test run.
+    preconditions: [run_id identifies a test run visible to this robot execution supervisor.]
+    side_effects: [Requests interruption of test execution and bounded evidence collection.]
+    resource_locks: [robot test execution supervisor]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        reason: {type: string, maxLength: 512}
+      required: [run_id]
+      additionalProperties: false
+
+  - <<: *cancel_defaults
+    contract_id: app.regression.cancel
+    operation: app.regression.cancel
+    description: Request ordinary cancellation of one target-bound regression run.
+    preconditions: [run_id identifies a regression run visible to this robot execution supervisor.]
+    side_effects: [Requests interruption of suite scheduling, active tests and evidence collection.]
+    resource_locks: [robot regression execution supervisor]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        reason: {type: string, maxLength: 512}
+      required: [run_id]
+      additionalProperties: false
+
+  - <<: *cancel_defaults
+    contract_id: app.diagnosis.cancel
+    operation: app.diagnosis.cancel
+    description: Request ordinary cancellation of one target-bound diagnosis run.
+    preconditions: [run_id identifies a diagnosis run visible to this robot execution supervisor.]
+    side_effects: [Requests interruption of active probes and bounded evidence collection.]
+    resource_locks: [robot diagnosis execution supervisor]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        reason: {type: string, maxLength: 512}
+      required: [run_id]
       additionalProperties: false

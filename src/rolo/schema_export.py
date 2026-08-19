@@ -15,6 +15,11 @@ from rolo.core.models import (
     RobotUseSupervision,
     ToolDescriptor,
 )
+from rolo.invocation_policy import (
+    InvocationPolicy,
+    R3AuthorizationCapability,
+    R3AuthorizationRequest,
+)
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.inputs import AdaptInputs
 from rolo.stages.adapt.models import (
@@ -47,6 +52,9 @@ from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
 CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationContract,
     OperationContractCatalog,
+    InvocationPolicy,
+    R3AuthorizationRequest,
+    R3AuthorizationCapability,
     RobotCapability,
     RobotUseRequest,
     RobotUseSupervision,

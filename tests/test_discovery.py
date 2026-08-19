@@ -487,7 +487,8 @@ def test_product_registry_exposes_only_authored_contracts_as_gateable() -> None:
     operations = {item.operation: item for item in canonical_operation_registry().operations}
     velocity = operations["app.teleop.velocity"]
     assert velocity.contract_lifecycle.value == "GATEABLE"
-    assert velocity.contract_version == "1.0.0"
+    assert velocity.contract_version == "1.1.0"
+    assert velocity.data_classification.value == "INTERNAL"
     assert velocity.contract_sha256 is not None
     assert velocity.input_schema["required"] == ["linear_x_mps", "angular_z_radps"]
     assert velocity.canonical_cli[-4:] == [
