@@ -443,7 +443,8 @@ contracts:
     max_duration_s: 10
     capability_requirements: [camera streaming route with bounded session controls]
     postconditions: [A session handle and expiry are acknowledged; frame quality is not asserted.]
-    side_effects: [Opens a camera stream and consumes camera, compute, and storage resources.]
+    side_effects:
+      - Opens a camera stream and consumes camera, compute, and storage resources.
     resource_locks: [camera_stream]
     rate_limit: one active session per camera
     input_schema:
@@ -1982,12 +1983,15 @@ contracts:
       [target-defined task execution route, external R3 authorization provider,
         runtime supervision and ordinary cancellation route]
     preconditions:
-      [The task, input set, and execution profile are valid for this robot,
-        external R3 authorization and required physical interlocks are active.]
+      - >-
+        The task, input set, and execution profile are valid for this robot; external R3
+        authorization and required physical interlocks are active.
     postconditions:
-      [A run identifier acknowledges submission only; execution start, completion, correctness and
-        physical outcome must be observed separately.]
-    side_effects: [May schedule software changes, actuator commands and physical robot motion.]
+      - >-
+        A run identifier acknowledges submission only; execution start, completion, correctness and
+        physical outcome must be observed separately.
+    side_effects:
+      - May schedule software changes, actuator commands and physical robot motion.
     resource_locks: [robot task execution supervisor]
     rate_limit: one task submission per robot at a time
     input_schema:
@@ -2009,12 +2013,15 @@ contracts:
       [target-defined test execution route, external R3 authorization provider,
         runtime supervision and ordinary cancellation route]
     preconditions:
-      [The test plan is valid, immutable and compatible with this robot,
-        external R3 authorization and required physical interlocks are active.]
+      - >-
+        The test plan is valid, immutable and compatible with this robot; external R3 authorization
+        and required physical interlocks are active.
     postconditions:
-      [A run identifier acknowledges submission only; test start, verdict, correctness and physical
-        outcome must be observed separately.]
-    side_effects: [May execute software probes, actuator commands, data capture and physical robot motion.]
+      - >-
+        A run identifier acknowledges submission only; test start, verdict, correctness and physical
+        outcome must be observed separately.
+    side_effects:
+      - May execute software probes, actuator commands, data capture and physical robot motion.
     resource_locks: [robot test execution supervisor]
     rate_limit: one test submission per robot at a time
     input_schema:
@@ -2035,12 +2042,15 @@ contracts:
       [target-defined regression execution route, external R3 authorization provider,
         runtime supervision and ordinary cancellation route]
     preconditions:
-      [The regression plan is valid, immutable and compatible with this robot,
-        external R3 authorization and required physical interlocks are active.]
+      - >-
+        The regression plan is valid, immutable and compatible with this robot; external R3
+        authorization and required physical interlocks are active.
     postconditions:
-      [A run identifier acknowledges submission only; suite start, aggregate verdict, correctness and
-        physical outcome must be observed separately.]
-    side_effects: [May schedule multiple tests, actuator commands, data capture and physical robot motion.]
+      - >-
+        A run identifier acknowledges submission only; suite start, aggregate verdict, correctness
+        and physical outcome must be observed separately.
+    side_effects:
+      - May schedule multiple tests, actuator commands, data capture and physical robot motion.
     resource_locks: [robot regression execution supervisor]
     rate_limit: one regression submission per robot at a time
     input_schema:
@@ -2061,12 +2071,15 @@ contracts:
       [target-defined diagnostic execution route, external R3 authorization provider,
         runtime supervision and ordinary cancellation route]
     preconditions:
-      [The diagnosis profile and evidence set are valid for this robot,
-        external R3 authorization and required physical interlocks are active.]
+      - >-
+        The diagnosis profile and evidence set are valid for this robot; external R3 authorization
+        and required physical interlocks are active.
     postconditions:
-      [A run identifier acknowledges submission only; probe execution, diagnosis correctness and
-        physical outcome must be observed separately.]
-    side_effects: [May execute active probes, collect evidence, change software load and move the robot.]
+      - >-
+        A run identifier acknowledges submission only; probe execution, diagnosis correctness and
+        physical outcome must be observed separately.
+    side_effects:
+      - May execute active probes, collect evidence, change software load and move the robot.
     resource_locks: [robot diagnosis execution supervisor]
     rate_limit: one diagnosis submission per robot at a time
     input_schema:

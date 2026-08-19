@@ -64,11 +64,8 @@ stop 也不能用普通速度零指令冒充。
 
 ## 尚待明确的 DRAFT 边界
 
-| 组合 | 当前风险 | 建议边界 |
-|---|---|---|
-| `episode.*` / `checkpoint.*` | 控制面对象关系未固定 | episode 为时间序列记录，checkpoint 为可恢复状态锚点 |
-
-上述边界明确前，相应 operation 保持 `DRAFT`，Adapter Agent 不得自行创造产品语义。
+当前已识别的跨 operation 命名与对象边界均已形成产品决策。后续 DRAFT 保留原因主要是
+动作安全边界、补偿语义或目标资源身份尚未完成契约化，不授权 Adapter Agent 自行补写。
 
 ## 已完成的产品决策
 
@@ -88,6 +85,10 @@ stop 也不能用普通速度零指令冒充。
 11. 文件、配置和日志必须匹配受保护内容资源分类并返回 artifact 引用；无法排除 SECRET
     的资源保持不可用。
 12. Linux host/process/service/container/schedule/time 写操作只承诺请求接受，不承诺状态闭环；
+13. `episode` 是有界时间序列记录；inspect/export 只返回 manifest、事件元数据和 artifact
+    引用，不解析或复制业务 artifact 内容。`checkpoint` 是不可变的 Rolo 控制面状态锚点；
+    restore 只生成新的控制面 revision，不应用真实参数、不恢复进程、不恢复任务，也不触发
+    机器人运动。
     ROS managed node activate/deactivate 采用相同语义并固定为 R2 write。
 13. `linux.config.apply` 只消费 digest-pinned protected artifact，禁止可变路径；rollback token
     是不具授权能力的 opaque 状态引用，不能绕过 SENSITIVE、write 策略和审计。

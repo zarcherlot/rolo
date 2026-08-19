@@ -14,8 +14,8 @@ Registry Operation 的日常治理、生命周期升级/降级和运行时使用
 可复制的 R0、R1、R3 与数据敏感度最小模板见
 [OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
 
-当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、166 个为 `GATEABLE`、
-66 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、172 个为 `GATEABLE`、
+60 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
 SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
 容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
 契约及 builtin 不依赖
@@ -106,6 +106,11 @@ GATEABLE 契约。
 条数和字节数，调用可取消，输出必须报告截断状态。真正持续的摄像头流采用互为配对的
 `SESSION_START` / `SESSION_STOP`，start 返回带过期时间的 opaque session handle。通用
 runtime 不允许把无限输出伪装成普通 request/response。
+
+Rolo 控制面的 episode list/inspect/export 与 checkpoint list/create/restore 已形成
+`GATEABLE` 契约。Episode 查询和导出只处理有界 manifest、事件元数据与 artifact 引用；
+checkpoint restore 只产生新的 Rolo 控制面 revision，不应用真实参数、不恢复主机进程、
+不恢复任务执行，也不触发机器人运动。
 
 ## 标准化范围
 

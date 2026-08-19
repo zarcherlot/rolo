@@ -19,15 +19,15 @@ def test_authored_contracts_compile_into_the_complete_product_vocabulary() -> No
     catalog = load_operation_contracts()
     registry = canonical_operation_registry()
 
-    assert len(catalog.contracts) == 228
+    assert len(catalog.contracts) == 234
     assert len(registry.operations) == 294
     assert sum(item.lifecycle == ContractLifecycle.RELEASED for item in catalog.contracts) == 62
-    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 166
+    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 172
     assert sum(item.lifecycle == ContractLifecycle.DEPRECATED for item in catalog.contracts) == 0
     draft_count = sum(
         item.contract_lifecycle == ContractLifecycle.DRAFT for item in registry.operations
     )
-    assert draft_count == 66
+    assert draft_count == 60
     assert registry.contract_catalog_sha256 == catalog.sha256
     assert len(catalog.sha256) == 64
     assert {item.version for item in catalog.contracts} == {"1.1.0", "2.0.0"}
@@ -263,6 +263,40 @@ def test_non_motion_state_mutations_are_gateable_acknowledgements() -> None:
     assert "artifact_sha256" in catalog["app.map.import"].input_schema["required"]
 
 
+def test_episode_and_checkpoint_contracts_bound_control_plane_state_only() -> None:
+    catalog = load_operation_contracts().by_operation()
+    operations = {
+        "episode.list",
+        "episode.inspect",
+        "episode.export",
+        "checkpoint.list",
+        "checkpoint.create",
+        "checkpoint.restore",
+    }
+
+    assert all(catalog[name].lifecycle == ContractLifecycle.GATEABLE for name in operations)
+    assert all(
+        catalog[name].data_classification.value == "SENSITIVE" for name in operations
+    )
+    assert catalog["episode.export"].risk == "R1"
+    assert catalog["episode.export"].observation_overhead.value == "ELEVATED"
+    assert "max_bytes" in catalog["episode.export"].input_schema["required"]
+    assert "artifact_ref" in catalog["episode.export"].output_schema["required"]
+    assert catalog["checkpoint.create"].risk == "R2"
+    assert catalog["checkpoint.restore"].risk == "R2"
+    assert catalog["checkpoint.restore"].result_semantics.value == (
+        "ACKNOWLEDGEMENT_ONLY"
+    )
+    assert "expected_current_revision" in (
+        catalog["checkpoint.restore"].input_schema["required"]
+    )
+    assert len(catalog["checkpoint.restore"].preconditions) == 1
+    assert len(catalog["checkpoint.restore"].postconditions) == 1
+    assert "physical robot state are not restored or resumed" in (
+        catalog["checkpoint.restore"].postconditions[0]
+    )
+
+
 def test_tuning_evaluation_is_bounded_observation_without_execution() -> None:
     contract = load_operation_contracts().by_operation()["app.tuning.candidate.evaluate"]
 
@@ -293,6 +327,9 @@ def test_generic_execution_runs_are_r3_and_have_targeted_cancellation() -> None:
         assert run.cancelable is True
         assert run.compensation_operation == cancellation
         assert run.result_semantics.value == "ACKNOWLEDGEMENT_ONLY"
+        assert len(run.preconditions) == 1
+        assert len(run.postconditions) == 1
+        assert len(run.side_effects) == 1
         assert "run_id" in run.output_schema["required"]
         assert cancel.risk == "R2"
         assert cancel.access == "write"

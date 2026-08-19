@@ -5,7 +5,7 @@ This document is generated from `src/rolo/operation_contracts/*.yaml`.
 implemented and promoted by Adapt. The remaining product vocabulary stays `DRAFT` 
 and cannot become `VERIFIED` until an authored contract is added.
 
-Catalog SHA-256: `1f382ecf2cba559ac5a2fb5c1ef9d3ba3d4154abcc72fd812ce8241a8372c0a1`
+Catalog SHA-256: `b4d7c4da64913247f79ed6e10b8938c2c3c415cae33a8064565dfe996b3ab1e7`
 
 | Operation | Lifecycle | Version | Data | Contract SHA-256 |
 |---|---|---|---|---|
@@ -19,12 +19,12 @@ Catalog SHA-256: `1f382ecf2cba559ac5a2fb5c1ef9d3ba3d4154abcc72fd812ce8241a8372c0
 | `app.camera.list` | GATEABLE | `1.1.0` | `INTERNAL` | `c96ae66314c186f7612289542d38054bdb4dcac73bf06c2e3c54b6f9c867dcde` |
 | `app.camera.snapshot` | GATEABLE | `1.1.0` | `SENSITIVE` | `0755ebedfca8b5a8cb198961b83222e9c3b93a323c4596496cbbb84de33e65f0` |
 | `app.camera.status` | GATEABLE | `1.1.0` | `INTERNAL` | `fc662b5d33465eb5b12e3a8559231fd7f0edaf1c8466d9dc6b41e472971d1cb4` |
-| `app.camera.stream.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `e57a3b41b36f6dc32e8aaf557fb9ac183ea8f3df1fc433fb64acfe358f911243` |
+| `app.camera.stream.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `89b4c805b768426b8954f240bb188d81c53a1410c068687140902fe7d55a4c83` |
 | `app.camera.stream.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `801df85008c188e05820c2b7e310b48a901fe4f7528486588341f48d7597c421` |
 | `app.diagnosis.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `a61ff29823e8dfc945ce5034ea0f01eba591a18930df6ca6044292519668d589` |
 | `app.diagnosis.evidence` | GATEABLE | `1.1.0` | `SENSITIVE` | `c0ffaad9ea7fb3748dc4c1baa7ac3ea04c4ac0b315db4e2d5073304d82935f3d` |
 | `app.diagnosis.result` | GATEABLE | `1.1.0` | `SENSITIVE` | `2745aeff8db907c721063d78fda952e936985ca75f6c4e286408bbc6c53e9ce3` |
-| `app.diagnosis.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `7a0b8fbdba4e9dba9fb82b96d3e62fdae7ef4a1c809bb10417c75e7bf94d7ec4` |
+| `app.diagnosis.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `34c6c3e2f3913b5e5a9cd5ad484023d8ddb77bb8ae69ea9768f573d130bc3550` |
 | `app.diagnosis.snapshot` | GATEABLE | `1.1.0` | `SENSITIVE` | `bcd742d2936be84e3557928d6874cf0d55fb7feb680e4174c24d1127284aa1f2` |
 | `app.diagnosis.status` | GATEABLE | `1.1.0` | `INTERNAL` | `6719c7f1dbd1908293d49dcf0b64d2607bc63d944cc04ca80d39605101c90ed0` |
 | `app.event.inspect` | GATEABLE | `1.1.0` | `SENSITIVE` | `2e3373c872fc153dd12fbb988cf9457d6fc23d1961f532c80b08a21c32935331` |
@@ -74,7 +74,7 @@ Catalog SHA-256: `1f382ecf2cba559ac5a2fb5c1ef9d3ba3d4154abcc72fd812ce8241a8372c0
 | `app.regression.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `4cccd1cd98262b23c0d1669be3f32472992f2fe0a56c37d6cbbc513e74eb434c` |
 | `app.regression.plan` | GATEABLE | `1.1.0` | `SENSITIVE` | `f1735a5ecdd8d860464951547150d5f2c47aa07e3ad246f8042c39992b1b85a7` |
 | `app.regression.result` | GATEABLE | `1.1.0` | `SENSITIVE` | `07bb740fc7d574ad98fedc6ab3397fe2413946f99a1fff34f7d82a99865fb0ff` |
-| `app.regression.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `474385a6e0d2e8128634f126936353878e85abcc38bc911167092175f8844942` |
+| `app.regression.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `343e593306d4781a3cdd0a72ecf62758f5accc949c5f19e35a6b3b81e4d4f819` |
 | `app.regression.status` | GATEABLE | `1.1.0` | `INTERNAL` | `6460ab6ab058f2fb39d08b020c397dbfc8e22a25230c5fdf5b74d252bf708831` |
 | `app.robot.discover` | RELEASED | `1.1.0` | `INTERNAL` | `5f11fb3d5eec90bb0dc455d4671283b38e4e9a7be97b8712c0e8d9ce62ef2fdc` |
 | `app.robot.health` | GATEABLE | `1.1.0` | `INTERNAL` | `644ef6b4b8c184734da963978fd4313dd0223b50262d0f2af57717adfc7b0106` |
@@ -93,7 +93,7 @@ Catalog SHA-256: `1f382ecf2cba559ac5a2fb5c1ef9d3ba3d4154abcc72fd812ce8241a8372c0
 | `app.task.describe` | GATEABLE | `1.1.0` | `INTERNAL` | `bc3f6bd0a7071bff3a590db24288423339ec2b98fc92a7933c3e87f1165d721c` |
 | `app.task.list` | GATEABLE | `1.1.0` | `INTERNAL` | `5073526000af8746275dd4a38fe895ecc8cb6fb1acb9cd3bdf21e861f4ce224a` |
 | `app.task.result` | GATEABLE | `1.1.0` | `SENSITIVE` | `6f6275ed6996ee975464d352040c8566e3eae4c9433fa4223ee8df67a14ec670` |
-| `app.task.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `d1d6eaeaebee25c76c304e867a85d76e6704d7e361eac65830934c743e0779ca` |
+| `app.task.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `1e67c1dbe0e4deda3d632e71ba8ed44d63b23b5f6d61370c0c9be5473e492120` |
 | `app.task.status` | GATEABLE | `1.1.0` | `INTERNAL` | `40a97d9676e08c680e0896ef80aa3d937d1a58143fd2eebcb787335511ea5fd6` |
 | `app.telemetry.export` | GATEABLE | `1.1.0` | `SENSITIVE` | `810d5a79b4720ab2f851bfaab45792709709d62dc600603ffd264c6ff0845c19` |
 | `app.telemetry.snapshot` | GATEABLE | `1.1.0` | `SENSITIVE` | `921420a7712791d801de2dc09f0919eccecb6931723813c78bb05c1c38d26c41` |
@@ -105,10 +105,16 @@ Catalog SHA-256: `1f382ecf2cba559ac5a2fb5c1ef9d3ba3d4154abcc72fd812ce8241a8372c0
 | `app.test.list` | GATEABLE | `1.1.0` | `INTERNAL` | `b240bf98945ef6af5375df1e491552bea2faa1f2cd9bd53021bfde3a97784f58` |
 | `app.test.plan` | GATEABLE | `1.1.0` | `SENSITIVE` | `f3e3277f573e68d8808c36b7465a076808f17ef68f079a6572357bd5dc6d28bc` |
 | `app.test.result` | GATEABLE | `1.1.0` | `SENSITIVE` | `57f83deaa2baae8b7d439147b140ddd424988abb3f1128de2d29cc72ce6b1ec3` |
-| `app.test.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `6954cdd91931e407309ca44be4962433a92631fcb4ab00c59f0fa355ea7e563d` |
+| `app.test.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `ef88f098f05122d34101c7175082fdf7415ab355f810ce25235d1ea56ac87222` |
 | `app.test.status` | GATEABLE | `1.1.0` | `INTERNAL` | `77b0bda1e8301c6ae41bd8aea675123bd2b09b50bfa9ff804c3e68221cc4ca0f` |
 | `app.tuning.candidate.evaluate` | GATEABLE | `1.1.0` | `SENSITIVE` | `5aadf2824cda826a0a3bd3376d87ce88ba20818d87a9e8ca8e8f94d20b56eaf7` |
 | `app.tuning.status` | GATEABLE | `1.1.0` | `INTERNAL` | `b8fccf97e567becbaa314d11f3a53d753b8429fb4ebab1eeb72e45f7c4c8bcba` |
+| `checkpoint.create` | GATEABLE | `1.1.0` | `SENSITIVE` | `4d6f3ed87280af28b4596055bef52040a66c1b80b739d6962b9909d9b2d78ce5` |
+| `checkpoint.list` | GATEABLE | `1.1.0` | `SENSITIVE` | `d8b6ed7fa7b95ec8efed606228bb7a889e5c898df0d8186cf3fc8199e12a3c4a` |
+| `checkpoint.restore` | GATEABLE | `1.1.0` | `SENSITIVE` | `f33185eae2537485ee50848067c53f0252410367141bb0bfdd6b7d640a738f49` |
+| `episode.export` | GATEABLE | `1.1.0` | `SENSITIVE` | `2c1138b4e5999015a383f2be19cfd4e42c67ce5df5b9035ee85ef07127191cb3` |
+| `episode.inspect` | GATEABLE | `1.1.0` | `SENSITIVE` | `3c8eded61a1c554817e73d319bdd8b15ea673b0ad914643aed072010bf0c2b6a` |
+| `episode.list` | GATEABLE | `1.1.0` | `SENSITIVE` | `e7b21b965185a994702d48ac05c505b8c494ca9e53d35ec8922ebec5103e8ecc` |
 | `evidence.resolve` | RELEASED | `1.1.0` | `INTERNAL` | `f5b4b63d2916476ffc5d209d03361abeb3ce612ad4bfc95e6f07646d3c7ace8b` |
 | `hw.actuator.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `1efa1762cafd9ba880523d48fa84a9eae4127351b6a6298af48ce6df5e0fcae6` |
 | `hw.actuator.list` | GATEABLE | `1.1.0` | `INTERNAL` | `d3184f9e1292c4836224bedd653213c9a17213fbb81a9b1deff9272fc4a4a0e0` |
@@ -975,7 +981,7 @@ Start a bounded camera stream session with explicit lifetime and byte limits.
 - Maximum duration: `10s`
 - Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
 - Error codes: `UNAVAILABLE, TIMEOUT, INVALID_INPUT, OPERATION_FAILED`
-- Contract SHA-256: `e57a3b41b36f6dc32e8aaf557fb9ac183ea8f3df1fc433fb64acfe358f911243`
+- Contract SHA-256: `89b4c805b768426b8954f240bb188d81c53a1410c068687140902fe7d55a4c83`
 
 Input schema:
 
@@ -1325,7 +1331,7 @@ Submit one bounded diagnostic run under external R3 authorization.
 - Maximum duration: `30s`
 - Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
 - Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
-- Contract SHA-256: `7a0b8fbdba4e9dba9fb82b96d3e62fdae7ef4a1c809bb10417c75e7bf94d7ec4`
+- Contract SHA-256: `34c6c3e2f3913b5e5a9cd5ad484023d8ddb77bb8ae69ea9768f573d130bc3550`
 
 Input schema:
 
@@ -5166,7 +5172,7 @@ Submit one bounded regression-suite plan under external R3 authorization.
 - Maximum duration: `30s`
 - Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
 - Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
-- Contract SHA-256: `474385a6e0d2e8128634f126936353878e85abcc38bc911167092175f8844942`
+- Contract SHA-256: `343e593306d4781a3cdd0a72ecf62758f5accc949c5f19e35a6b3b81e4d4f819`
 
 Input schema:
 
@@ -6370,7 +6376,7 @@ Submit one bounded target-defined task run under external R3 authorization.
 - Maximum duration: `30s`
 - Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
 - Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
-- Contract SHA-256: `d1d6eaeaebee25c76c304e867a85d76e6704d7e361eac65830934c743e0779ca`
+- Contract SHA-256: `1e67c1dbe0e4deda3d632e71ba8ed44d63b23b5f6d61370c0c9be5473e492120`
 
 Input schema:
 
@@ -7301,7 +7307,7 @@ Submit one bounded test plan under external R3 authorization.
 - Maximum duration: `30s`
 - Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
 - Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
-- Contract SHA-256: `6954cdd91931e407309ca44be4962433a92631fcb4ab00c59f0fa355ea7e563d`
+- Contract SHA-256: `ef88f098f05122d34101c7175082fdf7415ab355f810ce25235d1ea56ac87222`
 
 Input schema:
 
@@ -7611,6 +7617,613 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `checkpoint.create`
+
+Create an immutable Rolo control-plane state anchor without changing target state.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `4d6f3ed87280af28b4596055bef52040a66c1b80b739d6962b9909d9b2d78ce5`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "enum": [
+          "state_graph",
+          "workflow_progress",
+          "configuration_refs",
+          "evidence_index"
+        ]
+      }
+    }
+  },
+  "required": [
+    "episode_id",
+    "label",
+    "scope"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "checkpoint_id",
+    "revision",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `checkpoint.list`
+
+List bounded Rolo control-plane checkpoint metadata without resolving saved state.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `read` / `R0`
+- Data classification: `SENSITIVE`
+- Result semantics: `OBSERVATION`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Maximum duration: `10s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_INPUT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `d8b6ed7fa7b95ec8efed606228bb7a889e5c898df0d8186cf3fc8199e12a3c4a`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "type": "string"
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    }
+  },
+  "required": [
+    "limit"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "episode_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "episode_id",
+          "revision",
+          "created_at"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "next_cursor": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "items",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `checkpoint.restore`
+
+Restore saved Rolo control-plane metadata without applying target state or resuming execution.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `f33185eae2537485ee50848067c53f0252410367141bb0bfdd6b7d640a738f49`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "checkpoint_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_current_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "enum": [
+          "state_graph",
+          "workflow_progress",
+          "configuration_refs",
+          "evidence_index"
+        ]
+      }
+    }
+  },
+  "required": [
+    "checkpoint_id",
+    "expected_current_revision",
+    "scope"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "checkpoint_id",
+    "revision",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `episode.export`
+
+Export one bounded episode manifest and artifact index without copying artifact contents.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `read` / `R1`
+- Data classification: `SENSITIVE`
+- Result semantics: `OBSERVATION`
+- Observation overhead: `ELEVATED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Maximum duration: `60s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_INPUT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `2c1138b4e5999015a383f2be19cfd4e42c67ce5df5b9035ee85ef07127191cb3`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "json",
+        "jsonl"
+      ]
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 100000000
+    }
+  },
+  "required": [
+    "episode_id",
+    "format",
+    "max_bytes"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "episode_id": {
+      "type": "string"
+    },
+    "artifact_ref": {
+      "type": "string"
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "episode_id",
+    "artifact_ref",
+    "media_type",
+    "bytes",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `episode.inspect`
+
+Read one bounded episode manifest with event metadata and artifact references only.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `read` / `R0`
+- Data classification: `SENSITIVE`
+- Result semantics: `OBSERVATION`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Maximum duration: `10s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_INPUT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `3c8eded61a1c554817e73d319bdd8b15ea673b0ad914643aed072010bf0c2b6a`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_events": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "max_artifacts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 10000000
+    }
+  },
+  "required": [
+    "episode_id",
+    "max_events",
+    "max_artifacts",
+    "max_bytes"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "episode_id": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "type",
+          "occurred_at"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "artifact_ref": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_ref"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "episode_id",
+    "state",
+    "started_at",
+    "events",
+    "artifacts",
+    "truncated",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `episode.list`
+
+List bounded episode metadata without returning event payloads or artifact contents.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `control` / `read` / `R0`
+- Data classification: `SENSITIVE`
+- Result semantics: `OBSERVATION`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Maximum duration: `10s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_INPUT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `e7b21b965185a994702d48ac05c505b8c494ca9e53d35ec8922ebec5103e8ecc`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "since": {
+      "type": "string"
+    },
+    "until": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    }
+  },
+  "required": [
+    "limit"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "episode_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "string"
+          },
+          "task_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "episode_id",
+          "state",
+          "started_at"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "next_cursor": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "items",
     "observed_at"
   ],
   "additionalProperties": false
