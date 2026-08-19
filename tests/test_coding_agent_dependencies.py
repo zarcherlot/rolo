@@ -43,7 +43,8 @@ class FakeCodexAdapter:
 def test_prepare_auto_installs_and_writes_secret_free_audit(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=False, authenticated=False)
     manager = AdapterAgentDependencyManager(
-        ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=adapter,  # type: ignore[arg-type]
     )
 
     report, artifact = manager.prepare(
@@ -66,7 +67,8 @@ def test_prepare_auto_installs_and_writes_secret_free_audit(tmp_path: Path) -> N
 def test_prepare_blocks_execution_when_login_is_missing(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=False)
     manager = AdapterAgentDependencyManager(
-        ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=adapter,  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(
@@ -79,15 +81,14 @@ def test_prepare_blocks_execution_when_login_is_missing(tmp_path: Path) -> None:
 
     assert report.status == "AUTH_REQUIRED"
     assert report.authentication == "REQUIRED"
-    assert report.messages == [
-        "Run codex login --device-auth as the same operating-system user"
-    ]
+    assert report.messages == ["Run codex login --device-auth as the same operating-system user"]
 
 
 def test_prepare_accepts_installed_and_authenticated_executor(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=True)
     manager = AdapterAgentDependencyManager(
-        ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=adapter,  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(
@@ -107,7 +108,8 @@ def test_prepare_accepts_installed_and_authenticated_executor(tmp_path: Path) ->
 def test_prepare_accepts_explicit_key_without_persisting_it(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=False)
     manager = AdapterAgentDependencyManager(
-        ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=adapter,  # type: ignore[arg-type]
     )
 
     report, artifact = manager.prepare(
@@ -126,7 +128,8 @@ def test_prepare_accepts_explicit_key_without_persisting_it(tmp_path: Path) -> N
 def test_prepare_rejects_unregistered_executor(tmp_path: Path) -> None:
     adapter = FakeCodexAdapter(tmp_path / "codex", installed=True, authenticated=True)
     manager = AdapterAgentDependencyManager(
-        ArtifactStore(tmp_path / "artifacts"), adapter=adapter  # type: ignore[arg-type]
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=adapter,  # type: ignore[arg-type]
     )
 
     report, _ = manager.prepare(

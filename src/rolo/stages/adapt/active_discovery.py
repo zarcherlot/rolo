@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import platform
 import queue
@@ -20,7 +21,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
-from rolo.core.models import DiscoveryStatus, ProbeResult, ToolDescriptor
+from rolo.core.models import DiscoveryStatus, ProbeResult
 from rolo.stages.adapt.discovery_status import derive_discovery_status
 from rolo.stages.adapt.evidence import (
     BASE_SKIP_DIRECTORIES,
@@ -40,6 +41,7 @@ HELP_TIMEOUT_S = 5.0
 MAX_EXECUTABLE_HASH_BYTES = 256 * 1024 * 1024
 MAX_EXECUTABLE_HASH_AGGREGATE_BYTES = 2 * 1024 * 1024 * 1024
 TEXT_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".html", ".htm"}
+STRUCTURED_DOCUMENT_NAMES = {"pyproject.toml", "package.xml", "Cargo.toml"}
 CONFIG_SUFFIXES = {".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf"}
 INTERMEDIATE_SUFFIXES = {
     ".a",
@@ -53,11 +55,19 @@ INTERMEDIATE_SUFFIXES = {
     ".so",
 }
 SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES
+SUPPLEMENTAL_SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
+    "third-party",
+    "third_party",
+    "vendor",
+    "vendors",
+}
 
 
 class DiscoveryModeLevel(str, Enum):
+    # Retained so historical immutable reports remain readable. New reports never emit it.
     SOURCE_FIRST = "SOURCE_FIRST"
     ARTIFACT_DOC = "ARTIFACT_DOC"
+    DOC_PROBE = "DOC_PROBE"
     BINARY_ONLY = "BINARY_ONLY"
 
 
@@ -104,9 +114,18 @@ class ActiveDiscoveryInputs(BaseModel):
 
     @model_validator(mode="after")
     def require_primary_evidence(self) -> ActiveDiscoveryInputs:
-        if not (self.source_roots or self.install_roots or self.executables):
+        if not (
+            self.source_roots
+            or self.build_roots
+            or self.install_roots
+            or self.executables
+            or self.document_roots
+            or self.launch_roots
+            or self.active_probe == ActiveProbeMode.RUNTIME_READONLY
+        ):
             raise ValueError(
-                "at least one --source-root, --install-root, or --executable is required"
+                "at least one --build-root, --install-root, --executable, --doc-root, "
+                "--launch-root, --source-root, or --active-probe runtime-readonly is required"
             )
         return self
 
@@ -201,6 +220,9 @@ class LaunchAnalysis(BaseModel):
     nodes: list[str] = Field(default_factory=list)
     arguments: list[str] = Field(default_factory=list)
     remappings: list[dict[str, str]] = Field(default_factory=list)
+    conditions: list[str] = Field(default_factory=list)
+    urdf_references: list[str] = Field(default_factory=list)
+    verification: Literal["STATIC_UNVERIFIED"] = "STATIC_UNVERIFIED"
 
 
 class InvocationAnalysis(BaseModel):
@@ -236,6 +258,7 @@ class ExecutableDiscovery(BaseModel):
     path: str | None = None
     origin: Literal[
         "EXPLICIT",
+        "DISCOVERED_BUILD_ARTIFACT",
         "DISCOVERED_ARTIFACT",
         "SOURCE_DECLARED",
         "LAUNCH_DECLARED",
@@ -246,13 +269,10 @@ class ExecutableDiscovery(BaseModel):
     version: dict[str, Any] = Field(default_factory=dict)
     source_analysis: SourceAnalysis = Field(default_factory=SourceAnalysis)
     artifact_analysis: ArtifactAnalysis = Field(default_factory=ArtifactAnalysis)
-    documentation_analysis: DocumentationAnalysis = Field(
-        default_factory=DocumentationAnalysis
-    )
+    documentation_analysis: DocumentationAnalysis = Field(default_factory=DocumentationAnalysis)
     launch_analysis: LaunchAnalysis = Field(default_factory=LaunchAnalysis)
     invocation: InvocationAnalysis = Field(default_factory=InvocationAnalysis)
     communication: CommunicationAnalysis = Field(default_factory=CommunicationAnalysis)
-    capability_candidates: list[dict[str, Any]] = Field(default_factory=list)
     dependencies: dict[str, list[Any]] = Field(default_factory=dict)
     safety: dict[str, Any] = Field(default_factory=dict)
     evidence: dict[str, list[Any]] = Field(default_factory=dict)
@@ -266,25 +286,52 @@ class DiscoveryMode(BaseModel):
     reason: str
 
 
+class EvidencePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_order: list[Literal["BUILD_ARTIFACT", "DOCUMENTATION", "PROBE"]] = Field(
+        default_factory=lambda: ["BUILD_ARTIFACT", "DOCUMENTATION", "PROBE"]
+    )
+    supporting: list[Literal["SOURCE"]] = Field(default_factory=lambda: ["SOURCE"])
+    conflict_rule: Literal["HIGHER_PRIORITY_WINS"] = "HIGHER_PRIORITY_WINS"
+    source_role: Literal["SUPPORTING_ONLY"] = "SUPPORTING_ONLY"
+
+
 class ActiveDiscoveryReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-active-discovery-report/v1"] = (
-        "robot-active-discovery-report/v1"
-    )
+    schema_version: Literal[
+        "robot-active-discovery-report/v1", "robot-active-discovery-report/v2"
+    ] = "robot-active-discovery-report/v2"
     discovery_id: str
     robot_id: str
     technical_status: str
     discovery_mode: DiscoveryMode
+    evidence_policy: EvidencePolicy = Field(default_factory=EvidencePolicy)
     inputs: dict[str, Any]
     coverage: dict[str, CoverageRecord]
     executables: list[ExecutableDiscovery] = Field(default_factory=list)
-    canonical_operation_summary: list[dict[str, Any]] = Field(default_factory=list)
     dependency_summary: dict[str, Any] = Field(default_factory=dict)
     global_conflicts: list[str] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_v1_duplicate_views(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        migrated.pop("canonical_operation_summary", None)
+        executables = []
+        for executable in migrated.get("executables", []):
+            if isinstance(executable, dict):
+                executable = dict(executable)
+                executable.pop("capability_candidates", None)
+            executables.append(executable)
+        migrated["executables"] = executables
+        return migrated
 
 
 def _hash_files(paths: Iterable[Path]) -> dict[str, str]:
@@ -471,9 +518,7 @@ def _extract_document_evidence(
 
 def _extract_help_summary(text: str) -> tuple[list[str], list[str], list[str]]:
     usage: list[str] = []
-    parameters = sorted(
-        set(re.findall(r"(?<!\w)--[a-zA-Z0-9][a-zA-Z0-9_-]*", text))
-    )
+    parameters = sorted(set(re.findall(r"(?<!\w)--[a-zA-Z0-9][a-zA-Z0-9_-]*", text)))
     subcommands: set[str] = set()
     in_commands = False
     for line in text.splitlines():
@@ -497,80 +542,226 @@ def _extract_help_summary(text: str) -> tuple[list[str], list[str], list[str]]:
     return usage[:20], parameters[:500], sorted(subcommands)[:200]
 
 
+def _ast_call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _ast_keyword(call: ast.Call, name: str) -> ast.AST | None:
+    return next((keyword.value for keyword in call.keywords if keyword.arg == name), None)
+
+
+def _ast_string(node: ast.AST | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _launch_configurations(node: ast.AST | None) -> set[str]:
+    if node is None:
+        return set()
+    return {
+        value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and _ast_call_name(child.func) == "LaunchConfiguration"
+        and child.args
+        and (value := _ast_string(child.args[0]))
+    }
+
+
+def _literal_cli_arguments(node: ast.AST | None) -> set[str]:
+    if node is None:
+        return set()
+    return {
+        child.value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Constant)
+        and isinstance(child.value, str)
+        and child.value.startswith("--")
+    }
+
+
+def _python_remappings(node: ast.AST | None) -> set[tuple[str, str]]:
+    if node is None:
+        return set()
+    remappings: set[tuple[str, str]] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, (ast.List, ast.Tuple)) or len(child.elts) != 2:
+            continue
+        source, target = (_ast_string(item) for item in child.elts)
+        if source and target:
+            remappings.add((source, target))
+    return remappings
+
+
+def _python_conditions(node: ast.AST | None) -> set[str]:
+    if node is None:
+        return set()
+    kind = _ast_call_name(node.func) if isinstance(node, ast.Call) else None
+    prefix = "unless" if kind == "UnlessCondition" else "if"
+    return {f"{prefix}:{name}" for name in _launch_configurations(node)}
+
+
+def _python_urdf_references(node: ast.AST | None) -> set[str]:
+    """Extract literal/package URDF references without evaluating Python expressions."""
+    if node is None:
+        return set()
+    references: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            if child.value.lower().endswith((".urdf", ".xacro")):
+                references.add(child.value)
+        if not isinstance(child, ast.Call) or _ast_call_name(child.func) != "join":
+            continue
+        package: str | None = None
+        parts: list[str] = []
+        for argument in child.args:
+            if (
+                isinstance(argument, ast.Call)
+                and _ast_call_name(argument.func) == "get_package_share_directory"
+                and argument.args
+            ):
+                package = _ast_string(argument.args[0])
+                continue
+            if value := _ast_string(argument):
+                parts.append(value)
+        if package and parts and parts[-1].lower().endswith((".urdf", ".xacro")):
+            references.add(f"package://{package}/{'/'.join(parts)}")
+    package_references = {
+        Path(reference).name for reference in references if reference.startswith("package://")
+    }
+    return {
+        reference
+        for reference in references
+        if reference.startswith("package://") or Path(reference).name not in package_references
+    }
+
+
+def _record_launch_declaration(
+    evidence: dict[str, dict[str, Any]],
+    *,
+    path: Path,
+    executable: str,
+    package: str | None,
+    node_name: str | None,
+    arguments: set[str],
+    remappings: set[tuple[str, str]],
+    conditions: set[str],
+    urdf_references: set[str],
+) -> None:
+    record = evidence.setdefault(
+        executable,
+        {
+            "references": set(),
+            "packages": set(),
+            "nodes": set(),
+            "arguments": set(),
+            "remappings": set(),
+            "conditions": set(),
+            "urdf_references": set(),
+        },
+    )
+    record["references"].add(str(path))
+    if package:
+        record["packages"].add(package)
+    if node_name:
+        record["nodes"].add(node_name)
+    record["arguments"].update(arguments)
+    record["remappings"].update(remappings)
+    record["conditions"].update(conditions)
+    record["urdf_references"].update(urdf_references)
+
+
+def _extract_python_launch_evidence(
+    path: Path,
+    text: str,
+    evidence: dict[str, dict[str, Any]],
+) -> None:
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except SyntaxError:
+        return
+    for child in ast.walk(tree):
+        if not isinstance(child, ast.Call) or _ast_call_name(child.func) not in {
+            "Node",
+            "ComposableNode",
+        }:
+            continue
+        executable = _ast_string(_ast_keyword(child, "executable"))
+        if not executable:
+            continue
+        arguments_node = _ast_keyword(child, "arguments")
+        condition_node = _ast_keyword(child, "condition")
+        condition_configurations = _launch_configurations(condition_node)
+        _record_launch_declaration(
+            evidence,
+            path=path,
+            executable=executable,
+            package=_ast_string(_ast_keyword(child, "package")),
+            node_name=_ast_string(_ast_keyword(child, "name")),
+            arguments=(
+                _literal_cli_arguments(arguments_node)
+                | (_launch_configurations(child) - condition_configurations)
+            ),
+            remappings=_python_remappings(_ast_keyword(child, "remappings")),
+            conditions=_python_conditions(condition_node),
+            urdf_references=_python_urdf_references(arguments_node),
+        )
+
+
+def _extract_xml_launch_evidence(
+    path: Path,
+    text: str,
+    evidence: dict[str, dict[str, Any]],
+) -> None:
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return
+    if root.tag.rsplit("}", 1)[-1] != "launch":
+        return
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] != "node":
+            continue
+        executable = node.attrib.get("exec") or node.attrib.get("executable")
+        if not executable:
+            continue
+        remappings = {
+            (source, target)
+            for child in node
+            if child.tag.rsplit("}", 1)[-1] == "remap"
+            and (source := child.attrib.get("from"))
+            and (target := child.attrib.get("to"))
+        }
+        _record_launch_declaration(
+            evidence,
+            path=path,
+            executable=executable,
+            package=node.attrib.get("pkg") or node.attrib.get("package"),
+            node_name=node.attrib.get("name"),
+            arguments=set(),
+            remappings=remappings,
+            conditions={f"if:{node.attrib['if']}" for _ in [0] if node.attrib.get("if")}
+            | {f"unless:{node.attrib['unless']}" for _ in [0] if node.attrib.get("unless")},
+            urdf_references=set(),
+        )
+
+
 def _extract_launch_evidence(
     paths: Iterable[Path], text_cache: Mapping[Path, str]
 ) -> dict[str, dict[str, Any]]:
-    """Statically extract launch declarations without importing or executing launch files."""
+    """Statically parse launch declarations without importing or executing launch files."""
     evidence: dict[str, dict[str, Any]] = {}
     for path in paths:
         text = _evidence_text(path, text_cache)
         if not text:
             continue
-        launch_arguments = set(
-            re.findall(
-                r"DeclareLaunchArgument\s*\(\s*['\"]([^'\"]+)['\"]",
-                text,
-            )
-        )
-        remappings = {
-            (source, target)
-            for source, target in re.findall(
-                r"['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]",
-                text,
-            )
-            if source.startswith("/") or target.startswith("/")
-        }
-        declarations: list[tuple[str, str | None, str | None]] = []
-        for block in re.findall(r"(?s)(?:Node|ComposableNode)\s*\((.*?)\)", text):
-            executable_match = re.search(
-                r"\bexecutable\s*=\s*['\"]([^'\"]+)['\"]", block
-            )
-            if not executable_match:
-                continue
-            package_match = re.search(r"\bpackage\s*=\s*['\"]([^'\"]+)['\"]", block)
-            name_match = re.search(r"\bname\s*=\s*['\"]([^'\"]+)['\"]", block)
-            declarations.append(
-                (
-                    executable_match.group(1),
-                    package_match.group(1) if package_match else None,
-                    name_match.group(1) if name_match else None,
-                )
-            )
-        try:
-            root = ET.fromstring(text)
-        except ET.ParseError:
-            root = None
-        if root is not None:
-            for node in root.iter():
-                if node.tag.rsplit("}", 1)[-1] != "node":
-                    continue
-                executable = node.attrib.get("exec") or node.attrib.get("executable")
-                if executable:
-                    declarations.append(
-                        (
-                            executable,
-                            node.attrib.get("pkg") or node.attrib.get("package"),
-                            node.attrib.get("name"),
-                        )
-                    )
-        for executable, package, node_name in declarations:
-            record = evidence.setdefault(
-                executable,
-                {
-                    "references": set(),
-                    "packages": set(),
-                    "nodes": set(),
-                    "arguments": set(),
-                    "remappings": set(),
-                },
-            )
-            record["references"].add(str(path))
-            if package:
-                record["packages"].add(package)
-            if node_name:
-                record["nodes"].add(node_name)
-            record["arguments"].update(launch_arguments)
-            record["remappings"].update(remappings)
+        if path.name.endswith(".launch.py"):
+            _extract_python_launch_evidence(path, text, evidence)
+        elif path.name.endswith(".launch.xml"):
+            _extract_xml_launch_evidence(path, text, evidence)
     return evidence
 
 
@@ -595,29 +786,56 @@ def _mode(
     projects: list[dict[str, Any]],
     docs: list[Path],
     executable_artifacts: list[Path],
+    *,
+    probe_observed: bool,
 ) -> DiscoveryMode:
-    if projects:
-        return DiscoveryMode(
-            level=DiscoveryModeLevel.SOURCE_FIRST,
-            confidence=Confidence.HIGH,
-            reason="usable source evidence was collected",
-        )
     if executable_artifacts and docs:
         return DiscoveryMode(
             level=DiscoveryModeLevel.ARTIFACT_DOC,
             confidence=Confidence.MEDIUM,
-            reason="artifact and documentation evidence were collected without source",
+            reason=(
+                "build/deployed artifacts and documentation are primary; probe evidence is "
+                "correlated and source is supporting only"
+                if probe_observed
+                else "build/deployed artifacts and documentation are primary; probe evidence "
+                "was not observed and source is supporting only"
+            ),
         )
     if executable_artifacts:
         return DiscoveryMode(
             level=DiscoveryModeLevel.BINARY_ONLY,
-            confidence=Confidence.LOW,
-            reason="only executable or installed-artifact evidence was collected",
+            confidence=Confidence.MEDIUM if probe_observed else Confidence.LOW,
+            reason=(
+                "build/deployed artifact and probe evidence are primary; documentation is "
+                "missing and source is supporting only"
+                if probe_observed
+                else "only build/deployed artifact evidence was collected; documentation and "
+                "probe evidence are missing and source is supporting only"
+            ),
         )
+    if docs or probe_observed:
+        return DiscoveryMode(
+            level=DiscoveryModeLevel.DOC_PROBE,
+            confidence=Confidence.MEDIUM if docs and probe_observed else Confidence.LOW,
+            reason=(
+                "documentation and probe evidence are primary; no executable build/deployed "
+                "artifact was found and source is supporting only"
+                if docs and probe_observed
+                else "documentation is primary; no executable build/deployed artifact or "
+                "active probe evidence was found and source is supporting only"
+                if docs
+                else "probe evidence is primary; no executable build/deployed artifact or "
+                "documentation was found and source is supporting only"
+            ),
+        )
+    source_note = (
+        " Source evidence was collected but is supporting-only and cannot establish a mode."
+        if projects
+        else ""
+    )
     raise ValueError(
-        "no usable primary evidence was collected; provide a source root with recognizable "
-        "source or manifest evidence, an install root containing an executable, or an existing "
-        "--executable file"
+        "no usable primary evidence was collected; provide a build/install artifact, readable "
+        "documentation/launch evidence, or an observed read-only probe." + source_note
     )
 
 
@@ -660,11 +878,7 @@ def _source_analysis(projects: list[dict[str, Any]]) -> SourceAnalysis:
             for parameter in project.get("semantic_candidates", [])
         ],
         source_revisions=sorted(
-            {
-                revision
-                for project in projects
-                if (revision := project.get("source_revision"))
-            }
+            {revision for project in projects if (revision := project.get("source_revision"))}
         ),
         manifest_sha256={
             str(Path(project["root"]) / relative): digest
@@ -678,6 +892,31 @@ def _source_analysis(projects: list[dict[str, Any]]) -> SourceAnalysis:
 def _name_keys(value: str) -> set[str]:
     name = Path(value).name.casefold()
     return {name, Path(name).stem}
+
+
+def _evidence_files_for_executable(
+    name: str,
+    paths: Sequence[Path],
+    *,
+    text_cache: Mapping[Path, str],
+    allow_single_executable_fallback: bool,
+    inspect_text: bool,
+) -> list[Path]:
+    """Associate supplemental evidence without copying it to every executable."""
+    keys = {key.casefold() for key in _name_keys(name) if len(key) >= 3}
+    matches: list[Path] = []
+    for path in paths:
+        path_keys = _name_keys(path.name)
+        if keys & path_keys:
+            matches.append(path)
+            continue
+        if inspect_text:
+            text = _evidence_text(path, text_cache)
+            if text and any(key in text.casefold() for key in keys):
+                matches.append(path)
+    if matches:
+        return list(dict.fromkeys(matches))
+    return list(paths) if allow_single_executable_fallback else []
 
 
 def _project_executable_names(project: dict[str, Any]) -> set[str]:
@@ -722,9 +961,7 @@ def _ros_communication(
     include_runtime: bool,
 ) -> dict[str, Any]:
     source_interfaces = [
-        interface
-        for project in projects
-        for interface in project.get("ros_interfaces", [])
+        interface for project in projects for interface in project.get("ros_interfaces", [])
     ]
     runtime = ros_probe.data if include_runtime else {}
     return {
@@ -751,7 +988,6 @@ class ActiveDiscoveryAnalyzer:
         inputs: ActiveDiscoveryInputs,
         projects: list[dict[str, Any]],
         ros_probe: ProbeResult,
-        tools: Sequence[ToolDescriptor],
         run_root: Path,
         artifact_prefix: str,
         evidence_text: Mapping[Path, str] | None = None,
@@ -759,12 +995,9 @@ class ActiveDiscoveryAnalyzer:
         self.inputs = inputs.resolved()
         self.projects = projects
         self.ros_probe = ros_probe
-        self.tools = tools
         self.run_root = run_root
         self.artifact_prefix = artifact_prefix.rstrip("/")
-        self.evidence_text = {
-            path.resolve(): text for path, text in (evidence_text or {}).items()
-        }
+        self.evidence_text = {path.resolve(): text for path, text in (evidence_text or {}).items()}
 
     def build(
         self,
@@ -788,12 +1021,12 @@ class ActiveDiscoveryAnalyzer:
         doc_files, doc_truncated, doc_warnings = walk_files(
             self.inputs.document_roots,
             limit=MAX_ACTIVE_FILES,
-            skip_directories=SKIP_DIRECTORIES,
+            skip_directories=SUPPLEMENTAL_SKIP_DIRECTORIES,
         )
         launch_files, launch_truncated, launch_warnings = walk_files(
             self.inputs.launch_roots,
             limit=MAX_ACTIVE_FILES,
-            skip_directories=SKIP_DIRECTORIES,
+            skip_directories=SUPPLEMENTAL_SKIP_DIRECTORIES,
         )
         source_doc_files = [
             Path(project["root"]) / relative
@@ -805,14 +1038,19 @@ class ActiveDiscoveryAnalyzer:
             for project in usable_projects
             for relative in project.get("launch_files", [])
         ]
+        structured_document_files = list(
+            dict.fromkeys(
+                Path(project["root"]) / relative
+                for project in usable_projects
+                for relative in project.get("manifest_digests", {})
+                if Path(relative).name in STRUCTURED_DOCUMENT_NAMES
+            )
+        )
         doc_files = list(dict.fromkeys([*doc_files, *source_doc_files]))
         launch_files = list(dict.fromkeys([*launch_files, *source_launch_files]))
         doc_files = [path for path in doc_files if path.suffix.lower() in TEXT_SUFFIXES]
         launch_files = [
-            path
-            for path in launch_files
-            if "launch" in path.name.lower()
-            or path.suffix.lower() in {".yaml", ".yml", ".xml", ".py"}
+            path for path in launch_files if path.name.endswith((".launch.py", ".launch.xml"))
         ]
         if len(doc_files) > MAX_TEXT_EVIDENCE_FILES:
             doc_truncated = True
@@ -820,22 +1058,15 @@ class ActiveDiscoveryAnalyzer:
         if len(launch_files) > MAX_TEXT_EVIDENCE_FILES:
             launch_truncated = True
             launch_files = launch_files[:MAX_TEXT_EVIDENCE_FILES]
-        documented_commands, documented_parameters, doc_protocols = _extract_document_evidence(
-            doc_files, self.evidence_text
-        )
-        launch_commands, launch_parameters, launch_protocols = _extract_document_evidence(
-            launch_files, self.evidence_text
-        )
-        documented_commands = sorted(set(documented_commands) | set(launch_commands))
-        documented_parameters = sorted(set(documented_parameters) | set(launch_parameters))
         launch_evidence = _extract_launch_evidence(launch_files, self.evidence_text)
 
         explicit_paths = [path for path in self.inputs.executables if path.is_file()]
-        invalid_explicit_paths = [
-            path for path in self.inputs.executables if not path.is_file()
-        ]
-        discovered_paths = [path for path in install_files if _looks_executable(path)]
-        all_discovered_paths = list(dict.fromkeys([*explicit_paths, *discovered_paths]))
+        invalid_explicit_paths = [path for path in self.inputs.executables if not path.is_file()]
+        discovered_build_paths = [path for path in build_files if _looks_executable(path)]
+        discovered_install_paths = [path for path in install_files if _looks_executable(path)]
+        all_discovered_paths = list(
+            dict.fromkeys([*explicit_paths, *discovered_build_paths, *discovered_install_paths])
+        )
         executable_truncated = len(all_discovered_paths) > MAX_REPORT_EXECUTABLES
         all_paths = all_discovered_paths[:MAX_REPORT_EXECUTABLES]
         source_projects_by_name: dict[str, list[dict[str, Any]]] = {}
@@ -851,9 +1082,7 @@ class ActiveDiscoveryAnalyzer:
 
         global_source_analysis = _source_analysis(usable_projects)
         intermediates = [
-            str(path)
-            for path in build_files
-            if path.suffix.lower() in INTERMEDIATE_SUFFIXES
+            str(path) for path in build_files if path.suffix.lower() in INTERMEDIATE_SUFFIXES
         ][:MAX_EVIDENCE_REFS]
         configs = [
             str(path)
@@ -861,31 +1090,22 @@ class ActiveDiscoveryAnalyzer:
             if path.suffix.lower() in CONFIG_SUFFIXES
         ][:MAX_EVIDENCE_REFS]
         plugins = [
-            str(path)
-            for path in install_files
-            if path.suffix.lower() in {".so", ".dll", ".dylib"}
+            str(path) for path in install_files if path.suffix.lower() in {".so", ".dll", ".dylib"}
         ][:MAX_EVIDENCE_REFS]
         runtime_observed = (
             self.inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
             and self.ros_probe.status.value in {"SUCCEEDED", "PARTIAL"}
         )
-        shared_protocols = doc_protocols | launch_protocols
-        candidate_operations = [
-            {
-                "operation": tool.operation,
-                "state": tool.availability,
-                "confidence": (
-                    Confidence.LOW.value
-                    if tool.availability == "DISCOVERED_UNVERIFIED"
-                    else Confidence.MEDIUM.value
-                ),
-                "evidence": tool.evidence,
-                "required_adapter": tool.availability == "DISCOVERED_UNVERIFIED",
-            }
-            for tool in self.tools
-        ]
         document_sha256 = _hash_files(doc_files[:MAX_EVIDENCE_REFS])
         launch_sha256 = _hash_files(launch_files[:MAX_EVIDENCE_REFS])
+        declared_names = set(source_names) | set(launch_evidence)
+        executable_name_count = len(
+            {
+                *[path.name for path in all_paths],
+                *declared_names,
+            }
+        )
+        allow_supplemental_fallback = executable_name_count == 1
 
         def launch_analysis_for(name: str) -> LaunchAnalysis:
             declared_name = name if name in launch_evidence else Path(name).stem
@@ -908,6 +1128,8 @@ class ActiveDiscoveryAnalyzer:
                     {"from": source, "to": target}
                     for source, target in sorted(record["remappings"])
                 ],
+                conditions=sorted(record["conditions"]),
+                urdf_references=sorted(record["urdf_references"]),
             )
 
         executables: list[ExecutableDiscovery] = []
@@ -916,10 +1138,11 @@ class ActiveDiscoveryAnalyzer:
         hash_warnings: list[str] = []
         for index, path in enumerate(all_paths, start=1):
             explicit = path in explicit_paths
+            from_build_root = path in discovered_build_paths
             executable_projects = _projects_for_executable(
                 path.name,
                 usable_projects,
-                allow_single_project_fallback=True,
+                allow_single_project_fallback=False,
             )
             source_analysis = _source_analysis(executable_projects)
             ros_communication = _ros_communication(
@@ -932,7 +1155,26 @@ class ActiveDiscoveryAnalyzer:
                 for project in executable_projects
                 for protocol in project.get("protocols", [])
             }
-            protocols = sorted(shared_protocols | source_protocols)
+            executable_docs = _evidence_files_for_executable(
+                path.name,
+                doc_files,
+                text_cache=self.evidence_text,
+                allow_single_executable_fallback=allow_supplemental_fallback,
+                inspect_text=True,
+            )
+            executable_launch_files = [
+                Path(item) for item in launch_analysis_for(path.name).references
+            ]
+            documented_commands, documented_parameters, doc_protocols = _extract_document_evidence(
+                executable_docs, self.evidence_text
+            )
+            launch_commands, launch_parameters, launch_protocols = _extract_document_evidence(
+                executable_launch_files, self.evidence_text
+            )
+            documented_commands = sorted(set(documented_commands) | set(launch_commands))
+            documented_parameters = sorted(set(documented_parameters) | set(launch_parameters))
+            primary_protocols = doc_protocols | launch_protocols
+            protocols = sorted(primary_protocols or source_protocols)
             file_format, architecture = _binary_identity(path)
             help_result = HelpProbeResult()
             executable_parameters = list(documented_parameters)
@@ -971,17 +1213,10 @@ class ActiveDiscoveryAnalyzer:
                 hash_unresolved.append("executable size could not be read; SHA-256 omitted")
             elif executable_size > MAX_EXECUTABLE_HASH_BYTES:
                 sha256 = None
-                hash_unresolved.append(
-                    "executable exceeds the per-file SHA-256 size limit"
-                )
-            elif (
-                executable_hash_bytes + executable_size
-                > MAX_EXECUTABLE_HASH_AGGREGATE_BYTES
-            ):
+                hash_unresolved.append("executable exceeds the per-file SHA-256 size limit")
+            elif executable_hash_bytes + executable_size > MAX_EXECUTABLE_HASH_AGGREGATE_BYTES:
                 sha256 = None
-                hash_unresolved.append(
-                    "per-run executable SHA-256 byte limit was reached"
-                )
+                hash_unresolved.append("per-run executable SHA-256 byte limit was reached")
             else:
                 try:
                     sha256 = sha256_file(path)
@@ -994,6 +1229,30 @@ class ActiveDiscoveryAnalyzer:
                 (str(root) for root in self.inputs.install_roots if path.is_relative_to(root)),
                 None,
             )
+            executable_build_roots = [
+                str(root) for root in self.inputs.build_roots if path.is_relative_to(root)
+            ]
+            executable_intermediates = _evidence_files_for_executable(
+                path.name,
+                [Path(item) for item in intermediates],
+                text_cache=self.evidence_text,
+                allow_single_executable_fallback=allow_supplemental_fallback,
+                inspect_text=False,
+            )
+            executable_configs = _evidence_files_for_executable(
+                path.name,
+                [Path(item) for item in configs],
+                text_cache=self.evidence_text,
+                allow_single_executable_fallback=allow_supplemental_fallback,
+                inspect_text=True,
+            )
+            executable_plugins = _evidence_files_for_executable(
+                path.name,
+                [Path(item) for item in plugins],
+                text_cache=self.evidence_text,
+                allow_single_executable_fallback=allow_supplemental_fallback,
+                inspect_text=False,
+            )
             launch_analysis = launch_analysis_for(path.name)
             executable_ros = dict(ros_communication)
             executable_ros["nodes"] = sorted(
@@ -1005,7 +1264,13 @@ class ActiveDiscoveryAnalyzer:
                     executable_id=f"exe-{index:04d}",
                     name=path.name,
                     path=str(path),
-                    origin="EXPLICIT" if explicit else "DISCOVERED_ARTIFACT",
+                    origin=(
+                        "EXPLICIT"
+                        if explicit
+                        else "DISCOVERED_BUILD_ARTIFACT"
+                        if from_build_root
+                        else "DISCOVERED_ARTIFACT"
+                    ),
                     sha256=sha256,
                     file_format=file_format,
                     architecture=architecture,
@@ -1013,15 +1278,19 @@ class ActiveDiscoveryAnalyzer:
                     source_analysis=source_analysis,
                     artifact_analysis=ArtifactAnalysis(
                         install_root=install_root,
-                        build_roots=[str(root) for root in self.inputs.build_roots],
-                        intermediate_outputs=intermediates,
-                        plugins=plugins,
-                        configuration_files=configs,
+                        build_roots=executable_build_roots,
+                        intermediate_outputs=[str(item) for item in executable_intermediates],
+                        plugins=[str(item) for item in executable_plugins],
+                        configuration_files=[str(item) for item in executable_configs],
                     ),
                     documentation_analysis=DocumentationAnalysis(
-                        available=bool(doc_files),
-                        references=[str(path) for path in doc_files[:MAX_EVIDENCE_REFS]],
-                        reference_sha256=document_sha256,
+                        available=bool(executable_docs),
+                        references=[str(item) for item in executable_docs[:MAX_EVIDENCE_REFS]],
+                        reference_sha256={
+                            str(item): document_sha256[str(item)]
+                            for item in executable_docs[:MAX_EVIDENCE_REFS]
+                            if str(item) in document_sha256
+                        },
                         documented_commands=documented_commands,
                         documented_parameters=documented_parameters,
                     ),
@@ -1033,8 +1302,7 @@ class ActiveDiscoveryAnalyzer:
                         ),
                         subcommands=help_result.subcommands,
                         startup_sequence=[
-                            f"declared by {reference}"
-                            for reference in launch_analysis.references
+                            f"declared by {reference}" for reference in launch_analysis.references
                         ],
                         help_probe=help_result,
                     ),
@@ -1051,14 +1319,16 @@ class ActiveDiscoveryAnalyzer:
                         hardware_bus={"serial": [], "can": [], "i2c": [], "spi": []},
                         confidence=(
                             Confidence.MEDIUM
-                            if usable_projects or doc_files or launch_analysis.available
+                            if executable_docs
+                            or launch_analysis.available
+                            or runtime_observed
+                            or help_result.status == HelpProbeStatus.SUCCEEDED
                             else Confidence.LOW
                         ),
                         evidence_refs=[
-                            str(item) for item in [*doc_files, *launch_files][:100]
+                            str(item) for item in [*executable_docs, *executable_launch_files][:100]
                         ],
                     ),
-                    capability_candidates=candidate_operations,
                     dependencies={
                         "declared": source_analysis.declared_dependencies,
                         "installed": [],
@@ -1084,28 +1354,22 @@ class ActiveDiscoveryAnalyzer:
                         "motion_possible": False,
                     },
                     evidence={
-                        "source": source_analysis.evidence_refs,
                         "artifacts": [str(path)],
-                        "documentation": [str(item) for item in doc_files[:100]],
+                        "documentation": [str(item) for item in executable_docs[:100]],
                         "help": [help_result.output_ref] if help_result.output_ref else [],
-                        "ros_runtime": (
-                            ["live_ros_graph"]
-                            if runtime_observed
-                            else []
-                        ),
+                        "ros_runtime": (["live_ros_graph"] if runtime_observed else []),
+                        "source_support": source_analysis.evidence_refs,
                         "conflicts": [],
                         "unresolved": hash_unresolved,
                     },
                 )
             )
-        declared_names = source_names | set(launch_evidence)
         for name in sorted(declared_names):
             if len(executables) >= MAX_REPORT_EXECUTABLES:
                 executable_truncated = True
                 break
             if any(
-                executable.name == name
-                or Path(executable.name).stem == Path(name).stem
+                executable.name == name or Path(executable.name).stem == Path(name).stem
                 for executable in executables
             ):
                 continue
@@ -1128,7 +1392,24 @@ class ActiveDiscoveryAnalyzer:
                 for project in executable_projects
                 for protocol in project.get("protocols", [])
             }
-            protocols = sorted(shared_protocols | source_protocols)
+            executable_docs = _evidence_files_for_executable(
+                name,
+                doc_files,
+                text_cache=self.evidence_text,
+                allow_single_executable_fallback=allow_supplemental_fallback,
+                inspect_text=True,
+            )
+            executable_launch_files = [Path(item) for item in launch_analysis.references]
+            documented_commands, documented_parameters, doc_protocols = _extract_document_evidence(
+                executable_docs, self.evidence_text
+            )
+            launch_commands, launch_parameters, launch_protocols = _extract_document_evidence(
+                executable_launch_files, self.evidence_text
+            )
+            documented_commands = sorted(set(documented_commands) | set(launch_commands))
+            documented_parameters = sorted(set(documented_parameters) | set(launch_parameters))
+            primary_protocols = doc_protocols | launch_protocols
+            protocols = sorted(primary_protocols or source_protocols)
             executable_ros = dict(ros_communication)
             executable_ros["nodes"] = sorted(
                 set(executable_ros.get("nodes", [])) | set(launch_analysis.nodes)
@@ -1141,9 +1422,13 @@ class ActiveDiscoveryAnalyzer:
                     origin=origin,
                     source_analysis=source_analysis,
                     documentation_analysis=DocumentationAnalysis(
-                        available=bool(doc_files),
-                        references=[str(path) for path in doc_files[:MAX_EVIDENCE_REFS]],
-                        reference_sha256=document_sha256,
+                        available=bool(executable_docs),
+                        references=[str(path) for path in executable_docs[:MAX_EVIDENCE_REFS]],
+                        reference_sha256={
+                            str(path): document_sha256[str(path)]
+                            for path in executable_docs[:MAX_EVIDENCE_REFS]
+                            if str(path) in document_sha256
+                        },
                         documented_commands=documented_commands,
                         documented_parameters=documented_parameters,
                     ),
@@ -1154,22 +1439,18 @@ class ActiveDiscoveryAnalyzer:
                             set(documented_parameters) | set(launch_analysis.arguments)
                         ),
                         startup_sequence=[
-                            f"declared by {reference}"
-                            for reference in launch_analysis.references
+                            f"declared by {reference}" for reference in launch_analysis.references
                         ],
                     ),
                     communication=CommunicationAnalysis(
                         ros=executable_ros,
                         network={"protocols": protocols},
                         confidence=(
-                            Confidence.HIGH
-                            if name in source_names
-                            else Confidence.MEDIUM
-                            if doc_files or launch_analysis.available
+                            Confidence.MEDIUM
+                            if executable_docs or launch_analysis.available or runtime_observed
                             else Confidence.LOW
                         ),
                     ),
-                    capability_candidates=candidate_operations,
                     dependencies={
                         "declared": source_analysis.declared_dependencies,
                         "installed": [],
@@ -1187,11 +1468,11 @@ class ActiveDiscoveryAnalyzer:
                         "motion_possible": False,
                     },
                     evidence={
-                        "source": source_analysis.evidence_refs,
                         "artifacts": [],
-                        "documentation": [str(item) for item in doc_files[:100]],
+                        "documentation": [str(item) for item in executable_docs[:100]],
                         "help": [],
-                        "ros_runtime": [],
+                        "ros_runtime": (["live_ros_graph"] if runtime_observed else []),
+                        "source_support": source_analysis.evidence_refs,
                         "conflicts": [],
                         "unresolved": ["compiled executable path was not supplied or found"],
                     },
@@ -1209,9 +1490,7 @@ class ActiveDiscoveryAnalyzer:
             for executable in executables
             if executable.origin == "EXPLICIT"
         ]
-        help_incomplete = any(
-            result.status != HelpProbeStatus.SUCCEEDED for result in help_results
-        )
+        help_incomplete = any(result.status != HelpProbeStatus.SUCCEEDED for result in help_results)
         coverage = {
             "source": CoverageRecord(
                 status=(
@@ -1258,10 +1537,10 @@ class ActiveDiscoveryAnalyzer:
                     CoverageStatus.PARTIAL
                     if doc_truncated or doc_warnings
                     else CoverageStatus.COMPLETE
-                    if doc_files
+                    if doc_files or structured_document_files
                     else CoverageStatus.NOT_PROVIDED
                 ),
-                records=len(doc_files),
+                records=len(doc_files) + len(structured_document_files),
                 truncated=doc_truncated,
                 warnings=doc_warnings,
             ),
@@ -1288,12 +1567,10 @@ class ActiveDiscoveryAnalyzer:
                     else CoverageStatus.COMPLETE
                 ),
                 records=sum(
-                    result.status != HelpProbeStatus.BLOCKED_BY_POLICY
-                    for result in help_results
+                    result.status != HelpProbeStatus.BLOCKED_BY_POLICY for result in help_results
                 ),
                 truncated=any(
-                    result.status == HelpProbeStatus.BLOCKED_BY_POLICY
-                    for result in help_results
+                    result.status == HelpProbeStatus.BLOCKED_BY_POLICY for result in help_results
                 ),
                 warnings=[
                     f"{result.status.value}: {result.error}"
@@ -1317,7 +1594,15 @@ class ActiveDiscoveryAnalyzer:
                 else 0,
             ),
         }
-        mode = _mode(usable_projects, doc_files, all_discovered_paths)
+        probe_observed = runtime_observed or any(
+            result.status == HelpProbeStatus.SUCCEEDED for result in help_results
+        )
+        mode = _mode(
+            usable_projects,
+            list(dict.fromkeys([*doc_files, *structured_document_files, *launch_files])),
+            all_discovered_paths,
+            probe_observed=probe_observed,
+        )
         warnings = [
             *build_warnings,
             *install_warnings,
@@ -1331,6 +1616,11 @@ class ActiveDiscoveryAnalyzer:
         )
         if source_unusable:
             warnings.append("source roots contained no usable source or manifest evidence")
+        if usable_projects:
+            warnings.append(
+                "source findings are supporting-only; build/deployed artifacts, documentation, "
+                "and probe evidence take precedence"
+            )
         if executable_truncated:
             warnings.append(
                 f"executable report limit reached: {MAX_REPORT_EXECUTABLES}; "
@@ -1365,10 +1655,10 @@ class ActiveDiscoveryAnalyzer:
             robot_id=robot_id,
             technical_status=effective_technical_status.value,
             discovery_mode=mode,
+            evidence_policy=EvidencePolicy(),
             inputs=self.inputs.model_dump(mode="json"),
             coverage=coverage,
             executables=executables,
-            canonical_operation_summary=candidate_operations,
             dependency_summary={
                 "report_ref": None,
                 "candidates": [],
@@ -1380,9 +1670,7 @@ class ActiveDiscoveryAnalyzer:
                 "conflicting": [],
                 "unresolved_executables": [],
             },
-            unknowns=(
-                ["no executable entrypoint could be identified"] if not executables else []
-            ),
+            unknowns=(["no executable entrypoint could be identified"] if not executables else []),
             warnings=sorted(set(warnings)),
             created_at=created_at,
         )
@@ -1394,12 +1682,7 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
         for value in list(values)[:limit]:
             if isinstance(value, dict):
                 rendered.append(
-                    str(
-                        value.get("name")
-                        or value.get("operation")
-                        or value.get("path")
-                        or value
-                    )
+                    str(value.get("name") or value.get("operation") or value.get("path") or value)
                 )
             else:
                 rendered.append(str(value))
@@ -1412,6 +1695,8 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
         f"- Technical status: `{report.technical_status}`",
         f"- Mode: `{report.discovery_mode.level.value}`",
         f"- Confidence: `{report.discovery_mode.confidence.value}`",
+        f"- Primary evidence order: `{' > '.join(report.evidence_policy.primary_order)}`",
+        f"- Source role: `{report.evidence_policy.source_role}`",
         "",
         "## Coverage",
         "",
@@ -1447,11 +1732,15 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
                 f"{summarize(executable.source_analysis.build_targets)}",
                 f"- Declared dependencies: "
                 f"{', '.join(executable.source_analysis.declared_dependencies) or 'none'}",
-                f"- Documentation references: "
-                f"{len(executable.documentation_analysis.references)}",
+                f"- Documentation references: {len(executable.documentation_analysis.references)}",
                 f"- Launch packages / nodes: "
                 f"{summarize(executable.launch_analysis.packages)} / "
                 f"{summarize(executable.launch_analysis.nodes)}",
+                f"- Launch conditions / arguments: "
+                f"{summarize(executable.launch_analysis.conditions)} / "
+                f"{summarize(executable.launch_analysis.arguments)}",
+                f"- Launch URDF references: "
+                f"{summarize(executable.launch_analysis.urdf_references)}",
                 f"- ROS nodes: {summarize(executable.communication.ros.get('nodes', []))}",
                 f"- ROS publishers: "
                 f"{summarize(executable.communication.ros.get('publishers', []))}",
@@ -1465,12 +1754,10 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
                 f"- Network listen / remote endpoints: "
                 f"{summarize(executable.communication.network.get('listen_endpoints', []))} / "
                 f"{summarize(executable.communication.network.get('remote_endpoints', []))}",
-                f"- Capability candidates: {summarize(executable.capability_candidates)}",
                 f"- Safety risk / motion possible: "
                 f"`{executable.safety.get('risk', 'unknown')}` / "
                 f"`{executable.safety.get('motion_possible', 'unknown')}`",
-                f"- Unresolved evidence: "
-                f"{summarize(executable.evidence.get('unresolved', []))}",
+                f"- Unresolved evidence: {summarize(executable.evidence.get('unresolved', []))}",
                 "",
             ]
         )
@@ -1505,7 +1792,3 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
         lines.extend(f"- {warning}" for warning in report.warnings)
         lines.append("")
     return "\n".join(lines)
-
-
-def load_active_report(path: Path) -> ActiveDiscoveryReport:
-    return ActiveDiscoveryReport.model_validate_json(path.read_text(encoding="utf-8"))

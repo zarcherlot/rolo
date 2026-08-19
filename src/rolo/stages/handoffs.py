@@ -23,9 +23,7 @@ class DiagnosisHandoff(BaseModel):
 class VerificationHandoff(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-verification-handoff/v1"] = (
-        "robot-verification-handoff/v1"
-    )
+    schema_version: Literal["robot-verification-handoff/v1"] = "robot-verification-handoff/v1"
     robot_id: str
     source_diagnosis_handoff_ref: str
     source_diagnosis_handoff_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -74,10 +72,7 @@ def validate_verification_handoff(root: Path, robot_id: str) -> VerificationHand
     if handoff.robot_id != robot_id:
         raise ValueError("verification handoff robot identity mismatch")
     diagnosis_path = layout.stage_file("diagnose", robot_id, "handoff.json")
-    if (
-        resolve_artifact_ref(root, handoff.source_diagnosis_handoff_ref)
-        != diagnosis_path.resolve()
-    ):
+    if resolve_artifact_ref(root, handoff.source_diagnosis_handoff_ref) != diagnosis_path.resolve():
         raise ValueError("verification handoff does not bind the canonical diagnosis handoff")
     validate_diagnosis_handoff(root, robot_id)
     _verify_refs(

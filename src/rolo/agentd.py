@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from rolo import __version__
+from rolo.adapter_runtime import load_current_release
 from rolo.core.config import get_settings
 from rolo.core.models import DiscoveryStatus, HealthState, RobotCapability, utc_now
 from rolo.core.registry import RobotRegistry
@@ -150,20 +151,14 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     @agentd.get("/v1/tools")
     async def tool_catalog() -> ToolCatalog:
         try:
-            report = load_latest_report(runtime.settings.rolo_artifact_dir, robot_id)
-        except FileNotFoundError as exc:
+            _, _, _, catalog = load_current_release(runtime.settings.rolo_output_dir, robot_id)
+        except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return ToolCatalog(
-            robot_id=robot_id,
-            discovery_id=report.discovery_id,
-            tools=report.tool_catalog,
-        )
+        return catalog
 
     @agentd.get("/v1/pipeline")
     async def pipeline_status() -> dict[str, object]:
-        return assess_pipeline(
-            runtime.settings.rolo_artifact_dir, robot_id
-        ).model_dump(mode="json")
+        return assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id).model_dump(mode="json")
 
     @agentd.get("/v1/robots/{requested_robot_id}")
     async def enforce_robot_scope(requested_robot_id: str) -> RobotCapability:

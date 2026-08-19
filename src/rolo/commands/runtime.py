@@ -38,8 +38,7 @@ def register_runtime_commands(root: typer.Typer) -> None:
         doctor_result = build_doctor_report(settings)
         try:
             registered_robots = [
-                robot.model_dump(mode="json")
-                for robot in create_runtime(settings).registry.list()
+                robot.model_dump(mode="json") for robot in create_runtime(settings).registry.list()
             ]
         except Exception as exc:
             registered_robots = []
@@ -62,8 +61,9 @@ def register_runtime_commands(root: typer.Typer) -> None:
                 "robots": registered_robots,
                 "next_step": (
                     f'uv run robotctl adapt discover run --robot "{robot_id}" '
-                    "--urdf /path/to/your_robot.urdf "
-                    "--source-root /path/to/robot-application"
+                    "--build-root /path/to/build --doc-root /path/to/docs "
+                    "[--source-root /path/to/robot-application] "
+                    "[--urdf /path/to/your_robot.urdf]"
                 ),
                 "motion_safety_status": "UNAPPROVED",
             }

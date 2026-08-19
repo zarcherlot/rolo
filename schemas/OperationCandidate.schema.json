@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "RouteEvidence": {
+      "additionalProperties": false,
+      "description": "One normalized operation endpoint observed or declared during discovery.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "ros_topic",
+            "ros_service",
+            "ros_action",
+            "device",
+            "cli"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "observed": {
+          "default": false,
+          "title": "Observed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "source"
+      ],
+      "title": "RouteEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Untrusted applicability and binding evidence from discovery.",
+  "properties": {
+    "operation": {
+      "title": "Operation",
+      "type": "string"
+    },
+    "semantic_bindings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Semantic Bindings",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "route_evidence": {
+      "items": {
+        "$ref": "#/$defs/RouteEvidence"
+      },
+      "title": "Route Evidence",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "status": {
+      "const": "DISCOVERED_UNVERIFIED",
+      "default": "DISCOVERED_UNVERIFIED",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation"
+  ],
+  "title": "OperationCandidate",
+  "type": "object"
+}

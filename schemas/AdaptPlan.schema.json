@@ -25,10 +25,6 @@
           "title": "Operations",
           "type": "array"
         },
-        "required_skill": {
-          "title": "Required Skill",
-          "type": "string"
-        },
         "agent_requirement": {
           "$ref": "#/$defs/AgentRequirement",
           "default": "adapter_agent"
@@ -36,8 +32,7 @@
       },
       "required": [
         "id",
-        "description",
-        "required_skill"
+        "description"
       ],
       "title": "AdaptTask",
       "type": "object"
@@ -117,8 +112,8 @@
   },
   "properties": {
     "schema_version": {
-      "const": "robot-adapt-plan/v1",
-      "default": "robot-adapt-plan/v1",
+      "const": "robot-adapt-plan/v2",
+      "default": "robot-adapt-plan/v2",
       "title": "Schema Version",
       "type": "string"
     },
@@ -145,43 +140,12 @@
       "title": "Tasks",
       "type": "array"
     },
-    "required_skills": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Required Skills",
-      "type": "array"
-    },
     "adapter_agent": {
       "$ref": "#/$defs/AdapterAgentConfig"
-    },
-    "candidate_operations": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Candidate Operations",
-      "type": "array"
     },
     "semantic_context_ref": {
       "default": "",
       "title": "Semantic Context Ref",
-      "type": "string"
-    },
-    "unresolved_semantics": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Unresolved Semantics",
-      "type": "array"
-    },
-    "semantic_value_candidates": {
-      "default": 0,
-      "title": "Semantic Value Candidates",
-      "type": "integer"
-    },
-    "active_discovery_report_ref": {
-      "default": "",
-      "title": "Active Discovery Report Ref",
       "type": "string"
     },
     "robot_wiki_ref": {
@@ -199,15 +163,6 @@
       "title": "Discovery Manifest Sha256",
       "type": "string"
     },
-    "state_graph_baseline_required": {
-      "default": true,
-      "title": "State Graph Baseline Required",
-      "type": "boolean"
-    },
-    "handoff_ref": {
-      "title": "Handoff Ref",
-      "type": "string"
-    },
     "created_at": {
       "format": "date-time",
       "title": "Created At",
@@ -218,9 +173,7 @@
     "robot_id",
     "source_discovery_id",
     "status",
-    "tasks",
-    "required_skills",
-    "handoff_ref"
+    "tasks"
   ],
   "title": "AdaptPlan",
   "type": "object"

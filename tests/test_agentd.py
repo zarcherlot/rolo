@@ -55,9 +55,7 @@ def test_bootstrap_wait_requires_matching_ready_daemon(
     assert '"status": "READY"' in result.output
 
 
-def test_full_agentd_waits_for_discovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_full_agentd_waits_for_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
     get_settings.cache_clear()
 
@@ -82,9 +80,7 @@ def test_full_agentd_observes_discovery_result_without_restart(
     get_settings.cache_clear()
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "agentd-demo"\n', encoding="utf-8"
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "agentd-demo"\n', encoding="utf-8")
 
     with TestClient(create_agentd_app("demo_diff")) as client:
         before = client.get("/health")

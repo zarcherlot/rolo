@@ -39,9 +39,13 @@ def adapt_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
 @adapt_stage_app.command("run")
 def adapt_stage_run(
     robot: Annotated[str, typer.Option("--robot")],
-    workspace: Annotated[
-        Path, typer.Option("--workspace", help="Repository workspace the Adapter Agent may edit")
-    ] = Path("."),
+    scratch_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--scratch-root",
+            help="Optional parent for an automatically deleted Agent workspace outside rolo",
+        ),
+    ] = None,
     timeout: Annotated[
         int | None, typer.Option("--timeout", min=1, help="Maximum Agent time in seconds")
     ] = None,
@@ -58,7 +62,7 @@ def adapt_stage_run(
             return
         summary, artifact = service.run(
             robot_id=robot,
-            workspace=workspace,
+            scratch_root=scratch_root,
             timeout_s=timeout or settings.coding_agent_timeout_s,
         )
     except (FileNotFoundError, ValueError) as exc:

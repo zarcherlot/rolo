@@ -37,6 +37,9 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 - **Middleware**：节点、Topic、Service、Action、TF、参数与诊断信息；
 - **Application**：建图、定位、导航、操作、测试、调优与任务状态。
 
+当前产品共定义 **297 个操作**：
+[`docs/CANONICAL_OPERATIONS.md`](docs/CANONICAL_OPERATIONS.md)。
+
 ### 主动发现
 
 首次配置时，rolo 为唯一 `robot_id` 建立一份可持续维护的**机器人 Wiki**。它把计算平台、
@@ -108,17 +111,26 @@ Adapt 的目标是交付两样核心资产：
 2. 一套由证据支撑并通过独立门禁的 canonical CLI、State Graph 和下游 handoff。
 
 它让一个具身研发团队快速回答：机器人由哪些板卡和外设组成、运行哪些程序、如何启动、
-节点和协议怎样连接、哪些依赖缺失、哪些能力只是推断、哪些接口已经可以安全地交给
+节点和协议怎样连接、哪些依赖缺失、哪些能力只是推断、哪些接口已经完成门禁注册并可交给
 Agent。新成员、算法、嵌入式、运维和测试看到的是同一份系统全貌。
 
-“发现并生成 Wiki → 阅读或修订 → 执行适配”的流程如下：
+“发现并生成 Wiki → 由 Adapter Agent 按需检索证据并执行适配”的流程如下：
 
 ```bash
+# --urdf 可省略；缺失硬件规格保持未解析
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
-  --source-root /path/to/robot-application
+  --build-root /path/to/robot-application/build \
+  --doc-root /path/to/robot-application/docs \
+  --source-root /path/to/robot-application  # 仅作缺口补充
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
-uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
+# 先查看 Registry、候选能力与当前已门禁 release 的整合视图
+uv run robotctl adapt operations summary --robot "$ROBOT_ID"
+uv run robotctl adapt operations list --robot "$ROBOT_ID" \
+  --applicability OBSERVED --registration NOT_REGISTERED
+uv run robotctl adapt run --robot "$ROBOT_ID"
+# 可选：指定源码工程外部的临时目录父路径；每次运行结束后自动删除
+uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
 ```text
@@ -147,6 +159,12 @@ robot_wiki.md
 主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，软件发现与证据契约见
 [`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见
 [`.env.example`](.env.example)。
+
+Adapter Agent 的初始 prompt 不再包含 297 个 operation、完整 Wiki 或 executable 全表；它只
+获得本次 discovery 的摘要、候选 operation 名称和一个固定到该快照的只读查询入口。Agent
+可按需查询 operation contract、candidate、executable、launch、dependency、Wiki section 和
+有界证据片段。完整的 297 项产品定义见
+[`docs/CANONICAL_OPERATIONS.md`](docs/CANONICAL_OPERATIONS.md)。
 
 #### 第二阶段：诊断
 

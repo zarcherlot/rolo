@@ -27,6 +27,29 @@ def _named(values: Iterable[Any], *, limit: int = 30) -> str:
     return _items(names, limit=limit)
 
 
+def _remappings(values: Iterable[dict[str, str]], *, limit: int = 30) -> str:
+    rendered = [
+        f"{_text(value.get('from'))} → {_text(value.get('to'))}" for value in list(values)[:limit]
+    ]
+    return ", ".join(rendered) or "none"
+
+
+def _compact_paths(values: Iterable[str], *, limit: int = 10) -> str:
+    rendered = []
+    for value in list(values)[:limit]:
+        parts = str(value).replace("\\", "/").split("/")
+        rendered.append("/".join(parts[-2:]))
+    return ", ".join(rendered) or "none"
+
+
+def _meters(value: Any) -> str:
+    if value is None or value == "":
+        return "unknown"
+    if isinstance(value, list):
+        return " × ".join(f"{float(item) * 1000:g}" for item in value) + " mm"
+    return f"{float(value) * 1000:g} mm"
+
+
 def render_discovery_review_markdown(
     report: DiscoveryReport,
     active: ActiveDiscoveryReport,
@@ -42,8 +65,12 @@ def render_discovery_review_markdown(
     expected = report.capability_manifest.get("expected_profile", {})
     compatibility = report.capability_manifest.get("compatibility", {})
     software = linux_data.get("executables", {})
-    sensors = expected.get("sensors", {})
     geometry = expected.get("geometry", {})
+    features = expected.get("features", {})
+    enrollment = features.get("enrollment", {})
+    urdf_structure = features.get("urdf_structure", {})
+    urdf_hardware = features.get("urdf_hardware", {})
+    reconciliation = report.capability_manifest.get("hardware_reconciliation", {})
 
     lines = [
         f"# 机器人 Wiki：{_text(report.robot_id)}",
@@ -57,6 +84,8 @@ def render_discovery_review_markdown(
         f"- 技术状态：`{_text(report.status.value)}`",
         f"- 发现模式：`{_text(active.discovery_mode.level.value)}`",
         f"- 置信度：`{_text(active.discovery_mode.confidence.value)}`",
+        "- 证据优先级：`构建/部署产物 → 文档/launch → 只读 probe`",
+        "- 源码角色：`仅用于主证据缺口补充，不作为主要溯源依据`",
         f"- 软硬件兼容性：`{_text(compatibility.get('status'))}`",
         f"- 待确认未知项：{len(active.unknowns)}",
         f"- 警告：{len(active.warnings)}",
@@ -76,53 +105,168 @@ def render_discovery_review_markdown(
         f"| 最大角速度 | {_text(geometry.get('hard_max_angular_velocity_radps'))} rad/s | "
         "未作为发现值提升 |",
         "",
-        f"- 传感器：{_items(sensors)}",
-        f"- 主机设备：{_named(hardware_data.get('devices', []))}",
-        f"- 硬件总线：{_items(hardware_data.get('buses', {}))}",
+        "### URDF 结构与语义",
         "",
-        "## 主机与软件栈",
+        f"- Base link：`{_text(expected.get('platform', {}).get('base_link'))}`",
+        f"- Footprint：{_text(geometry.get('footprint_m'))}",
+        f"- 车体尺寸：{_meters(geometry.get('body_dimensions_m'))}",
+        f"- 整车包络：{_meters(geometry.get('envelope_m'))}",
+        f"- 车轮：{_text(geometry.get('wheel_count'))} 个；半径="
+        f"{_meters(geometry.get('wheel_radii_m'))}；宽度="
+        f"{_meters(geometry.get('wheel_widths_m'))}",
+        f"- 轮距：{_meters(geometry.get('track_width_m'))}；轴距："
+        f"{_meters(geometry.get('wheelbase_m'))}；离地间隙："
+        f"{_meters(geometry.get('ground_clearance_m'))}",
+        f"- 已声明质量：{_text(geometry.get('declared_mass_kg'))} kg；覆盖 link："
+        f"{_text(geometry.get('mass_link_count'))}/{len(urdf_structure.get('links', []))}",
+        f"- Links（{len(urdf_structure.get('links', []))}）："
+        f"{_items(urdf_structure.get('links', []), limit=100)}",
+        f"- 未解析语义：{_items(enrollment.get('unresolved_semantics', []), limit=100)}",
         "",
-        "| 项目 | 发现值 |",
-        "|---|---|",
-        f"| 主机名 | {_text(host.get('hostname'))} |",
-        f"| 操作系统 | {_text(host.get('system'))} {_text(host.get('release'))} |",
-        f"| ROS 发行版 | {_text(ros_data.get('ros_distro'))} |",
-        f"| RMW | {_text(ros_data.get('rmw'))} |",
-        f"| ROS Domain ID | {_text(ros_data.get('domain_id'))} |",
+        "#### Joints",
         "",
-        "### 可用工具",
-        "",
-        "| 工具 | 状态 | 版本证据 |",
-        "|---|---:|---|",
+        "| Joint | 类型 | Parent → Child | Axis | Limits |",
+        "|---|---|---|---|---|",
     ]
+    joints = urdf_structure.get("joints", [])
+    if joints:
+        for joint in joints[:100]:
+            lines.append(
+                f"| {_text(joint.get('name'))} | {_text(joint.get('type'))} | "
+                f"{_text(joint.get('parent'))} → {_text(joint.get('child'))} | "
+                f"{_text(joint.get('axis'))} | {_text(joint.get('limits'))} |"
+            )
+    else:
+        lines.append("| none | unknown | unknown | unknown | none |")
+    inertial_links = [link for link in urdf_hardware.get("links", []) if link.get("inertial")]
+    if inertial_links:
+        lines.extend(
+            [
+                "",
+                "#### 质量、质心与惯量",
+                "",
+                "| Link | 质量 | 质心 xyz | 惯量张量 |",
+                "|---|---:|---|---|",
+            ]
+        )
+        for link in inertial_links[:100]:
+            inertial = link["inertial"]
+            lines.append(
+                f"| {_text(link.get('name'))} | {_text(inertial.get('mass_kg'))} kg | "
+                f"{_text(inertial.get('origin', {}).get('xyz'))} | "
+                f"{_text(inertial.get('tensor_kg_m2'))} |"
+            )
+    lines.extend(
+        [
+            "",
+            "#### 硬件组件",
+            "",
+            "| 组件 | 类型 | 型号/驱动 | 接口或位置 | 采用信息 |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    components = reconciliation.get("effective", [])
+    if components:
+        for component in components[:100]:
+            model_or_driver = component.get("model") or component.get("driver")
+            interface_or_location = (
+                component.get("path") or component.get("urdf_link") or component.get("transmission")
+            )
+            lines.append(
+                f"| {_text(component.get('name'))} | {_text(component.get('kind'))}/"
+                f"{_text(component.get('modality'))} | {_text(model_or_driver)} | "
+                f"{_text(interface_or_location)} | "
+                f"{_text(component.get('effective_source'))} |"
+            )
+    else:
+        lines.append("| none | unknown | unknown | unknown | unknown |")
+    differences = reconciliation.get("differences", [])
+    if differences:
+        lines.extend(
+            [
+                "",
+                "#### 硬件描述差异",
+                "",
+                "| 组件/字段 | URDF | 实机读取 | 采用值 |",
+                "|---|---|---|---|",
+            ]
+        )
+        for difference in differences[:100]:
+            lines.append(
+                f"| {_text(difference.get('component'))}.{_text(difference.get('field'))} | "
+                f"{_text(difference.get('urdf'))} | {_text(difference.get('observed'))} | "
+                f"{_text(difference.get('effective'))} |"
+            )
+    lines.extend(
+        [
+            "",
+            "#### 控制与仿真声明",
+            "",
+            f"- Transmissions：{_named(urdf_hardware.get('transmissions', []), limit=100)}",
+            f"- ros2_control：{_named(urdf_hardware.get('ros2_control', []), limit=100)}",
+            f"- Gazebo：{_named(urdf_hardware.get('gazebo', []), limit=100)}",
+            "",
+            f"- 主机设备：{_named(hardware_data.get('devices', []))}",
+            f"- 硬件总线：{_items(hardware_data.get('buses', {}))}",
+            "",
+            "## 主机与软件栈",
+            "",
+            "| 项目 | 发现值 |",
+            "|---|---|",
+            f"| 主机名 | {_text(host.get('hostname'))} |",
+            f"| 操作系统 | {_text(host.get('system'))} {_text(host.get('release'))} |",
+            f"| ROS 发行版 | {_text(ros_data.get('ros_distro'))} |",
+            f"| RMW | {_text(ros_data.get('rmw'))} |",
+            f"| ROS Domain ID | {_text(ros_data.get('domain_id'))} |",
+            "",
+            "### 可用工具",
+            "",
+            "| 工具 | 状态 | 版本证据 |",
+            "|---|---:|---|",
+        ]
+    )
     for name, metadata in sorted(software.items()):
         lines.append(
             f"| {_text(name)} | {'available' if metadata.get('available') else 'unavailable'} | "
             f"{_items(metadata.get('version_output', []), limit=3)} |"
         )
 
-    lines.extend(["", "## 应用程序与功能概览", ""])
+    lines.extend(["", "## 应用程序与启动拓扑", ""])
+    lines.extend(
+        [
+            "> launch 信息来自 Python AST/XML 静态解析，不会执行 launch；动态表达式仍可能未解析。",
+            "",
+        ]
+    )
     if not active.executables:
         lines.append("未识别到可执行入口。")
     for executable in active.executables:
         ros_communication = executable.communication.ros
+        launch = executable.launch_analysis
         lines.extend(
             [
                 f"### {_text(executable.name)}",
                 "",
-                f"- 位置：`{_text(executable.path or '未解析')}`",
-                f"- 来源：`{_text(executable.origin)}`；格式/架构："
-                f"`{_text(executable.file_format)}/{_text(executable.architecture)}`",
-                f"- 启动入口：`{_text(executable.invocation.entrypoint)}`",
-                f"- 功能候选：{_named(executable.capability_candidates)}",
-                f"- ROS 节点：{_named(ros_communication.get('nodes', []))}",
-                f"- 发布：{_named(ros_communication.get('publishers', []))}",
-                f"- 订阅：{_named(ros_communication.get('subscribers', []))}",
-                f"- 服务：{_named(ros_communication.get('services', []))}",
-                f"- 动作：{_named(ros_communication.get('actions', []))}",
-                f"- 网络协议：{_items(executable.communication.network.get('protocols', []))}",
-                f"- 依赖声明：{_items(executable.source_analysis.declared_dependencies)}",
-                f"- 风险：`{_text(executable.safety.get('risk'))}`；可能运动："
+                f"- 身份：`{_text(executable.origin)}`；位置/入口："
+                f"`{_text(executable.path or executable.invocation.entrypoint or '未解析')}`；"
+                f"格式/架构：`{_text(executable.file_format)}/{_text(executable.architecture)}`",
+                "- 功能与接口：以 DiscoveryReport 的 operation candidates 为准；"
+                f"发布={_named(ros_communication.get('publishers', []))}；"
+                f"订阅={_named(ros_communication.get('subscribers', []))}；"
+                f"服务/动作={_named(ros_communication.get('services', []))}/"
+                f"{_named(ros_communication.get('actions', []))}；"
+                f"协议={_items(executable.communication.network.get('protocols', []))}",
+                (
+                    f"- 启动声明：包={_items(launch.packages)}；节点={_items(launch.nodes)}；"
+                    f"条件={_items(launch.conditions)}；参数={_items(launch.arguments)}；"
+                    f"Remapping={_remappings(launch.remappings)}；"
+                    f"URDF={_items(launch.urdf_references)}；"
+                    f"证据={_compact_paths(launch.references)}；状态=`{launch.verification}`"
+                    if launch.available
+                    else "- 启动声明：未从受支持的 launch 文件识别"
+                ),
+                f"- 依赖与风险：依赖={_items(executable.source_analysis.declared_dependencies)}；"
+                f"风险=`{_text(executable.safety.get('risk'))}`；可能运动="
                 f"`{_text(executable.safety.get('motion_possible'))}`",
                 "",
             ]
@@ -132,7 +276,8 @@ def render_discovery_review_markdown(
         [
             "## ROS 与通信拓扑",
             "",
-            "> 在线列表是运行时证据；程序与接口的边来自源码和 launch 静态证据。",
+            "> 在线列表以只读 probe 为准；程序与接口的静态边优先来自文档/launch。",
+            "> 源码扫描结果只补充主证据未覆盖的缺口，不能覆盖构建产物、文档或 probe。",
             "",
             f"- 在线节点：{_items(ros_data.get('nodes', []), limit=100)}",
             f"- Topics：{_items(ros_data.get('topics', []), limit=100)}",

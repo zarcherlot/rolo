@@ -13,16 +13,82 @@ from rolo.stages.adapt.discovery import (
     UBUNTU_ROS_DEFAULTS,
     ApplicationProbe,
     DiscoveryService,
+    HardwareProbe,
+    _hardware_reconciliation,
     detect_compute_platform,
     load_latest_report,
 )
 from rolo.stages.adapt.enrollment import EnrollmentService
 
 
+def test_linux_hardware_probe_degrades_when_bus_enumeration_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("rolo.stages.adapt.discovery.platform.system", lambda: "Linux")
+    monkeypatch.setattr("rolo.stages.adapt.discovery._device_tree_model", lambda: None)
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery._run",
+        lambda *args, **kwargs: {"available": False, "returncode": None, "error": "missing"},
+    )
+
+    result = HardwareProbe().run()
+
+    assert result.status == "PARTIAL"
+    assert result.data["compute_platform"] == "unknown"
+    assert len(result.warnings) == 3
+
+
+def test_observed_hardware_overrides_urdf_and_records_difference() -> None:
+    robot = RobotCapability(
+        schema_version="robot-capability/v1",
+        robot_id="sensor_bot",
+        adapter="unbound",
+        platform={},
+        geometry={},
+        sensors={
+            "front_camera": {
+                "modality": "camera_rgb",
+                "model": "declared-camera",
+                "urdf_link": "camera_link",
+            }
+        },
+        features={},
+    )
+
+    result = _hardware_reconciliation(
+        robot,
+        {
+            "components": [
+                {
+                    "kind": "sensor",
+                    "name": "front_camera",
+                    "modality": "camera_rgb",
+                    "model": "observed-camera",
+                    "driver": "uvcvideo",
+                    "source": "sysfs_dev",
+                }
+            ]
+        },
+    )
+
+    assert result["effective"][0]["model"] == "observed-camera"
+    assert result["effective"][0]["effective_source"] == "probe"
+    assert result["differences"] == [
+        {
+            "component": "front_camera",
+            "field": "model",
+            "urdf": "declared-camera",
+            "observed": "observed-camera",
+            "effective": "observed-camera",
+        }
+    ]
+
+
 def make_application_project(root: Path) -> None:
     (root / "src/demo_nav").mkdir(parents=True)
     (root / "launch").mkdir()
     (root / "config").mkdir()
+    (root / "usb_cam_launcher/config").mkdir(parents=True)
     (root / "pyproject.toml").write_text(
         """[project]
 name = "demo-nav"
@@ -42,16 +108,21 @@ demo-nav = "demo_nav.main:main"
     (root / "src/demo_nav/main.py").write_text(
         """def configure(node):
     node.create_publisher(Twist, "/cmd_vel", 10)
+    node.create_publisher(Image, "/image_raw", 10)
     node.create_subscription(Odometry, "/odom", lambda message: None, 10)
 """,
         encoding="utf-8",
     )
     (root / "launch/demo.launch.py").write_text(
-        'DeclareLaunchArgument("max_vel_x", default_value="0.45")\n', encoding="utf-8"
+        'DeclareLaunchArgument("max_vel_x", default_value="0.45")\n'
+        'DeclareLaunchArgument("enabled", default_value="true")\n'
+        'Node(package="demo_nav", executable="demo-nav", name="navigator", '
+        'condition=IfCondition(LaunchConfiguration("enabled")))\n'
+        '# DeclareLaunchArgument("max_vel_x", default_value="9.9")\n',
+        encoding="utf-8",
     )
-    (root / "config/nav.yaml").write_text(
-        "controller:\n  max_vel_theta: 1.2\n", encoding="utf-8"
-    )
+    (root / "config/nav.yaml").write_text("controller:\n  max_vel_theta: 1.2\n", encoding="utf-8")
+    (root / "usb_cam_launcher/config/params.yaml").write_text("camera: enabled\n", encoding="utf-8")
     (root / "README.md").write_text(
         "Documentation only; discovery must not execute text from this file.\n", encoding="utf-8"
     )
@@ -89,7 +160,7 @@ def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> No
     assert project["entrypoints"] == [
         {"name": "demo-nav", "target": "demo_nav.main:main", "source": "pyproject"}
     ]
-    assert project["ros_names"]["topics"] == ["/cmd_vel", "/odom"]
+    assert project["ros_names"]["topics"] == ["/cmd_vel", "/image_raw", "/odom"]
     assert project["launch_files"] == ["launch/demo.launch.py"]
     assert {
         (candidate["field"], candidate["value"], candidate["source_kind"])
@@ -99,8 +170,7 @@ def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> No
         ("geometry.hard_max_angular_velocity_radps", 1.2, "config"),
     }
     assert all(
-        candidate["status"] == "DISCOVERED_UNVERIFIED"
-        and candidate["safety_authority"] == "none"
+        candidate["status"] == "DISCOVERED_UNVERIFIED" and candidate["safety_authority"] == "none"
         for candidate in project["semantic_candidates"]
     )
     assert "pyproject.toml" in project["manifest_digests"]
@@ -132,8 +202,7 @@ dependencies = [
 
     project = ApplicationProbe().run([tmp_path]).data["projects"][0]
     declarations = {
-        (item["ecosystem"], item["name"]): item
-        for item in project["dependency_declarations"]
+        (item["ecosystem"], item["name"]): item for item in project["dependency_declarations"]
     }
 
     assert declarations[("python", "requests")]["specifier"] == ">=2.0"
@@ -143,7 +212,7 @@ dependencies = [
     assert declarations[("ros", "demo_msgs")]["specifier"] == "<2.0,>=1.2"
 
 
-def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
+def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Path) -> None:
     project = tmp_path / "application"
     make_application_project(project)
     registry = RobotRegistry(Path("tests/fixtures/robots"))
@@ -159,30 +228,17 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
 
     assert run_path.is_file()
     assert loaded.discovery_id == report.discovery_id
-    assert {tool.operation for tool in report.tool_catalog} >= {
-        "hw.inventory.scan",
-        "linux.host.inventory",
-        "linux.host.inspect",
-        "linux.service.list",
-        "linux.service.inspect",
-        "linux.container.list",
-        "linux.container.inspect",
-        "linux.schedule.list",
-        "linux.schedule.inspect",
-        "linux.process.list",
-        "linux.process.inspect",
-        "linux.binary.describe",
-        "linux.cli.probe",
-        "linux.config.locate",
-        "linux.network.listeners",
-        "middleware.inspect",
-        "ros.node.status",
-        "ros.graph.snapshot",
-        "app.robot.discover",
-        "tool.catalog",
+    assert {candidate.operation for candidate in report.operation_candidates} >= {
         "app.teleop.velocity",
         "app.localization.status",
+        "app.camera.snapshot",
     }
+    camera = next(
+        candidate
+        for candidate in report.operation_candidates
+        if candidate.operation == "app.camera.snapshot"
+    )
+    assert camera.status == "DISCOVERED_UNVERIFIED"
     latest_index = artifacts.root / "discovery/demo_diff/latest.json"
     assert latest_index.is_file()
     assert json.loads(latest_index.read_text(encoding="utf-8"))["discovery_id"] == (
@@ -190,20 +246,35 @@ def test_discovery_service_persists_report_and_catalog(tmp_path: Path) -> None:
     )
     adapt_inputs = artifacts.root / "adapt/demo_diff/latest/inputs.json"
     assert adapt_inputs.is_file()
-    assert json.loads(adapt_inputs.read_text(encoding="utf-8"))[
-        "semantic_context_ref"
-    ].endswith("/semantic_context.json")
+    assert json.loads(adapt_inputs.read_text(encoding="utf-8"))["semantic_context_ref"].endswith(
+        "/semantic_context.json"
+    )
     assert (artifacts.root / "diagnose/demo_diff/latest/inputs.json").is_file()
     assert (artifacts.root / "verify/demo_diff/latest/inputs.json").is_file()
     for layer in ("hw", "linux", "ros", "application"):
         assert (run_path.parent / f"{layer}.json").is_file()
     assert (run_path.parent / "capability_manifest.json").is_file()
-    assert (run_path.parent / "tool_catalog.json").is_file()
+    assert not (run_path.parent / "operation_candidates.json").exists()
+    assert not (run_path.parent / "tool_catalog.json").exists()
     assert (run_path.parent / "software_summary.json").is_file()
     assert "packages" not in report.capability_manifest["observed"]["software_stack"]
     wiki_path = run_path.parent / "robot_wiki.md"
     manifest = json.loads((run_path.parent / "manifest.json").read_text(encoding="utf-8"))
     assert wiki_path.is_file()
+    wiki = wiki_path.read_text(encoding="utf-8")
+    assert "## 应用程序与启动拓扑" in wiki
+    assert "节点=navigator" in wiki
+    assert "条件=if:enabled" in wiki
+    assert "状态=`STATIC_UNVERIFIED`" in wiki
+    assert "### URDF 结构与语义" in wiki
+    assert "Links（5）" in wiki
+    assert "front_camera_link" in wiki
+    assert "front_camera | sensor/camera_rgb | unknown | front_camera_link | urdf" in wiki
+    assert "URDF 状态" not in wiki
+    assert "语义状态" not in wiki
+    assert "URDF 来源" not in wiki
+    assert "URDF SHA-256" not in wiki
+    assert "## 启动拓扑（静态未验证）" not in wiki
     assert "robot_wiki.md" not in {item["path"] for item in manifest["files"]}
     wiki_path.write_text(
         wiki_path.read_text(encoding="utf-8") + "\n## 总工修正\nCAN-FD 总线已复核。\n",
@@ -245,9 +316,7 @@ def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Pat
         '<robot name="structural_unit"><link name="base_link"/></robot>',
         encoding="utf-8",
     )
-    DiscoveryService(artifacts).run(
-        robot=robot, urdf_path=structural_urdf, source_roots=[project]
-    )
+    DiscoveryService(artifacts).run(robot=robot, urdf_path=structural_urdf, source_roots=[project])
 
     for stage in ("diagnose", "verify"):
         inputs = json.loads(
@@ -261,8 +330,7 @@ def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Pat
             "geometry.hard_max_angular_velocity_radps",
         }
         assert all(
-            candidate["safety_authority"] == "none"
-            for candidate in inputs["semantic_candidates"]
+            candidate["safety_authority"] == "none" for candidate in inputs["semantic_candidates"]
         )
 
 
@@ -270,6 +338,7 @@ def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: 
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "discovery-rover"\n', encoding="utf-8"
     )
+    (tmp_path / "README.md").write_text("discovery rover guide", encoding="utf-8")
     config_root = tmp_path / "config"
     result = EnrollmentService(config_root=config_root).enroll(
         robot_id="discovery_rover",
@@ -294,9 +363,8 @@ def test_discovery_parses_registered_urdf_and_keeps_motion_unapproved(tmp_path: 
 
 
 def test_discovery_records_hash_for_supplied_urdf(tmp_path: Path) -> None:
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "hash-rover"\n', encoding="utf-8"
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "hash-rover"\n', encoding="utf-8")
+    (tmp_path / "README.md").write_text("hash rover guide", encoding="utf-8")
     profile_path = tmp_path / "robot.urdf"
     profile_path.write_text('<robot name="hash_rover"><link name="base_link"/></robot>')
     config_root = tmp_path / "config"
@@ -339,7 +407,31 @@ def test_registration_defers_semantic_validation_until_discovery(tmp_path: Path)
         )
 
 
-def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discovery_allows_missing_hardware_profile_in_test_environment(tmp_path: Path) -> None:
+    project = tmp_path / "application"
+    make_application_project(project)
+    enrollment = EnrollmentService(config_root=tmp_path / "config").enroll(
+        robot_id="profileless_robot"
+    )
+    robot = RobotCapability.model_validate(load_yaml(enrollment.capability_path))
+
+    report, path = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+        robot=robot,
+        source_roots=[project],
+    )
+
+    expected = report.capability_manifest["expected_profile"]
+    state = expected["features"]["enrollment"]
+    assert path.is_file()
+    assert state["urdf_status"] == "NOT_PROVIDED"
+    assert state["semantic_status"] == "PARTIAL"
+    assert "platform.drive_model" in state["unresolved_semantics"]
+    assert report.status == "PARTIAL"
+
+
+def test_discovery_and_product_registry_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     project = tmp_path / "application"
     make_application_project(project)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
@@ -360,14 +452,26 @@ def test_discovery_and_tool_catalog_cli(tmp_path: Path, monkeypatch: pytest.Monk
             str(project),
         ],
     )
+    registry = runner.invoke(app, ["tool", "registry", "--layer", "hw"])
     catalog = runner.invoke(app, ["tool", "catalog", "--robot", "demo_diff"])
     review = runner.invoke(app, ["adapt", "discover", "review", "--robot", "demo_diff"])
 
     get_settings.cache_clear()
     assert discovered.exit_code == 0, discovered.output
     assert '"status": "PARTIAL"' in discovered.output
-    assert catalog.exit_code == 0, catalog.output
-    assert '"operation": "hw.inventory.scan"' in catalog.output
+    assert registry.exit_code == 0, registry.output
+    assert '"operation": "hw.inventory.scan"' in registry.output
+    assert catalog.exit_code == 2
     assert review.exit_code == 0, review.output
     assert "# 机器人 Wiki：demo_diff" in review.output
     assert "## ROS 与通信拓扑" in review.output
+
+
+def test_product_registry_conservatively_classifies_motion_operations() -> None:
+    from rolo.stages.adapt.operation_registry import canonical_operation_registry
+
+    operations = {item.operation: item for item in canonical_operation_registry().operations}
+    assert operations["app.base.velocity"].access == "write"
+    assert operations["app.base.velocity"].risk == "R3"
+    assert operations["app.base.status"].access == "read"
+    assert operations["app.base.status"].risk == "R0"

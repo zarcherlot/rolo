@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import math
 import os
 import platform
@@ -9,6 +10,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tokenize
 import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -30,9 +32,10 @@ from rolo.core.models import (
     DiscoveryLatestIndex,
     DiscoveryReport,
     DiscoveryStatus,
+    OperationCandidate,
     ProbeResult,
     RobotCapability,
-    ToolDescriptor,
+    RouteEvidence,
 )
 from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
@@ -54,15 +57,13 @@ from rolo.stages.adapt.evidence import (
 )
 from rolo.stages.adapt.inputs import (
     AdaptInputs,
-    AdaptInputsStatus,
     SemanticCandidate,
     SemanticContext,
     StageSemanticInputs,
 )
-from rolo.stages.adapt.models import ToolCatalog
+from rolo.stages.adapt.operation_registry import validate_candidate_operations
 from rolo.stages.adapt.review import render_discovery_review_markdown
 from rolo.stages.adapt.software_relevance import (
-    CandidateResolutionStatus,
     DirectDependencyResolver,
     ResolutionStatus,
     SoftwareDiscoveryPolicy,
@@ -70,6 +71,7 @@ from rolo.stages.adapt.software_relevance import (
     build_software_summary,
     enrich_active_report,
 )
+from rolo.stages.adapt.wiki import WikiNarrativePolisher, generate_robot_wiki
 from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.discovery_manifest import (
     create_discovery_manifest,
@@ -86,6 +88,10 @@ SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "install",
     "log",
     "artifacts",
+    "third-party",
+    "third_party",
+    "vendor",
+    "vendors",
 }
 UBUNTU_ROS_DEFAULTS = {"20.04": "foxy", "22.04": "humble", "24.04": "jazzy"}
 SAFE_ENV_KEYS = (
@@ -110,9 +116,7 @@ def _read_text(path: Path, limit: int = MAX_COMMAND_OUTPUT) -> str | None:
     return read_text(path, limit)
 
 
-def _cached_read_text(
-    path: Path, cache: dict[Path, str | None], limit: int
-) -> str | None:
+def _cached_read_text(path: Path, cache: dict[Path, str | None], limit: int) -> str | None:
     if path not in cache:
         cache[path] = _read_text(path, limit)
     return cache[path]
@@ -166,6 +170,13 @@ def _device_tree_model() -> str | None:
     return None
 
 
+def _driver_name(path: Path) -> str | None:
+    try:
+        return path.resolve(strict=True).name
+    except OSError:
+        return None
+
+
 def detect_compute_platform(device_tree_model: str | None) -> str:
     if not device_tree_model:
         return "unknown"
@@ -188,6 +199,7 @@ class HardwareProbe:
             "device_tree_model": device_tree_model,
             "compute_platform": detect_compute_platform(device_tree_model),
             "devices": [],
+            "components": [],
             "buses": {},
             "thermal_zones": [],
         }
@@ -196,6 +208,16 @@ class HardwareProbe:
             warnings.append("Linux /sys and /dev hardware enumeration is unavailable on this host")
             return ProbeResult(
                 layer="hw", status=DiscoveryStatus.PARTIAL, data=data, warnings=warnings
+            )
+
+        if device_tree_model:
+            data["components"].append(
+                {
+                    "kind": "board",
+                    "name": "compute_platform",
+                    "model": device_tree_model,
+                    "source": "device_tree",
+                }
             )
 
         device_patterns = {
@@ -207,13 +229,52 @@ class HardwareProbe:
         for modality, patterns in device_patterns.items():
             for pattern_value in patterns:
                 for path in sorted(Path("/dev").glob(pattern_value))[:MAX_DISCOVERED_ITEMS]:
-                    data["devices"].append(
+                    device = {
+                        "path": str(path),
+                        "category": modality,
+                        "semantic_candidate": f"semantic://device/{modality}/{path.name}",
+                    }
+                    model = None
+                    driver = None
+                    if modality == "camera":
+                        sysfs = Path("/sys/class/video4linux") / path.name
+                        model = _read_text(sysfs / "name", 512)
+                        driver = _driver_name(sysfs / "device/driver")
+                    elif modality == "input":
+                        sysfs = Path("/sys/class/input") / path.name
+                        model = _read_text(sysfs / "device/name", 512)
+                        driver = _driver_name(sysfs / "device/driver")
+                    elif modality == "serial":
+                        driver = _driver_name(Path("/sys/class/tty") / path.name / "device/driver")
+                    if model:
+                        device["model"] = model.strip()
+                    if driver:
+                        device["driver"] = driver
+                    data["devices"].append(device)
+                    data["components"].append(
                         {
+                            "kind": "sensor" if modality in {"camera", "input"} else "interface",
+                            "name": path.name,
+                            "modality": modality,
+                            "model": device.get("model"),
+                            "driver": device.get("driver"),
                             "path": str(path),
-                            "category": modality,
-                            "semantic_candidate": f"semantic://device/{modality}/{path.name}",
+                            "source": "sysfs_dev",
                         }
                     )
+
+        for path in sorted(Path("/sys/bus/iio/devices").glob("iio:device*"))[:MAX_DISCOVERED_ITEMS]:
+            model = _read_text(path / "name", 512)
+            data["components"].append(
+                {
+                    "kind": "sensor",
+                    "name": path.name,
+                    "model": model.strip() if model else None,
+                    "driver": _driver_name(path / "driver"),
+                    "path": str(path),
+                    "source": "iio_sysfs",
+                }
+            )
 
         for bus, command in {
             "usb": ["lsusb"],
@@ -225,6 +286,7 @@ class HardwareProbe:
                 data["buses"][bus] = result.get("stdout", "").splitlines()[:MAX_DISCOVERED_ITEMS]
             else:
                 data["buses"][bus] = {"status": "UNAVAILABLE", "detail": result.get("error")}
+                warnings.append(f"{bus} hardware enumeration is unavailable")
 
         for zone in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
             zone_type = _read_text(zone / "type", 256)
@@ -237,7 +299,10 @@ class HardwareProbe:
                 data["thermal_zones"].append({"name": zone_type.strip(), "temperature_c": value_c})
 
         return ProbeResult(
-            layer="hw", status=DiscoveryStatus.SUCCEEDED, data=data, warnings=warnings
+            layer="hw",
+            status=DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED,
+            data=data,
+            warnings=warnings,
         )
 
 
@@ -422,6 +487,15 @@ def _extract_semantic_candidates(
     return candidates
 
 
+def _python_without_comments(text: str) -> str:
+    """Remove Python comments without changing string literals or executing source."""
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        return tokenize.untokenize(token for token in tokens if token.type != tokenize.COMMENT)
+    except (IndentationError, tokenize.TokenError):
+        return text
+
+
 @dataclass(frozen=True)
 class ApplicationScanResult:
     probe: ProbeResult
@@ -498,13 +572,10 @@ class ApplicationProbe:
                                     "required": True,
                                     "specifier": str(requirement.specifier) or None,
                                     "marker": (
-                                        str(requirement.marker)
-                                        if requirement.marker
-                                        else None
+                                        str(requirement.marker) if requirement.marker else None
                                     ),
                                     "applicable": (
-                                        requirement.marker is None
-                                        or requirement.marker.evaluate()
+                                        requirement.marker is None or requirement.marker.evaluate()
                                     ),
                                     "extras": sorted(requirement.extras),
                                     "source": str(pyproject_path),
@@ -579,12 +650,8 @@ class ApplicationProbe:
                                 )
                     except (OSError, ET.ParseError) as exc:
                         warnings.append(f"cannot parse {path}: {exc}")
-                is_launch_file = path.name.endswith(".launch.py") or path.suffix in {
-                    ".xml",
-                    ".yaml",
-                    ".yml",
-                }
-                if is_launch_file and "launch" in lower:
+                is_launch_file = path.name.endswith((".launch.py", ".launch.xml"))
+                if is_launch_file:
                     project["launch_files"].append(relative)
                 is_readme = path.name.lower().startswith("readme")
                 if is_readme:
@@ -601,6 +668,8 @@ class ApplicationProbe:
                 if candidate_source_kind and path.stat().st_size <= 2_000_000:
                     candidate_text = _cached_read_text(path, loaded_text, 2_000_000)
                     if candidate_text:
+                        if path.name.endswith(".launch.py"):
+                            candidate_text = _python_without_comments(candidate_text)
                         project["semantic_candidates"].extend(
                             _extract_semantic_candidates(
                                 candidate_text,
@@ -632,9 +701,7 @@ class ApplicationProbe:
                         extracted = _extract_ros_names(text)
                         for kind, values in extracted.items():
                             ros_names[kind].update(values)
-                        project["ros_interfaces"].extend(
-                            _extract_ros_interfaces(text, path)
-                        )
+                        project["ros_interfaces"].extend(_extract_ros_interfaces(text, path))
                         project["protocols"].extend(extract_protocols(text))
                 if path.name == "CMakeLists.txt" and path.stat().st_size <= 2_000_000:
                     cmake_text = _cached_read_text(path, loaded_text, 2_000_000) or ""
@@ -644,8 +711,7 @@ class ApplicationProbe:
                     )
                     project["build_targets"].extend(targets)
                     project["entrypoints"].extend(
-                        {"name": target, "target": target, "source": "cmake"}
-                        for target in targets
+                        {"name": target, "target": target, "source": "cmake"} for target in targets
                     )
                 if (is_readme or is_launch_file) and path.stat().st_size <= 2_000_000:
                     if (text := _cached_read_text(path, loaded_text, 2_000_000)) is not None:
@@ -656,9 +722,7 @@ class ApplicationProbe:
             project["packages"] = sorted(set(project["packages"]))
             project["languages"] = sorted(set(project["languages"]))
             project["build_targets"] = sorted(set(project["build_targets"]))
-            project["declared_dependencies"] = sorted(
-                set(project["declared_dependencies"])
-            )
+            project["declared_dependencies"] = sorted(set(project["declared_dependencies"]))
             project["dependency_declarations"] = sorted(
                 project["dependency_declarations"],
                 key=lambda item: (
@@ -675,9 +739,7 @@ class ApplicationProbe:
             )[:MAX_DISCOVERED_ITEMS]
             project["launch_files"] = project["launch_files"][:MAX_DISCOVERED_ITEMS]
             project["config_files"] = project["config_files"][:MAX_DISCOVERED_ITEMS]
-            project["semantic_candidates"] = project["semantic_candidates"][
-                :MAX_DISCOVERED_ITEMS
-            ]
+            project["semantic_candidates"] = project["semantic_candidates"][:MAX_DISCOVERED_ITEMS]
             revision = _run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout_s=5)
             if revision.get("returncode") == 0:
                 project["source_revision"] = revision["stdout"].strip()
@@ -702,6 +764,15 @@ def _ros_entity_name(value: str) -> str:
     return value.split(" ", 1)[0].strip()
 
 
+def _topic_rule_matches(topic: str, token: str) -> bool:
+    segments = [segment for segment in topic.casefold().split("/") if segment]
+    if token in segments:
+        return True
+    return token in {"image", "battery"} and any(
+        segment.startswith(f"{token}_") for segment in segments
+    )
+
+
 def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, Any]]:
     bindings: dict[str, dict[str, Any]] = {}
     topic_rules = {
@@ -724,9 +795,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         )
     for raw_topic, transport, source in topic_evidence:
         topic = _ros_entity_name(raw_topic)
-        lowered = topic.lower()
         for token, semantic_uri in topic_rules.items():
-            if token in lowered and semantic_uri not in bindings:
+            if _topic_rule_matches(topic, token) and semantic_uri not in bindings:
                 bindings[semantic_uri] = {
                     "transport": transport,
                     "binding": topic,
@@ -734,6 +804,141 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "evidence": source,
                 }
     return bindings
+
+
+def _hardware_modality(value: Any) -> str:
+    normalized = str(value or "").casefold()
+    for canonical, tokens in {
+        "camera": ("camera", "image", "video"),
+        "lidar": ("lidar", "laser", "range_scan"),
+        "imu": ("imu", "inertial"),
+        "encoder": ("encoder",),
+    }.items():
+        if any(token in normalized for token in tokens):
+            return canonical
+    return normalized
+
+
+def _hardware_reconciliation(
+    robot: RobotCapability, observed_hardware: dict[str, Any]
+) -> dict[str, Any]:
+    declared: list[dict[str, Any]] = []
+    for name, sensor in sorted(robot.sensors.items()):
+        declared.append({"kind": "sensor", "name": name, **sensor})
+    urdf_hardware = robot.features.get("urdf_hardware", {})
+    for gazebo in urdf_hardware.get("gazebo", []):
+        for sensor in gazebo.get("sensors", []):
+            declared.append(
+                {
+                    "kind": "sensor",
+                    "name": sensor.get("name"),
+                    "modality": sensor.get("type"),
+                    "urdf_link": gazebo.get("reference"),
+                    "update_rate_hz": sensor.get("update_rate_hz"),
+                }
+            )
+    for transmission in urdf_hardware.get("transmissions", []):
+        for actuator in transmission.get("actuators", []):
+            actuator_name = actuator.get("name") if isinstance(actuator, dict) else actuator
+            declared.append(
+                {
+                    "kind": "actuator",
+                    "name": actuator_name,
+                    "transmission": transmission.get("name"),
+                    "driver": transmission.get("type"),
+                    "specifications": actuator if isinstance(actuator, dict) else {},
+                }
+            )
+    for control in urdf_hardware.get("ros2_control", []):
+        for plugin in control.get("plugins", []):
+            declared.append(
+                {
+                    "kind": "board_driver",
+                    "name": control.get("name") or plugin,
+                    "driver": plugin,
+                }
+            )
+
+    observed = [
+        component
+        for component in observed_hardware.get("components", [])
+        if isinstance(component, dict) and component.get("name")
+    ]
+    observed_by_name = {str(item["name"]).casefold(): item for item in observed}
+    effective: list[dict[str, Any]] = []
+    differences: list[dict[str, Any]] = []
+    matched_observed: set[str] = set()
+    compare_fields = {"kind", "model", "driver", "modality", "firmware", "version"}
+    for item in declared:
+        name = str(item.get("name") or "")
+        actual = observed_by_name.get(name.casefold())
+        if actual is None and item.get("kind") == "sensor":
+            modality = _hardware_modality(item.get("modality"))
+            candidates = [
+                candidate
+                for candidate in observed
+                if candidate.get("kind") == "sensor"
+                and _hardware_modality(candidate.get("modality")) == modality
+                and str(candidate["name"]).casefold() not in matched_observed
+            ]
+            if len(candidates) == 1:
+                actual = candidates[0]
+        if actual is None:
+            effective.append({**item, "effective_source": "urdf"})
+            continue
+        actual_name = str(actual["name"])
+        matched_observed.add(actual_name.casefold())
+        observed_values = {
+            key: value
+            for key, value in actual.items()
+            if key != "name" and value is not None and value != ""
+        }
+        if _hardware_modality(item.get("modality")) == _hardware_modality(actual.get("modality")):
+            observed_values.pop("modality", None)
+        merged = {
+            **item,
+            **observed_values,
+            "observed_name": actual_name,
+            "effective_source": "probe",
+        }
+        effective.append(merged)
+        declared_specs = item.get("specifications", {})
+        observed_specs = actual.get("specifications", {})
+        fields = compare_fields | (set(declared_specs) & set(observed_specs))
+        for field in sorted(fields):
+            expected_value = declared_specs.get(field, item.get(field))
+            observed_value = observed_specs.get(field, actual.get(field))
+            if (
+                expected_value is None
+                or expected_value == ""
+                or observed_value is None
+                or observed_value == ""
+            ):
+                continue
+            if field == "modality" and _hardware_modality(expected_value) == _hardware_modality(
+                observed_value
+            ):
+                continue
+            if str(expected_value).casefold() != str(observed_value).casefold():
+                differences.append(
+                    {
+                        "component": name,
+                        "field": field,
+                        "urdf": expected_value,
+                        "observed": observed_value,
+                        "effective": observed_value,
+                    }
+                )
+    for item in observed:
+        if str(item["name"]).casefold() not in matched_observed:
+            effective.append({**item, "effective_source": "probe"})
+    return {
+        "declared": declared,
+        "observed": observed,
+        "effective": effective,
+        "differences": differences,
+        "precedence": "probe_over_urdf",
+    }
 
 
 def _capability_manifest(
@@ -748,6 +953,10 @@ def _capability_manifest(
     arch_aliases = {"aarch64": "arm64", "x86_64": "amd64", "amd64": "amd64"}
     normalized_observed = arch_aliases.get(observed_arch, observed_arch)
     mismatches: list[dict[str, Any]] = []
+    unknowns: list[str] = []
+    hardware_reconciliation = _hardware_reconciliation(robot, probes["hw"].data)
+    if not normalized_observed:
+        unknowns.append("platform.architecture")
     if (
         expected_arch not in {"", "auto_discover"}
         and normalized_observed
@@ -761,6 +970,8 @@ def _capability_manifest(
             }
         )
     observed_compute = probes["hw"].data.get("compute_platform")
+    if observed_compute in {None, "unknown"}:
+        unknowns.append("platform.compute")
     if (
         expected_compute not in {"", "auto_discover"}
         and observed_compute not in {None, "unknown"}
@@ -788,6 +999,14 @@ def _capability_manifest(
                 "observed": ros_distro,
             }
         )
+    mismatches.extend(
+        {
+            "field": f"hardware.components.{item['component']}.{item['field']}",
+            "expected": item["urdf"],
+            "observed": item["observed"],
+        }
+        for item in hardware_reconciliation["differences"]
+    )
     return {
         "schema_version": "robot-discovered-capability/v1",
         "robot_id": robot.robot_id,
@@ -803,9 +1022,11 @@ def _capability_manifest(
             "applications": probes["application"].data.get("projects", []),
         },
         "semantic_bindings": bindings,
+        "hardware_reconciliation": hardware_reconciliation,
         "compatibility": {
-            "status": "MATCH" if not mismatches else "MISMATCH",
+            "status": "MISMATCH" if mismatches else "PARTIAL" if unknowns else "MATCH",
             "mismatches": mismatches,
+            "unknowns": unknowns,
         },
     }
 
@@ -818,9 +1039,7 @@ def _semantic_context(
     enrollment = robot.features.get("enrollment", {})
     unresolved = set(enrollment.get("unresolved_semantics", []))
     required_fields = {
-        "geometry.hard_max_linear_velocity_mps": robot.geometry.get(
-            "hard_max_linear_velocity_mps"
-        ),
+        "geometry.hard_max_linear_velocity_mps": robot.geometry.get("hard_max_linear_velocity_mps"),
         "geometry.hard_max_angular_velocity_radps": robot.geometry.get(
             "hard_max_angular_velocity_radps"
         ),
@@ -880,8 +1099,36 @@ def _semantic_context(
     )
 
 
-def _read_discovery_urdf(robot: RobotCapability, urdf_path: Path) -> RobotCapability:
+def _read_discovery_urdf(
+    robot: RobotCapability,
+    urdf_path: Path | None,
+) -> RobotCapability:
     """Load the explicitly supplied URDF into a discovery-time capability snapshot."""
+    if urdf_path is None:
+        features = dict(robot.features)
+        enrollment = dict(features.get("enrollment", {}))
+        unresolved = set(enrollment.get("unresolved_semantics", []))
+        for field, value in {
+            "geometry.footprint_m": robot.geometry.get("footprint_m"),
+            "geometry.hard_max_linear_velocity_mps": robot.geometry.get(
+                "hard_max_linear_velocity_mps"
+            ),
+            "geometry.hard_max_angular_velocity_radps": robot.geometry.get(
+                "hard_max_angular_velocity_radps"
+            ),
+            "platform.drive_model": robot.platform.get("drive_model"),
+        }.items():
+            if value is None or value == "" or value == "unresolved":
+                unresolved.add(field)
+        enrollment.update(
+            {
+                "urdf_status": "NOT_PROVIDED",
+                "semantic_status": "PARTIAL" if unresolved else "RESOLVED",
+                "unresolved_semantics": sorted(unresolved),
+            }
+        )
+        features["enrollment"] = enrollment
+        return robot.model_copy(update={"features": features})
     enrollment = dict(robot.features.get("enrollment", {}))
     profile = load_urdf_profile(urdf_path)
     enrollment.update(
@@ -891,9 +1138,7 @@ def _read_discovery_urdf(robot: RobotCapability, urdf_path: Path) -> RobotCapabi
             "profile_path": str(profile.path),
             "profile_sha256": profile.sha256,
             "urdf_status": "SCANNED",
-            "semantic_status": (
-                "RESOLVED" if not profile.unresolved_semantics else "PARTIAL"
-            ),
+            "semantic_status": ("RESOLVED" if not profile.unresolved_semantics else "PARTIAL"),
             "motion_safety_status": enrollment.get(
                 "motion_safety_status",
                 "UNAPPROVED",
@@ -915,262 +1160,56 @@ def _read_discovery_urdf(robot: RobotCapability, urdf_path: Path) -> RobotCapabi
     )
 
 
-def _tool(
-    operation: str,
-    cli: str,
-    layer: str,
-    description: str,
-    *,
-    availability: str = "AVAILABLE",
-    adapter: str = "builtin.discovery",
-    risk: str = "R0",
-    access: str = "read",
-    idempotent: bool = True,
-    bindings: Sequence[str] = (),
-    evidence: Sequence[str] = (),
-    limitations: Sequence[str] = (),
-    input_schema: dict[str, Any] | None = None,
-    output_schema: dict[str, Any] | None = None,
-) -> ToolDescriptor:
-    return ToolDescriptor(
-        operation=operation,
-        canonical_cli=cli.split(),
-        layer=layer,
-        description=description,
-        risk=risk,
-        access=access,
-        idempotent=idempotent,
-        availability=availability,
-        adapter=adapter,
-        semantic_bindings=list(bindings),
-        evidence=list(evidence),
-        limitations=list(limitations),
-        input_schema=input_schema or {"type": "object", "additionalProperties": False},
-        output_schema=output_schema or {"type": "object"},
-    )
+def _build_operation_candidates(
+    bindings: dict[str, dict[str, Any]],
+) -> list[OperationCandidate]:
+    """Translate host evidence only into product-defined applicability candidates."""
 
+    def route(semantic_uri: str) -> RouteEvidence:
+        binding = bindings[semantic_uri]
+        return RouteEvidence(
+            kind="ros_topic",
+            name=_ros_entity_name(str(binding["binding"])),
+            source=str(binding.get("evidence", "unknown")),
+            observed=binding.get("evidence") == "live_ros_graph",
+        )
 
-INTROSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": [
-        "schema_version",
-        "operation",
-        "status",
-        "observed_at",
-        "data",
-        "evidence",
-        "warnings",
-    ],
-    "properties": {
-        "schema_version": {"const": "robot-host-introspection/v1"},
-        "operation": {"type": "string"},
-        "status": {
-            "enum": ["SUCCEEDED", "PARTIAL", "UNAVAILABLE", "TIMEOUT", "PROBE_FAILED"]
-        },
-        "observed_at": {"type": "string", "format": "date-time"},
-        "data": {"type": "object"},
-        "evidence": {"type": "array", "items": {"type": "object"}},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-}
-
-
-def _introspection_tool(
-    operation: str,
-    cli: str,
-    description: str,
-    *,
-    input_properties: dict[str, Any] | None = None,
-    required: Sequence[str] = (),
-    limitations: Sequence[str] = (),
-) -> ToolDescriptor:
-    return _tool(
-        operation,
-        cli,
-        "linux" if operation.startswith("linux.") else operation.split(".", 1)[0],
-        description,
-        adapter="builtin.host_introspection",
-        input_schema={
-            "type": "object",
-            "properties": input_properties or {},
-            "required": list(required),
-            "additionalProperties": False,
-        },
-        output_schema=INTROSPECTION_OUTPUT_SCHEMA,
-        limitations=limitations,
-    )
-
-
-def _build_tool_catalog(
-    probes: dict[str, ProbeResult], bindings: dict[str, dict[str, Any]]
-) -> list[ToolDescriptor]:
-    tools = [
-        _tool("hw.inventory.scan", "robotctl hw inventory scan", "hw", "Enumerate hardware"),
-        _introspection_tool(
-            "linux.host.inventory",
-            "robotctl linux host inventory",
-            "Inventory host identity and available control planes",
-        ),
-        _introspection_tool(
-            "linux.host.inspect",
-            "robotctl linux host inspect",
-            "Backward-compatible alias for host inventory",
-            limitations=["Prefer linux.host.inventory for new integrations"],
-        ),
-        _introspection_tool(
-            "linux.service.list",
-            "robotctl linux service list",
-            "List services through the native service manager",
-        ),
-        _introspection_tool(
-            "linux.service.inspect",
-            "robotctl linux service inspect NAME",
-            "Inspect one service definition, state, dependencies, and launch context",
-            input_properties={"name": {"type": "string", "minLength": 1}},
-            required=["name"],
-        ),
-        _introspection_tool(
-            "linux.container.list",
-            "robotctl linux container list",
-            "List local Docker or Podman containers",
-            input_properties={"runtime": {"enum": ["docker", "podman", None]}},
-        ),
-        _introspection_tool(
-            "linux.container.inspect",
-            "robotctl linux container inspect NAME",
-            "Inspect one local Docker or Podman container",
-            input_properties={
-                "name": {"type": "string", "minLength": 1},
-                "runtime": {"enum": ["docker", "podman", None]},
-            },
-            required=["name"],
-        ),
-        _introspection_tool(
-            "linux.schedule.list",
-            "robotctl linux schedule list",
-            "List system timers, user crontab, or Windows scheduled tasks",
-        ),
-        _introspection_tool(
-            "linux.schedule.inspect",
-            "robotctl linux schedule inspect NAME",
-            "Inspect one system timer or Windows scheduled task",
-            input_properties={"name": {"type": "string", "minLength": 1}},
-            required=["name"],
-        ),
-        _introspection_tool(
-            "linux.process.list",
-            "robotctl linux process list",
-            "List bounded and redacted process metadata",
-        ),
-        _introspection_tool(
-            "linux.process.inspect",
-            "robotctl linux process inspect PID",
-            "Inspect one process tree anchor, executable, environment keys, and loaded files",
-            input_properties={"pid": {"type": "integer", "minimum": 1}},
-            required=["pid"],
-        ),
-        _introspection_tool(
-            "linux.binary.describe",
-            "robotctl linux binary describe PATH",
-            "Describe a binary statically without operational invocation",
-            input_properties={"path": {"type": "string", "minLength": 1}},
-            required=["path"],
-        ),
-        _introspection_tool(
-            "linux.cli.probe",
-            "robotctl linux cli probe PATH --arg=--help",
-            "Probe an explicit executable with bounded self-description arguments",
-            input_properties={
-                "path": {"type": "string", "minLength": 1},
-                "args": {"type": "array", "items": {"type": "string"}},
-            },
-            required=["path"],
-        ),
-        _introspection_tool(
-            "linux.config.locate",
-            "robotctl linux config locate --process PID",
-            "Locate configuration candidates associated with a process or binary",
-            input_properties={
-                "process": {"type": ["integer", "null"], "minimum": 1},
-                "binary": {"type": ["string", "null"]},
-            },
-        ),
-        _introspection_tool(
-            "linux.network.listeners",
-            "robotctl linux network listeners",
-            "List bounded local listening sockets and owning processes",
-        ),
-        _introspection_tool(
-            "middleware.inspect",
-            "robotctl middleware inspect",
-            "Identify ROS and non-ROS middleware candidates from host evidence",
-        ),
-        _introspection_tool(
-            "ros.node.status",
-            "robotctl ros node status NAME",
-            "Inspect one existing ROS 1 or ROS 2 node",
-            input_properties={"name": {"type": "string", "minLength": 1}},
-            required=["name"],
-        ),
-        _tool(
-            "ros.graph.snapshot",
-            "robotctl ros graph snapshot",
-            "ros",
-            "Snapshot the live ROS graph",
-            availability=(
-                "AVAILABLE"
-                if probes["ros"].status in {DiscoveryStatus.SUCCEEDED, DiscoveryStatus.PARTIAL}
-                else "UNAVAILABLE"
-            ),
-        ),
-        _tool(
-            "app.robot.discover",
-            "robotctl app robot discover",
-            "app",
-            "Discover application projects and candidate capabilities",
-        ),
-        _tool("tool.catalog", "robotctl tool catalog", "control", "Read generated tool catalog"),
-    ]
-    semantic_to_operations = {
-        "semantic://actuator/base/velocity_command": (
-            "app.teleop.velocity",
-            "robotctl app teleop velocity",
-            "R3",
-            "write",
-        ),
-        "semantic://state/base/odometry": (
-            "app.localization.status",
-            "robotctl app localization status",
-            "R0",
-            "read",
-        ),
-        "semantic://environment/map_2d": (
-            "app.map.inspect",
-            "robotctl app map inspect",
-            "R0",
-            "read",
-        ),
+    semantic_operations = {
+        "semantic://actuator/base/velocity_command": "app.teleop.velocity",
+        "semantic://state/base/odometry": "app.localization.status",
+        "semantic://environment/map_2d": "app.map.inspect",
     }
-    for semantic_uri, (operation, cli, risk, access) in semantic_to_operations.items():
-        if semantic_uri not in bindings:
-            continue
-        tools.append(
-            _tool(
-                operation,
-                cli,
-                "app",
-                "Candidate application operation inferred from a discovered semantic binding",
-                availability="DISCOVERED_UNVERIFIED",
-                adapter="generated.binding_candidate",
-                risk=risk,
-                access=access,
-                idempotent=access == "read",
-                bindings=[semantic_uri],
-                evidence=[bindings[semantic_uri]["binding"]],
-                limitations=["Requires adapter generation and conformance tests before execution"],
+    candidates: list[OperationCandidate] = []
+    for semantic_uri, operation in semantic_operations.items():
+        if semantic_uri in bindings:
+            candidates.append(
+                OperationCandidate(
+                    operation=operation,
+                    semantic_bindings=[semantic_uri],
+                    evidence=[bindings[semantic_uri]["binding"]],
+                    route_evidence=[route(semantic_uri)],
+                    limitations=["Requires adapter generation and independent conformance"],
+                )
+            )
+    camera_bindings = sorted(
+        semantic_uri
+        for semantic_uri in bindings
+        if semantic_uri.startswith("semantic://sensor/") and semantic_uri.endswith("/image")
+    )
+    if camera_bindings:
+        candidates.append(
+            OperationCandidate(
+                operation="app.camera.snapshot",
+                semantic_bindings=camera_bindings,
+                evidence=[bindings[semantic_uri]["binding"] for semantic_uri in camera_bindings],
+                route_evidence=[route(semantic_uri) for semantic_uri in camera_bindings],
+                limitations=[
+                    "Requires target-runtime topic type, publisher, QoS, and frame validation"
+                ],
             )
         )
-    return tools
+    validate_candidate_operations(candidates)
+    return candidates
 
 
 class DiscoveryService:
@@ -1178,15 +1217,17 @@ class DiscoveryService:
         self,
         artifacts: ArtifactStore,
         software_policy: SoftwareDiscoveryPolicy | None = None,
+        wiki_polisher: WikiNarrativePolisher | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.software_policy = software_policy or SoftwareDiscoveryPolicy()
+        self.wiki_polisher = wiki_polisher
 
     def run(
         self,
         *,
         robot: RobotCapability,
-        urdf_path: Path,
+        urdf_path: Path | None = None,
         source_roots: Sequence[Path] | None = None,
         active_inputs: ActiveDiscoveryInputs | None = None,
     ) -> tuple[DiscoveryReport, Path]:
@@ -1208,8 +1249,7 @@ class DiscoveryService:
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/software_summary.json"
         )
         dependency_report_ref = (
-            f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
-            "direct_dependencies.json"
+            f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/direct_dependencies.json"
         )
         ros_probe = (
             RosProbe().run()
@@ -1229,25 +1269,19 @@ class DiscoveryService:
             "application": application_scan.probe,
         }
         bindings = _semantic_bindings(probes)
-        tools = _build_tool_catalog(probes, bindings)
+        operation_candidates = _build_operation_candidates(bindings)
         applicable_probes = {
             name: probe
             for name, probe in probes.items()
             if (name != "application" or active_inputs.source_roots)
-            and (
-                name != "ros"
-                or active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
-            )
+            and (name != "ros" or active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY)
         }
-        probe_status = aggregate_probe_status(
-            probe.status for probe in applicable_probes.values()
-        )
+        probe_status = aggregate_probe_status(probe.status for probe in applicable_probes.values())
         active_report_ref = f"artifact://{run_location}/active_discovery_report.json"
         active_report = ActiveDiscoveryAnalyzer(
             inputs=active_inputs,
             projects=probes["application"].data.get("projects", []),
             ros_probe=probes["ros"],
-            tools=tools,
             run_root=run_root,
             artifact_prefix=f"artifact://{run_location}",
             evidence_text=application_scan.evidence_text,
@@ -1292,7 +1326,7 @@ class DiscoveryService:
             capability_manifest=capability_manifest,
             probes=probes,
             semantic_bindings=bindings,
-            tool_catalog=tools,
+            operation_candidates=operation_candidates,
             software_summary=software_summary.model_dump(mode="json"),
             software_summary_ref=software_summary_ref,
             dependency_report_ref=dependency_report_ref,
@@ -1319,9 +1353,18 @@ class DiscoveryService:
             f"{run_location}/active_discovery_report.md",
             render_active_discovery_markdown(active_report),
         )
+        wiki_draft = render_discovery_review_markdown(report, active_report)
+        robot_wiki, wiki_generation = generate_robot_wiki(
+            wiki_draft,
+            self.wiki_polisher,
+        )
         self.artifacts.write_text(
             f"{run_location}/robot_wiki.md",
-            render_discovery_review_markdown(report, active_report),
+            robot_wiki,
+        )
+        self.artifacts.write_json(
+            f"{run_location}/wiki_generation.json",
+            wiki_generation.model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/capability_manifest.json",
@@ -1340,81 +1383,18 @@ class DiscoveryService:
                 f"{run_location}/{layer}.json",
                 probe.model_dump(mode="json"),
             )
-        catalog = ToolCatalog(robot_id=robot.robot_id, discovery_id=discovery_id, tools=tools)
-        self.artifacts.write_json(
-            f"{run_location}/tool_catalog.json", catalog.model_dump(mode="json")
-        )
-        unresolved = [
-            f"{layer}:{probe.status}"
-            for layer, probe in probes.items()
-            if probe.status != DiscoveryStatus.SUCCEEDED
-            and not (
-                layer == "ros"
-                and active_inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY
-            )
-        ]
-        unresolved.extend(
-            f"dependency:{candidate.ecosystem}:{candidate.name}:{candidate.status.value}"
-            for candidate in dependency_report.candidates
-            if candidate.required
-            and candidate.status
-            in {
-                CandidateResolutionStatus.MISSING,
-                CandidateResolutionStatus.VERSION_CONFLICT,
-                CandidateResolutionStatus.UNKNOWN,
-            }
-        )
-        unresolved.extend(
-            f"dependency:executable:{executable_id}:UNKNOWN"
-            for executable_id in dependency_report.unresolved_executables
-        )
-        unresolved.extend(
-            f"compatibility:{item['field']}"
-            for item in capability_manifest["compatibility"]["mismatches"]
-        )
         semantic_context_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/semantic_context.json"
         )
-        inputs_status = {
-            DiscoveryStatus.FAILED: AdaptInputsStatus.BLOCKED,
-            DiscoveryStatus.PARTIAL: AdaptInputsStatus.DEGRADED,
-            DiscoveryStatus.SUCCEEDED: AdaptInputsStatus.READY_FOR_CODING,
-        }[status]
         discovery_manifest_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/manifest.json"
         )
         adapt_inputs = AdaptInputs(
             robot_id=robot.robot_id,
             discovery_id=discovery_id,
-            status=inputs_status,
-            capability_manifest_ref=(
-                f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
-                "capability_manifest.json"
-            ),
-            semantic_bindings_ref=(
-                f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/"
-                "report.json#/semantic_bindings"
-            ),
             semantic_context_ref=semantic_context_ref,
-            tool_catalog_ref=(
-                f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/tool_catalog.json"
-            ),
-            software_summary_ref=software_summary_ref,
-            dependency_report_ref=dependency_report_ref,
-            active_discovery_report_ref=active_report_ref,
             robot_wiki_ref=report.review_ref,
             discovery_manifest_ref=discovery_manifest_ref,
-            probe_refs={
-                layer: (
-                    f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/{layer}.json"
-                )
-                for layer in probes
-            },
-            semantic_binding_candidates=len(bindings),
-            semantic_value_candidates=len(semantic_context.candidates),
-            tool_count=len(tools),
-            unresolved_dependencies=unresolved,
-            unresolved_semantics=semantic_context.unresolved_semantics,
         )
         inputs_payload = adapt_inputs.model_dump(mode="json")
         stage_payloads: dict[str, dict[str, Any]] = {}
@@ -1432,9 +1412,7 @@ class DiscoveryService:
         # The immutable run report is its commit marker as well.
         run_path = self.artifacts.write_json(f"{run_location}/report.json", payload)
 
-        manifest = create_discovery_manifest(
-            run_path.parent, robot.robot_id, discovery_id
-        )
+        manifest = create_discovery_manifest(run_path.parent, robot.robot_id, discovery_id)
         manifest_path = self.artifacts.write_json(
             f"{run_location}/manifest.json", manifest.model_dump(mode="json")
         )
@@ -1481,9 +1459,9 @@ def load_latest_report(artifact_root: Path, robot_id: str) -> DiscoveryReport:
     )
     if sha256_file(manifest_path) != index.manifest_sha256:
         raise ValueError(f"Latest discovery manifest hash mismatch: {index.discovery_id}")
-    report_path = ArtifactLayout(artifact_root).discovery_run(
-        robot_id, index.discovery_id
-    ) / "report.json"
+    report_path = (
+        ArtifactLayout(artifact_root).discovery_run(robot_id, index.discovery_id) / "report.json"
+    )
     if not report_path.is_file():
         raise FileNotFoundError(f"Latest discovery run is incomplete: {index.discovery_id}")
     if sha256_file(report_path) != index.report_sha256:

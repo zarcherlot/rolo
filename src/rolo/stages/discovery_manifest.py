@@ -22,9 +22,7 @@ class ManifestEntry(BaseModel):
 class DiscoveryRunManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-discovery-run-manifest/v1"] = (
-        "robot-discovery-run-manifest/v1"
-    )
+    schema_version: Literal["robot-discovery-run-manifest/v1"] = "robot-discovery-run-manifest/v1"
     robot_id: str
     discovery_id: str
     files: list[ManifestEntry] = Field(min_length=1)
@@ -60,9 +58,7 @@ def verify_discovery_manifest_path(
     manifest_path = run_root / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"discovery manifest is missing: {manifest_path}")
-    manifest = DiscoveryRunManifest.model_validate_json(
-        manifest_path.read_text(encoding="utf-8")
-    )
+    manifest = DiscoveryRunManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     if manifest.robot_id != robot_id or manifest.discovery_id != discovery_id:
         raise ValueError("discovery manifest identity mismatch")
     seen: set[str] = set()
@@ -85,7 +81,6 @@ def verify_discovery_manifest_path(
         "active_discovery_report.json",
         "capability_manifest.json",
         "semantic_context.json",
-        "tool_catalog.json",
     }
     missing = required - seen
     if missing:

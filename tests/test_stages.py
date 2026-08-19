@@ -7,7 +7,8 @@ from typer.testing import CliRunner
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
-from rolo.core.models import utc_now
+from rolo.core.hashing import sha256_file
+from rolo.core.models import ProbeResult, utc_now
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.discovery import DiscoveryService, load_report
 from rolo.stages.adapt.models import (
@@ -16,6 +17,7 @@ from rolo.stages.adapt.models import (
     AdapterAgentResult,
     AdapterAgentRun,
 )
+from rolo.stages.adapt.operation_registry import required_conformance_operations
 from rolo.stages.adapt.service import AdaptStageService
 from rolo.stages.pipeline import assess_pipeline
 
@@ -39,29 +41,23 @@ def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) 
     artifact_root = tmp_path / "artifacts"
     discover_demo(artifact_root, tmp_path)
 
-    build_inputs = json.loads(
+    adapt_inputs = json.loads(
         (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
     )
     plan = AdaptStageService(ArtifactStore(artifact_root)).derive_plan("demo_diff")
 
-    assert build_inputs["stage"] == "adapt"
-    assert build_inputs["agent_requirement"] == "adapter_agent"
-    assert build_inputs["status"] in {"READY_FOR_CODING", "DEGRADED"}
-    assert set(build_inputs["probe_refs"]) == {"hw", "linux", "ros", "application"}
-    assert build_inputs["semantic_context_ref"].endswith("/semantic_context.json")
+    assert adapt_inputs["schema_version"] == "robot-adapt-inputs/v2"
+    assert adapt_inputs["stage"] == "adapt"
+    assert adapt_inputs["semantic_context_ref"].endswith("/semantic_context.json")
     assert not (artifact_root / "adapt/demo_diff/latest/plan.json").exists()
     assert plan.stage == "adapt"
     assert plan.status == "REQUIRES_CODING"
     assert plan.adapter_agent.provider == "codex"
     assert plan.adapter_agent.model is None
     assert plan.adapter_agent.api_key_configured is False
-    assert plan.semantic_context_ref == build_inputs["semantic_context_ref"]
+    assert plan.semantic_context_ref == adapt_inputs["semantic_context_ref"]
     assert plan.robot_wiki_ref.endswith("/robot_wiki.md")
-    assert plan.required_skills == [
-        "canonical-adapter-builder",
-        "cli-conformance",
-        "state-graph-builder",
-    ]
+    assert plan.schema_version == "robot-adapt-plan/v2"
     assert (artifact_root / "diagnose/demo_diff/latest/inputs.json").is_file()
     assert (artifact_root / "verify/demo_diff/latest/inputs.json").is_file()
 
@@ -86,10 +82,7 @@ def test_adapt_plan_rejects_machine_evidence_after_manifest_changes(tmp_path: Pa
     artifact_root = tmp_path / "artifacts"
     discovery_id = discover_demo(artifact_root, tmp_path)
     report_path = (
-        artifact_root
-        / "discovery/demo_diff/runs"
-        / discovery_id
-        / "active_discovery_report.json"
+        artifact_root / "discovery/demo_diff/runs" / discovery_id / "active_discovery_report.json"
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     report["warnings"].append("machine evidence changed after publication")
@@ -103,10 +96,9 @@ def test_stage_cli_exposes_only_canonical_lifecycle_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_root = tmp_path / "artifacts"
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "cli-demo"\n', encoding="utf-8"
-    )
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "cli-demo"\n', encoding="utf-8")
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
     get_settings.cache_clear()
     runner = CliRunner()
 
@@ -145,7 +137,7 @@ def test_stage_cli_exposes_only_canonical_lifecycle_entries(
     assert "# 机器人 Wiki：demo_diff" in review.output
     assert removed_confirm.exit_code != 0
     assert plan.exit_code == 0, plan.output
-    assert '"required_skills"' in plan.output
+    assert '"required_skills"' not in plan.output
     assert pipeline.exit_code == 0, pipeline.output
     assert '"stage": "verify"' in pipeline.output
     assert enrollment.exit_code == 0, enrollment.output
@@ -175,9 +167,9 @@ def test_runtime_plan_accepts_vendor_model_and_never_persists_api_key(tmp_path: 
         api_key_configured=True,
     )
 
-    plan = AdaptStageService(
-        ArtifactStore(artifact_root), coding_agent=config
-    ).derive_plan("demo_diff")
+    plan = AdaptStageService(ArtifactStore(artifact_root), coding_agent=config).derive_plan(
+        "demo_diff"
+    )
     persisted_config = plan.model_dump(mode="json")["adapter_agent"]
 
     assert plan.adapter_agent == config
@@ -229,10 +221,29 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run",
+        lambda self: ProbeResult(
+            layer="ros",
+            status="SUCCEEDED",
+            data={
+                "ros_distro": "test",
+                "installed_distros": ["test"],
+                "domain_id": "0",
+                "rmw": "test",
+                "nodes": [],
+                "topics": ["/cmd_vel"],
+                "services": [],
+                "actions": [],
+            },
+        ),
+    )
     discovery_id = discover_demo(artifact_root, workspace)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
     get_settings.cache_clear()
     calls: list[str] = []
+    agent_workspaces: list[Path] = []
 
     def fake_prepare(self: object, **kwargs: object) -> tuple[object, Path]:
         del self, kwargs
@@ -253,24 +264,46 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     def fake_execute(self: object, **kwargs: object) -> tuple[object, Path]:
         del self
         plan = kwargs["plan"]
+        agent_workspace = Path(kwargs["workspace"])
+        agent_workspaces.append(agent_workspace)
         assert calls == ["prepare"]
         calls.append("execute")
         report = load_report(artifact_root, "demo_diff", discovery_id)
-        tools = [tool.model_dump(mode="json") for tool in report.tool_catalog]
-        for tool in tools:
-            tool["availability"] = "VERIFIED"
-        (workspace / "tool_catalog.json").write_text(
+        bundle_operations = [
+            {
+                "operation": candidate.operation,
+                "entrypoint": candidate.operation.replace(".", "_"),
+            }
+            for candidate in report.operation_candidates
+        ]
+        operation_map = {item["operation"]: item["entrypoint"] for item in bundle_operations}
+        package_path = agent_workspace / "demo_adapter.py"
+        package_path.write_text(
+            "import json, sys\n"
+            f"OPERATIONS = {operation_map!r}\n"
+            "if sys.argv[1] == 'describe':\n"
+            "    print(json.dumps({'operations': OPERATIONS}))\n"
+            "elif sys.argv[1] == 'invoke':\n"
+            "    print(json.dumps({'status': 'SUCCEEDED'}))\n",
+            encoding="utf-8",
+        )
+        (agent_workspace / "adapter-manifest.json").write_text(
             json.dumps(
                 {
-                    "schema_version": "robot-tool-catalog/v1",
+                    "schema_version": "robot-adapter-bundle/v1",
+                    "bundle_id": "demo-adapter",
+                    "bundle_version": "1.0.0",
                     "robot_id": "demo_diff",
                     "discovery_id": discovery_id,
-                    "tools": tools,
+                    "runtime_protocol": "robot-adapter-rpc/v1",
+                    "package_file": package_path.name,
+                    "package_sha256": sha256_file(package_path),
+                    "operations": bundle_operations,
                 }
             ),
             encoding="utf-8",
         )
-        (workspace / "state_graph.json").write_text(
+        (agent_workspace / "state_graph.json").write_text(
             json.dumps(
                 {
                     "schema_version": "robot-state-graph/v1",
@@ -283,24 +316,22 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             encoding="utf-8",
         )
         operations = []
-        for tool in report.tool_catalog:
-            physical = tool.risk == "R3" or tool.access == "write"
+        for operation in sorted(required_conformance_operations(report)):
             operations.append(
                 {
-                    "operation": tool.operation,
+                    "operation": operation,
                     "schema_valid": True,
                     "errors_valid": True,
                     "idempotency_valid": True,
                     "cancellation_valid": True,
-                    "safety_valid": True,
-                    "physical_result_valid": True if physical else None,
-                    "evidence": ["artifact://evidence/result.json"] if physical else [],
+                    "validation_scopes": ["LOCAL_STATIC"],
+                    "evidence": ["artifact://evidence/result.json"],
                 }
             )
-        (workspace / "conformance.json").write_text(
+        (agent_workspace / "conformance.json").write_text(
             json.dumps(
                 {
-                    "schema_version": "robot-adapter-conformance/v1",
+                    "schema_version": "robot-adapter-conformance/v2",
                     "robot_id": "demo_diff",
                     "discovery_id": discovery_id,
                     "operations": operations,
@@ -317,7 +348,8 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             blockers=[],
             handoff_ready=True,
             outputs={
-                "tool_catalog": "tool_catalog.json",
+                "adapter_manifest": "adapter-manifest.json",
+                "adapter_package": "demo_adapter.py",
                 "state_graph": "state_graph.json",
                 "conformance_report": "conformance.json",
             },
@@ -334,7 +366,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             source_discovery_id=plan.source_discovery_id,
             provider="codex",
             status="SUCCEEDED",
-            workspace=str(workspace),
+            workspace=str(agent_workspace),
             command=["codex", "exec"],
             prompt_ref="artifact://prompt",
             event_log_ref="artifact://events",
@@ -358,19 +390,14 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
 
     result = CliRunner().invoke(
         app,
-        [
-            "adapt",
-            "run",
-            "--robot",
-            "demo_diff",
-            "--workspace",
-            str(workspace),
-        ],
+        ["adapt", "run", "--robot", "demo_diff"],
     )
 
     get_settings.cache_clear()
     assert result.exit_code == 0, result.output
     assert calls == ["prepare", "execute"]
+    assert len(agent_workspaces) == 1
+    assert not agent_workspaces[0].exists()
     payload = json.loads(result.output)
     assert payload["run"]["status"] == "COMPLETE"
     run_root = artifact_root / "adapt/demo_diff/runs/run-test"
@@ -378,6 +405,13 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     assert (run_root / "gate.json").is_file()
     assert (run_root / "handoff.json").is_file()
     assert (artifact_root / "adapt/demo_diff/latest.json").is_file()
+    assert (tmp_path / "output/robots/demo_diff/current.json").is_file()
+
+    newer_discovery_id = discover_demo(artifact_root, workspace)
+    assert newer_discovery_id != discovery_id
+    adapt = assess_pipeline(artifact_root, "demo_diff").stages[0]
+    assert adapt.status != "COMPLETE"
+    assert any("stale" in blocker.casefold() for blocker in adapt.blockers)
 
 
 def test_adapt_run_prepares_dependency_without_confirmation(
@@ -411,17 +445,39 @@ def test_adapt_run_prepares_dependency_without_confirmation(
 
     result = CliRunner().invoke(
         app,
-        [
-            "adapt",
-            "run",
-            "--robot",
-            "demo_diff",
-            "--workspace",
-            str(workspace),
-        ],
+        ["adapt", "run", "--robot", "demo_diff"],
     )
 
     get_settings.cache_clear()
     assert result.exit_code == 2
     assert "dependency is not ready: AUTH_REQUIRED" in result.output
     assert calls == ["prepare"]
+
+
+def test_adapt_run_rejects_scratch_and_output_inside_rolo_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = tmp_path / "source"
+    source.mkdir()
+    discover_demo(artifact_root, source)
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(Path.cwd() / "forbidden-adapter-output"))
+    get_settings.cache_clear()
+
+    result = CliRunner().invoke(app, ["adapt", "run", "--robot", "demo_diff"])
+
+    get_settings.cache_clear()
+    assert result.exit_code == 2
+    assert "ROLO_OUTPUT_DIR must be outside" in result.output
+
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "external-output"))
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        ["adapt", "run", "--robot", "demo_diff", "--scratch-root", str(Path.cwd())],
+    )
+
+    get_settings.cache_clear()
+    assert result.exit_code == 2
+    assert "scratch root must be outside" in result.output

@@ -1,27 +1,81 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from pydantic import BaseModel
 
+from rolo.adapter_runtime import (
+    AdapterOutputLayout,
+    activate_release,
+    load_current_release,
+    probe_adapter_package,
+    publish_release,
+)
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
+from rolo.core.models import OperationCandidate
+from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ActiveProbeMode
 from rolo.stages.adapt.discovery import load_report
 from rolo.stages.adapt.models import (
     AdapterAgentResult,
     AdapterAgentRun,
     AdapterAgentRunStatus,
+    AdapterBundleManifest,
     AdapterConformanceReport,
     AdapterHandoff,
     AdapterOutputSnapshot,
     AdaptGateReport,
     AdaptGateStatus,
     AdaptLatestIndex,
+    ConformanceScope,
     StateGraphBaseline,
-    ToolCatalog,
+)
+from rolo.stages.adapt.operation_registry import (
+    canonical_operation_registry,
+    materialize_active_catalog,
+    required_conformance_operations,
 )
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
+
+
+def _ros_name(value: object) -> str:
+    name = str(value).split(" ", 1)[0].strip()
+    return f"/{name.lstrip('/')}".casefold() if name else ""
+
+
+def _candidate_route_observed(candidate: OperationCandidate, probe_data: dict[str, object]) -> bool:
+    """Require an exact normalized endpoint match in structured runtime probe fields."""
+    probe_fields = {
+        "ros_topic": "topics",
+        "ros_service": "services",
+        "ros_action": "actions",
+    }
+    for route in candidate.route_evidence:
+        field = probe_fields.get(route.kind)
+        if not route.observed or field is None:
+            continue
+        observed = {
+            _ros_name(value)
+            for value in probe_data.get(field, [])
+            if isinstance(value, str) and _ros_name(value)
+        }
+        if _ros_name(route.name) in observed:
+            return True
+    return False
+
+
+def _restore_index(path: Path, previous: bytes | None) -> None:
+    """Compensate a failed cross-root publication without exposing a partial index."""
+    if previous is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".rollback")
+    temporary.write_bytes(previous)
+    temporary.replace(path)
 
 
 def _workspace_output(workspace: Path, relative: str) -> Path:
@@ -59,7 +113,10 @@ def latest_adapter_handoff_path(artifact_root: Path, robot_id: str) -> Path:
 
 
 def validate_adapter_handoff(
-    artifact_root: Path, robot_id: str, handoff_path: Path | None = None
+    artifact_root: Path,
+    robot_id: str,
+    handoff_path: Path | None = None,
+    output_root: Path | None = None,
 ) -> AdapterHandoff:
     if handoff_path is None:
         path = latest_adapter_handoff_path(artifact_root, robot_id)
@@ -91,21 +148,29 @@ def validate_adapter_handoff(
         if not target.is_file() or sha256_file(target) != expected:
             raise ValueError(f"adapter handoff artifact hash mismatch: {target}")
     gate = AdaptGateReport.model_validate_json(
-        resolve_artifact_ref(artifact_root, handoff.gate_report_ref).read_text(
-            encoding="utf-8"
-        )
+        resolve_artifact_ref(artifact_root, handoff.gate_report_ref).read_text(encoding="utf-8")
     )
     if gate.status != AdaptGateStatus.PASSED or gate.run_id != handoff.source_agent_run_id:
         raise ValueError("adapter handoff is not backed by a passed independent gate")
+    release_prefix = "output://"
+    if not handoff.release_ref.startswith(release_prefix):
+        raise ValueError("adapter handoff has an invalid release reference")
+    relative = Path(handoff.release_ref[len(release_prefix) :])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("adapter handoff release reference is unsafe")
+    release_path = ((output_root or get_settings().rolo_output_dir) / relative).resolve()
+    if not release_path.is_file() or sha256_file(release_path) != handoff.release_manifest_sha256:
+        raise ValueError("adapter handoff release manifest hash mismatch")
     return handoff
 
 
 class AdapterPromotionService:
     """Freeze Agent outputs, independently validate them, and publish a handoff."""
 
-    def __init__(self, artifacts: ArtifactStore) -> None:
+    def __init__(self, artifacts: ArtifactStore, output_root: Path) -> None:
         self.artifacts = artifacts
         self.layout = ArtifactLayout(artifacts.root)
+        self.output_root = output_root
 
     def snapshot(self, run: AdapterAgentRun) -> tuple[AdapterOutputSnapshot, Path]:
         if run.status != AdapterAgentRunStatus.SUCCEEDED:
@@ -113,25 +178,39 @@ class AdapterPromotionService:
         if not run.result_ref:
             raise ValueError("successful Adapter Agent run has no structured result")
         result_path = resolve_artifact_ref(self.artifacts.root, run.result_ref)
-        result = AdapterAgentResult.model_validate_json(
-            result_path.read_text(encoding="utf-8")
-        )
+        result = AdapterAgentResult.model_validate_json(result_path.read_text(encoding="utf-8"))
         if not result.handoff_ready or result.blockers or result.outputs is None:
             raise ValueError("Adapter Agent result is not ready for independent conformance")
 
         workspace = Path(run.workspace)
-        catalog_path = _workspace_output(workspace, result.outputs.tool_catalog)
+        bundle_manifest_path = _workspace_output(workspace, result.outputs.adapter_manifest)
+        adapter_package_path = _workspace_output(workspace, result.outputs.adapter_package)
         graph_path = _workspace_output(workspace, result.outputs.state_graph)
         conformance_path = _workspace_output(workspace, result.outputs.conformance_report)
-        catalog = _read_model(catalog_path, ToolCatalog)
+        bundle = _read_model(bundle_manifest_path, AdapterBundleManifest)
         graph = _read_model(graph_path, StateGraphBaseline)
         conformance = _read_model(conformance_path, AdapterConformanceReport)
-        assert isinstance(catalog, ToolCatalog)
+        assert isinstance(bundle, AdapterBundleManifest)
         assert isinstance(graph, StateGraphBaseline)
         assert isinstance(conformance, AdapterConformanceReport)
-
+        if bundle.robot_id != run.robot_id or bundle.discovery_id != run.source_discovery_id:
+            raise ValueError("adapter bundle identity does not match the Adapter Agent run")
+        if Path(bundle.package_file).name != adapter_package_path.name:
+            raise ValueError("adapter bundle package_file does not match the proposed package")
+        if sha256_file(adapter_package_path) != bundle.package_sha256:
+            raise ValueError("adapter package hash does not match its bundle manifest")
+        bundle_operations = [item.operation for item in bundle.operations]
+        if len(bundle_operations) != len(set(bundle_operations)):
+            raise ValueError("adapter bundle contains duplicate operations")
+        discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
+        expected_bundle_operations = {
+            candidate.operation for candidate in discovery.operation_candidates
+        }
+        if set(bundle_operations) != expected_bundle_operations:
+            raise ValueError(
+                "adapter bundle operation coverage must exactly match discovered candidates"
+            )
         identified_outputs = (
-            (catalog, "tool catalog"),
             (graph, "State Graph"),
             (conformance, "conformance report"),
         )
@@ -140,10 +219,11 @@ class AdapterPromotionService:
                 raise ValueError(f"{label} identity does not match the Adapter Agent run")
 
         snapshot_root = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "output-snapshot"
-        catalog_out = self.artifacts.write_json(
-            self.layout.relative(snapshot_root / "tool-catalog.json"),
-            catalog.model_dump(mode="json"),
-        )
+        bundle_manifest_out = snapshot_root / "adapter-manifest.json"
+        adapter_package_out = snapshot_root / adapter_package_path.name
+        snapshot_root.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bundle_manifest_path, bundle_manifest_out)
+        shutil.copy2(adapter_package_path, adapter_package_out)
         graph_out = self.artifacts.write_json(
             self.layout.relative(snapshot_root / "state-graph.json"),
             graph.model_dump(mode="json"),
@@ -156,8 +236,10 @@ class AdapterPromotionService:
             run_id=run.run_id,
             robot_id=run.robot_id,
             discovery_id=run.source_discovery_id,
-            tool_catalog_ref=self.layout.ref(catalog_out),
-            tool_catalog_sha256=sha256_file(catalog_out),
+            adapter_manifest_ref=self.layout.ref(bundle_manifest_out),
+            adapter_manifest_sha256=sha256_file(bundle_manifest_out),
+            adapter_package_ref=self.layout.ref(adapter_package_out),
+            adapter_package_sha256=sha256_file(adapter_package_out),
             state_graph_ref=self.layout.ref(graph_out),
             state_graph_sha256=sha256_file(graph_out),
             conformance_report_ref=self.layout.ref(conformance_out),
@@ -171,9 +253,15 @@ class AdapterPromotionService:
 
     def _snapshot_models(
         self, snapshot: AdapterOutputSnapshot
-    ) -> tuple[ToolCatalog, StateGraphBaseline, AdapterConformanceReport]:
+    ) -> tuple[
+        AdapterBundleManifest,
+        Path,
+        StateGraphBaseline,
+        AdapterConformanceReport,
+    ]:
         pairs = (
-            (snapshot.tool_catalog_ref, snapshot.tool_catalog_sha256),
+            (snapshot.adapter_manifest_ref, snapshot.adapter_manifest_sha256),
+            (snapshot.adapter_package_ref, snapshot.adapter_package_sha256),
             (snapshot.state_graph_ref, snapshot.state_graph_sha256),
             (snapshot.conformance_report_ref, snapshot.conformance_report_sha256),
         )
@@ -181,9 +269,11 @@ class AdapterPromotionService:
             path = resolve_artifact_ref(self.artifacts.root, reference)
             if not path.is_file() or sha256_file(path) != expected:
                 raise ValueError(f"adapter output snapshot hash mismatch: {reference}")
-        catalog = _read_model(
-            resolve_artifact_ref(self.artifacts.root, snapshot.tool_catalog_ref), ToolCatalog
+        bundle = _read_model(
+            resolve_artifact_ref(self.artifacts.root, snapshot.adapter_manifest_ref),
+            AdapterBundleManifest,
         )
+        package_path = resolve_artifact_ref(self.artifacts.root, snapshot.adapter_package_ref)
         graph = _read_model(
             resolve_artifact_ref(self.artifacts.root, snapshot.state_graph_ref), StateGraphBaseline
         )
@@ -191,10 +281,10 @@ class AdapterPromotionService:
             resolve_artifact_ref(self.artifacts.root, snapshot.conformance_report_ref),
             AdapterConformanceReport,
         )
-        assert isinstance(catalog, ToolCatalog)
+        assert isinstance(bundle, AdapterBundleManifest)
         assert isinstance(graph, StateGraphBaseline)
         assert isinstance(conformance, AdapterConformanceReport)
-        return catalog, graph, conformance
+        return bundle, package_path, graph, conformance
 
     def promote_run(
         self,
@@ -202,7 +292,14 @@ class AdapterPromotionService:
         snapshot: AdapterOutputSnapshot,
     ) -> tuple[AdapterHandoff, Path, AdaptGateReport, Path]:
         checks: list[str] = []
+        published_release_root: Path | None = None
         gate_path = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "gate.json"
+        runtime_index = AdapterOutputLayout(self.output_root).current(run.robot_id)
+        adapt_index = self.layout.stage_latest_index("adapt", run.robot_id)
+        previous_runtime_index = runtime_index.read_bytes() if runtime_index.is_file() else None
+        previous_adapt_index = adapt_index.read_bytes() if adapt_index.is_file() else None
+        runtime_index_written = False
+        adapt_index_written = False
         try:
             if run.status != AdapterAgentRunStatus.SUCCEEDED:
                 raise ValueError("Adapter Agent run did not succeed")
@@ -212,59 +309,97 @@ class AdapterPromotionService:
                 or snapshot.discovery_id != run.source_discovery_id
             ):
                 raise ValueError("adapter output snapshot identity mismatch")
-            catalog, graph, conformance = self._snapshot_models(snapshot)
+            bundle, package_path, graph, conformance = self._snapshot_models(snapshot)
             checks.append("frozen output hashes and schemas")
 
-            discovery = load_report(
-                self.artifacts.root, run.robot_id, run.source_discovery_id
-            )
+            discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
             identified_outputs = (
-                (catalog, "tool catalog"),
                 (graph, "State Graph"),
                 (conformance, "conformance report"),
             )
             for value, label in identified_outputs:
-                if (
-                    value.robot_id != run.robot_id
-                    or value.discovery_id != run.source_discovery_id
-                ):
+                if value.robot_id != run.robot_id or value.discovery_id != run.source_discovery_id:
                     raise ValueError(f"{label} identity does not match the Adapter Agent run")
             checks.append("robot and discovery identity")
 
-            expected = {tool.operation: tool for tool in discovery.tool_catalog}
-            actual = {item.operation: item for item in conformance.operations}
-            if len(actual) != len(conformance.operations) or set(actual) != set(expected):
-                raise ValueError("conformance coverage must exactly match discovered operations")
-            catalog_ops = {tool.operation for tool in catalog.tools}
-            if catalog_ops != set(expected):
-                raise ValueError("verified tool catalog must exactly match discovered operations")
-            checks.append("exact discovered-operation coverage")
-            unverified = [
-                tool.operation
-                for tool in catalog.tools
-                if tool.availability in {"DISCOVERED_UNVERIFIED", "UNAVAILABLE"}
-            ]
-            if unverified:
+            expected_operations = required_conformance_operations(discovery)
+            source_by_operation = {
+                tool.operation: tool for tool in materialize_active_catalog(discovery).tools
+            }
+            expected_bundle_operations = {
+                candidate.operation for candidate in discovery.operation_candidates
+            }
+            bundle_entries = {item.operation: item.entrypoint for item in bundle.operations}
+            if set(bundle_entries) != expected_bundle_operations:
                 raise ValueError(
-                    f"tool catalog still contains unverified operations: {unverified}"
+                    "adapter bundle operation coverage must exactly match generated candidates"
                 )
-            checks.append("no unverified operations remain")
-            for operation, source in expected.items():
+            probe_adapter_package(package_path, bundle)
+            checks.append("adapter package describe and entrypoint binding")
+            actual = {item.operation: item for item in conformance.operations}
+            if len(actual) != len(conformance.operations) or set(actual) != expected_operations:
+                raise ValueError("conformance coverage must exactly match required operations")
+            checks.append("product registry and required-operation coverage")
+            active_report = ActiveDiscoveryReport.model_validate_json(
+                resolve_artifact_ref(
+                    self.artifacts.root, discovery.active_discovery_report_ref
+                ).read_text(encoding="utf-8")
+            )
+            runtime_probe_requested = (
+                active_report.inputs.get("active_probe") == ActiveProbeMode.RUNTIME_READONLY.value
+            )
+            candidates = {
+                candidate.operation: candidate for candidate in discovery.operation_candidates
+            }
+            candidate_operations = set(candidates)
+            for operation in expected_operations:
+                source = source_by_operation[operation]
                 check = actual[operation]
                 if not check.passed:
                     raise ValueError(f"conformance failed for operation: {operation}")
-                if (source.risk == "R3" or source.access == "write") and (
-                    check.physical_result_valid is not True or not check.evidence
-                ):
-                    raise ValueError(
-                        f"physical write operation lacks verified result evidence: {operation}"
-                    )
-            checks.append("operation conformance and physical write evidence")
+                scopes = set(check.validation_scopes)
+                if ConformanceScope.LOCAL_STATIC not in scopes:
+                    raise ValueError(f"local static validation scope is missing: {operation}")
+                target_required = operation in candidate_operations
+                if target_required:
+                    relevant_layer = "ros" if source.layer in {"ros", "app"} else source.layer
+                    probe = discovery.probes.get(relevant_layer)
+                    if not runtime_probe_requested or probe is None or probe.status != "SUCCEEDED":
+                        raise ValueError(
+                            f"target runtime evidence is unavailable for operation: {operation}"
+                        )
+                    if not _candidate_route_observed(candidates[operation], probe.data):
+                        raise ValueError(f"target operation route was not observed: {operation}")
+            checks.append("operation contract and route-existence conformance")
 
             _, manifest_path = load_and_verify_discovery_manifest(
                 self.artifacts.root, run.robot_id, run.source_discovery_id
             )
             checks.append("immutable discovery manifest")
+
+            catalog = materialize_active_catalog(discovery, bundle=bundle)
+            registry_operations = {
+                item.operation for item in canonical_operation_registry().operations
+            }
+            catalog_by_operation = {tool.operation: tool for tool in catalog.tools}
+            if (
+                len(catalog_by_operation) != len(catalog.tools)
+                or set(catalog_by_operation) != registry_operations
+            ):
+                raise ValueError("Active Tool Catalog must exactly match the product registry")
+            for operation, entrypoint in bundle_entries.items():
+                descriptor = catalog_by_operation[operation]
+                expected_adapter = f"bundle:{bundle.bundle_id}#{entrypoint}"
+                if descriptor.adapter != expected_adapter or descriptor.availability != "VERIFIED":
+                    raise ValueError(f"adapter bundle binding mismatch: {operation}")
+            if any(tool.availability == "DISCOVERED_UNVERIFIED" for tool in catalog.tools):
+                raise ValueError("gated Tool Catalog still contains unverified operations")
+            run_root = self.layout.stage_run("adapt", run.robot_id, run.run_id)
+            catalog_out = self.artifacts.write_json(
+                self.layout.relative(run_root / "gated-output" / "tool-catalog.json"),
+                catalog.model_dump(mode="json"),
+            )
+            checks.append("gate-owned Active Tool Catalog composition")
             gate = AdaptGateReport(
                 run_id=run.run_id,
                 robot_id=run.robot_id,
@@ -275,27 +410,52 @@ class AdapterPromotionService:
             persisted_gate = self.artifacts.write_json(
                 self.layout.relative(gate_path), gate.model_dump(mode="json")
             )
+            _, release_manifest_path = publish_release(
+                output_root=self.output_root,
+                robot_id=run.robot_id,
+                release_id=run.run_id,
+                discovery_id=run.source_discovery_id,
+                bundle_manifest_path=resolve_artifact_ref(
+                    self.artifacts.root, snapshot.adapter_manifest_ref
+                ),
+                adapter_package_path=package_path,
+                tool_catalog_path=catalog_out,
+                state_graph_path=resolve_artifact_ref(
+                    self.artifacts.root, snapshot.state_graph_ref
+                ),
+                conformance_path=resolve_artifact_ref(
+                    self.artifacts.root, snapshot.conformance_report_ref
+                ),
+                gate_report_path=persisted_gate,
+            )
+            published_release_root = release_manifest_path.parent
             handoff = AdapterHandoff(
                 robot_id=run.robot_id,
                 source_discovery_id=run.source_discovery_id,
                 source_agent_run_id=run.run_id,
                 discovery_manifest_ref=self.layout.ref(manifest_path),
                 discovery_manifest_sha256=sha256_file(manifest_path),
-                tool_catalog_ref=snapshot.tool_catalog_ref,
-                tool_catalog_sha256=snapshot.tool_catalog_sha256,
+                tool_catalog_ref=self.layout.ref(catalog_out),
+                tool_catalog_sha256=sha256_file(catalog_out),
                 state_graph_ref=snapshot.state_graph_ref,
                 state_graph_sha256=snapshot.state_graph_sha256,
                 conformance_report_ref=snapshot.conformance_report_ref,
                 conformance_report_sha256=snapshot.conformance_report_sha256,
                 gate_report_ref=self.layout.ref(persisted_gate),
                 gate_report_sha256=sha256_file(persisted_gate),
+                release_ref=(f"output://robots/{run.robot_id}/releases/{run.run_id}/manifest.json"),
+                release_manifest_sha256=sha256_file(release_manifest_path),
             )
-            run_root = self.layout.stage_run("adapt", run.robot_id, run.run_id)
             immutable_path = self.artifacts.write_json(
                 self.layout.relative(run_root / "handoff.json"),
                 handoff.model_dump(mode="json"),
             )
-            validate_adapter_handoff(self.artifacts.root, run.robot_id, immutable_path)
+            validate_adapter_handoff(
+                self.artifacts.root,
+                run.robot_id,
+                immutable_path,
+                self.output_root,
+            )
             latest = AdaptLatestIndex(
                 robot_id=run.robot_id,
                 run_id=run.run_id,
@@ -303,14 +463,31 @@ class AdapterPromotionService:
                 handoff_sha256=sha256_file(immutable_path),
             )
             self.artifacts.write_json(
-                self.layout.relative(
-                    self.layout.stage_latest_index("adapt", run.robot_id)
-                ),
+                self.layout.relative(adapt_index),
                 latest.model_dump(mode="json"),
             )
-            validate_adapter_handoff(self.artifacts.root, run.robot_id)
+            adapt_index_written = True
+            activate_release(self.output_root, run.robot_id, run.run_id)
+            runtime_index_written = True
+            validate_adapter_handoff(
+                self.artifacts.root,
+                run.robot_id,
+                output_root=self.output_root,
+            )
+            _, active_release, _, _ = load_current_release(self.output_root, run.robot_id)
+            if (
+                active_release.release_id != run.run_id
+                or active_release.discovery_id != run.source_discovery_id
+            ):
+                raise ValueError("activated adapter release identity mismatch")
             return handoff, immutable_path, gate, persisted_gate
         except (FileNotFoundError, OSError, ValueError) as exc:
+            if runtime_index_written:
+                _restore_index(runtime_index, previous_runtime_index)
+            if adapt_index_written:
+                _restore_index(adapt_index, previous_adapt_index)
+            if published_release_root is not None:
+                shutil.rmtree(published_release_root, ignore_errors=True)
             gate = AdaptGateReport(
                 run_id=run.run_id,
                 robot_id=run.robot_id,
@@ -319,7 +496,5 @@ class AdapterPromotionService:
                 checks=checks,
                 error=str(exc),
             )
-            self.artifacts.write_json(
-                self.layout.relative(gate_path), gate.model_dump(mode="json")
-            )
+            self.artifacts.write_json(self.layout.relative(gate_path), gate.model_dump(mode="json"))
             raise

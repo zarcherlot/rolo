@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typer
 
+from rolo.commands.adapt_tools import register_adapt_query_commands
 from rolo.commands.canonical import (
     application_app,
     hw_app,
@@ -25,6 +26,7 @@ app = typer.Typer(help="Canonical local CLI for the rolo development harness.")
 register_runtime_commands(app)
 register_lifecycle_commands(app)
 adapt_stage_app.add_typer(discover_app, name="discover")
+register_adapt_query_commands(adapt_stage_app)
 diagnose_stage_app.add_typer(robot_use_app, name="robot-use")
 app.add_typer(schema_app, name="schema")
 app.add_typer(tool_app, name="tool")

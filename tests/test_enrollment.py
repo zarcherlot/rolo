@@ -73,7 +73,92 @@ def test_urdf_profile_records_missing_semantics_for_discovery(
         "geometry.hard_max_angular_velocity_radps",
         "platform.drive_model",
     }
+    assert profile.features["urdf_structure"] == {
+        "links": ["base_link"],
+        "joints": [],
+        "truncated": False,
+    }
 
+
+def test_urdf_profile_preserves_bounded_link_joint_and_sensor_structure() -> None:
+    profile = load_urdf_profile(urdf_profile("differential_drive"))
+    structure = profile.features["urdf_structure"]
+
+    assert structure["links"] == [
+        "base_link",
+        "front_camera_link",
+        "front_lidar_link",
+        "left_wheel_link",
+        "right_wheel_link",
+    ]
+    left_wheel = next(joint for joint in structure["joints"] if joint["name"] == "left_wheel_joint")
+    assert {
+        key: left_wheel[key] for key in ("name", "type", "parent", "child", "axis", "limits")
+    } == {
+        "name": "left_wheel_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "left_wheel_link",
+        "axis": "0 1 0",
+        "limits": {"effort": 20.0, "velocity": 10.0},
+    }
+    assert profile.sensors["front_camera"]["urdf_link"] == "front_camera_link"
+
+
+def test_urdf_profile_extracts_mobile_base_hardware_and_control_specs(tmp_path: Path) -> None:
+    profile_path = tmp_path / "hardware_base.urdf"
+    profile_path.write_text(
+        """<robot name="hardware_base">
+  <link name="base_link">
+    <visual><origin xyz="0.08 0 0.04"/>
+      <geometry><box size="0.23 0.11 0.05"/></geometry>
+    </visual>
+    <inertial><origin xyz="0.01 0 0.02"/><mass value="2.5"/>
+      <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+    </inertial>
+  </link>
+  <link name="left_wheel"><visual><geometry>
+    <cylinder radius="0.0325" length="0.025"/>
+  </geometry></visual></link>
+  <link name="right_wheel"><visual><geometry>
+    <cylinder radius="0.0325" length="0.025"/>
+  </geometry></visual></link>
+  <joint name="left_joint" type="continuous">
+    <origin xyz="0 0.08 0.0325"/><parent link="base_link"/>
+    <child link="left_wheel"/><axis xyz="0 1 0"/>
+  </joint>
+  <joint name="right_joint" type="continuous">
+    <origin xyz="0 -0.08 0.0325"/><parent link="base_link"/>
+    <child link="right_wheel"/><axis xyz="0 1 0"/>
+  </joint>
+  <transmission name="left_trans"><type>SimpleTransmission</type>
+    <joint name="left_joint"><hardwareInterface>velocity</hardwareInterface></joint>
+    <actuator name="left_motor"><mechanicalReduction>20</mechanicalReduction></actuator>
+  </transmission>
+  <ros2_control name="drive_board" type="system"><hardware>
+    <plugin>vendor/DriveBoard</plugin><param name="port">can0</param>
+  </hardware><joint name="left_joint"><command_interface name="velocity"/>
+    <state_interface name="position"/></joint>
+  </ros2_control>
+  <gazebo reference="base_link"><sensor name="imu" type="imu">
+    <update_rate>100</update_rate>
+  </sensor></gazebo>
+</robot>""",
+        encoding="utf-8",
+    )
+
+    profile = load_urdf_profile(profile_path)
+    hardware = profile.features["urdf_hardware"]
+
+    assert profile.geometry["body_dimensions_m"] == [0.23, 0.11, 0.05]
+    assert profile.geometry["wheel_count"] == 2
+    assert profile.geometry["wheel_radii_m"] == [0.0325]
+    assert profile.geometry["track_width_m"] == pytest.approx(0.16)
+    assert profile.geometry["ground_clearance_m"] == pytest.approx(0.015)
+    assert profile.geometry["declared_mass_kg"] == 2.5
+    assert hardware["transmissions"][0]["actuators"][0]["name"] == "left_motor"
+    assert hardware["ros2_control"][0]["plugins"] == ["vendor/DriveBoard"]
+    assert hardware["gazebo"][0]["sensors"][0]["update_rate_hz"] == "100"
 
 
 def test_urdf_profile_hash_is_stable_across_line_endings(tmp_path: Path) -> None:
@@ -82,9 +167,10 @@ def test_urdf_profile_hash_is_stable_across_line_endings(tmp_path: Path) -> None
     crlf_profile = tmp_path / "differential_drive.urdf"
     crlf_profile.write_bytes(source.replace(b"\n", b"\r\n"))
 
-    assert load_urdf_profile(crlf_profile).sha256 == load_urdf_profile(
-        urdf_profile("differential_drive")
-    ).sha256
+    assert (
+        load_urdf_profile(crlf_profile).sha256
+        == load_urdf_profile(urdf_profile("differential_drive")).sha256
+    )
 
 
 def test_new_enrollment_remains_degraded_until_binding_and_calibration(

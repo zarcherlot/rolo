@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "CanonicalOperationDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "layer": {
+          "enum": [
+            "control",
+            "hw",
+            "linux",
+            "middleware",
+            "ros",
+            "app"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "risk": {
+          "default": "R0",
+          "title": "Risk",
+          "type": "string"
+        },
+        "access": {
+          "default": "read",
+          "title": "Access",
+          "type": "string"
+        },
+        "idempotent": {
+          "default": true,
+          "title": "Idempotent",
+          "type": "boolean"
+        },
+        "cancelable": {
+          "default": false,
+          "title": "Cancelable",
+          "type": "boolean"
+        },
+        "max_duration_s": {
+          "default": 30.0,
+          "title": "Max Duration S",
+          "type": "number"
+        },
+        "canonical_cli": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Canonical Cli",
+          "type": "array"
+        },
+        "input_schema": {
+          "additionalProperties": true,
+          "title": "Input Schema",
+          "type": "object"
+        },
+        "output_schema": {
+          "additionalProperties": true,
+          "title": "Output Schema",
+          "type": "object"
+        },
+        "error_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Error Codes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation",
+        "layer",
+        "description",
+        "canonical_cli"
+      ],
+      "title": "CanonicalOperationDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-canonical-operation-registry/v1",
+      "default": "robot-canonical-operation-registry/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/CanonicalOperationDefinition"
+      },
+      "title": "Operations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "operations"
+  ],
+  "title": "CanonicalOperationRegistry",
+  "type": "object"
+}

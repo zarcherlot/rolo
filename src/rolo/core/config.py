@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_output_dir() -> Path:
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "rolo" / "output"
+    data_home = os.environ.get("XDG_DATA_HOME")
+    return (Path(data_home) if data_home else Path.home() / ".local" / "share") / "rolo" / "output"
 
 
 class Settings(BaseSettings):
@@ -18,6 +26,7 @@ class Settings(BaseSettings):
 
     rolo_config_dir: Path = Path(".rolo/config")
     rolo_artifact_dir: Path = Path(".rolo/artifacts")
+    rolo_output_dir: Path = _default_output_dir()
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     coding_agent_provider: str = "codex"
@@ -35,6 +44,9 @@ class Settings(BaseSettings):
     robot_use_backend: str = "mock"
     openai_api_key: str | None = None
     openai_model: str | None = None
+    wiki_polish_enabled: bool = True
+    wiki_polish_model: str | None = None
+    wiki_polish_timeout_s: int = 60
 
     @property
     def robot_config_dir(self) -> Path:

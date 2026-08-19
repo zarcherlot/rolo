@@ -48,20 +48,10 @@ class ArtifactLayout:
         )
 
     def stage_latest(self, stage: str, robot_id: str) -> Path:
-        return (
-            self.root
-            / canonical_stage(stage)
-            / _segment(robot_id, "robot_id")
-            / "latest"
-        )
+        return self.root / canonical_stage(stage) / _segment(robot_id, "robot_id") / "latest"
 
     def stage_latest_index(self, stage: str, robot_id: str) -> Path:
-        return (
-            self.root
-            / canonical_stage(stage)
-            / _segment(robot_id, "robot_id")
-            / "latest.json"
-        )
+        return self.root / canonical_stage(stage) / _segment(robot_id, "robot_id") / "latest.json"
 
     def relative(self, path: Path) -> str:
         try:

@@ -14,12 +14,10 @@ class StageName(str, Enum):
     VERIFY = "verify"
 
 
-
 class AgentRequirement(str, Enum):
     ADAPTER_AGENT = "adapter_agent"
     DIAGNOSIS_AGENT = "diagnosis_agent"
     VERIFICATION_AGENT = "verification_agent"
-
 
 
 class StageStatus(str, Enum):

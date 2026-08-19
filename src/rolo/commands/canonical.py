@@ -6,15 +6,16 @@ from typing import Annotated
 import typer
 
 from rolo import host_introspection
+from rolo.adapter_runtime import invoke_adapter, load_current_release
 from rolo.commands.common import emit
 from rolo.core.config import get_settings
 from rolo.stages.adapt.discovery import (
     ApplicationProbe,
     HardwareProbe,
     RosProbe,
-    load_latest_report,
 )
 from rolo.stages.adapt.models import ToolCatalog
+from rolo.stages.adapt.operation_registry import canonical_operation_registry
 
 tool_app = typer.Typer(help="Inspect the generated canonical tool catalog.")
 hw_app = typer.Typer(help="Canonical hardware-layer tools.")
@@ -49,6 +50,23 @@ linux_app.add_typer(linux_network_app, name="network")
 ros_app.add_typer(ros_graph_app, name="graph")
 ros_app.add_typer(ros_node_app, name="node")
 application_app.add_typer(app_robot_cli, name="robot")
+
+
+@tool_app.command("registry")
+def tool_registry(
+    layer: Annotated[str | None, typer.Option("--layer")] = None,
+) -> None:
+    """Inspect product-defined operations without probing a robot host."""
+    registry = canonical_operation_registry()
+    operations = registry.operations
+    if layer:
+        operations = [operation for operation in operations if operation.layer == layer]
+    emit(
+        {
+            "schema_version": registry.schema_version,
+            "operations": [operation.model_dump(mode="json") for operation in operations],
+        }
+    )
 
 
 @hw_inventory_app.command("scan")
@@ -213,19 +231,19 @@ def tool_catalog(
     robot: Annotated[str, typer.Option("--robot")],
     layer: Annotated[str | None, typer.Option("--layer")] = None,
 ) -> None:
-    """List canonical tools produced by the latest discovery run."""
+    """List the Active Tool Catalog from the latest gated adapter release."""
     settings = get_settings()
     try:
-        report = load_latest_report(settings.rolo_artifact_dir, robot)
+        _, _, _, catalog = load_current_release(settings.rolo_output_dir, robot)
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    tools = report.tool_catalog
+    tools = catalog.tools
     if layer:
         tools = [tool for tool in tools if tool.layer == layer]
     emit(
         ToolCatalog(
             robot_id=robot,
-            discovery_id=report.discovery_id,
+            discovery_id=catalog.discovery_id,
             tools=tools,
         )
     )
@@ -236,11 +254,11 @@ def tool_schema(
     operation: Annotated[str, typer.Argument(help="Canonical operation, e.g. hw.inventory.scan")],
     robot: Annotated[str, typer.Option("--robot")],
 ) -> None:
-    """Show the generated input/output schema for one canonical operation."""
+    """Show a schema from the latest gated Active Tool Catalog."""
     settings = get_settings()
     try:
-        report = load_latest_report(settings.rolo_artifact_dir, robot)
-        descriptor = next(tool for tool in report.tool_catalog if tool.operation == operation)
+        _, _, _, catalog = load_current_release(settings.rolo_output_dir, robot)
+        descriptor = next(tool for tool in catalog.tools if tool.operation == operation)
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     except StopIteration as exc:
@@ -253,3 +271,30 @@ def tool_schema(
             "availability": descriptor.availability,
         }
     )
+
+
+@tool_app.command("invoke")
+def tool_invoke(
+    operation: Annotated[str, typer.Argument(help="Canonical operation identifier")],
+    robot: Annotated[str, typer.Option("--robot")],
+    input_json: Annotated[
+        str, typer.Option("--input", help="Operation input as one JSON object")
+    ] = "{}",
+) -> None:
+    """Invoke an operation through the active, independently gated adapter release."""
+    import json
+
+    try:
+        payload = json.loads(input_json)
+        if not isinstance(payload, dict):
+            raise ValueError("operation input must be a JSON object")
+        emit(
+            invoke_adapter(
+                get_settings().rolo_output_dir,
+                robot,
+                operation,
+                payload,
+            )
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc

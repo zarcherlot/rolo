@@ -1,35 +1,45 @@
 {
   "additionalProperties": false,
+  "description": "Files published together after the independent Adapt gate passes.",
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-handoff/v1",
-      "default": "robot-adapter-handoff/v1",
+      "const": "robot-adapter-release/v1",
+      "default": "robot-adapter-release/v1",
       "title": "Schema Version",
+      "type": "string"
+    },
+    "release_id": {
+      "title": "Release Id",
       "type": "string"
     },
     "robot_id": {
       "title": "Robot Id",
       "type": "string"
     },
-    "source_discovery_id": {
-      "title": "Source Discovery Id",
+    "discovery_id": {
+      "title": "Discovery Id",
       "type": "string"
     },
-    "source_agent_run_id": {
-      "title": "Source Agent Run Id",
+    "bundle_manifest": {
+      "title": "Bundle Manifest",
       "type": "string"
     },
-    "discovery_manifest_ref": {
-      "title": "Discovery Manifest Ref",
-      "type": "string"
-    },
-    "discovery_manifest_sha256": {
+    "bundle_manifest_sha256": {
       "pattern": "^[0-9a-f]{64}$",
-      "title": "Discovery Manifest Sha256",
+      "title": "Bundle Manifest Sha256",
       "type": "string"
     },
-    "tool_catalog_ref": {
-      "title": "Tool Catalog Ref",
+    "adapter_package": {
+      "title": "Adapter Package",
+      "type": "string"
+    },
+    "adapter_package_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Adapter Package Sha256",
+      "type": "string"
+    },
+    "tool_catalog": {
+      "title": "Tool Catalog",
       "type": "string"
     },
     "tool_catalog_sha256": {
@@ -37,8 +47,8 @@
       "title": "Tool Catalog Sha256",
       "type": "string"
     },
-    "state_graph_ref": {
-      "title": "State Graph Ref",
+    "state_graph": {
+      "title": "State Graph",
       "type": "string"
     },
     "state_graph_sha256": {
@@ -46,8 +56,8 @@
       "title": "State Graph Sha256",
       "type": "string"
     },
-    "conformance_report_ref": {
-      "title": "Conformance Report Ref",
+    "conformance_report": {
+      "title": "Conformance Report",
       "type": "string"
     },
     "conformance_report_sha256": {
@@ -55,8 +65,8 @@
       "title": "Conformance Report Sha256",
       "type": "string"
     },
-    "gate_report_ref": {
-      "title": "Gate Report Ref",
+    "gate_report": {
+      "title": "Gate Report",
       "type": "string"
     },
     "gate_report_sha256": {
@@ -64,38 +74,29 @@
       "title": "Gate Report Sha256",
       "type": "string"
     },
-    "release_ref": {
-      "title": "Release Ref",
-      "type": "string"
-    },
-    "release_manifest_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Release Manifest Sha256",
-      "type": "string"
-    },
-    "promoted_at": {
+    "published_at": {
       "format": "date-time",
-      "title": "Promoted At",
+      "title": "Published At",
       "type": "string"
     }
   },
   "required": [
+    "release_id",
     "robot_id",
-    "source_discovery_id",
-    "source_agent_run_id",
-    "discovery_manifest_ref",
-    "discovery_manifest_sha256",
-    "tool_catalog_ref",
+    "discovery_id",
+    "bundle_manifest",
+    "bundle_manifest_sha256",
+    "adapter_package",
+    "adapter_package_sha256",
+    "tool_catalog",
     "tool_catalog_sha256",
-    "state_graph_ref",
+    "state_graph",
     "state_graph_sha256",
-    "conformance_report_ref",
+    "conformance_report",
     "conformance_report_sha256",
-    "gate_report_ref",
-    "gate_report_sha256",
-    "release_ref",
-    "release_manifest_sha256"
+    "gate_report",
+    "gate_report_sha256"
   ],
-  "title": "AdapterHandoff",
+  "title": "AdapterReleaseManifest",
   "type": "object"
 }

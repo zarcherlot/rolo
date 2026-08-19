@@ -2,8 +2,11 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-output-snapshot/v1",
-      "default": "robot-adapter-output-snapshot/v1",
+      "default": "robot-adapter-output-snapshot/v2",
+      "enum": [
+        "robot-adapter-output-snapshot/v1",
+        "robot-adapter-output-snapshot/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -19,13 +22,22 @@
       "title": "Discovery Id",
       "type": "string"
     },
-    "tool_catalog_ref": {
-      "title": "Tool Catalog Ref",
+    "adapter_manifest_ref": {
+      "title": "Adapter Manifest Ref",
       "type": "string"
     },
-    "tool_catalog_sha256": {
+    "adapter_manifest_sha256": {
       "pattern": "^[0-9a-f]{64}$",
-      "title": "Tool Catalog Sha256",
+      "title": "Adapter Manifest Sha256",
+      "type": "string"
+    },
+    "adapter_package_ref": {
+      "title": "Adapter Package Ref",
+      "type": "string"
+    },
+    "adapter_package_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Adapter Package Sha256",
       "type": "string"
     },
     "state_graph_ref": {
@@ -56,8 +68,10 @@
     "run_id",
     "robot_id",
     "discovery_id",
-    "tool_catalog_ref",
-    "tool_catalog_sha256",
+    "adapter_manifest_ref",
+    "adapter_manifest_sha256",
+    "adapter_package_ref",
+    "adapter_package_sha256",
     "state_graph_ref",
     "state_graph_sha256",
     "conformance_report_ref",

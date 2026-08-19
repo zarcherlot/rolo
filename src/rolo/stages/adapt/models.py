@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.models import ToolDescriptor, utc_now
 from rolo.stages.contracts import AgentRequirement
@@ -57,6 +57,7 @@ class AdapterAgentDependencyReport(BaseModel):
     messages: list[str] = Field(default_factory=list)
     checked_at: datetime = Field(default_factory=utc_now)
 
+
 class AdapterAgentRunStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
@@ -66,7 +67,10 @@ class AdapterAgentRunStatus(str, Enum):
 class AdapterOutputRefs(BaseModel):
     """Workspace-relative outputs proposed for independent promotion."""
 
-    tool_catalog: str
+    model_config = ConfigDict(extra="forbid")
+
+    adapter_manifest: str
+    adapter_package: str
     state_graph: str
     conformance_report: str
 
@@ -83,7 +87,74 @@ class AdapterAgentResult(BaseModel):
     validation: list[str]
     blockers: list[str]
     handoff_ready: bool
-    outputs: AdapterOutputRefs | None = None
+    outputs: AdapterOutputRefs | None
+
+
+class AdapterBundleOperation(BaseModel):
+    """One canonical operation exported by an isolated adapter executable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation: str
+    entrypoint: str
+
+
+class AdapterBundleManifest(BaseModel):
+    """Immutable contract between a generated adapter and the rolo runtime."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-adapter-bundle/v1"] = "robot-adapter-bundle/v1"
+    bundle_id: str
+    bundle_version: str
+    robot_id: str
+    discovery_id: str
+    runtime_protocol: Literal["robot-adapter-rpc/v1"] = "robot-adapter-rpc/v1"
+    package_file: str
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    operations: list[AdapterBundleOperation] = Field(default_factory=list)
+
+
+class AdapterReleaseManifest(BaseModel):
+    """Files published together after the independent Adapt gate passes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-adapter-release/v1"] = "robot-adapter-release/v1"
+    release_id: str
+    robot_id: str
+    discovery_id: str
+    bundle_manifest: str
+    bundle_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_package: str
+    adapter_package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    tool_catalog: str
+    tool_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state_graph: str
+    state_graph_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    conformance_report: str
+    conformance_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    gate_report: str
+    gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    published_at: datetime = Field(default_factory=utc_now)
+
+
+class AdapterReleaseIndex(BaseModel):
+    """Atomic pointer to the only adapter release eligible for runtime use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-adapter-release-index/v1"] = "robot-adapter-release-index/v1"
+    robot_id: str
+    release_id: str
+    manifest: str
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    published_at: datetime = Field(default_factory=utc_now)
+
+
+class ConformanceScope(str, Enum):
+    LOCAL_STATIC = "LOCAL_STATIC"
+
 
 class OperationConformance(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -93,9 +164,23 @@ class OperationConformance(BaseModel):
     errors_valid: bool
     idempotency_valid: bool
     cancellation_valid: bool
-    safety_valid: bool
-    physical_result_valid: bool | None = None
+    validation_scopes: list[ConformanceScope] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_v1_runtime_claims(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        migrated.pop("safety_valid", None)
+        migrated.pop("physical_result_valid", None)
+        migrated["validation_scopes"] = [
+            scope
+            for scope in migrated.get("validation_scopes", [])
+            if scope == ConformanceScope.LOCAL_STATIC.value
+        ]
+        return migrated
 
     @property
     def passed(self) -> bool:
@@ -105,7 +190,6 @@ class OperationConformance(BaseModel):
                 self.errors_valid,
                 self.idempotency_valid,
                 self.cancellation_valid,
-                self.safety_valid,
             )
         )
 
@@ -113,8 +197,8 @@ class OperationConformance(BaseModel):
 class AdapterConformanceReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-conformance/v1"] = (
-        "robot-adapter-conformance/v1"
+    schema_version: Literal["robot-adapter-conformance/v1", "robot-adapter-conformance/v2"] = (
+        "robot-adapter-conformance/v2"
     )
     robot_id: str
     discovery_id: str
@@ -157,25 +241,39 @@ class AdapterHandoff(BaseModel):
     conformance_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     gate_report_ref: str
     gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    release_ref: str
+    release_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     promoted_at: datetime = Field(default_factory=utc_now)
 
 
 class AdapterOutputSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-output-snapshot/v1"] = (
-        "robot-adapter-output-snapshot/v1"
-    )
+    schema_version: Literal[
+        "robot-adapter-output-snapshot/v1", "robot-adapter-output-snapshot/v2"
+    ] = "robot-adapter-output-snapshot/v2"
     run_id: str
     robot_id: str
     discovery_id: str
-    tool_catalog_ref: str
-    tool_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_manifest_ref: str
+    adapter_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_package_ref: str
+    adapter_package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     state_graph_ref: str
     state_graph_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     conformance_report_ref: str
     conformance_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     created_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_v1_catalog(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        migrated.pop("tool_catalog_ref", None)
+        migrated.pop("tool_catalog_sha256", None)
+        return migrated
 
 
 class AdaptGateStatus(str, Enum):
@@ -199,9 +297,7 @@ class AdaptGateReport(BaseModel):
 class AdaptRunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapt-run-summary/v1"] = (
-        "robot-adapt-run-summary/v1"
-    )
+    schema_version: Literal["robot-adapt-run-summary/v1"] = "robot-adapt-run-summary/v1"
     robot_id: str
     run_id: str
     status: Literal["COMPLETE"] = "COMPLETE"
@@ -248,31 +344,24 @@ class AdapterAgentRun(BaseModel):
     completed_at: datetime
     duration_s: float = Field(ge=0.0)
 
+
 class AdaptTask(BaseModel):
     id: str
     description: str
     operations: list[str] = Field(default_factory=list)
-    required_skill: str
     agent_requirement: AgentRequirement = AgentRequirement.ADAPTER_AGENT
 
 
 class AdaptPlan(BaseModel):
-    schema_version: Literal["robot-adapt-plan/v1"] = "robot-adapt-plan/v1"
+    schema_version: Literal["robot-adapt-plan/v2"] = "robot-adapt-plan/v2"
     stage: str = "adapt"
     robot_id: str
     source_discovery_id: str
     status: AdaptPlanStatus
     tasks: list[AdaptTask]
-    required_skills: list[str]
     adapter_agent: AdapterAgentConfig = Field(default_factory=AdapterAgentConfig)
-    candidate_operations: list[str] = Field(default_factory=list)
     semantic_context_ref: str = ""
-    unresolved_semantics: list[str] = Field(default_factory=list)
-    semantic_value_candidates: int = 0
-    active_discovery_report_ref: str = ""
     robot_wiki_ref: str = ""
     discovery_manifest_ref: str = ""
     discovery_manifest_sha256: str = ""
-    state_graph_baseline_required: bool = True
-    handoff_ref: str
     created_at: datetime = Field(default_factory=utc_now)

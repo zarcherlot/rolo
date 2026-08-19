@@ -11,37 +11,47 @@ from rolo.core.models import DiscoveryStatus
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_latest_report
+from rolo.stages.adapt.wiki import OpenAIWikiNarrativePolisher
 from rolo.stages.artifact_paths import resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
-discover_app = typer.Typer(
-    help="Discover hardware, Linux, ROS and application capabilities."
-)
+discover_app = typer.Typer(help="Discover hardware, Linux, ROS and application capabilities.")
 
 
 @discover_app.command("run")
 def discovery_run(
     robot: Annotated[str, typer.Option("--robot")],
-    urdf: Annotated[Path, typer.Option("--urdf", help="URDF path to load and analyze")],
+    urdf: Annotated[
+        Path | None,
+        typer.Option(
+            "--urdf",
+            help="Optional URDF path; omit to continue with registered/default hardware context",
+        ),
+    ] = None,
     source_root: Annotated[
         list[Path] | None,
-        typer.Option("--source-root", help="Application source root; repeat for overlays"),
+        typer.Option(
+            "--source-root",
+            help="Supporting application source root; repeat for bounded gap analysis",
+        ),
     ] = None,
     build_root: Annotated[
         list[Path] | None,
-        typer.Option("--build-root", help="Build intermediate root; repeat as needed"),
+        typer.Option("--build-root", help="Primary build-artifact root; repeat as needed"),
     ] = None,
     install_root: Annotated[
         list[Path] | None,
-        typer.Option("--install-root", help="Installed artifact/package root; repeat as needed"),
+        typer.Option(
+            "--install-root", help="Primary installed artifact/package root; repeat as needed"
+        ),
     ] = None,
     executable: Annotated[
         list[Path] | None,
-        typer.Option("--executable", help="Explicit executable; repeat as needed"),
+        typer.Option("--executable", help="Primary explicit executable; repeat as needed"),
     ] = None,
     doc_root: Annotated[
         list[Path] | None,
-        typer.Option("--doc-root", help="Documentation root; repeat as needed"),
+        typer.Option("--doc-root", help="Primary documentation root; repeat as needed"),
     ] = None,
     launch_root: Annotated[
         list[Path] | None,
@@ -69,7 +79,22 @@ def discovery_run(
             launch_roots=launch_root or [],
             active_probe=active_probe,
         )
-        report, artifact = DiscoveryService(runtime.robot_use.artifacts).run(
+        wiki_model = runtime.settings.wiki_polish_model or runtime.settings.openai_model
+        wiki_polisher = (
+            OpenAIWikiNarrativePolisher(
+                api_key=runtime.settings.openai_api_key or "",
+                model=wiki_model or "",
+                timeout_s=runtime.settings.wiki_polish_timeout_s,
+            )
+            if runtime.settings.wiki_polish_enabled
+            and runtime.settings.openai_api_key
+            and wiki_model
+            else None
+        )
+        report, artifact = DiscoveryService(
+            runtime.robot_use.artifacts,
+            wiki_polisher=wiki_polisher,
+        ).run(
             robot=capability,
             urdf_path=urdf,
             active_inputs=active_inputs,
@@ -89,16 +114,12 @@ def discovery_run(
             "status": report.status,
             "probe_status": {name: probe.status for name, probe in report.probes.items()},
             "semantic_bindings": len(report.semantic_bindings),
-            "tools": len(report.tool_catalog),
+            "operation_candidates": len(report.operation_candidates),
             "dependency_resolution_complete": (
                 report.software_summary.get("status") == "SUCCEEDED"
             ),
-            "direct_dependencies": report.software_summary.get(
-                "direct_dependency_count", 0
-            ),
-            "missing_dependencies": report.software_summary.get(
-                "missing_dependency_count", 0
-            ),
+            "direct_dependencies": report.software_summary.get("direct_dependency_count", 0),
+            "missing_dependencies": report.software_summary.get("missing_dependency_count", 0),
             "conflicting_dependencies": report.software_summary.get(
                 "conflicting_dependency_count", 0
             ),
@@ -130,9 +151,7 @@ def discovery_review(robot: Annotated[str, typer.Option("--robot")]) -> None:
     settings = get_settings()
     try:
         report = load_latest_report(settings.rolo_artifact_dir, robot)
-        load_and_verify_discovery_manifest(
-            settings.rolo_artifact_dir, robot, report.discovery_id
-        )
+        load_and_verify_discovery_manifest(settings.rolo_artifact_dir, robot, report.discovery_id)
         review_path = resolve_artifact_ref(settings.rolo_artifact_dir, report.review_ref)
         typer.echo(review_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, ValueError) as exc:

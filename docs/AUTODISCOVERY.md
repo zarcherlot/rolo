@@ -1,8 +1,9 @@
 # rolo automatic discovery
 
-The discovery subsystem inventories a robot without exposing an unrestricted shell. It uses fixed,
-bounded read-only probes for hardware, Linux and the live ROS graph, plus a non-executing source
-scanner for application workspaces.
+The discovery subsystem inventories a robot without exposing an unrestricted shell. Application
+claims are led by build/deployed artifacts, documentation/launch files, and bounded read-only
+probes. The source scanner is non-executing and supporting-only; it fills bounded gaps but cannot
+override primary evidence.
 
 Application discovery resolves only Python and ROS direct dependencies declared by source and launch
 evidence. It does not scan the host package database or install target dependencies. See
@@ -12,14 +13,31 @@ On ARM64 targets it normalizes device-tree models into `nvidia_jetson_orin`, `ro
 `raspberry_pi`. Unknown boards remain `unknown` until their platform manifest and adapter have been
 added; discovery never guesses a vendor driver from CPU architecture alone.
 
+Declared robot structure, geometry, drive model, and sensors come from the explicitly supplied
+URDF. Observed architecture, compute platform, devices, buses, and thermal zones come from the
+running host through device tree, `/sys`, `/dev`, and bounded read-only commands. BSP files are not
+required. Non-Linux hosts or unavailable hardware-enumeration facilities produce `PARTIAL` evidence
+instead of rejecting otherwise usable hardware.
+
+URDF hardware declarations and observed components are reconciled by component name. Read-only
+hardware observations take precedence over conflicting URDF fields, and the Wiki records the
+declared value, observed value, and adopted value. A component that is present only in the URDF is
+shown normally. The generic probe currently enumerates video/input/IIO devices, serial and I2C
+interfaces, USB/PCI/network buses, the compute board, and thermal zones. Motor-controller,
+encoder, firmware, lidar/IMU model, and vendor board-driver details require a hardware-specific
+read-only adapter to publish standardized `components` evidence.
+
 ## Run
 
 ```bash
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
+  --build-root /path/to/robot-application/build \
+  --doc-root /path/to/robot-application/docs \
   --source-root /path/to/robot-application
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt discover show --robot "$ROBOT_ID"
+uv run robotctl tool registry
 uv run robotctl tool catalog --robot "$ROBOT_ID"
 uv run robotctl tool schema hw.inventory.scan --robot "$ROBOT_ID"
 ```
@@ -48,8 +66,8 @@ uv run robotctl app robot discover --source-root /path/to/robot-application
 ```
 
 These R0 operations use bounded argv-only probes, structured JSON evidence, and secret redaction.
-They remain available before an Adapt handoff; Adapt records them in the tool catalog and may replace
-their platform adapters only after conformance.
+They remain directly available before an Adapt handoff. `tool registry` is the product definition;
+`tool catalog` and `tool schema` read only the latest independently gated robot release.
 
 ## Artifacts
 
@@ -63,6 +81,7 @@ artifacts/discovery/<robot_id>/
     ├── active_discovery_report.json
     ├── active_discovery_report.md
     ├── robot_wiki.md              # editable robot Wiki; excluded from manifest hashes
+    ├── wiki_generation.json       # model-polish or deterministic-fallback provenance
     ├── manifest.json
     ├── capability_manifest.json
     ├── discovered_capability.json
@@ -72,12 +91,12 @@ artifacts/discovery/<robot_id>/
     ├── hw.json
     ├── linux.json
     ├── ros.json
-    ├── application.json
-    └── tool_catalog.json
+    └── application.json
 ```
 
-`robot_wiki.md` is the human-maintained system view. The chief engineer may edit it directly;
-`manifest.json` covers machine evidence only, so Wiki corrections do not invalidate discovery.
+`robot_wiki.md` is the editable system view passed to downstream work. Adapt requires that it can be
+loaded, while `manifest.json` covers machine evidence only so Wiki edits do not invalidate discovery.
+Untrusted operation candidates are stored once in `report.json` rather than copied to a second file.
 
 The source scanner recognizes `pyproject.toml`, setuptools, CMake, Cargo, ROS `package.xml`, launch
 files, configuration files, Python console scripts and statically visible ROS publisher,
@@ -86,18 +105,25 @@ available. It never executes README snippets, launch files, configurations, or n
 binaries. Common maximum linear/angular velocity keys in launch and config files are captured as
 source-attributed semantic candidates.
 
-Semantic bindings inferred from source or a live ROS graph are emitted as
-`DISCOVERED_UNVERIFIED`. Corresponding write tools remain unavailable until an adapter has been
-built and passed schema, dry-run, idempotency, cancellation, safety and physical-result conformance
-tests. This prevents documentation or naming heuristics from becoming an actuator command.
+Python launch files use AST parsing and XML launch files use structured XML parsing. Commented
+Python nodes are ignored; node-specific packages, executables, names, conditions, remappings and
+URDF references are written to the machine report and editable Wiki as `STATIC_UNVERIFIED`.
+Dynamic substitutions that cannot be resolved without execution remain unknown.
+
+Semantic bindings inferred from source or a live ROS graph are emitted as operation candidates with
+`DISCOVERED_UNVERIFIED` status. They do not constitute a Tool Catalog. The trusted Adapt gate
+matches them only to product-defined operations and builds the Active Tool Catalog after bundle and
+conformance checks. This prevents documentation or naming heuristics from becoming an operation
+definition or actuator command.
 Likewise, velocity candidates remain `DISCOVERED_UNVERIFIED` with `safety_authority: none`. The
 same semantic context is written into Adapt, Diagnose, and Verify agent inputs; only controlled physical
 validation and explicit approval may promote a candidate to a hard motion limit.
 
-Before starting probes, discovery loads the URDF path explicitly supplied through `--urdf`, records
-its resolved path and SHA-256, and performs full structural and semantic parsing. Invalid declared
-data stops discovery. Successful parsing writes `discovered_capability.json`; it never changes
-`motion_safety_status` from `UNAPPROVED` by itself.
+When supplied, discovery loads the URDF path from `--urdf`, records its resolved path and SHA-256,
+and performs full structural and semantic parsing. Invalid declared data stops discovery. When it
+is omitted, discovery records `NOT_PROVIDED`, continues with registered/default hardware context and
+host probes, and leaves missing semantics unresolved. Successful parsing writes
+`discovered_capability.json`; it never changes `motion_safety_status` from `UNAPPROVED` by itself.
 
 ## Robot startup
 

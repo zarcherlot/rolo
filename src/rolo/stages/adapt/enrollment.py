@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from rolo.core.models import RobotCapability
 ROBOT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 MAX_URDF_BYTES = 2 * 1024 * 1024
+MAX_URDF_STRUCTURE_ITEMS = 1_000
 SUPPORTED_DRIVE_MODELS = {"differential", "ackermann"}
 
 
@@ -121,27 +123,25 @@ def _footprint(root: ET.Element, base_link_name: str) -> list[list[float]] | Non
     )
     if base_link is None:
         return None
-    collision = base_link.find("collision")
-    geometry = collision.find("geometry") if collision is not None else None
-    if collision is None or geometry is None:
+    shape = base_link.find("collision") or base_link.find("visual")
+    geometry = shape.find("geometry") if shape is not None else None
+    if shape is None or geometry is None:
         return None
-    origin = collision.find("origin")
+    origin = shape.find("origin")
     x, y, _ = _vector(
         origin.get("xyz") if origin is not None else "0 0 0",
         size=3,
-        context="base_link collision origin xyz",
+        context="base_link geometry origin xyz",
     )
     box = geometry.find("box")
     cylinder = geometry.find("cylinder")
     if box is not None:
-        length, width, _ = _vector(
-            box.get("size"), size=3, context="base_link collision box size"
-        )
+        length, width, _ = _vector(box.get("size"), size=3, context="base_link geometry box size")
         if length <= 0 or width <= 0:
-            raise ValueError("base_link collision box dimensions must be greater than zero")
+            raise ValueError("base_link geometry box dimensions must be greater than zero")
         half_length, half_width = length / 2, width / 2
     elif cylinder is not None:
-        radius = _positive_float(cylinder, "radius", context="base_link collision cylinder")
+        radius = _positive_float(cylinder, "radius", context="base_link geometry cylinder")
         half_length = half_width = radius
     else:
         return None
@@ -162,6 +162,367 @@ def _joint_velocity_limits(root: ET.Element) -> dict[str, float]:
             continue
         limits[name] = _positive_float(limit, "velocity", context=f"joint {name} limit")
     return limits
+
+
+def _origin(element: ET.Element | None, *, context: str) -> dict[str, list[float]]:
+    origin = element.find("origin") if element is not None else None
+    return {
+        "xyz": list(
+            _vector(
+                (origin.get("xyz") or "0 0 0") if origin is not None else "0 0 0",
+                size=3,
+                context=f"{context} origin xyz",
+            )
+        ),
+        "rpy": list(
+            _vector(
+                (origin.get("rpy") or "0 0 0") if origin is not None else "0 0 0",
+                size=3,
+                context=f"{context} origin rpy",
+            )
+        ),
+    }
+
+
+def _geometry_description(container: ET.Element, *, context: str) -> dict[str, Any] | None:
+    geometry = container.find("geometry")
+    if geometry is None:
+        return None
+    description: dict[str, Any] = {"origin": _origin(container, context=context)}
+    box = geometry.find("box")
+    cylinder = geometry.find("cylinder")
+    sphere = geometry.find("sphere")
+    mesh = geometry.find("mesh")
+    if box is not None:
+        description.update(
+            type="box",
+            size_m=list(_vector(box.get("size"), size=3, context=f"{context} box size")),
+        )
+    elif cylinder is not None:
+        description.update(
+            type="cylinder",
+            radius_m=_positive_float(cylinder, "radius", context=f"{context} cylinder"),
+            length_m=_positive_float(cylinder, "length", context=f"{context} cylinder"),
+        )
+    elif sphere is not None:
+        description.update(
+            type="sphere",
+            radius_m=_positive_float(sphere, "radius", context=f"{context} sphere"),
+        )
+    elif mesh is not None:
+        scale = mesh.get("scale")
+        description.update(
+            type="mesh",
+            filename=(mesh.get("filename") or "").strip(),
+            scale=list(_vector(scale, size=3, context=f"{context} mesh scale"))
+            if scale
+            else [1.0, 1.0, 1.0],
+        )
+    else:
+        return None
+    return description
+
+
+def _leaf_parameters(element: ET.Element, *, limit: int = 200) -> dict[str, str]:
+    values: dict[str, str] = {}
+
+    def visit(node: ET.Element, path: str) -> None:
+        if len(values) >= limit:
+            return
+        children = list(node)
+        text = (node.text or "").strip()
+        if not children and text:
+            values[path] = text
+        for child in children:
+            visit(child, f"{path}.{child.tag}" if path else child.tag)
+
+    visit(element, "")
+    return values
+
+
+def _urdf_hardware(root: ET.Element, base_link: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    link_elements = {
+        (link.get("name") or "").strip(): link
+        for link in root.findall("link")
+        if (link.get("name") or "").strip()
+    }
+    declared_masses: list[float] = []
+    for name, link in sorted(link_elements.items()):
+        visuals = [
+            item
+            for index, visual in enumerate(link.findall("visual"))
+            if (item := _geometry_description(visual, context=f"link {name} visual {index}"))
+        ]
+        collisions = [
+            item
+            for index, collision in enumerate(link.findall("collision"))
+            if (item := _geometry_description(collision, context=f"link {name} collision {index}"))
+        ]
+        inertial = link.find("inertial")
+        inertia_data: dict[str, Any] | None = None
+        if inertial is not None:
+            mass = inertial.find("mass")
+            inertia = inertial.find("inertia")
+            inertia_data = {"origin": _origin(inertial, context=f"link {name} inertial")}
+            if mass is not None and mass.get("value"):
+                value = _positive_float(mass, "value", context=f"link {name} mass")
+                inertia_data["mass_kg"] = value
+                declared_masses.append(value)
+            if inertia is not None:
+                tensor: dict[str, float] = {}
+                for field in ("ixx", "ixy", "ixz", "iyy", "iyz", "izz"):
+                    raw = (inertia.get(field) or "").strip()
+                    if raw:
+                        value = float(raw)
+                        if math.isfinite(value):
+                            tensor[field] = value
+                inertia_data["tensor_kg_m2"] = tensor
+        links.append(
+            {
+                "name": name,
+                "visual": visuals,
+                "collision": collisions,
+                "inertial": inertia_data,
+            }
+        )
+
+    wheel_candidates: list[dict[str, float | str]] = []
+    for joint in root.findall("joint"):
+        parent = joint.find("parent")
+        child = joint.find("child")
+        parent_name = (parent.get("link") or "").strip() if parent is not None else ""
+        child_name = (child.get("link") or "").strip() if child is not None else ""
+        xyz = _origin(joint, context=f"joint {(joint.get('name') or 'unknown')}")["xyz"]
+        axis_element = joint.find("axis")
+        axis = _vector(
+            axis_element.get("xyz") if axis_element is not None else "1 0 0",
+            size=3,
+            context=f"joint {(joint.get('name') or 'unknown')} axis",
+        )
+        child_link = link_elements.get(child_name)
+        if (
+            child_link is None
+            or parent_name != base_link
+            or joint.get("type") not in {"continuous", "revolute"}
+            or abs(axis[2]) >= 0.5
+        ):
+            continue
+        geometries = child_link.findall("collision") or child_link.findall("visual")
+        for index, container in enumerate(geometries):
+            item = _geometry_description(container, context=f"wheel candidate {child_name} {index}")
+            if item and item.get("type") == "cylinder":
+                wheel_candidates.append(
+                    {
+                        "link": child_name,
+                        "radius_m": float(item["radius_m"]),
+                        "width_m": float(item["length_m"]),
+                        "x_m": xyz[0] + item["origin"]["xyz"][0],
+                        "y_m": xyz[1] + item["origin"]["xyz"][1],
+                        "z_m": xyz[2] + item["origin"]["xyz"][2],
+                        "axis_x": axis[0],
+                        "axis_y": axis[1],
+                        "axis_z": axis[2],
+                    }
+                )
+                break
+
+    base = link_elements.get(base_link)
+    base_geometry: dict[str, Any] | None = None
+    if base is not None:
+        containers = base.findall("collision") or base.findall("visual")
+        if containers:
+            base_geometry = _geometry_description(containers[0], context=f"link {base_link}")
+    derived: dict[str, Any] = {}
+    if base_geometry and base_geometry.get("type") == "box":
+        size = base_geometry["size_m"]
+        origin = base_geometry["origin"]["xyz"]
+        derived["body_dimensions_m"] = size
+        derived["ground_clearance_m"] = max(0.0, origin[2] - size[2] / 2)
+    if wheel_candidates:
+        radii = sorted({round(float(wheel["radius_m"]), 9) for wheel in wheel_candidates})
+        widths = sorted({round(float(wheel["width_m"]), 9) for wheel in wheel_candidates})
+        xs = [float(wheel["x_m"]) for wheel in wheel_candidates]
+        ys = [float(wheel["y_m"]) for wheel in wheel_candidates]
+        derived.update(
+            wheel_count=len(wheel_candidates),
+            wheel_radii_m=radii,
+            wheel_widths_m=widths,
+            track_width_m=max(ys) - min(ys) if len(set(ys)) > 1 else None,
+            wheelbase_m=max(xs) - min(xs) if len(set(xs)) > 1 else None,
+        )
+        if base_geometry and base_geometry.get("type") == "box":
+            size = base_geometry["size_m"]
+            origin = base_geometry["origin"]["xyz"]
+            x_min, x_max = origin[0] - size[0] / 2, origin[0] + size[0] / 2
+            y_min, y_max = origin[1] - size[1] / 2, origin[1] + size[1] / 2
+            z_min, z_max = origin[2] - size[2] / 2, origin[2] + size[2] / 2
+            for wheel in wheel_candidates:
+                radius, width = float(wheel["radius_m"]), float(wheel["width_m"])
+                x_half = width / 2 if abs(float(wheel["axis_x"])) >= 0.5 else radius
+                y_half = width / 2 if abs(float(wheel["axis_y"])) >= 0.5 else radius
+                x_min, x_max = (
+                    min(x_min, float(wheel["x_m"]) - x_half),
+                    max(x_max, float(wheel["x_m"]) + x_half),
+                )
+                y_min, y_max = (
+                    min(y_min, float(wheel["y_m"]) - y_half),
+                    max(y_max, float(wheel["y_m"]) + y_half),
+                )
+                z_min, z_max = (
+                    min(z_min, float(wheel["z_m"]) - radius),
+                    max(z_max, float(wheel["z_m"]) + radius),
+                )
+            derived["envelope_m"] = [x_max - x_min, y_max - y_min, z_max - z_min]
+    if declared_masses:
+        derived["declared_mass_kg"] = sum(declared_masses)
+        derived["mass_link_count"] = len(declared_masses)
+        derived["mass_complete"] = len(declared_masses) == len(link_elements)
+
+    transmissions = []
+    for item in root.findall("transmission")[:MAX_URDF_STRUCTURE_ITEMS]:
+        transmissions.append(
+            {
+                "name": (item.get("name") or "").strip(),
+                "type": (item.findtext("type") or "").strip(),
+                "joints": [
+                    {
+                        "name": (joint.get("name") or "").strip(),
+                        "hardware_interfaces": [
+                            (interface.text or "").strip()
+                            for interface in joint.findall("hardwareInterface")
+                            if interface.text
+                        ],
+                    }
+                    for joint in item.findall("joint")
+                ],
+                "actuators": [
+                    {
+                        "name": (actuator.get("name") or "").strip(),
+                        "hardware_interfaces": [
+                            (interface.text or "").strip()
+                            for interface in actuator.findall("hardwareInterface")
+                            if interface.text
+                        ],
+                        "mechanical_reduction": (
+                            actuator.findtext("mechanicalReduction") or ""
+                        ).strip(),
+                    }
+                    for actuator in item.findall("actuator")
+                ],
+            }
+        )
+    ros2_control = []
+    for item in root.findall("ros2_control")[:MAX_URDF_STRUCTURE_ITEMS]:
+        hardware = item.find("hardware")
+        ros2_control.append(
+            {
+                "name": (item.get("name") or "").strip(),
+                "type": (item.get("type") or "").strip(),
+                "plugins": [
+                    (plugin.text or "").strip()
+                    for plugin in hardware.findall("plugin")
+                    if plugin.text
+                ]
+                if hardware is not None
+                else [],
+                "hardware_parameters": _leaf_parameters(hardware) if hardware is not None else {},
+                "joints": [
+                    {
+                        "name": (joint.get("name") or "").strip(),
+                        "command_interfaces": [
+                            (interface.get("name") or "").strip()
+                            for interface in joint.findall("command_interface")
+                        ],
+                        "state_interfaces": [
+                            (interface.get("name") or "").strip()
+                            for interface in joint.findall("state_interface")
+                        ],
+                    }
+                    for joint in item.findall("joint")
+                ],
+            }
+        )
+    gazebo = []
+    for item in root.findall("gazebo")[:MAX_URDF_STRUCTURE_ITEMS]:
+        sensors = []
+        for sensor in item.findall("sensor"):
+            sensors.append(
+                {
+                    "name": (sensor.get("name") or "").strip(),
+                    "type": (sensor.get("type") or "").strip(),
+                    "update_rate_hz": (sensor.findtext("update_rate") or "").strip(),
+                    "parameters": _leaf_parameters(sensor),
+                }
+            )
+        gazebo.append(
+            {
+                "reference": (item.get("reference") or "").strip(),
+                "plugins": [
+                    {
+                        "name": (plugin.get("name") or "").strip(),
+                        "filename": (plugin.get("filename") or "").strip(),
+                        "parameters": _leaf_parameters(plugin),
+                    }
+                    for plugin in item.findall("plugin")
+                ],
+                "sensors": sensors,
+            }
+        )
+    return {
+        "links": links,
+        "transmissions": transmissions,
+        "ros2_control": ros2_control,
+        "gazebo": gazebo,
+        "wheel_candidates": wheel_candidates,
+    }, {key: value for key, value in derived.items() if value is not None}
+
+
+def _urdf_structure(root: ET.Element) -> dict[str, Any]:
+    links = sorted(
+        {name for link in root.findall("link") if (name := (link.get("name") or "").strip())}
+    )[:MAX_URDF_STRUCTURE_ITEMS]
+    joints: list[dict[str, Any]] = []
+    for joint in root.findall("joint")[:MAX_URDF_STRUCTURE_ITEMS]:
+        name = (joint.get("name") or "").strip()
+        if not name:
+            continue
+        parent = joint.find("parent")
+        child = joint.find("child")
+        axis = joint.find("axis")
+        dynamics = joint.find("dynamics")
+        mimic = joint.find("mimic")
+        limit = joint.find("limit")
+        limits: dict[str, float] = {}
+        for field in ("lower", "upper", "effort", "velocity"):
+            raw = (limit.get(field) or "").strip() if limit is not None else ""
+            if not raw:
+                continue
+            try:
+                value = float(raw)
+            except ValueError:
+                continue
+            if math.isfinite(value):
+                limits[field] = value
+        joints.append(
+            {
+                "name": name,
+                "type": (joint.get("type") or "unknown").strip(),
+                "parent": (parent.get("link") or "").strip() if parent is not None else "",
+                "child": (child.get("link") or "").strip() if child is not None else "",
+                "axis": (axis.get("xyz") or "").strip() if axis is not None else "",
+                "origin": _origin(joint, context=f"joint {name}"),
+                "limits": limits,
+                "dynamics": dict(dynamics.attrib) if dynamics is not None else {},
+                "mimic": dict(mimic.attrib) if mimic is not None else {},
+            }
+        )
+    return {
+        "links": links,
+        "joints": joints,
+        "truncated": len(root.findall("link")) > len(links)
+        or len(root.findall("joint")) > len(joints),
+    }
 
 
 def _optional_positive_float(
@@ -191,9 +552,7 @@ def load_urdf_profile(path: Path) -> UrdfProfile:
             f"{', '.join(sorted(SUPPORTED_DRIVE_MODELS))}"
         )
     base_link = (
-        (metadata.get("base_link") or "base_link").strip()
-        if metadata is not None
-        else "base_link"
+        (metadata.get("base_link") or "base_link").strip() if metadata is not None else "base_link"
     )
     footprint = _footprint(root, base_link)
     max_linear = _optional_positive_float(
@@ -206,7 +565,11 @@ def load_urdf_profile(path: Path) -> UrdfProfile:
         "hard_max_angular_velocity_radps",
         context="URDF rolo metadata",
     )
-    geometry: dict[str, Any] = {"joint_velocity_limits": _joint_velocity_limits(root)}
+    urdf_hardware, derived_geometry = _urdf_hardware(root, base_link)
+    geometry: dict[str, Any] = {
+        "joint_velocity_limits": _joint_velocity_limits(root),
+        **derived_geometry,
+    }
     unresolved_semantics: list[str] = []
     if footprint is None:
         unresolved_semantics.append("geometry.footprint_m")
@@ -233,9 +596,7 @@ def load_urdf_profile(path: Path) -> UrdfProfile:
             "semantic_uri": _required_attribute(
                 sensor, "semantic_uri", context=f"URDF rolo sensor {name}"
             ),
-            "modality": _required_attribute(
-                sensor, "modality", context=f"URDF rolo sensor {name}"
-            ),
+            "modality": _required_attribute(sensor, "modality", context=f"URDF rolo sensor {name}"),
             "binding": (sensor.get("binding") or f"unbound://sensor/{name}").strip(),
             "urdf_link": link,
         }
@@ -246,6 +607,8 @@ def load_urdf_profile(path: Path) -> UrdfProfile:
         features[name] = _boolean(
             feature.get("enabled"), context=f"URDF rolo feature {name} enabled"
         )
+    features["urdf_structure"] = _urdf_structure(root)
+    features["urdf_hardware"] = urdf_hardware
     features["robot_use"] = {
         "supported": True,
         "local_visual_detection": False,
@@ -262,9 +625,7 @@ def load_urdf_profile(path: Path) -> UrdfProfile:
         path=resolved,
         sha256=source.sha256,
         adapter=(
-            (metadata.get("adapter") or "unbound").strip()
-            if metadata is not None
-            else "unbound"
+            (metadata.get("adapter") or "unbound").strip() if metadata is not None else "unbound"
         ),
         platform={
             "architecture": "auto_discover",

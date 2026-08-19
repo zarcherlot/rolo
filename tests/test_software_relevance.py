@@ -26,9 +26,7 @@ def make_project(root: Path, declarations: list[dict[str, object]]) -> dict[str,
         "scan_truncated": False,
         "build_systems": ["python/pyproject"],
         "packages": ["demo-app"],
-        "entrypoints": [
-            {"name": "demo-app", "target": "demo.main:main", "source": "pyproject"}
-        ],
+        "entrypoints": [{"name": "demo-app", "target": "demo.main:main", "source": "pyproject"}],
         "launch_files": [],
         "readmes": [],
         "config_files": [],
@@ -38,9 +36,7 @@ def make_project(root: Path, declarations: list[dict[str, object]]) -> dict[str,
         "protocols": [],
         "languages": ["python"],
         "build_targets": [],
-        "declared_dependencies": sorted(
-            {str(declaration["name"]) for declaration in declarations}
-        ),
+        "declared_dependencies": sorted({str(declaration["name"]) for declaration in declarations}),
         "dependency_declarations": declarations,
         "manifest_digests": {"pyproject.toml": "0" * 64},
         "source_revision": None,
@@ -65,7 +61,6 @@ def make_report(
             status=DiscoveryStatus.UNAVAILABLE,
             data={"nodes": [], "topics": [], "services": [], "actions": []},
         ),
-        tools=[],
         run_root=tmp_path / "run",
         artifact_prefix="artifact://discovery/demo/runs/disc-relevance",
     ).build(
@@ -122,9 +117,7 @@ def test_python_dependencies_resolve_installed_and_missing_without_pip(
         "rolo.stages.adapt.software_relevance.importlib_metadata.distribution",
         fake_distribution,
     )
-    resolution = DirectDependencyResolver(
-        SoftwareDiscoveryPolicy(), environment={}
-    ).resolve(
+    resolution = DirectDependencyResolver(SoftwareDiscoveryPolicy(), environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[project],
         active_report=report,
@@ -164,9 +157,7 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
         lambda _: FakeDistribution("installed-lib", "2.0", tmp_path / "site-packages"),
     )
 
-    resolution = DirectDependencyResolver(
-        SoftwareDiscoveryPolicy(), environment={}
-    ).resolve(
+    resolution = DirectDependencyResolver(SoftwareDiscoveryPolicy(), environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[project],
         active_report=report,
@@ -183,9 +174,7 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
     assert candidate.installed_version == "2.0"
     assert resolution.counts_by_status == {"VERSION_CONFLICT": 1}
     assert report.dependency_summary["conflicting"] == [candidate.candidate_id]
-    assert report.executables[0].dependencies["version_conflicts"] == [
-        candidate.candidate_id
-    ]
+    assert report.executables[0].dependencies["version_conflicts"] == [candidate.candidate_id]
     assert report.global_conflicts == [
         "dependency version conflict: python:installed-lib: installed version '2.0' "
         "does not satisfy constraint '>=3,<4'"
@@ -305,9 +294,7 @@ def test_inapplicable_python_marker_is_not_queried(
         forbidden_distribution,
     )
 
-    resolution = DirectDependencyResolver(
-        SoftwareDiscoveryPolicy(), environment={}
-    ).resolve(
+    resolution = DirectDependencyResolver(SoftwareDiscoveryPolicy(), environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[project],
         active_report=report,
@@ -339,9 +326,7 @@ def test_python_dependency_name_variants_merge_to_one_candidate(
         lambda _: FakeDistribution("demo-lib", "2.0", tmp_path / "site-packages"),
     )
 
-    resolution = DirectDependencyResolver(
-        SoftwareDiscoveryPolicy(), environment={}
-    ).resolve(
+    resolution = DirectDependencyResolver(SoftwareDiscoveryPolicy(), environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[project],
         active_report=report,
@@ -409,9 +394,7 @@ def test_missing_ament_index_is_unknown_not_missing(tmp_path: Path) -> None:
     project = make_project(tmp_path, declarations)
     report = make_report(tmp_path, projects=[project])
 
-    resolution = DirectDependencyResolver(
-        SoftwareDiscoveryPolicy(), environment={}
-    ).resolve(
+    resolution = DirectDependencyResolver(SoftwareDiscoveryPolicy(), environment={}).resolve(
         discovery_id="disc-relevance",
         projects=[project],
         active_report=report,

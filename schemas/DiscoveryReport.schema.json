@@ -10,6 +10,55 @@
       "title": "DiscoveryStatus",
       "type": "string"
     },
+    "OperationCandidate": {
+      "additionalProperties": false,
+      "description": "Untrusted applicability and binding evidence from discovery.",
+      "properties": {
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "semantic_bindings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Semantic Bindings",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "route_evidence": {
+          "items": {
+            "$ref": "#/$defs/RouteEvidence"
+          },
+          "title": "Route Evidence",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "status": {
+          "const": "DISCOVERED_UNVERIFIED",
+          "default": "DISCOVERED_UNVERIFIED",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "title": "OperationCandidate",
+      "type": "object"
+    },
     "ProbeResult": {
       "properties": {
         "layer": {
@@ -51,175 +100,42 @@
       "title": "ProbeResult",
       "type": "object"
     },
-    "ToolDescriptor": {
+    "RouteEvidence": {
+      "additionalProperties": false,
+      "description": "One normalized operation endpoint observed or declared during discovery.",
       "properties": {
-        "schema_version": {
-          "default": "robot-tool/v1",
-          "title": "Schema Version",
-          "type": "string"
-        },
-        "operation": {
-          "title": "Operation",
-          "type": "string"
-        },
-        "canonical_cli": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Canonical Cli",
-          "type": "array"
-        },
-        "layer": {
-          "title": "Layer",
-          "type": "string"
-        },
-        "description": {
-          "title": "Description",
-          "type": "string"
-        },
-        "risk": {
-          "default": "R0",
-          "title": "Risk",
-          "type": "string"
-        },
-        "access": {
-          "default": "read",
-          "title": "Access",
-          "type": "string"
-        },
-        "idempotent": {
-          "default": true,
-          "title": "Idempotent",
-          "type": "boolean"
-        },
-        "cancelable": {
-          "default": false,
-          "title": "Cancelable",
-          "type": "boolean"
-        },
-        "availability": {
-          "title": "Availability",
-          "type": "string"
-        },
-        "adapter": {
-          "title": "Adapter",
-          "type": "string"
-        },
-        "input_schema": {
-          "additionalProperties": true,
-          "title": "Input Schema",
-          "type": "object"
-        },
-        "output_schema": {
-          "additionalProperties": true,
-          "title": "Output Schema",
-          "type": "object"
-        },
-        "capability_requirements": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Capability Requirements",
-          "type": "array"
-        },
-        "preconditions": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Preconditions",
-          "type": "array"
-        },
-        "postconditions": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Postconditions",
-          "type": "array"
-        },
-        "semantic_bindings": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Semantic Bindings",
-          "type": "array"
-        },
-        "side_effects": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Side Effects",
-          "type": "array"
-        },
-        "resource_locks": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Resource Locks",
-          "type": "array"
-        },
-        "max_duration_s": {
-          "default": 30.0,
-          "title": "Max Duration S",
-          "type": "number"
-        },
-        "rate_limit": {
-          "default": "on_demand",
-          "title": "Rate Limit",
-          "type": "string"
-        },
-        "error_codes": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Error Codes",
-          "type": "array"
-        },
-        "retry_policy": {
-          "default": "bounded_exponential_backoff_for_read_only_probe",
-          "title": "Retry Policy",
-          "type": "string"
-        },
-        "compensation_operation": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+        "kind": {
+          "enum": [
+            "ros_topic",
+            "ros_service",
+            "ros_action",
+            "device",
+            "cli"
           ],
-          "default": null,
-          "title": "Compensation Operation"
-        },
-        "observation_overhead": {
-          "default": "bounded read-only probe",
-          "title": "Observation Overhead",
+          "title": "Kind",
           "type": "string"
         },
-        "evidence": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Evidence",
-          "type": "array"
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
         },
-        "limitations": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Limitations",
-          "type": "array"
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "observed": {
+          "default": false,
+          "title": "Observed",
+          "type": "boolean"
         }
       },
       "required": [
-        "operation",
-        "canonical_cli",
-        "layer",
-        "description",
-        "availability",
-        "adapter"
+        "kind",
+        "name",
+        "source"
       ],
-      "title": "ToolDescriptor",
+      "title": "RouteEvidence",
       "type": "object"
     }
   },
@@ -265,11 +181,11 @@
       "title": "Semantic Bindings",
       "type": "object"
     },
-    "tool_catalog": {
+    "operation_candidates": {
       "items": {
-        "$ref": "#/$defs/ToolDescriptor"
+        "$ref": "#/$defs/OperationCandidate"
       },
-      "title": "Tool Catalog",
+      "title": "Operation Candidates",
       "type": "array"
     },
     "software_summary": {

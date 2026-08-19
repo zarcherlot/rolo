@@ -1,6 +1,7 @@
 # URDF enrollment profile
 
 `robotctl init --robot-id ...` registers identity only. It does not accept, read, or record a URDF.
+The subsequent discovery `--urdf` input is optional for profileless test and artifact-driven runs.
 
 The initial URDF state is `NOT_DISCOVERED`, semantic state is `UNRESOLVED`, and motion safety state
 is `UNAPPROVED`. `robotctl adapt discover run --robot ... --urdf /path/to/robot.urdf` loads the file and
@@ -11,13 +12,17 @@ performs the full parsing described below. Its artifact records the resolved pat
 rolo validates and reads:
 
 - the `<robot name>` as the internal `profile_id`;
-- named links and joints;
-- the configured base link's box or cylinder collision geometry as the footprint, when available;
-- joint `<limit velocity>` values;
+- named links, joints, origins, axes, dynamics, mimic relationships, and limits;
+- visual/collision primitives, body dimensions, footprint, wheel dimensions, track width,
+  wheelbase, ground clearance, and the bounded primitive-geometry envelope;
+- per-link mass, center-of-mass origin, and inertia tensor, plus total declared mass coverage;
+- mesh references and scales;
+- transmissions, actuators, reductions, hardware interfaces, and `ros2_control` plugins;
+- Gazebo sensor/plugin declarations, update rates, and bounded leaf parameters;
 - sensor link references.
 
-Mesh bounds are not inferred. Missing or mesh-only footprint geometry is recorded as unresolved
-rather than guessed.
+Collision geometry is preferred; visual geometry is used when collision geometry is absent. Mesh
+bounds are not inferred. Missing or mesh-only footprint geometry is recorded as unresolved.
 
 ## Optional rolo extension
 

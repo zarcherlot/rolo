@@ -1,10 +1,15 @@
 {
   "$defs": {
     "AdapterOutputRefs": {
+      "additionalProperties": false,
       "description": "Workspace-relative outputs proposed for independent promotion.",
       "properties": {
-        "tool_catalog": {
-          "title": "Tool Catalog",
+        "adapter_manifest": {
+          "title": "Adapter Manifest",
+          "type": "string"
+        },
+        "adapter_package": {
+          "title": "Adapter Package",
           "type": "string"
         },
         "state_graph": {
@@ -17,7 +22,8 @@
         }
       },
       "required": [
-        "tool_catalog",
+        "adapter_manifest",
+        "adapter_package",
         "state_graph",
         "conformance_report"
       ],
@@ -77,8 +83,7 @@
         {
           "type": "null"
         }
-      ],
-      "default": null
+      ]
     }
   },
   "required": [
@@ -88,7 +93,8 @@
     "changed_files",
     "validation",
     "blockers",
-    "handoff_ready"
+    "handoff_ready",
+    "outputs"
   ],
   "title": "AdapterAgentResult",
   "type": "object"

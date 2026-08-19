@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "Atomic pointer to the only adapter release eligible for runtime use.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-release-index/v1",
+      "default": "robot-adapter-release-index/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "release_id": {
+      "title": "Release Id",
+      "type": "string"
+    },
+    "manifest": {
+      "title": "Manifest",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "published_at": {
+      "format": "date-time",
+      "title": "Published At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "release_id",
+    "manifest",
+    "manifest_sha256"
+  ],
+  "title": "AdapterReleaseIndex",
+  "type": "object"
+}

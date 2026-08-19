@@ -1,19 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from rolo.core.models import utc_now
-from rolo.stages.contracts import AgentRequirement
-
-
-class AdaptInputsStatus(str, Enum):
-    READY_FOR_CODING = "READY_FOR_CODING"
-    DEGRADED = "DEGRADED"
-    BLOCKED = "BLOCKED"
 
 
 class SemanticCandidate(BaseModel):
@@ -61,26 +53,14 @@ class StageSemanticInputs(BaseModel):
 
 
 class AdaptInputs(BaseModel):
-    schema_version: str = "robot-adapt-inputs/v1"
+    schema_version: Literal["robot-adapt-inputs/v1", "robot-adapt-inputs/v2"] = (
+        "robot-adapt-inputs/v2"
+    )
     stage: str = "adapt"
     robot_id: str
     discovery_id: str
-    status: AdaptInputsStatus
-    capability_manifest_ref: str
-    semantic_bindings_ref: str
     semantic_context_ref: str
-    tool_catalog_ref: str
-    software_summary_ref: str = ""
-    dependency_report_ref: str = ""
-    active_discovery_report_ref: str = ""
     robot_wiki_ref: str = ""
     discovery_manifest_ref: str = ""
     discovery_manifest_sha256: str = ""
-    probe_refs: dict[str, str]
-    semantic_binding_candidates: int = 0
-    semantic_value_candidates: int = 0
-    tool_count: int = 0
-    unresolved_dependencies: list[str] = Field(default_factory=list)
-    unresolved_semantics: list[str] = Field(default_factory=list)
-    agent_requirement: AgentRequirement = AgentRequirement.ADAPTER_AGENT
     created_at: datetime = Field(default_factory=utc_now)

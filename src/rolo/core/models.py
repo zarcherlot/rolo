@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def utc_now() -> datetime:
@@ -166,6 +166,30 @@ class ToolDescriptor(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class RouteEvidence(BaseModel):
+    """One normalized operation endpoint observed or declared during discovery."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["ros_topic", "ros_service", "ros_action", "device", "cli"]
+    name: str = Field(min_length=1)
+    source: str
+    observed: bool = False
+
+
+class OperationCandidate(BaseModel):
+    """Untrusted applicability and binding evidence from discovery."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation: str
+    semantic_bindings: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    route_evidence: list[RouteEvidence] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    status: Literal["DISCOVERED_UNVERIFIED"] = "DISCOVERED_UNVERIFIED"
+
+
 class DiscoveryReport(BaseModel):
     schema_version: str = "robot-discovery/v1"
     discovery_id: str
@@ -175,7 +199,7 @@ class DiscoveryReport(BaseModel):
     capability_manifest: dict[str, Any]
     probes: dict[str, ProbeResult]
     semantic_bindings: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    tool_catalog: list[ToolDescriptor] = Field(default_factory=list)
+    operation_candidates: list[OperationCandidate] = Field(default_factory=list)
     software_summary: dict[str, Any] = Field(default_factory=dict)
     software_summary_ref: str = ""
     dependency_report_ref: str = ""

@@ -1,5 +1,12 @@
 {
   "$defs": {
+    "ConformanceScope": {
+      "enum": [
+        "LOCAL_STATIC"
+      ],
+      "title": "ConformanceScope",
+      "type": "string"
+    },
     "OperationConformance": {
       "additionalProperties": false,
       "properties": {
@@ -23,21 +30,12 @@
           "title": "Cancellation Valid",
           "type": "boolean"
         },
-        "safety_valid": {
-          "title": "Safety Valid",
-          "type": "boolean"
-        },
-        "physical_result_valid": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Physical Result Valid"
+        "validation_scopes": {
+          "items": {
+            "$ref": "#/$defs/ConformanceScope"
+          },
+          "title": "Validation Scopes",
+          "type": "array"
         },
         "evidence": {
           "items": {
@@ -52,8 +50,7 @@
         "schema_valid",
         "errors_valid",
         "idempotency_valid",
-        "cancellation_valid",
-        "safety_valid"
+        "cancellation_valid"
       ],
       "title": "OperationConformance",
       "type": "object"
@@ -62,8 +59,11 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-conformance/v1",
-      "default": "robot-adapter-conformance/v1",
+      "default": "robot-adapter-conformance/v2",
+      "enum": [
+        "robot-adapter-conformance/v1",
+        "robot-adapter-conformance/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

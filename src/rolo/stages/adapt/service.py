@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
+from rolo.adapter_runtime import load_current_release
 from rolo.core.artifacts import ArtifactStore
-from rolo.core.config import Settings
+from rolo.core.config import Settings, get_settings
 from rolo.core.models import DiscoveryStatus
-from rolo.stages.adapt.conformance import AdapterPromotionService
+from rolo.stages.adapt.conformance import AdapterPromotionService, validate_adapter_handoff
 from rolo.stages.adapt.dependencies import AdapterAgentDependencyManager
 from rolo.stages.adapt.discovery import load_latest_report, load_report
 from rolo.stages.adapt.executor import CodexAdaptExecutor
@@ -20,10 +22,9 @@ from rolo.stages.adapt.models import (
     AdaptRunSummary,
     AdaptTask,
 )
+from rolo.stages.adapt.operation_registry import required_conformance_operations
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
-
-ADAPT_SKILLS = ["canonical-adapter-builder", "cli-conformance", "state-graph-builder"]
 
 
 def coding_agent_config(settings: Settings) -> AdapterAgentConfig:
@@ -47,9 +48,7 @@ class AdaptExecutionService:
         self.settings = settings
         self.config = coding_agent_config(settings)
 
-    def prepare(
-        self, *, skip_auth: bool = False
-    ) -> tuple[AdapterAgentDependencyReport, Path]:
+    def prepare(self, *, skip_auth: bool = False) -> tuple[AdapterAgentDependencyReport, Path]:
         return AdapterAgentDependencyManager(self.artifacts).prepare(
             config=self.config,
             executable=self.settings.coding_agent_executable,
@@ -88,6 +87,7 @@ class AdaptExecutionService:
             self.artifacts,
             executable=dependency.executable or self.settings.coding_agent_executable,
             api_key=self.settings.coding_agent_api_key,
+            output_root=self.settings.rolo_output_dir,
         )
         run, artifact = executor.execute(
             robot_id=robot_id,
@@ -116,34 +116,55 @@ class AdaptRunService:
         self,
         *,
         robot_id: str,
-        workspace: Path,
+        scratch_root: Path | None,
         timeout_s: int,
     ) -> tuple[AdaptRunSummary, Path]:
         plan = self.dry_run(robot_id)
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
             raise ValueError(f"Adapt plan for {robot_id} is {plan.status.value}")
-        dependency, agent_run, agent_run_path = AdaptExecutionService(
-            self.artifacts, self.settings
-        ).execute(
-            robot_id=robot_id,
-            workspace=workspace,
-            timeout_s=timeout_s,
-            plan=plan,
-        )
-        if agent_run is None or agent_run_path is None:
-            raise ValueError(
-                f"Adapter Agent dependency is not ready: {dependency.status.value}"
+        source_root = Path(__file__).resolve().parents[4]
+        output_root = self.settings.rolo_output_dir.expanduser().resolve()
+        try:
+            output_root.relative_to(source_root)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("ROLO_OUTPUT_DIR must be outside the rolo source tree")
+        temporary_parent: Path | None = None
+        if scratch_root is not None:
+            temporary_parent = scratch_root.expanduser().resolve()
+            temporary_parent.mkdir(parents=True, exist_ok=True)
+            try:
+                temporary_parent.relative_to(source_root)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("Adapter Agent scratch root must be outside the rolo source tree")
+        with tempfile.TemporaryDirectory(
+            prefix=f"rolo-adapt-{robot_id}-",
+            dir=temporary_parent,
+        ) as temporary_workspace:
+            workspace = Path(temporary_workspace)
+            dependency, agent_run, agent_run_path = AdaptExecutionService(
+                self.artifacts, self.settings
+            ).execute(
+                robot_id=robot_id,
+                workspace=workspace,
+                timeout_s=timeout_s,
+                plan=plan,
             )
-        if agent_run.status != "SUCCEEDED":
-            raise ValueError(
-                f"Adapter Agent run {agent_run.run_id} is {agent_run.status.value}: "
-                f"{agent_run.error or 'no error detail'}"
-            )
-        promotion = AdapterPromotionService(self.artifacts)
-        snapshot, snapshot_path = promotion.snapshot(agent_run)
-        handoff, handoff_path, _, gate_path = promotion.promote_run(
-            agent_run, snapshot
-        )
+            if agent_run is None or agent_run_path is None:
+                raise ValueError(
+                    f"Adapter Agent dependency is not ready: {dependency.status.value}"
+                )
+            if agent_run.status != "SUCCEEDED":
+                raise ValueError(
+                    f"Adapter Agent run {agent_run.run_id} is {agent_run.status.value}: "
+                    f"{agent_run.error or 'no error detail'}"
+                )
+            promotion = AdapterPromotionService(self.artifacts, output_root)
+            snapshot, snapshot_path = promotion.snapshot(agent_run)
+            handoff, handoff_path, _, gate_path = promotion.promote_run(agent_run, snapshot)
         summary = AdaptRunSummary(
             robot_id=robot_id,
             run_id=agent_run.run_id,
@@ -154,8 +175,7 @@ class AdaptRunService:
         )
         summary_path = self.artifacts.write_json(
             self.layout.relative(
-                self.layout.stage_run("adapt", robot_id, agent_run.run_id)
-                / "summary.json"
+                self.layout.stage_run("adapt", robot_id, agent_run.run_id) / "summary.json"
             ),
             summary.model_dump(mode="json"),
         )
@@ -180,37 +200,30 @@ class AdaptStageService:
         wiki_path = resolve_artifact_ref(self.artifacts.root, inputs.robot_wiki_ref)
         if not wiki_path.is_file():
             raise FileNotFoundError(f"Robot Wiki is missing for {robot_id}: {wiki_path}")
-        candidates = sorted(
-            tool.operation
-            for tool in report.tool_catalog
-            if tool.availability == "DISCOVERED_UNVERIFIED"
-        )
+        candidates = sorted(candidate.operation for candidate in report.operation_candidates)
+        conformance_operations = sorted(required_conformance_operations(report))
         blocked = report.status == DiscoveryStatus.FAILED
         tasks = [
             AdaptTask(
                 id="canonical-adapters",
                 description="Implement canonical adapters for discovered semantic bindings",
                 operations=candidates,
-                required_skill="canonical-adapter-builder",
             ),
             AdaptTask(
                 id="cli-conformance",
-                description="Validate schemas, errors, idempotency, cancellation, and safety",
-                operations=[tool.operation for tool in report.tool_catalog],
-                required_skill="cli-conformance",
+                description="Validate schemas, errors, idempotency, and cancellation locally",
+                operations=conformance_operations,
             ),
             AdaptTask(
                 id="state-graph-baseline",
-                description="Build the initial typed State Graph from verified capability evidence",
-                required_skill="state-graph-builder",
+                description="Build the initial typed State Graph from bounded discovery evidence",
             ),
             AdaptTask(
                 id="semantic-resolution-context",
                 description=(
-                    "Preserve unresolved robot semantics and source-derived candidates for "
+                    "Preserve unresolved robot semantics and evidence-backed candidates for "
                     "controlled diagnosis and verification"
                 ),
-                required_skill="state-graph-builder",
             ),
         ]
         plan = AdaptPlan(
@@ -218,19 +231,14 @@ class AdaptStageService:
             source_discovery_id=report.discovery_id,
             status=(AdaptPlanStatus.BLOCKED if blocked else AdaptPlanStatus.REQUIRES_CODING),
             tasks=tasks,
-            required_skills=ADAPT_SKILLS,
             adapter_agent=self.coding_agent,
-            candidate_operations=candidates,
             semantic_context_ref=inputs.semantic_context_ref,
-            unresolved_semantics=inputs.unresolved_semantics,
-            semantic_value_candidates=inputs.semantic_value_candidates,
-            active_discovery_report_ref=inputs.active_discovery_report_ref,
             robot_wiki_ref=inputs.robot_wiki_ref,
             discovery_manifest_ref=inputs.discovery_manifest_ref,
             discovery_manifest_sha256=inputs.discovery_manifest_sha256,
-            handoff_ref=f"artifact://adapt/{robot_id}/latest.json",
         )
         return plan
+
 
 def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
     layout = ArtifactLayout(artifact_root)
@@ -245,7 +253,6 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="Adapt discovery has not produced probes and Agent inputs",
             prerequisites=[str(adapt_inputs)],
             blockers=["Run adapt discovery"],
-            required_skills=ADAPT_SKILLS,
             agent_requirement=AgentRequirement.ADAPTER_AGENT,
         )
     report = load_latest_report(artifact_root, robot_id)
@@ -257,7 +264,6 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="Adapt discovery probes failed",
             artifacts={"inputs": str(adapt_inputs), "discovery_report": str(discovery_report)},
             blockers=["Resolve failed discovery probes"],
-            required_skills=ADAPT_SKILLS,
             agent_requirement=AgentRequirement.ADAPTER_AGENT,
         )
     try:
@@ -272,17 +278,21 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             summary="The editable robot Wiki is unavailable",
             artifacts={"inputs": str(adapt_inputs)},
             blockers=[f"Regenerate or restore the robot Wiki: {exc}"],
-            required_skills=ADAPT_SKILLS,
             agent_requirement=AgentRequirement.ADAPTER_AGENT,
         )
     handoff_valid = False
     handoff_error: str | None = None
     if handoff_index.is_file():
         try:
-            from rolo.stages.adapt.conformance import validate_adapter_handoff
-
-            validate_adapter_handoff(artifact_root, robot_id)
-            handoff_valid = True
+            handoff = validate_adapter_handoff(artifact_root, robot_id)
+            _, release, _, _ = load_current_release(get_settings().rolo_output_dir, robot_id)
+            handoff_valid = (
+                handoff.source_discovery_id == report.discovery_id
+                and release.discovery_id == report.discovery_id
+                and release.release_id == handoff.source_agent_run_id
+            )
+            if not handoff_valid:
+                handoff_error = "The gated adapter release is stale for the latest discovery"
         except (OSError, ValueError) as exc:
             handoff_error = str(exc)
     if handoff_valid:
@@ -295,7 +305,6 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
                 "robot_wiki": str(wiki_path),
                 "handoff_index": str(handoff_index),
             },
-            required_skills=ADAPT_SKILLS,
             agent_requirement=AgentRequirement.ADAPTER_AGENT,
         )
     return StageAssessment(
@@ -313,9 +322,6 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             "discovery_report": str(discovery_report),
             "robot_wiki": str(wiki_path),
         },
-        blockers=[
-            handoff_error or "Missing verified canonical CLI and State Graph handoff"
-        ],
-        required_skills=ADAPT_SKILLS,
+        blockers=[handoff_error or "Missing verified canonical CLI and State Graph handoff"],
         agent_requirement=AgentRequirement.ADAPTER_AGENT,
     )

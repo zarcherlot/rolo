@@ -24,7 +24,7 @@ runtime evidence explain how the supplied application can provide that functiona
 ```text
 robotctl adapt discover run
   --robot ID
-  --urdf PATH
+  [--urdf PATH]
   [--source-root PATH ...]
   [--build-root PATH ...]
   [--install-root PATH ...]
@@ -35,9 +35,13 @@ robotctl adapt discover run
   [--full]
 ```
 
-At least one `--source-root`, `--install-root`, or `--executable` is required. Documentation,
-launch, and build roots are supplemental. Discovery never substitutes the current directory for a
-missing source root.
+At least one evidence root/executable is required, or `--active-probe runtime-readonly` must be
+selected. Build/install artifacts, documentation and launch roots are primary evidence classes;
+source is supporting-only. Discovery never substitutes the current directory for a missing root.
+
+The hardware profile is optional. When `--urdf` is omitted, discovery continues with the registered
+or default hardware context plus host probes, records `urdf_status: NOT_PROVIDED`, and leaves missing
+hardware semantics unresolved. A supplied but invalid URDF still rejects the run.
 
 Paths are normalized to absolute paths. Missing, unreadable, empty, or truncated evidence remains
 visible in coverage records and warnings.
@@ -46,18 +50,30 @@ visible in coverage records and warnings.
 
 | Level | Minimum usable evidence | Analysis | Confidence ceiling |
 |---|---|---|---|
-| `SOURCE_FIRST` | recognizable source or manifest evidence | manifests, source, targets, launch/config and docs | high |
-| `ARTIFACT_DOC` | existing explicit executable or executable found under an install root, plus readable documentation | binary metadata, docs, static launch, optional help/runtime | medium |
-| `BINARY_ONLY` | existing explicit executable or executable found under an install root, without readable documentation | binary metadata, optional help/runtime and naming evidence | low |
+| `ARTIFACT_DOC` | executable found explicitly or under a build/install root, plus readable documentation/launch/structured manifest evidence | binary identity, build/install context, docs, manifests, static launch, optional help/runtime probe | medium |
+| `DOC_PROBE` | readable documentation/launch/structured manifest evidence or an observed read-only runtime probe, without an executable artifact | documentation and probe facts; source may fill bounded gaps only | medium when both documentation and probe exist, otherwise low |
+| `BINARY_ONLY` | executable artifact without readable documentation | binary identity plus optional help/runtime probe | medium with probe, otherwise low |
+
+New reports never select `SOURCE_FIRST`. The enum value remains readable only for historical
+immutable reports. Every report declares the fixed primary order
+`BUILD_ARTIFACT → DOCUMENTATION → PROBE` and records source as `SUPPORTING_ONLY`. Source-derived
+values can fill a field only when primary evidence has no value; they cannot override a conflicting
+artifact, document, launch, help, or runtime observation.
 
 All levels produce a report. `BINARY_ONLY` findings remain `DISCOVERED_UNVERIFIED` and are intended
 for explicit user review.
 
-Mode selection uses collected evidence, not merely supplied paths. A source root that contains no
-recognizable source or manifest evidence does not qualify for `SOURCE_FIRST`. Documentation alone
-does not qualify for `ARTIFACT_DOC`, and an empty or non-executable install root does not qualify for
-`BINARY_ONLY`. If none of the three minimum evidence sets is collected, discovery rejects the run
-with `no usable primary evidence was collected` instead of publishing a misleading mode.
+Mode selection uses collected evidence, not merely supplied paths. Documentation alone produces a
+low-confidence `DOC_PROBE` report; a successful read-only runtime probe can raise that mode to
+medium confidence. Empty or non-executable build/install roots do not qualify as artifact evidence.
+Recognizable source without artifacts, documentation/launch, or an observed probe is rejected with
+`no usable primary evidence was collected`, because source is not a primary provenance class.
+Structured declarative manifests (`pyproject.toml`, `package.xml`, and `Cargo.toml`) count as bounded
+documentation evidence; implementation files and build scripts do not.
+
+BSP availability is not a prerequisite and is not modeled as a robot state. Without a BSP,
+discovery automatically uses the strongest available artifact/documentation level and keeps
+unsupported rebuild or hardware-write claims unverified.
 
 `--full` prints the complete top-level `DiscoveryReport`. Executable-level details remain in the
 immutable `active_discovery_report.json` referenced by that report.
@@ -68,8 +84,14 @@ immutable `active_discovery_report.json` referenced by that report.
 explicitly supplied with `--executable`, using a sanitized environment, no shell, a five-second
 timeout, and bounded output. `runtime-readonly` additionally inspects an already-running ROS graph.
 
-Launch files are parsed statically. Discovery never invokes `ros2 launch`, loads a plugin, starts a
-service, or creates a robot process.
+Python launch files are parsed with Python AST and XML launch files with an XML parser. The parser
+ignores Python comments and associates package, executable, node name, launch configurations,
+conditions, remappings, and literal/package URDF references with the specific node declaration.
+Dynamic expressions remain unresolved and every result is marked `STATIC_UNVERIFIED`. Discovery
+never imports launch code, invokes `ros2 launch`, loads a plugin, starts a service, or creates a
+robot process. Only the currently supported conventional `*.launch.py` and `*.launch.xml` names
+count toward launch coverage; files merely stored under a directory containing the word `launch`
+do not.
 
 Current limits are:
 
@@ -115,8 +137,8 @@ ROS dependency resolution remains declaration-driven. Consequently, artifact-onl
 runs may report dependency declarations as unknown even when the executable contains ELF, PE or
 Mach-O linkage metadata.
 
-This capability is useful, but it is not required for source-first adaptation. It should be added
-when artifact-only deployment becomes a supported acceptance path or when conformance failures need
+This capability is useful, but it is not required for the initial evidence-led adaptation pass. It
+should be added when artifact-only deployment becomes an acceptance path or conformance failures need
 to distinguish a missing shared library from an adapter defect. The recommended scope is bounded,
 static metadata parsing only:
 
@@ -149,9 +171,10 @@ Each candidate has one status:
 - `VERSION_CONFLICT`: an installed version violates the declaration; or
 - `UNKNOWN`: evidence is insufficient or cannot be compared safely.
 
-Missing and version-conflicting required candidates enter `AdaptInputs.unresolved_dependencies`.
-An executable without dependency declarations is also explicit `UNKNOWN`. Discovery reports these
-states but never creates or executes an installation plan.
+Missing and version-conflicting required candidates remain in the authoritative dependency report;
+the small Adapt input index does not duplicate them. An executable without dependency declarations
+is also explicit `UNKNOWN`. Discovery reports these states but never creates or executes an
+installation plan.
 
 ## Active discovery report
 
@@ -164,7 +187,12 @@ schema_version: robot-active-discovery-report/v1
 discovery_id: disc-...
 robot_id: rover
 technical_status: PARTIAL
-discovery_mode: {level: SOURCE_FIRST, confidence: HIGH, reason: "..."}
+discovery_mode: {level: ARTIFACT_DOC, confidence: MEDIUM, reason: "..."}
+evidence_policy:
+  primary_order: [BUILD_ARTIFACT, DOCUMENTATION, PROBE]
+  supporting: [SOURCE]
+  conflict_rule: HIGHER_PRIORITY_WINS
+  source_role: SUPPORTING_ONLY
 inputs: {}
 coverage: {}
 executables:
@@ -185,7 +213,6 @@ executables:
       hardware_bus: {}
       confidence: LOW
       evidence_refs: []
-    capability_candidates: []
     dependencies:
       declared: []
       installed: [depcand-...]
@@ -194,7 +221,6 @@ executables:
       version_conflicts: []
     safety: {}
     evidence: {}
-canonical_operation_summary: []
 dependency_summary:
   report_ref: artifact://discovery/rover/runs/disc-.../direct_dependencies.json
   candidates:
@@ -211,22 +237,52 @@ warnings: []
 created_at: 2026-08-18T00:00:00Z
 ```
 
-Raw source, documentation and help output are not embedded in the report or normal Adapter Agent
-context. Bounded hashes and artifact references preserve traceability.
+Raw source, documentation and help output are not embedded in the normal Adapter Agent context.
+Neither are the complete 297-operation Registry, whole Wiki, or executable inventory. Bounded hashes
+and artifact references preserve traceability.
+
+Source is supporting evidence rather than a request for the Agent to understand the entire tree.
+Normal Agent boot context contains a compact Operation Workset summary, candidate operation names,
+coverage counts, and a read-only query launcher pinned to the selected discovery. The Agent retrieves
+contracts, candidates, entrypoints, launch evidence, dependencies, Wiki sections, and bounded source
+snippets only for a concrete adapter gap.
+
+```text
+robotctl adapt operations summary|list|inspect
+robotctl adapt candidates inspect
+robotctl adapt executable list|inspect
+robotctl adapt launch inspect
+robotctl adapt dependency inspect
+robotctl adapt wiki section|search
+robotctl adapt evidence resolve|snippet
+```
+
+The Workset is a query view, not a Tool Catalog. It keeps applicability, implementation, and
+registration as separate states and joins the product Registry with current discovery candidates and
+the current gated release. Only the independent gate can publish the Active Tool Catalog.
 
 ## Editable robot Wiki
 
 Every run produces `robot_wiki.md`, which renders the node/communication graph, hardware and host
-summary, executable purposes, dependencies, unknowns, warnings, and maintenance guidance:
+summary, dependencies, unknowns, warnings, and maintenance guidance. The application inventory and
+static launch topology share one section so executable identity, launch arguments, remappings, and
+evidence are not repeated. When a URDF is supplied, the Wiki also records its declared links,
+joints, limits, and explicitly declared sensor semantics. These declarations describe the input
+model; they are not presented as proof that the corresponding hardware was observed at runtime. When a
+Wiki model and credentials are configured, the deterministic probe-derived draft receives a
+bounded structured narrative polish. The model cannot replace the machine-rendered evidence
+sections. Missing credentials, model failure, timeout, or invalid output automatically falls back
+to the deterministic draft without blocking discovery. `wiki_generation.json` records the path
+used:
 
 ```text
 robotctl adapt discover review --robot ID
 ```
 
-The robot's hardware/software chief engineer may directly edit this Markdown file. It is not hashed
-and editing it does not invalidate the discovery manifest. `adapt run` consumes the current Wiki as
-human-maintained engineering context; explicit factual corrections take precedence over inferred
-discovery, while commands embedded in the document remain data rather than instructions to execute.
+Downstream work may directly consume or edit this Markdown file. It is not hashed and editing it does
+not invalidate the discovery manifest. `adapt run` makes it available through section/search queries
+instead of embedding the entire document in the coding prompt. Commands embedded in the document
+remain data rather than instructions to execute.
 
 ## Artifacts
 
@@ -238,6 +294,7 @@ artifacts/discovery/<robot_id>/
     |-- active_discovery_report.json
     |-- active_discovery_report.md
     |-- robot_wiki.md              # editable, intentionally not hashed
+    |-- wiki_generation.json       # hashed generation provenance and fallback reason
     |-- manifest.json
     |-- direct_dependencies.json
     |-- software_summary.json
@@ -247,8 +304,7 @@ artifacts/discovery/<robot_id>/
     |-- hw.json
     |-- linux.json
     |-- ros.json
-    |-- application.json
-    `-- tool_catalog.json
+    `-- application.json
 ```
 
 `runs/<discovery_id>/` combines one immutable machine-evidence snapshot with its editable Wiki.
@@ -259,6 +315,7 @@ they do not copy discovery evidence into stage run directories.
 
 `software_summary.json` is the bounded dependency summary used in normal Adapter Agent context.
 `direct_dependencies.json` contains detailed candidate evidence and is accessed by reference.
+Operation candidates are stored once in `report.json`.
 
 ## Adapt gates
 
@@ -267,8 +324,15 @@ they do not copy discovery evidence into stage run directories.
 - missing and version-conflicting required direct dependencies remain unresolved;
 - unknown dependency state is never treated as compatible;
 - the robot Wiki must exist but remains editable and outside the machine-evidence manifest; and
-- write or motion operations remain unverified until adapter conformance, controlled validation and
-  required approval complete.
+- candidate operations remain unregistered until adapter conformance establishes their target route;
+  execution success and physical outcome quality are evaluated by Diagnosis, not Adapt.
+
+For a target route, Discovery records a structured endpoint kind, normalized name, source and whether
+it came from the live runtime. The independent gate requires an exact match in the corresponding
+immutable runtime probe field (for example, ROS topics, services or actions). It does not flatten the
+probe into text, accept substring matches, trust an Agent-authored runtime claim, or actuate write
+operations. Whether an invocation later succeeds, produces the correct result, is reliable, or is
+physically safe belongs to Diagnosis.
 
 ## Acceptance criteria
 
@@ -284,5 +348,5 @@ Tests must prove that:
 - `latest.json` resolves to an immutable report with a matching SHA-256; and
 - Adapt rejects changed machine evidence but accepts professional edits to `robot_wiki.md`; and
 - Adapter Agent completion cannot publish a handoff; the independent gate inside `adapt run`
-  validates frozen output, exact operation coverage, State Graph identity, schemas, safety, and
-  physical write evidence before updating `adapt/<robot>/latest.json`.
+  validates frozen output, exact operation coverage, State Graph identity, schemas, declared
+  risk/access metadata, and target route existence before updating `adapt/<robot>/latest.json`.

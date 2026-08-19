@@ -170,6 +170,7 @@
       "enum": [
         "SOURCE_FIRST",
         "ARTIFACT_DOC",
+        "DOC_PROBE",
         "BINARY_ONLY"
       ],
       "title": "DiscoveryModeLevel",
@@ -229,6 +230,45 @@
       "title": "DocumentationAnalysis",
       "type": "object"
     },
+    "EvidencePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "primary_order": {
+          "items": {
+            "enum": [
+              "BUILD_ARTIFACT",
+              "DOCUMENTATION",
+              "PROBE"
+            ],
+            "type": "string"
+          },
+          "title": "Primary Order",
+          "type": "array"
+        },
+        "supporting": {
+          "items": {
+            "const": "SOURCE",
+            "type": "string"
+          },
+          "title": "Supporting",
+          "type": "array"
+        },
+        "conflict_rule": {
+          "const": "HIGHER_PRIORITY_WINS",
+          "default": "HIGHER_PRIORITY_WINS",
+          "title": "Conflict Rule",
+          "type": "string"
+        },
+        "source_role": {
+          "const": "SUPPORTING_ONLY",
+          "default": "SUPPORTING_ONLY",
+          "title": "Source Role",
+          "type": "string"
+        }
+      },
+      "title": "EvidencePolicy",
+      "type": "object"
+    },
     "ExecutableDiscovery": {
       "additionalProperties": false,
       "properties": {
@@ -255,6 +295,7 @@
         "origin": {
           "enum": [
             "EXPLICIT",
+            "DISCOVERED_BUILD_ARTIFACT",
             "DISCOVERED_ARTIFACT",
             "SOURCE_DECLARED",
             "LAUNCH_DECLARED"
@@ -320,14 +361,6 @@
         },
         "communication": {
           "$ref": "#/$defs/CommunicationAnalysis"
-        },
-        "capability_candidates": {
-          "items": {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          "title": "Capability Candidates",
-          "type": "array"
         },
         "dependencies": {
           "additionalProperties": {
@@ -600,6 +633,26 @@
           },
           "title": "Remappings",
           "type": "array"
+        },
+        "conditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conditions",
+          "type": "array"
+        },
+        "urdf_references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Urdf References",
+          "type": "array"
+        },
+        "verification": {
+          "const": "STATIC_UNVERIFIED",
+          "default": "STATIC_UNVERIFIED",
+          "title": "Verification",
+          "type": "string"
         }
       },
       "title": "LaunchAnalysis",
@@ -700,8 +753,11 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "robot-active-discovery-report/v1",
-      "default": "robot-active-discovery-report/v1",
+      "default": "robot-active-discovery-report/v2",
+      "enum": [
+        "robot-active-discovery-report/v1",
+        "robot-active-discovery-report/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -720,6 +776,9 @@
     "discovery_mode": {
       "$ref": "#/$defs/DiscoveryMode"
     },
+    "evidence_policy": {
+      "$ref": "#/$defs/EvidencePolicy"
+    },
     "inputs": {
       "additionalProperties": true,
       "title": "Inputs",
@@ -737,14 +796,6 @@
         "$ref": "#/$defs/ExecutableDiscovery"
       },
       "title": "Executables",
-      "type": "array"
-    },
-    "canonical_operation_summary": {
-      "items": {
-        "additionalProperties": true,
-        "type": "object"
-      },
-      "title": "Canonical Operation Summary",
       "type": "array"
     },
     "dependency_summary": {

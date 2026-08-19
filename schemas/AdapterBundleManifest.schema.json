@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "AdapterBundleOperation": {
+      "additionalProperties": false,
+      "description": "One canonical operation exported by an isolated adapter executable.",
+      "properties": {
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "entrypoint": {
+          "title": "Entrypoint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "entrypoint"
+      ],
+      "title": "AdapterBundleOperation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable contract between a generated adapter and the rolo runtime.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapter-bundle/v1",
+      "default": "robot-adapter-bundle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "bundle_id": {
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "bundle_version": {
+      "title": "Bundle Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "runtime_protocol": {
+      "const": "robot-adapter-rpc/v1",
+      "default": "robot-adapter-rpc/v1",
+      "title": "Runtime Protocol",
+      "type": "string"
+    },
+    "package_file": {
+      "title": "Package File",
+      "type": "string"
+    },
+    "package_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Package Sha256",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/AdapterBundleOperation"
+      },
+      "title": "Operations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "bundle_id",
+    "bundle_version",
+    "robot_id",
+    "discovery_id",
+    "package_file",
+    "package_sha256"
+  ],
+  "title": "AdapterBundleManifest",
+  "type": "object"
+}

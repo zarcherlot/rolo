@@ -38,9 +38,7 @@ def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
             errors.append(str(exc))
             enrollment_status = "INVALID"
     else:
-        warnings.append(
-            "No robot is registered; run 'uv run robotctl init --robot-id ...'"
-        )
+        warnings.append("No robot is registered; run 'uv run robotctl init --robot-id ...'")
 
     try:
         backend = create_robot_use_backend(settings).name

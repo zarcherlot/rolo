@@ -60,9 +60,7 @@ def _now() -> str:
 
 
 def _redact(text: str) -> str:
-    text = SECRET_ASSIGNMENT.sub(
-        lambda match: f"{match.group(1)}{match.group(2)}<redacted>", text
-    )
+    text = SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", text)
     return SECRET_ARGUMENT.sub(lambda match: f"{match.group(1)}<redacted>", text)
 
 
@@ -215,9 +213,7 @@ def host_inventory() -> dict[str, Any]:
         except (AttributeError, OSError):
             pass
     container_markers = [
-        str(path)
-        for path in (Path("/.dockerenv"), Path("/run/.containerenv"))
-        if path.exists()
+        str(path) for path in (Path("/.dockerenv"), Path("/run/.containerenv")) if path.exists()
     ]
     data = {
         "host": {
@@ -393,9 +389,7 @@ def container_inspect(name: str, runtime: str | None = None) -> dict[str, Any]:
 
 def schedule_list() -> dict[str, Any]:
     if platform.system() == "Linux":
-        timers = _command(
-            ["systemctl", "list-timers", "--all", "--no-legend", "--no-pager"]
-        )
+        timers = _command(["systemctl", "list-timers", "--all", "--no-legend", "--no-pager"])
         crontab = _command(["crontab", "-l"])
         return _result(
             "linux.schedule.list",

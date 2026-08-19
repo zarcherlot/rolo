@@ -163,8 +163,7 @@ def _version_checked_candidate(
             update={
                 "status": CandidateResolutionStatus.VERSION_CONFLICT,
                 "reason": (
-                    f"installed version {version!r} does not satisfy "
-                    f"constraint {requested!r}"
+                    f"installed version {version!r} does not satisfy constraint {requested!r}"
                 ),
             }
         )
@@ -390,9 +389,12 @@ class DirectDependencyResolver:
     ) -> DirectDependencyReport:
         counts = Counter(candidate.status.value for candidate in candidates)
         ecosystem_counts = Counter(candidate.ecosystem for candidate in candidates)
-        incomplete = bool(unresolved_executables) or omitted > 0 or any(
-            candidate.status == CandidateResolutionStatus.UNKNOWN
-            for candidate in candidates
+        incomplete = (
+            bool(unresolved_executables)
+            or omitted > 0
+            or any(
+                candidate.status == CandidateResolutionStatus.UNKNOWN for candidate in candidates
+            )
         )
         status = ResolutionStatus.PARTIAL if incomplete else ResolutionStatus.SUCCEEDED
         warnings: list[str] = []
@@ -434,9 +436,7 @@ def build_software_summary(
         direct_dependency_count=len(report.candidates),
         installed_dependency_count=len(all_ids[CandidateResolutionStatus.INSTALLED]),
         missing_dependency_count=len(required_ids[CandidateResolutionStatus.MISSING]),
-        conflicting_dependency_count=len(
-            required_ids[CandidateResolutionStatus.VERSION_CONFLICT]
-        ),
+        conflicting_dependency_count=len(required_ids[CandidateResolutionStatus.VERSION_CONFLICT]),
         unknown_dependency_count=len(report.unresolved_executables)
         + len(required_ids[CandidateResolutionStatus.UNKNOWN]),
         warnings=report.warnings,
@@ -476,8 +476,7 @@ def enrich_active_report(
         "unresolved_executables": resolution.unresolved_executables,
     }
     by_key = {
-        _candidate_key(candidate.ecosystem, candidate.name): candidate
-        for candidate in candidates
+        _candidate_key(candidate.ecosystem, candidate.name): candidate for candidate in candidates
     }
     for executable in active_report.executables:
         applicable_keys = {
@@ -488,14 +487,11 @@ def enrich_active_report(
             for declaration in executable.source_analysis.dependency_declarations
         }
         applicable_keys.update(
-            _candidate_key("ros", package)
-            for package in executable.launch_analysis.packages
+            _candidate_key("ros", package) for package in executable.launch_analysis.packages
         )
         applicable = [by_key[key] for key in sorted(applicable_keys) if key in by_key]
         applicable_ids, required_applicable_ids = _candidate_ids_by_status(applicable)
-        executable.dependencies["installed"] = applicable_ids[
-            CandidateResolutionStatus.INSTALLED
-        ]
+        executable.dependencies["installed"] = applicable_ids[CandidateResolutionStatus.INSTALLED]
         executable.dependencies["missing"] = required_applicable_ids[
             CandidateResolutionStatus.MISSING
         ]
@@ -511,8 +507,7 @@ def enrich_active_report(
             f"dependency version conflict: {candidate.ecosystem}:{candidate.name}: "
             f"{candidate.reason}"
             for candidate in candidates
-            if candidate.required
-            and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
+            if candidate.required and candidate.status == CandidateResolutionStatus.VERSION_CONFLICT
         }
     )
     active_report.unknowns = sorted(

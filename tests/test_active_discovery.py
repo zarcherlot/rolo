@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
-from rolo.core.models import DiscoveryStatus, ProbeResult, ToolDescriptor
+from rolo.core.models import DiscoveryStatus, ProbeResult
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
@@ -24,18 +24,6 @@ from rolo.stages.adapt.active_discovery import (
 from rolo.stages.adapt.discovery import ApplicationProbe, DiscoveryService
 
 CREATED_AT = datetime(2026, 8, 18, tzinfo=timezone.utc)
-
-
-def make_tool() -> ToolDescriptor:
-    return ToolDescriptor(
-        operation="app.test.inspect",
-        canonical_cli=["robotctl", "app", "test", "inspect"],
-        layer="application",
-        description="Inspect the discovered application",
-        availability="DISCOVERED_UNVERIFIED",
-        adapter="unbound",
-        evidence=["static discovery"],
-    )
 
 
 def make_analyzer(
@@ -54,7 +42,6 @@ def make_analyzer(
             status=DiscoveryStatus.SUCCEEDED,
             data=ros_data or {"nodes": [], "topics": [], "services": [], "actions": []},
         ),
-        tools=[make_tool()],
         run_root=run_root,
         artifact_prefix="artifact://discovery/demo/runs/disc-test",
         evidence_text=evidence_text,
@@ -71,11 +58,11 @@ def build_report(analyzer: ActiveDiscoveryAnalyzer):
 
 
 def test_primary_evidence_input_is_required() -> None:
-    with pytest.raises(ValidationError, match="at least one --source-root"):
-        ActiveDiscoveryInputs(document_roots=[Path("docs")])
+    with pytest.raises(ValidationError, match="at least one --build-root"):
+        ActiveDiscoveryInputs()
 
 
-def test_source_first_report_contains_source_protocol_and_ros_evidence(
+def test_documentation_led_report_uses_source_only_as_supporting_evidence(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source"
@@ -97,6 +84,7 @@ def configure(node):
 """,
         encoding="utf-8",
     )
+    (source / "README.md").write_text("demo-app operator guide", encoding="utf-8")
     projects = ApplicationProbe().run([source]).data["projects"]
 
     report = build_report(
@@ -107,7 +95,13 @@ def configure(node):
         )
     )
 
-    assert report.discovery_mode.level == DiscoveryModeLevel.SOURCE_FIRST
+    assert report.discovery_mode.level == DiscoveryModeLevel.DOC_PROBE
+    assert report.evidence_policy.primary_order == [
+        "BUILD_ARTIFACT",
+        "DOCUMENTATION",
+        "PROBE",
+    ]
+    assert report.evidence_policy.source_role == "SUPPORTING_ONLY"
     executable = report.executables[0]
     assert executable.name == "demo-app"
     assert executable.origin == "SOURCE_DECLARED"
@@ -115,6 +109,25 @@ def configure(node):
     assert executable.source_analysis.declared_dependencies == ["paho-mqtt", "rclpy"]
     assert executable.communication.network["protocols"] == ["mqtt"]
     assert executable.communication.ros["publishers"][0]["name"] == "/cmd_vel"
+    assert executable.evidence["source_support"] == [str(source.resolve())]
+
+
+def test_supporting_source_scan_ignores_vendored_third_party_trees(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    vendor = source / "third-party" / "dependency"
+    vendor.mkdir(parents=True)
+    (source / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+    (source / "README.md").write_text("demo operator guide", encoding="utf-8")
+    (vendor / "README.md").write_text("vendored dependency guide", encoding="utf-8")
+    (vendor / "CMakeLists.txt").write_text(
+        "add_executable(vendor_test vendor.cpp)", encoding="utf-8"
+    )
+
+    project = ApplicationProbe().run([source]).data["projects"][0]
+
+    assert project["file_count_scanned"] == 2
+    assert project["readmes"] == ["README.md"]
+    assert "vendor_test" not in project["build_targets"]
 
 
 def test_multiple_source_projects_keep_executable_evidence_isolated(tmp_path: Path) -> None:
@@ -144,6 +157,7 @@ def configure(node):
 ''',
             encoding="utf-8",
         )
+        (root / "README.md").write_text(f"{name} operator guide", encoding="utf-8")
 
     scan = ApplicationProbe().scan(roots)
     report = build_report(
@@ -160,12 +174,12 @@ def configure(node):
     assert executables["beta"].source_analysis.declared_dependencies == ["beta-only"]
     assert executables["alpha"].communication.network["protocols"] == ["mqtt"]
     assert executables["beta"].communication.network["protocols"] == ["grpc"]
-    assert [
-        item["name"] for item in executables["alpha"].communication.ros["publishers"]
-    ] == ["/alpha_cmd"]
-    assert [
-        item["name"] for item in executables["beta"].communication.ros["publishers"]
-    ] == ["/beta_cmd"]
+    assert [item["name"] for item in executables["alpha"].communication.ros["publishers"]] == [
+        "/alpha_cmd"
+    ]
+    assert [item["name"] for item in executables["beta"].communication.ros["publishers"]] == [
+        "/beta_cmd"
+    ]
 
 
 def test_active_analysis_reuses_source_evidence_snapshot(
@@ -174,12 +188,12 @@ def test_active_analysis_reuses_source_evidence_snapshot(
     source = tmp_path / "source"
     source.mkdir()
     (source / "pyproject.toml").write_text(
-        '''[project]
+        """[project]
 name = "cached-app"
 
 [project.scripts]
 cached-app = "cached.main:main"
-''',
+""",
         encoding="utf-8",
     )
     (source / "README.md").write_text("Run cached-app --cached over MQTT.", encoding="utf-8")
@@ -229,7 +243,9 @@ def test_artifact_doc_mode_statically_extracts_launch_without_execution(
     (launch / "driver.launch.py").write_text(
         """DeclareLaunchArgument("robot_ns", default_value="robot")
 Node(package="vendor_pkg", executable="vendor-driver.exe", name="driver",
+     namespace=LaunchConfiguration("robot_ns"),
      remappings=[("/cmd", "/robot/cmd")])
+# Node(package="ignored_pkg", executable="commented-out", name="ghost")
 """,
         encoding="utf-8",
     )
@@ -257,10 +273,164 @@ Node(package="vendor_pkg", executable="vendor-driver.exe", name="driver",
     assert executable.launch_analysis.packages == ["vendor_pkg"]
     assert executable.launch_analysis.nodes == ["driver"]
     assert executable.launch_analysis.arguments == ["robot_ns"]
-    assert executable.communication.ros["remappings"] == [
-        {"from": "/cmd", "to": "/robot/cmd"}
-    ]
+    assert executable.communication.ros["remappings"] == [{"from": "/cmd", "to": "/robot/cmd"}]
+    assert all(item.name != "commented-out" for item in report.executables)
     assert executable.communication.network["protocols"] == ["tcp"]
+
+
+def test_python_launch_extracts_node_scoped_condition_and_package_urdf(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    launch = source / "launch"
+    launch.mkdir(parents=True)
+    (source / "package.xml").write_text(
+        "<package><name>demo_bringup</name></package>", encoding="utf-8"
+    )
+    (launch / "description.launch.py").write_text(
+        """Node(
+    package="robot_state_publisher",
+    executable="robot_state_publisher",
+    name="state_publisher",
+    arguments=[os.path.join(
+        get_package_share_directory("demo_description"), "urdf", "demo.urdf"
+    )],
+    condition=IfCondition(LaunchConfiguration("publish_description")),
+)
+# Node(package="tf2_ros", executable="static_transform_publisher", name="ghost")
+""",
+        encoding="utf-8",
+    )
+    scan = ApplicationProbe().scan([source])
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=[source]),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+            evidence_text=scan.evidence_text,
+        )
+    )
+
+    executable = next(item for item in report.executables if item.name == "robot_state_publisher")
+    assert executable.launch_analysis.conditions == ["if:publish_description"]
+    assert executable.launch_analysis.urdf_references == [
+        "package://demo_description/urdf/demo.urdf"
+    ]
+    assert executable.launch_analysis.verification == "STATIC_UNVERIFIED"
+    assert all(item.name != "static_transform_publisher" for item in report.executables)
+
+
+def test_artifact_and_documentation_override_conflicting_source_support(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    install = tmp_path / "install"
+    docs = tmp_path / "docs"
+    source.mkdir()
+    (install / "bin").mkdir(parents=True)
+    docs.mkdir()
+    (source / "pyproject.toml").write_text(
+        """[project]
+name = "vendor-driver"
+
+[project.scripts]
+vendor-driver = "driver:main"
+""",
+        encoding="utf-8",
+    )
+    (source / "driver.py").write_text("# vendor-driver uses MQTT", encoding="utf-8")
+    executable_path = install / "bin" / "vendor-driver.exe"
+    executable_path.write_bytes(b"MZ" + b"\0" * 62)
+    (docs / "vendor-driver.md").write_text(
+        "The deployed vendor-driver uses gRPC.", encoding="utf-8"
+    )
+    scan = ApplicationProbe().scan([source])
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                source_roots=[source],
+                install_roots=[install],
+                document_roots=[docs],
+            ),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+            evidence_text=scan.evidence_text,
+        )
+    )
+
+    assert report.discovery_mode.level == DiscoveryModeLevel.ARTIFACT_DOC
+    executable = report.executables[0]
+    assert executable.communication.network["protocols"] == ["grpc"]
+    assert executable.evidence["source_support"] == [str(source.resolve())]
+
+
+def test_build_root_is_usable_primary_artifact_evidence(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    docs = tmp_path / "docs"
+    (build / "bin").mkdir(parents=True)
+    docs.mkdir()
+    executable_path = build / "bin" / "vendor-driver.exe"
+    executable_path.write_bytes(b"MZ" + b"\0" * 62)
+    (docs / "vendor-driver.md").write_text("Run vendor-driver over MQTT.", encoding="utf-8")
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                build_roots=[build],
+                document_roots=[docs],
+            ),
+            projects=[],
+            run_root=tmp_path / "run",
+        )
+    )
+
+    assert report.discovery_mode.level == DiscoveryModeLevel.ARTIFACT_DOC
+    assert report.executables[0].origin == "DISCOVERED_BUILD_ARTIFACT"
+    assert report.executables[0].artifact_analysis.build_roots == [str(build.resolve())]
+
+
+def test_artifact_documents_and_configs_are_isolated_per_executable(tmp_path: Path) -> None:
+    install = tmp_path / "install"
+    docs = tmp_path / "docs"
+    (install / "bin").mkdir(parents=True)
+    (install / "config").mkdir()
+    docs.mkdir()
+    (install / "bin" / "alpha.exe").write_bytes(b"MZ" + b"\0" * 62)
+    (install / "bin" / "beta.exe").write_bytes(b"MZ" + b"\0" * 62)
+    (install / "config" / "alpha.yaml").write_text("alpha: mqtt", encoding="utf-8")
+    (install / "config" / "beta.yaml").write_text("beta: grpc", encoding="utf-8")
+    (docs / "alpha.md").write_text("alpha uses MQTT", encoding="utf-8")
+    (docs / "beta.md").write_text("beta uses gRPC", encoding="utf-8")
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                install_roots=[install],
+                document_roots=[docs],
+            ),
+            projects=[],
+            run_root=tmp_path / "run",
+        )
+    )
+    executables = {item.name: item for item in report.executables}
+
+    assert executables["alpha.exe"].communication.network["protocols"] == ["mqtt"]
+    assert executables["beta.exe"].communication.network["protocols"] == ["grpc"]
+    assert executables["alpha.exe"].documentation_analysis.references == [
+        str((docs / "alpha.md").resolve())
+    ]
+    assert executables["beta.exe"].documentation_analysis.references == [
+        str((docs / "beta.md").resolve())
+    ]
+    assert executables["alpha.exe"].artifact_analysis.configuration_files == [
+        str((install / "config" / "alpha.yaml").resolve())
+    ]
+    assert executables["beta.exe"].artifact_analysis.configuration_files == [
+        str((install / "config" / "beta.yaml").resolve())
+    ]
+    assert all("capability_candidates" not in item.model_fields for item in executables.values())
 
 
 def test_help_probe_runs_only_explicit_executable_and_report_omits_raw_output(
@@ -450,7 +620,7 @@ def test_empty_source_root_is_rejected_instead_of_claiming_a_discovery_mode(
         )
 
 
-def test_documentation_does_not_claim_artifact_doc_without_an_executable(
+def test_documentation_without_an_executable_uses_degraded_doc_probe_mode(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "empty-source"
@@ -460,20 +630,23 @@ def test_documentation_does_not_claim_artifact_doc_without_an_executable(
     (docs / "README.md").write_text("Run vendor-driver --help", encoding="utf-8")
     projects = ApplicationProbe().run([source]).data["projects"]
 
-    with pytest.raises(ValueError, match="no usable primary evidence was collected"):
-        build_report(
-            make_analyzer(
-                inputs=ActiveDiscoveryInputs(
-                    source_roots=[source],
-                    document_roots=[docs],
-                ),
-                projects=projects,
-                run_root=tmp_path / "run",
-            )
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                source_roots=[source],
+                document_roots=[docs],
+            ),
+            projects=projects,
+            run_root=tmp_path / "run",
         )
+    )
+
+    assert report.discovery_mode.level == DiscoveryModeLevel.DOC_PROBE
+    assert report.discovery_mode.confidence.value == "LOW"
+    assert report.executables == []
 
 
-def test_non_executable_install_content_does_not_claim_artifact_doc(
+def test_non_executable_install_content_falls_back_to_documentation(
     tmp_path: Path,
 ) -> None:
     install = tmp_path / "install"
@@ -483,17 +656,20 @@ def test_non_executable_install_content_does_not_claim_artifact_doc(
     (install / "metadata.json").write_text('{"name": "vendor-driver"}', encoding="utf-8")
     (docs / "README.md").write_text("Vendor driver package", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="no usable primary evidence was collected"):
-        build_report(
-            make_analyzer(
-                inputs=ActiveDiscoveryInputs(
-                    install_roots=[install],
-                    document_roots=[docs],
-                ),
-                projects=[],
-                run_root=tmp_path / "run",
-            )
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                install_roots=[install],
+                document_roots=[docs],
+            ),
+            projects=[],
+            run_root=tmp_path / "run",
         )
+    )
+
+    assert report.discovery_mode.level == DiscoveryModeLevel.DOC_PROBE
+    assert report.coverage["artifacts"].records == 1
+    assert report.executables == []
 
 
 def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
@@ -511,7 +687,7 @@ def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
     )
 
     assert result.exit_code == 2
-    assert "at least one --source-root" in result.output
+    assert "at least one --build-root" in result.output
 
 
 def test_discovery_does_not_run_host_package_inventory(
@@ -519,9 +695,8 @@ def test_discovery_does_not_run_host_package_inventory(
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
-    (source / "pyproject.toml").write_text(
-        '[project]\nname = "demo"\n', encoding="utf-8"
-    )
+    (source / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
+    (source / "README.md").write_text("demo operator guide", encoding="utf-8")
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
 
@@ -548,7 +723,7 @@ def test_discovery_does_not_run_host_package_inventory(
     assert report.probes["ros"].warnings == ["ROS runtime inspection was not requested"]
 
 
-def test_relevant_dependency_findings_flow_to_reports_and_build_inputs(
+def test_relevant_dependency_findings_flow_to_authoritative_reports(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source"
@@ -564,6 +739,7 @@ demo = "demo:main"
 """,
         encoding="utf-8",
     )
+    (source / "README.md").write_text("demo dependency guide", encoding="utf-8")
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     artifact_root = tmp_path / "artifacts"
@@ -575,16 +751,8 @@ demo = "demo:main"
     )
 
     run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
-    dependencies = json.loads(
-        (run_root / "direct_dependencies.json").read_text(encoding="utf-8")
-    )
-    active = json.loads(
-        (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
-    )
-    build_inputs = json.loads(
-        (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
-    )
-
+    dependencies = json.loads((run_root / "direct_dependencies.json").read_text(encoding="utf-8"))
+    active = json.loads((run_root / "active_discovery_report.json").read_text(encoding="utf-8"))
     assert dependencies["status"] == "SUCCEEDED"
     assert dependencies["counts_by_status"]["MISSING"] == 1
     assert dependencies["candidates"][0]["name"] == missing_name
@@ -592,13 +760,10 @@ demo = "demo:main"
     missing_id = dependencies["candidates"][0]["candidate_id"]
     assert active["dependency_summary"]["missing"] == [missing_id]
     assert report.software_summary["missing_dependency_count"] == 1
-    assert any(
-        item == f"dependency:python:{missing_name}:MISSING"
-        for item in build_inputs["unresolved_dependencies"]
-    )
+    assert dependencies["candidates"][0]["required"] is True
 
 
-def test_version_conflicts_flow_to_summary_report_and_build_inputs(
+def test_version_conflicts_flow_to_authoritative_reports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source"
@@ -613,6 +778,7 @@ demo = "demo:main"
 """,
         encoding="utf-8",
     )
+    (source / "README.md").write_text("demo version guide", encoding="utf-8")
 
     class Distribution:
         metadata = {"Name": "conflict-lib"}
@@ -637,21 +803,11 @@ demo = "demo:main"
     )
 
     run_root = artifact_root / "discovery/demo_diff/runs" / report.discovery_id
-    dependencies = json.loads(
-        (run_root / "direct_dependencies.json").read_text(encoding="utf-8")
-    )
-    active = json.loads(
-        (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
-    )
-    build_inputs = json.loads(
-        (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
-    )
-
+    dependencies = json.loads((run_root / "direct_dependencies.json").read_text(encoding="utf-8"))
+    active = json.loads((run_root / "active_discovery_report.json").read_text(encoding="utf-8"))
     assert dependencies["counts_by_status"]["VERSION_CONFLICT"] == 1
     assert dependencies["candidates"][0]["status"] == "VERSION_CONFLICT"
     conflict_id = dependencies["candidates"][0]["candidate_id"]
     assert active["dependency_summary"]["conflicting"] == [conflict_id]
     assert report.software_summary["conflicting_dependency_count"] == 1
-    assert "dependency:python:conflict-lib:VERSION_CONFLICT" in build_inputs[
-        "unresolved_dependencies"
-    ]
+    assert dependencies["candidates"][0]["required"] is True

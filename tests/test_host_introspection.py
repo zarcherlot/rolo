@@ -81,9 +81,7 @@ def test_secret_assignment_redaction_preserves_key_but_not_value() -> None:
     assert "abc" not in redacted
     assert "hunter2" not in redacted
     assert "third" not in redacted
-    assert redacted == (
-        "--token=<redacted> password: <redacted> --api-key <redacted> safe=value"
-    )
+    assert redacted == ("--token=<redacted> password: <redacted> --api-key <redacted> safe=value")
 
 
 def test_structured_redaction_hides_nested_secret_fields() -> None:

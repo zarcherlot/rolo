@@ -137,9 +137,7 @@ class AdapterAgentDependencyManager:
     ) -> tuple[AdapterAgentDependencyReport, Path]:
         system = platform.system()
         architecture = platform.machine()
-        home = (
-            install_home or Path(os.environ.get("HOME") or Path.home())
-        ).expanduser().resolve()
+        home = (install_home or Path(os.environ.get("HOME") or Path.home())).expanduser().resolve()
         resolved_codex_home = (codex_home or home / ".codex").expanduser().resolve()
         install_attempted = False
         messages: list[str] = []

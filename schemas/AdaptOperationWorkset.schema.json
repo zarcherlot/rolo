@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "OperationApplicability": {
+      "enum": [
+        "OBSERVED",
+        "NOT_OBSERVED"
+      ],
+      "title": "OperationApplicability",
+      "type": "string"
+    },
+    "OperationImplementation": {
+      "enum": [
+        "BUILTIN",
+        "BUNDLE",
+        "UNBOUND"
+      ],
+      "title": "OperationImplementation",
+      "type": "string"
+    },
+    "OperationRegistration": {
+      "enum": [
+        "REGISTERED",
+        "NOT_REGISTERED",
+        "STALE"
+      ],
+      "title": "OperationRegistration",
+      "type": "string"
+    },
+    "OperationWorkItem": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "applicability": {
+          "$ref": "#/$defs/OperationApplicability"
+        },
+        "implementation": {
+          "$ref": "#/$defs/OperationImplementation"
+        },
+        "registration": {
+          "$ref": "#/$defs/OperationRegistration"
+        },
+        "candidate_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Status"
+        },
+        "active_availability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Availability"
+        }
+      },
+      "required": [
+        "operation",
+        "layer",
+        "applicability",
+        "implementation",
+        "registration"
+      ],
+      "title": "OperationWorkItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Compact join of product definitions, current evidence and the gated release.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-operation-workset/v1",
+      "default": "robot-adapt-operation-workset/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "registry_operation_count": {
+      "title": "Registry Operation Count",
+      "type": "integer"
+    },
+    "candidate_operation_count": {
+      "title": "Candidate Operation Count",
+      "type": "integer"
+    },
+    "registered_operation_count": {
+      "title": "Registered Operation Count",
+      "type": "integer"
+    },
+    "release_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Id"
+    },
+    "release_discovery_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Discovery Id"
+    },
+    "release_matches_discovery": {
+      "default": false,
+      "title": "Release Matches Discovery",
+      "type": "boolean"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/OperationWorkItem"
+      },
+      "title": "Operations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "registry_operation_count",
+    "candidate_operation_count",
+    "registered_operation_count"
+  ],
+  "title": "AdaptOperationWorkset",
+  "type": "object"
+}

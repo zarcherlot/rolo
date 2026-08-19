@@ -44,6 +44,12 @@ timestamps, error codes, and rollback semantics across four layers:
 - **Middleware**: nodes, topics, services, actions, TF, parameters, and diagnostics;
 - **Application**: mapping, localization, navigation, manipulation, testing, tuning, and task state.
 
+The product Canonical Operation Registry currently defines **297 operations**: 40 Hardware,
+64 Linux, 44 Middleware, and 149 Application operations (including 13 rolo control-plane
+operations). See the [complete four-layer list](CANONICAL_OPERATIONS.md). This is the product
+vocabulary, not a claim that every robot implements every operation; a robot-specific Active Tool
+Catalog is created only after the Adapt gate passes.
+
 ### Active discovery
 
 After initial configuration registers a unique `robot_id`, rolo creates a maintainable robot Wiki.
@@ -136,14 +142,22 @@ missing, which capabilities are only inferred, and which interfaces are safe to 
 Agent. New team members, algorithm engineers, embedded developers, operations, and test engineers
 all see the same system-wide picture.
 
-The flow is “discover and generate the Wiki → review or revise → run Adapt”:
+The flow is “discover and generate the Wiki → let Adapt retrieve focused evidence on demand”:
 
 ```bash
+# --urdf is optional; missing hardware semantics remain unresolved
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
-  --source-root /path/to/robot-application
+  --build-root /path/to/robot-application/build \
+  --doc-root /path/to/robot-application/docs \
+  --source-root /path/to/robot-application  # supporting evidence only
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
-uv run robotctl adapt run --robot "$ROBOT_ID" --workspace /path/to/robot-application
+uv run robotctl adapt operations summary --robot "$ROBOT_ID"
+uv run robotctl adapt operations list --robot "$ROBOT_ID" \
+  --applicability OBSERVED --registration NOT_REGISTERED
+uv run robotctl adapt run --robot "$ROBOT_ID"
+# Optional parent for an automatically deleted workspace outside the rolo checkout:
+uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
 ```text

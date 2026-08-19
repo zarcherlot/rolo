@@ -65,11 +65,17 @@ output capture, the independent conformance gate, and handoff publication:
 ```bash
 uv run robotctl adapt run \
   --robot "$ROBOT_ID" \
-  --workspace /path/to/robot-application
+  --scratch-root /path/outside/rolo
 ```
 
 The executor uses the `workspace-write` sandbox. Dependency reports, commands, and run artifacts do
 not contain API keys or cached authentication contents.
+
+The isolated workspace also receives `ROLO_AGENT_TOOL`, a temporary read-only launcher for Rolo's
+discovery queries. `ROLO_AGENT_DISCOVERY_ID` pins every query to the plan snapshot. The initial prompt
+contains only a compact workset/coverage summary; Codex uses the launcher to retrieve one operation,
+candidate, executable, launch record, dependency view, Wiki section, or bounded evidence snippet as
+needed. The launcher disappears with the temporary workspace and is never published as adapter code.
 
 ## Files written for the current user
 
