@@ -24,6 +24,7 @@ def test_health_and_robot_registry() -> None:
         pipeline = client.get("/v1/robots/demo_diff/pipeline")
         overview = client.get("/v1/robots/demo_diff/overview")
         topology = client.get("/v1/robots/demo_diff/topology")
+        capabilities = client.get("/v1/robots/demo_diff/capabilities?limit=10")
         evidence = client.get("/v1/robots/demo_diff/evidence?limit=5")
         status = client.get("/v1/robot-use/status")
 
@@ -65,6 +66,17 @@ def test_health_and_robot_registry() -> None:
         "Application",
     }
     assert all(node["evidence_ids"] for node in topology.json()["nodes"])
+    assert capabilities.status_code == 200
+    assert capabilities.json()["schema_version"] == "rolo-capability-collection/v1"
+    assert capabilities.json()["total"] == 294
+    assert len(capabilities.json()["items"]) == 10
+    assert capabilities.json()["source_kind"] == "product_registry"
+    assert {
+        "Hardware",
+        "Linux",
+        "Middleware",
+        "Application",
+    }.issuperset({item["layer"] for item in capabilities.json()["items"]})
     assert evidence.status_code == 200
     assert evidence.json()["schema_version"] == "rolo-evidence-collection/v1"
     assert evidence.json()["total"] >= len(evidence.json()["items"]) > 0
@@ -86,12 +98,18 @@ def test_unknown_robot_is_404() -> None:
         response = client.get("/v1/robots/not-a-robot")
         overview = client.get("/v1/robots/not-a-robot/overview")
         topology = client.get("/v1/robots/not-a-robot/topology")
+        capabilities = client.get("/v1/robots/not-a-robot/capabilities")
+        capability = client.get(
+            "/v1/robots/not-a-robot/capabilities/tool.catalog"
+        )
         evidence = client.get("/v1/robots/not-a-robot/evidence")
         evidence_detail = client.get("/v1/evidence/ev_unknown")
 
     assert response.status_code == 404
     assert overview.status_code == 404
     assert topology.status_code == 404
+    assert capabilities.status_code == 404
+    assert capability.status_code == 404
     assert evidence.status_code == 404
     assert evidence_detail.status_code == 404
 
@@ -113,6 +131,42 @@ def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
     assert {item["authority"] for item in page.json()["items"]} == {"DECLARED"}
     assert invalid_limit.status_code == 422
     assert invalid_authority.status_code == 422
+
+
+def test_capabilities_are_filterable_and_detail_is_contract_bound() -> None:
+    with TestClient(app) as client:
+        page = client.get(
+            "/v1/robots/demo_diff/capabilities"
+            "?limit=5&layer=Middleware&risk=R0&availability=AVAILABLE"
+        )
+        search = client.get(
+            "/v1/robots/demo_diff/capabilities?query=tool%20catalog"
+        )
+        detail = client.get(
+            "/v1/robots/demo_diff/capabilities/tool.catalog"
+        )
+        unknown = client.get(
+            "/v1/robots/demo_diff/capabilities/not.a.real.operation"
+        )
+        invalid_limit = client.get(
+            "/v1/robots/demo_diff/capabilities?limit=101"
+        )
+
+    assert page.status_code == 200
+    assert all(item["layer"] == "Middleware" for item in page.json()["items"])
+    assert all(item["risk"] == "R0" for item in page.json()["items"])
+    assert all(item["availability"] == "AVAILABLE" for item in page.json()["items"])
+    assert search.status_code == 200
+    assert [item["operation"] for item in search.json()["items"]] == ["tool.catalog"]
+    assert detail.status_code == 200
+    assert detail.json()["schema_version"] == "rolo-capability-detail/v1"
+    assert detail.json()["capability"]["operation"] == "tool.catalog"
+    assert detail.json()["capability"]["registration"] == "BUILTIN"
+    assert detail.json()["capability"]["availability"] == "AVAILABLE"
+    assert detail.json()["contract"]["input_schema"]["type"] == "object"
+    assert detail.json()["contract"]["result_semantics"] == "OBSERVATION"
+    assert unknown.status_code == 404
+    assert invalid_limit.status_code == 422
 
 
 def test_overview_openapi_contract_is_versioned() -> None:
@@ -150,6 +204,11 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         evidence_schema["properties"]["schema_version"]["const"]
         == "rolo-evidence-record/v1"
+    )
+    capability_schema = openapi["components"]["schemas"]["CapabilityCollection"]
+    assert (
+        capability_schema["properties"]["schema_version"]["const"]
+        == "rolo-capability-collection/v1"
     )
 
 

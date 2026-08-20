@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from rolo import __version__
+from rolo.capability_read_models import (
+    CapabilityAvailability,
+    CapabilityCollection,
+    CapabilityDetail,
+    CapabilityLayer,
+    build_capability_collection,
+    get_capability_detail,
+)
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
 from rolo.read_models import RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
@@ -94,6 +102,65 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
     return topology
+
+
+@app.get("/v1/robots/{robot_id}/capabilities", response_model=CapabilityCollection)
+async def list_robot_capabilities(
+    robot_id: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    query: Annotated[str | None, Query(max_length=128)] = None,
+    layer: Annotated[CapabilityLayer | None, Query()] = None,
+    lifecycle: Annotated[
+        Literal["DRAFT", "GATEABLE", "RELEASED", "DEPRECATED"] | None,
+        Query(),
+    ] = None,
+    risk: Annotated[Literal["R0", "R1", "R2", "R3"] | None, Query()] = None,
+    availability: Annotated[CapabilityAvailability | None, Query()] = None,
+) -> CapabilityCollection:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return build_capability_collection(
+        robot,
+        runtime.settings.rolo_artifact_dir,
+        runtime.settings.rolo_output_dir,
+        limit=limit,
+        offset=offset,
+        query=query,
+        layer=layer,
+        lifecycle=lifecycle,
+        risk=risk,
+        availability=availability,
+    )
+
+
+@app.get(
+    "/v1/robots/{robot_id}/capabilities/{operation}",
+    response_model=CapabilityDetail,
+)
+async def get_robot_capability(
+    robot_id: str,
+    operation: str,
+    request: Request,
+) -> CapabilityDetail:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    detail = get_capability_detail(
+        robot,
+        runtime.settings.rolo_artifact_dir,
+        runtime.settings.rolo_output_dir,
+        operation,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown canonical operation")
+    return detail
 
 
 @app.get("/v1/robots/{robot_id}/evidence", response_model=EvidenceCollection)
