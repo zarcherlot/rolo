@@ -19,15 +19,15 @@ def test_authored_contracts_compile_into_the_complete_product_vocabulary() -> No
     catalog = load_operation_contracts()
     registry = canonical_operation_registry()
 
-    assert len(catalog.contracts) == 268
+    assert len(catalog.contracts) == 294
     assert len(registry.operations) == 294
     assert sum(item.lifecycle == ContractLifecycle.RELEASED for item in catalog.contracts) == 62
-    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 206
+    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 232
     assert sum(item.lifecycle == ContractLifecycle.DEPRECATED for item in catalog.contracts) == 0
     draft_count = sum(
         item.contract_lifecycle == ContractLifecycle.DRAFT for item in registry.operations
     )
-    assert draft_count == 26
+    assert draft_count == 0
     assert registry.contract_catalog_sha256 == catalog.sha256
     assert len(catalog.sha256) == 64
     assert {item.version for item in catalog.contracts} == {"1.1.0", "2.0.0"}
@@ -451,6 +451,96 @@ def test_physical_application_controls_separate_r3_actions_from_r2_cancel() -> N
         "app.navigation.cancel"
     )
     for name in {"app.teleop.stop", "app.base.stop", "app.navigation.stop"}:
+        assert "protective-stop" in catalog[name].postconditions[0]
+        assert "emergency-stop" in catalog[name].postconditions[0]
+
+
+def test_complete_product_vocabulary_has_conservative_mutation_boundaries() -> None:
+    catalog = load_operation_contracts().by_operation()
+    newly_authored = {
+        "hw.sensor.calibrate",
+        "hw.sensor.reset",
+        "hw.actuator.command",
+        "hw.actuator.stop",
+        "hw.actuator.enable",
+        "hw.actuator.disable",
+        "hw.actuator.calibrate",
+        "hw.actuator.reset",
+        "hw.bus.reset",
+        "hw.firmware.update",
+        "hw.firmware.rollback",
+        "hw.power.rail.enable",
+        "hw.power.rail.disable",
+        "hw.power.cycle",
+        "ros.topic.publish",
+        "ros.service.call",
+        "ros.action.send",
+        "ros.action.cancel",
+        "ros.bag.record",
+        "ros.bag.play",
+        "app.robot.start",
+        "app.robot.stop",
+        "app.robot.restart",
+        "app.calibration.run",
+        "app.calibration.apply",
+        "app.calibration.rollback",
+    }
+    r3_operations = {
+        "hw.actuator.command",
+        "hw.actuator.stop",
+        "hw.actuator.enable",
+        "hw.actuator.disable",
+        "hw.actuator.calibrate",
+        "hw.actuator.reset",
+        "hw.power.rail.enable",
+        "hw.power.rail.disable",
+        "hw.power.cycle",
+        "ros.topic.publish",
+        "ros.service.call",
+        "ros.action.send",
+        "ros.bag.play",
+        "app.robot.start",
+        "app.robot.stop",
+        "app.robot.restart",
+        "app.calibration.run",
+    }
+    quiescent_r2_operations = {
+        "hw.sensor.calibrate",
+        "hw.sensor.reset",
+        "hw.bus.reset",
+        "hw.firmware.update",
+        "hw.firmware.rollback",
+        "app.calibration.apply",
+        "app.calibration.rollback",
+    }
+
+    assert all(
+        catalog[name].lifecycle == ContractLifecycle.GATEABLE for name in newly_authored
+    )
+    assert all(catalog[name].access == "write" for name in newly_authored)
+    assert all(catalog[name].data_classification.value == "SENSITIVE" for name in newly_authored)
+    assert all(catalog[name].risk == "R3" for name in r3_operations)
+    assert all(
+        catalog[name].risk == "R2" for name in newly_authored - r3_operations
+    )
+    assert all(catalog[name].requires_quiescence for name in quiescent_r2_operations)
+    assert all(
+        not catalog[name].requires_quiescence
+        for name in newly_authored - quiescent_r2_operations
+    )
+
+    assert catalog["ros.action.send"].compensation_operation == "ros.action.cancel"
+    assert catalog["hw.actuator.calibrate"].compensation_operation == "hw.actuator.stop"
+    for name in {"ros.topic.publish", "ros.service.call", "ros.action.send"}:
+        required = catalog[name].input_schema["required"]
+        assert "interface_id" in required
+        assert "interface_schema_sha256" in required
+    assert "artifact_sha256" in catalog["ros.bag.play"].input_schema["required"]
+    assert "duration_s" in catalog["ros.bag.record"].input_schema["required"]
+    assert "max_bytes" in catalog["ros.bag.record"].input_schema["required"]
+    assert "rollback_token" in catalog["hw.firmware.update"].output_schema["required"]
+    assert "rollback_token" in catalog["app.calibration.apply"].output_schema["required"]
+    for name in {"hw.actuator.stop", "app.robot.stop"}:
         assert "protective-stop" in catalog[name].postconditions[0]
         assert "emergency-stop" in catalog[name].postconditions[0]
 

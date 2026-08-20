@@ -49,6 +49,9 @@ The product Canonical Operation Registry currently defines **294 operations**: 4
 operations). See the [complete four-layer list](CANONICAL_OPERATIONS.md). This is the product
 vocabulary, not a claim that every robot implements every operation; a robot-specific Active Tool
 Catalog is created only after the Adapt gate passes.
+All 294 operations now have explicit product contracts: 62 are `RELEASED`, 232 are `GATEABLE`,
+and none remain `DRAFT`. `GATEABLE` still means that a target needs discovery evidence, an adapter,
+and conformance before the operation can become `VERIFIED` in that target's Tool Catalog.
 See the [Registry Operation guide](REGISTRY_OPERATION_GUIDE.md) for contract lifecycle,
 promotion/demotion, R0-R3 risk, data classification, and invocation rules.
 

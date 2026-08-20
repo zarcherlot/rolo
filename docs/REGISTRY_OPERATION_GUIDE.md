@@ -19,7 +19,8 @@ Registry 不能由陌生主机扫描结果临时生成。Discovery 可以发现�
 但不能创造产品语义；Adapter Agent 也只能实现 `GATEABLE` 或 `RELEASED` 契约，不能把
 `DRAFT` 自行解释后注册。
 
-当前 Registry 基线为 294 个 operation。产品文档按 Hardware、Linux、Middleware、
+当前 Registry 基线为 294 个 operation，全部具有明确产品契约：62 个 `RELEASED`、232 个
+`GATEABLE`、0 个 `DRAFT`。产品文档按 Hardware、Linux、Middleware、
 Application 四层展示；代码内部用 `control`、`hw`、`linux`、`middleware`、`ros`、`app`
 六个命名空间完成路由和策略校验。完整清单见
 [CANONICAL_OPERATIONS.md](CANONICAL_OPERATIONS.md)，当前契约及摘要由

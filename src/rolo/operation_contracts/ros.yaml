@@ -71,6 +71,55 @@ parameter_mutation_defaults: &parameter_mutation
       TIMEOUT, OPERATION_FAILED]
   retry_policy: none
 
+ros_write_ack_output: &ros_write_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    request_id: {type: string}
+    interface_id: {type: string}
+    observed_at: {type: string}
+  required: [status, request_id, interface_id, observed_at]
+  additionalProperties: false
+
+ros_goal_ack_output: &ros_goal_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    goal_id: {type: string}
+    interface_id: {type: string}
+    observed_at: {type: string}
+  required: [status, goal_id, interface_id, observed_at]
+  additionalProperties: false
+
+ros_r3_write: &ros_r3_write
+  <<: *probe
+  lifecycle: GATEABLE
+  data_classification: SENSITIVE
+  risk: R3
+  access: write
+  idempotent: false
+  cancelable: false
+  result_semantics: ACKNOWLEDGEMENT_ONLY
+  max_duration_s: 30
+  canonical_cli:
+    [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+  output_schema: *ros_write_ack_output
+  capability_requirements:
+    [external R3 authorization provider, discovery-bound ROS write interface allowlist,
+      ROS type schema and canonical input digest verifier, active physical interlock and watchdog route]
+  preconditions:
+    - >-
+      The stable interface identity, ROS type, schema digest and canonical input payload digest match
+      a discovered allowlisted route; external R3 authorization and target physical interlocks are active.
+  postconditions:
+    [The response acknowledges request acceptance only; target and physical state must be observed separately.]
+  side_effects: [May invoke target-defined behavior including physical robot motion.]
+  resource_locks: [discovery-bound ROS write interface, robot physical execution]
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, SCHEMA_MISMATCH,
+      INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
 contracts:
   - <<: *probe
     contract_id: ros.graph.snapshot
@@ -822,4 +871,205 @@ contracts:
         change_set_id: {type: string}
         observed_at: {type: string}
       required: [status, node, change_set_id, observed_at]
+      additionalProperties: false
+
+  - <<: *ros_r3_write
+    contract_id: ros.topic.publish
+    operation: ros.topic.publish
+    description: Publish one typed bounded message to a discovery-bound allowlisted ROS topic.
+    side_effects: [May trigger target-defined subscribers including physical control behavior.]
+    resource_locks: [ROS topic identified by interface_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        interface_id: {type: string, minLength: 1}
+        ros_type: {type: string, minLength: 1}
+        interface_schema_sha256: {type: string, minLength: 64, maxLength: 64}
+        payload_json: {type: string, maxLength: 1000000}
+        payload_sha256: {type: string, minLength: 64, maxLength: 64}
+        safety_profile_id: {type: string, minLength: 1}
+        deadline_s: {type: number, minimum: 0.01, maximum: 5}
+      required:
+        [interface_id, ros_type, interface_schema_sha256, payload_json, payload_sha256,
+          safety_profile_id, deadline_s]
+      additionalProperties: false
+
+  - <<: *ros_r3_write
+    contract_id: ros.service.call
+    operation: ros.service.call
+    description: Call one discovery-bound allowlisted ROS service with a digest-bound typed request.
+    side_effects: [May invoke target-defined state changes including physical control behavior.]
+    resource_locks: [ROS service identified by interface_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        interface_id: {type: string, minLength: 1}
+        ros_type: {type: string, minLength: 1}
+        interface_schema_sha256: {type: string, minLength: 64, maxLength: 64}
+        request_json: {type: string, maxLength: 1000000}
+        request_sha256: {type: string, minLength: 64, maxLength: 64}
+        safety_profile_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.01, maximum: 25}
+      required:
+        [interface_id, ros_type, interface_schema_sha256, request_json, request_sha256,
+          safety_profile_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *ros_r3_write
+    contract_id: ros.action.send
+    operation: ros.action.send
+    description: Submit one typed goal to a discovery-bound allowlisted ROS action endpoint.
+    cancelable: true
+    compensation_operation: ros.action.cancel
+    output_schema: *ros_goal_ack_output
+    side_effects: [May start target-defined activity including sustained physical robot motion.]
+    resource_locks: [ROS action identified by interface_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        interface_id: {type: string, minLength: 1}
+        ros_type: {type: string, minLength: 1}
+        interface_schema_sha256: {type: string, minLength: 64, maxLength: 64}
+        goal_json: {type: string, maxLength: 1000000}
+        goal_sha256: {type: string, minLength: 64, maxLength: 64}
+        safety_profile_id: {type: string, minLength: 1}
+        execution_timeout_s: {type: number, minimum: 0.1, maximum: 3600}
+      required:
+        [interface_id, ros_type, interface_schema_sha256, goal_json, goal_sha256,
+          safety_profile_id, execution_timeout_s]
+      additionalProperties: false
+
+  - <<: *probe
+    contract_id: ros.action.cancel
+    operation: ros.action.cancel
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Request ordinary cancellation of one discovery-bound ROS action goal.
+    risk: R2
+    access: write
+    idempotent: true
+    cancelable: false
+    result_semantics: ACKNOWLEDGEMENT_ONLY
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements:
+      [discovery-bound ROS action cancellation route,
+        protected OS write policy and exact operation allowlist]
+    preconditions:
+      [interface_id and goal_id identify a goal visible to the target action supervisor.]
+    postconditions:
+      [The response acknowledges cancellation acceptance only; stopped state must be observed separately.]
+    side_effects: [Requests goal interruption through the non-safety ROS action supervisor.]
+    resource_locks: [ROS action goal identified by interface_id and goal_id]
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_GOAL, PRECONDITION_FAILED,
+        TIMEOUT, OPERATION_FAILED]
+    retry_policy: none
+    input_schema:
+      type: object
+      properties:
+        interface_id: {type: string, minLength: 1}
+        goal_id: {type: string, minLength: 1}
+      required: [interface_id, goal_id]
+      additionalProperties: false
+    output_schema: *ros_goal_ack_output
+
+  - <<: *probe
+    contract_id: ros.bag.record
+    operation: ros.bag.record
+    lifecycle: GATEABLE
+    data_classification: SENSITIVE
+    description: Create one bounded protected bag artifact from discovery-bound allowlisted topics.
+    risk: R2
+    access: write
+    idempotent: false
+    cancelable: false
+    result_semantics: ACKNOWLEDGEMENT_ONLY
+    max_duration_s: 35
+    canonical_cli:
+      [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+    capability_requirements:
+      [discovery-bound ROS topic recording allowlist, bounded protected artifact writer,
+        protected OS write policy and exact operation allowlist]
+    preconditions:
+      - >-
+        Every interface_id is a discovered recordable non-SECRET topic; interface_set_sha256 matches
+        the canonical ordered set and the protected artifact writer can enforce duration and byte limits.
+    postconditions:
+      - >-
+        The response identifies the created protected artifact; message completeness and diagnostic
+        usefulness are not asserted.
+    side_effects: [Creates temporary subscriptions and writes a bounded SENSITIVE artifact.]
+    resource_locks: [ROS bag recorder, protected artifact allocation]
+    rate_limit: one active bag recorder per robot
+    error_codes:
+      [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, LIMIT_EXCEEDED,
+        TIMEOUT, OPERATION_FAILED]
+    retry_policy: none
+    input_schema:
+      type: object
+      properties:
+        interface_ids:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items: {type: string, minLength: 1}
+        interface_set_sha256: {type: string, minLength: 64, maxLength: 64}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000000}
+      required: [interface_ids, interface_set_sha256, duration_s, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        recording_id: {type: string}
+        artifact_ref: {type: string}
+        artifact_sha256: {type: string}
+        bytes: {type: integer, minimum: 0}
+        observed_at: {type: string}
+      required: [status, recording_id, artifact_ref, artifact_sha256, bytes, observed_at]
+      additionalProperties: false
+
+  - <<: *ros_r3_write
+    contract_id: ros.bag.play
+    operation: ros.bag.play
+    description: Request bounded playback of a digest-pinned protected bag through an allowlisted route.
+    max_duration_s: 35
+    capability_requirements:
+      [external R3 authorization provider, protected bag artifact resolver with SHA-256 verification,
+        discovery-bound playback topic-binding allowlist, active physical interlock and watchdog route]
+    preconditions:
+      - >-
+        The protected bag digest and topic binding set match; external R3 authorization and target
+        physical interlocks are active; the playback supervisor enforces duration and interrupts on
+        watchdog or interlock loss.
+    postconditions:
+      - >-
+        The response acknowledges bounded playback completion or termination only; target and
+        physical state must be observed separately.
+    side_effects: [May publish recorded commands and cause target-defined physical robot motion.]
+    resource_locks: [ROS bag playback supervisor, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        max_bytes: {type: integer, minimum: 1024, maximum: 1000000000}
+        topic_binding_set_id: {type: string, minLength: 1}
+        topic_binding_set_sha256: {type: string, minLength: 64, maxLength: 64}
+        duration_s: {type: number, minimum: 0.1, maximum: 30}
+        rate_scale: {type: number, minimum: 0.01, maximum: 10}
+        safety_profile_id: {type: string, minLength: 1}
+      required:
+        [artifact_ref, artifact_sha256, max_bytes, topic_binding_set_id,
+          topic_binding_set_sha256, duration_s, rate_scale, safety_profile_id]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        playback_id: {type: string}
+        observed_at: {type: string}
+      required: [status, playback_id, observed_at]
       additionalProperties: false

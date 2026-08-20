@@ -481,7 +481,7 @@ def test_product_registry_conservatively_classifies_motion_operations() -> None:
     assert operations["linux.host.reboot"].cancelable is False
 
 
-def test_product_registry_exposes_only_authored_contracts_as_gateable() -> None:
+def test_product_registry_exposes_a_complete_authored_contract_vocabulary() -> None:
     from rolo.stages.adapt.operation_registry import canonical_operation_registry
 
     operations = {item.operation: item for item in canonical_operation_registry().operations}
@@ -497,33 +497,27 @@ def test_product_registry_exposes_only_authored_contracts_as_gateable() -> None:
         "--input",
         "{input_json}",
     ]
-    assert any(
-        item.contract_lifecycle.value == "DRAFT" for item in operations.values()
+    assert all(
+        item.contract_lifecycle.value in {"GATEABLE", "RELEASED"}
+        for item in operations.values()
     )
 
 
-def test_incomplete_product_contract_cannot_enter_conformance() -> None:
-    from rolo.core.models import DiscoveryReport, OperationCandidate
+def test_incomplete_contract_definition_still_cannot_enter_conformance() -> None:
+    from rolo.contract_catalog import ContractLifecycle
     from rolo.stages.adapt.operation_registry import (
         canonical_operation_registry,
-        required_conformance_operations,
+        validate_definition_contract,
     )
 
-    incomplete_operation = next(
-        item.operation
+    definition = next(
+        item
         for item in canonical_operation_registry().operations
-        if item.contract_lifecycle.value == "DRAFT"
+        if item.operation == "hw.actuator.command"
+    )
+    incomplete_definition = definition.model_copy(
+        update={"contract_lifecycle": ContractLifecycle.DRAFT}
     )
 
-    report = DiscoveryReport(
-        discovery_id="disc-incomplete",
-        robot_id="demo",
-        status="PARTIAL",
-        platform={},
-        capability_manifest={},
-        probes={},
-        operation_candidates=[OperationCandidate(operation=incomplete_operation)],
-    )
-
-    with pytest.raises(ValueError, match="lack complete product contracts"):
-        required_conformance_operations(report)
+    with pytest.raises(ValueError, match="contract is incomplete"):
+        validate_definition_contract(incomplete_definition)

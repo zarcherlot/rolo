@@ -2915,3 +2915,158 @@ contracts:
         stop_profile_id: {type: string, minLength: 1}
       required: [run_id, stop_profile_id]
       additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.robot.start
+    operation: app.robot.start
+    description: Request entry into the target-defined robot execution-ready lifecycle state.
+    postconditions:
+      - >-
+        The response acknowledges lifecycle-start acceptance only; readiness and physical state must
+        be observed separately and no task or trajectory completion is asserted.
+    side_effects: [May enable execution resources and permit target-defined actuator activity.]
+    resource_locks: [robot execution lifecycle, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        execution_profile_id: {type: string, minLength: 1}
+        safety_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [execution_profile_id, safety_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.robot.stop
+    operation: app.robot.stop
+    description: Request a controlled ordinary stop of the target-defined robot execution lifecycle.
+    idempotent: true
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; stopped state must be observed
+        separately and no protective-stop or emergency-stop claim is made.
+    side_effects: [May stop application scheduling and command controlled actuator deceleration or hold.]
+    resource_locks: [robot execution lifecycle, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        stop_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [stop_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.robot.restart
+    operation: app.robot.restart
+    description: Request one controlled stop-start transition of the robot execution lifecycle.
+    postconditions:
+      - >-
+        The response acknowledges restart acceptance only; stopped, restarted and ready states must
+        each be observed separately.
+    side_effects: [May interrupt active application execution and re-enable actuator-capable resources.]
+    resource_locks: [robot execution lifecycle, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        restart_profile_id: {type: string, minLength: 1}
+        safety_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [restart_profile_id, safety_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.calibration.run
+    operation: app.calibration.run
+    description: Run one bounded target-defined calibration procedure that may command physical motion.
+    max_duration_s: 110
+    output_schema: *run_ack_output
+    capability_requirements:
+      [external R3 authorization provider, target-bound bounded calibration supervisor,
+        active physical interlock and watchdog route]
+    preconditions:
+      - >-
+        calibration_id and procedure_sha256 identify a discovered immutable procedure; external R3
+        authorization and target physical interlocks are active; the supervisor enforces timeout and
+        interrupts on watchdog or interlock loss.
+    postconditions:
+      - >-
+        The response acknowledges bounded calibration completion or termination only; calibration
+        quality and resulting physical state must be observed separately.
+    side_effects: [May move actuators and create an inactive calibration result record.]
+    resource_locks: [calibration procedure identified by calibration_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        calibration_id: {type: string, minLength: 1}
+        procedure_sha256: {type: string, minLength: 64, maxLength: 64}
+        execution_profile_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 105}
+      required: [calibration_id, procedure_sha256, execution_profile_id, timeout_s]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.calibration.apply
+    operation: app.calibration.apply
+    data_classification: SENSITIVE
+    description: Apply one immutable calibration result under a robot execution-quiescence lease.
+    requires_quiescence: true
+    max_duration_s: 60
+    capability_requirements:
+      [target-bound calibration application route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        calibration_id and result_sha256 identify one validated immutable result;
+        expected_configuration_sha256 matches and execution quiescence covers the invocation.
+    postconditions:
+      - >-
+        The response acknowledges application and returns an opaque rollback token; active
+        configuration and behavior must be observed separately and no motion is started.
+    side_effects: [May replace the active calibration configuration for target-defined resources.]
+    resource_locks: [calibration configuration, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        calibration_id: {type: string, minLength: 1}
+        result_sha256: {type: string, minLength: 64, maxLength: 64}
+        expected_configuration_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [calibration_id, result_sha256, expected_configuration_sha256]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        calibration_id: {type: string}
+        change_id: {type: string}
+        rollback_token: {type: string}
+        observed_at: {type: string}
+      required: [status, calibration_id, change_id, rollback_token, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.calibration.rollback
+    operation: app.calibration.rollback
+    data_classification: SENSITIVE
+    description: Roll back one calibration change under a new robot execution-quiescence lease.
+    requires_quiescence: true
+    max_duration_s: 60
+    capability_requirements:
+      [target-bound calibration rollback route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        rollback_token belongs to calibration_id; expected_configuration_sha256 matches and execution
+        quiescence covers the invocation.
+    postconditions:
+      - >-
+        The response acknowledges rollback only; active calibration configuration and behavior must
+        be observed separately and no motion is started or resumed.
+    side_effects: [May restore a previously saved calibration configuration.]
+    resource_locks: [calibration configuration, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        calibration_id: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+        expected_configuration_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [calibration_id, rollback_token, expected_configuration_sha256]
+      additionalProperties: false

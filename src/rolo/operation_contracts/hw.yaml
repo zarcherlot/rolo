@@ -78,6 +78,64 @@ adapter_defaults: &adapter_defaults
   error_codes: [UNAVAILABLE, TIMEOUT, INVALID_INPUT, OPERATION_FAILED]
   retry_policy: bounded_exponential_backoff
 
+hardware_ack_output: &hardware_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    resource_id: {type: string}
+    change_id: {type: string}
+    observed_at: {type: string}
+  required: [status, resource_id, change_id, observed_at]
+  additionalProperties: false
+
+firmware_ack_output: &firmware_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    resource_id: {type: string}
+    change_id: {type: string}
+    rollback_token: {type: string}
+    observed_at: {type: string}
+  required: [status, resource_id, change_id, rollback_token, observed_at]
+  additionalProperties: false
+
+hardware_r2_mutation: &hardware_r2_mutation
+  <<: *adapter_defaults
+  data_classification: SENSITIVE
+  risk: R2
+  access: write
+  idempotent: false
+  cancelable: false
+  result_semantics: ACKNOWLEDGEMENT_ONLY
+  max_duration_s: 30
+  output_schema: *hardware_ack_output
+  capability_requirements:
+    [target-bound hardware mutation route, protected OS write policy and exact operation allowlist]
+  postconditions:
+    [The response acknowledges mutation acceptance only; resulting hardware state must be observed separately.]
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT,
+      TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
+hardware_r3_mutation: &hardware_r3_mutation
+  <<: *hardware_r2_mutation
+  risk: R3
+  requires_quiescence: false
+  capability_requirements:
+    [external R3 authorization provider, target-bound actuator or power-control route,
+      active physical interlock and watchdog route]
+  preconditions:
+    [External R3 authorization and target physical interlocks are active.]
+  postconditions:
+    [The response acknowledges command acceptance only; physical state must be observed separately.]
+  side_effects: [May directly change actuator state or robot physical stability.]
+  resource_locks: [target physical hardware resource]
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY,
+      PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
 contracts:
   - schema_version: robot-operation-contract/v1
     contract_id: hw.inventory.scan
@@ -335,3 +393,292 @@ contracts:
     capability_requirements: [power rail inventory route]
     input_schema: *selector_input
     output_schema: *detail_output
+
+  - <<: *hardware_r2_mutation
+    contract_id: hw.sensor.calibrate
+    operation: hw.sensor.calibrate
+    description: Request one bounded calibration of an explicit sensor under execution quiescence.
+    requires_quiescence: true
+    capability_requirements:
+      [target-bound sensor calibration route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        resource_id identifies one discovered sensor; calibration_profile_id is compatible with that
+        sensor; expected_configuration_sha256 matches and execution quiescence covers the invocation.
+    side_effects: [May update volatile or persistent sensor calibration state.]
+    resource_locks: [sensor identified by resource_id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        calibration_profile_id: {type: string, minLength: 1}
+        expected_configuration_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, calibration_profile_id, expected_configuration_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r2_mutation
+    contract_id: hw.sensor.reset
+    operation: hw.sensor.reset
+    description: Request reset of one explicit sensor without resetting its bus or peer devices.
+    requires_quiescence: true
+    capability_requirements:
+      [target-bound sensor reset route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        resource_id identifies one discovered resettable sensor and execution quiescence covers the
+        complete invocation.
+    side_effects: [May interrupt sampling and clear volatile sensor state.]
+    resource_locks: [sensor identified by resource_id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        reset_profile_id: {type: string, minLength: 1}
+      required: [resource_id, reset_profile_id]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.command
+    operation: hw.actuator.command
+    description: Submit one bounded typed command to an explicit discovered actuator.
+    side_effects: [May directly command physical actuator motion or effort.]
+    resource_locks: [actuator identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        mode: {type: string, enum: [position, velocity, effort, duty_cycle]}
+        value: {type: number}
+        unit: {type: string, minLength: 1}
+        duration_s: {type: number, minimum: 0.01, maximum: 5}
+        safety_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required:
+        [resource_id, mode, value, unit, duration_s, safety_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.stop
+    operation: hw.actuator.stop
+    description: Request a controlled operational stop of one explicit actuator.
+    idempotent: true
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; actuator state must be observed
+        separately and no protective-stop or emergency-stop claim is made.
+    side_effects:
+      - May command controlled deceleration, holding torque or brake engagement.
+    resource_locks: [actuator identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [resource_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.enable
+    operation: hw.actuator.enable
+    description: Request controlled enablement of one explicit actuator power or command stage.
+    idempotent: true
+    side_effects: [May energize an actuator and permit subsequent physical motion.]
+    resource_locks: [actuator identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        enable_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, enable_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.disable
+    operation: hw.actuator.disable
+    description: Request controlled disablement of one explicit actuator power or command stage.
+    idempotent: true
+    side_effects: [May remove holding effort and change robot physical stability.]
+    resource_locks: [actuator identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        disable_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, disable_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.calibrate
+    operation: hw.actuator.calibrate
+    description: Request one bounded target-defined calibration of an explicit actuator.
+    cancelable: true
+    compensation_operation: hw.actuator.stop
+    max_duration_s: 60
+    side_effects: [May move the actuator and update persistent calibration state.]
+    resource_locks: [actuator identified by resource_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        calibration_profile_id: {type: string, minLength: 1}
+        timeout_s: {type: number, minimum: 0.1, maximum: 55}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, calibration_profile_id, timeout_s, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.actuator.reset
+    operation: hw.actuator.reset
+    description: Request a bounded reset of one explicit actuator controller.
+    side_effects:
+      - May interrupt control, clear faults and change actuator holding state.
+    resource_locks: [actuator identified by resource_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        reset_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, reset_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r2_mutation
+    contract_id: hw.bus.reset
+    operation: hw.bus.reset
+    description: Request a bounded reset of one explicit hardware bus under execution quiescence.
+    requires_quiescence: true
+    capability_requirements:
+      [target-bound hardware bus reset route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        resource_id identifies one discovered resettable bus and execution quiescence covers the
+        complete invocation.
+    side_effects: [May interrupt communication with every device attached to the selected bus.]
+    resource_locks: [hardware bus identified by resource_id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        reset_profile_id: {type: string, minLength: 1}
+      required: [resource_id, reset_profile_id]
+      additionalProperties: false
+
+  - <<: *hardware_r2_mutation
+    contract_id: hw.firmware.update
+    operation: hw.firmware.update
+    description: Request firmware installation from a signed digest-pinned protected artifact.
+    requires_quiescence: true
+    max_duration_s: 110
+    output_schema: *firmware_ack_output
+    capability_requirements:
+      [protected firmware artifact resolver with SHA-256 and signature verification,
+        target compatibility-manifest verifier, power-stability monitor,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        resource_id identifies one discovered firmware target; artifact digest, signature,
+        compatibility manifest and expected current firmware digest match; stable power and execution
+        quiescence cover the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges installation acceptance and returns an opaque rollback token;
+        firmware identity and device health must be observed separately.
+    side_effects: [May replace firmware and temporarily make the target device unavailable.]
+    resource_locks: [firmware target identified by resource_id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        signature_ref: {type: string, minLength: 12}
+        signature_sha256: {type: string, minLength: 64, maxLength: 64}
+        compatibility_manifest_sha256: {type: string, minLength: 64, maxLength: 64}
+        expected_current_sha256: {type: string, minLength: 64, maxLength: 64}
+        max_bytes: {type: integer, minimum: 1, maximum: 1000000000}
+      required:
+        [resource_id, artifact_ref, artifact_sha256, signature_ref, signature_sha256,
+          compatibility_manifest_sha256, expected_current_sha256, max_bytes]
+      additionalProperties: false
+
+  - <<: *hardware_r2_mutation
+    contract_id: hw.firmware.rollback
+    operation: hw.firmware.rollback
+    description: Request rollback to a previously saved firmware image under execution quiescence.
+    requires_quiescence: true
+    max_duration_s: 110
+    capability_requirements:
+      [target-bound firmware rollback route, power-stability monitor,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        rollback_token belongs to resource_id; expected_current_sha256 matches; stable power and
+        execution quiescence cover the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges rollback acceptance only; firmware identity and health must be
+        observed separately.
+    side_effects: [May replace firmware and temporarily make the target device unavailable.]
+    resource_locks: [firmware target identified by resource_id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+        expected_current_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, rollback_token, expected_current_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.power.rail.enable
+    operation: hw.power.rail.enable
+    description: Request controlled energization of one explicit power rail.
+    idempotent: true
+    side_effects: [May energize attached actuators or other physical hardware.]
+    resource_locks: [power rail identified by resource_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        power_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, power_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.power.rail.disable
+    operation: hw.power.rail.disable
+    description: Request controlled de-energization of one explicit power rail.
+    idempotent: true
+    side_effects: [May disable attached actuators and change robot physical stability.]
+    resource_locks: [power rail identified by resource_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        power_profile_id: {type: string, minLength: 1}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, power_profile_id, expected_state_sha256]
+      additionalProperties: false
+
+  - <<: *hardware_r3_mutation
+    contract_id: hw.power.cycle
+    operation: hw.power.cycle
+    description: Request one bounded off-on power cycle of an explicit power domain.
+    side_effects:
+      - May interrupt and re-energize actuators, sensors and compute devices.
+    resource_locks: [power domain identified by resource_id, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        power_profile_id: {type: string, minLength: 1}
+        off_duration_s: {type: number, minimum: 0.1, maximum: 10}
+        expected_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [resource_id, power_profile_id, off_duration_s, expected_state_sha256]
+      additionalProperties: false

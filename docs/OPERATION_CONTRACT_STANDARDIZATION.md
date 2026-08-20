@@ -14,8 +14,8 @@ Registry Operation 的日常治理、生命周期升级/降级和运行时使用
 可复制的 R0、R1、R3 与数据敏感度最小模板见
 [OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
 
-当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、206 个为 `GATEABLE`、
-26 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+当前基线：294 个产品 operation 均已有明确契约，其中 62 个为 `RELEASED`、232 个为
+`GATEABLE`、0 个为 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
 SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
 容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
 契约及 builtin 不依赖
@@ -102,6 +102,16 @@ Teleop、base、manipulation、gripper、navigation 和 task 的直接物理控�
 普通 cancel 保持 R2，因为它只向 supervisor 请求取消。普通 stop 即使以减速、保持或零速度
 实现，仍是直接改变运动状态的 R3，但不得声称触发了 protective stop 或 emergency stop。
 所有响应只确认命令或请求被接受，物理结果和停止状态必须在后续诊断阶段另行观测。
+
+剩余硬件 mutation、通用 ROS 写入口、bag、整机执行生命周期与 calibration mutation 也已
+完成契约化。Actuator 和 power 控制、ROS publish/service/action send、bag play、robot
+start/stop/restart 及可能运动的 calibration run 统一采用保守 R3。通用 ROS 写入口不接受
+裸 topic/service/action 名称，必须绑定 discovery 产生的稳定 interface ID、ROS type、schema
+摘要和 payload 摘要。Bag record 使用 topic 白名单以及时长/字节上限；bag play 还必须绑定
+受保护 artifact 摘要和 topic binding set。Sensor/bus/firmware mutation 与 calibration
+apply/rollback 为 R2，并在执行静止 lease 下运行；firmware 额外要求签名、兼容性清单和稳定
+供电。至此 `DRAFT` 已清零，但这些 `GATEABLE` 契约仍需目标 candidate、adapter 和 conformance
+证据才能成为目标 Tool Catalog 中的 `VERIFIED` operation。
 
 `access=read` 不再被错误地等同于 `risk=R0`。只读 operation 可以因总线探测流量、持续
 采样负载等原因成为 R1，但必须声明 `ELEVATED` observation overhead、具体副作用和非

@@ -1,11 +1,11 @@
 # Authored Operation Contracts
 
-This document is generated from `src/rolo/operation_contracts/*.yaml`. 
-`RELEASED` contracts back built-in operations; `GATEABLE` contracts may be 
-implemented and promoted by Adapt. The remaining product vocabulary stays `DRAFT` 
-and cannot become `VERIFIED` until an authored contract is added.
+This document is generated from `src/rolo/operation_contracts/*.yaml`.
+`RELEASED` contracts back built-in operations; `GATEABLE` contracts may be
+implemented and promoted by Adapt. Any future product operation without an authored
+contract remains `DRAFT` and cannot become `VERIFIED`.
 
-Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c5997`
+Catalog SHA-256: `6558a0d8869f0980e76456887883b5c0a3dc8447aeff75c26ffccf7b93d68f52`
 
 | Operation | Lifecycle | Version | Data | Contract SHA-256 |
 |---|---|---|---|---|
@@ -15,8 +15,11 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `app.base.status` | GATEABLE | `1.1.0` | `INTERNAL` | `a86e2e8bd0f0cf83df6f4203b5615bcc6a7b51efbc66c443d3c4c664d3cf0e47` |
 | `app.base.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `20f1a748d5636059d81dfbdd10f90a376adbbb1fbb0c69b65c27c65a84716508` |
 | `app.base.velocity` | GATEABLE | `1.1.0` | `SENSITIVE` | `85f91c5e8c7ba69ebd09091409e0841b49e964c4b8327a10f34b8d92a0fc6ece` |
+| `app.calibration.apply` | GATEABLE | `1.1.0` | `SENSITIVE` | `b9e6418d028a670368f690d8e179508fa03a40236752ca3e1b5fda0287588dd2` |
 | `app.calibration.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `79442bd94b62c07fc17589eab66fbc33e3fead8a82f4d8fb04ff004351636233` |
 | `app.calibration.list` | GATEABLE | `1.1.0` | `INTERNAL` | `25f5c2e0418fd9834a74100c923f7ebdb39c1b781ab2da9be92162a47fdac9b2` |
+| `app.calibration.rollback` | GATEABLE | `1.1.0` | `SENSITIVE` | `33d5a6606018bc3012940584e17eb8e9ed04de39dbad228fa7d0f50ab176eb8d` |
+| `app.calibration.run` | GATEABLE | `1.1.0` | `SENSITIVE` | `00551e759b28470653e66c3bfc1611dba477dd77a9d41a976cf9d7014726edf6` |
 | `app.calibration.status` | GATEABLE | `1.1.0` | `INTERNAL` | `9575987f77a34dbb909bb3cf2d08178acedc9c2a87d8bb182a91fecc31bad7e5` |
 | `app.calibration.validate` | GATEABLE | `1.1.0` | `SENSITIVE` | `a59aab3bff256f641032ea101eacf189bd22282429c10191c7518c2a122471fc` |
 | `app.camera.calibration.status` | GATEABLE | `1.1.0` | `INTERNAL` | `0c02ac3a7894e04315d62b3b3df64a8527e8d60e4d159a1e4567a0631c02d6ad` |
@@ -99,7 +102,10 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `app.regression.status` | GATEABLE | `1.1.0` | `INTERNAL` | `2534f0a8cce58efadf16a6d205be5cfb1d6cdfef76a01a8c821f3cabe0f9cf62` |
 | `app.robot.discover` | RELEASED | `1.1.0` | `INTERNAL` | `7876ac2afb7c6ea6f4d2a6efcf1479601337bc61434176ec7d8a9c34f959e656` |
 | `app.robot.health` | GATEABLE | `1.1.0` | `INTERNAL` | `3d3e5d0757295d9b6c9e3f23e387850c55c57a66d5687a0ef543d4fcc322c5e8` |
+| `app.robot.restart` | GATEABLE | `1.1.0` | `SENSITIVE` | `8cc13063d3f322385c8fc10f03dd8534fac7fde38c2c52a68e2e2ec49509a2ea` |
+| `app.robot.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `cbf5d8aa8886b817ceee4652fb044939e7ea76554e49f6926f2ff0b9cb2e48e6` |
 | `app.robot.status` | GATEABLE | `1.1.0` | `INTERNAL` | `44d5d08599cd23cb75fe8d608466413788d2d67653548b446ae594b5c96fd736` |
+| `app.robot.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `7a666a53d2960f536e734d9584ba2cc5ac341b1754226d41eab15d8730473aa2` |
 | `app.safety.approval.status` | GATEABLE | `1.1.0` | `INTERNAL` | `df6f9d24ed96bc9d9615c9037aa3052272e5ed34163c9002358531ad82b57ee1` |
 | `app.safety.emergency_stop` | GATEABLE | `1.1.0` | `INTERNAL` | `5c8e0c5766a3034a9838f6122aba36fc852263bfc890af3857fbc95cac6563e4` |
 | `app.safety.interlocks.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `b06d01cb142af1e556ad445862b5d532df1f5337fffc16ed50e9958244688cdc` |
@@ -147,11 +153,18 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `episode.inspect` | GATEABLE | `1.1.0` | `SENSITIVE` | `2fec7f854e4472fc2880929adc7070904b7dc368045773281da6d789468e5f7c` |
 | `episode.list` | GATEABLE | `1.1.0` | `SENSITIVE` | `fb91ed11d0fd50b28ab74cb1a327e8672aab59dbffe4f59f61b8f68b6dc1dab5` |
 | `evidence.resolve` | RELEASED | `1.1.0` | `INTERNAL` | `c970444abe7953f2959d405a54a11b9f21d1b10b343d5342e6074fec25eb3ba8` |
+| `hw.actuator.calibrate` | GATEABLE | `1.1.0` | `SENSITIVE` | `0473bfd24515d8c09a33639948929c23d90d48b97742e39ef3e4d0423001ea59` |
+| `hw.actuator.command` | GATEABLE | `1.1.0` | `SENSITIVE` | `5c33f7e94ce3db87cd3649a5659a9ba20bb4c8c2052b739719560254a26f84ea` |
+| `hw.actuator.disable` | GATEABLE | `1.1.0` | `SENSITIVE` | `7f56cf3f48d1650d714ccc11df41f8c232b8380724c2b9fa3b227b5069125898` |
+| `hw.actuator.enable` | GATEABLE | `1.1.0` | `SENSITIVE` | `f27730286c319098744aff9917d8455ac8c7fcfce0b66743364184ed51e0f6bf` |
 | `hw.actuator.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `97878a537f1d4f1b2f053cc969a220e1373d719ddb2069001dbb14de036fc57c` |
 | `hw.actuator.list` | GATEABLE | `1.1.0` | `INTERNAL` | `7a97cb14384390bfebaeeb7b159872e4ac66b955c1152191ef4ab5d5bd568458` |
+| `hw.actuator.reset` | GATEABLE | `1.1.0` | `SENSITIVE` | `01d3cd72a376a4439da7c4b9478e2d5a50be052f33cc7404e3c91e535334a32a` |
 | `hw.actuator.status` | GATEABLE | `1.1.0` | `INTERNAL` | `7e811b3c1f6dd05131e9a5c461deb2c865505d861aa2485ac7921e0b05ad445e` |
+| `hw.actuator.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `c318fff3777ca53e1053ae80a98a4bd66c624a124480be3f916c7137677090f0` |
 | `hw.bus.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `8e5f0f4aa8a30feb749e33eac8d8dd3195475d2c59a43e9daf190ff6f4dbf37b` |
 | `hw.bus.list` | GATEABLE | `1.1.0` | `INTERNAL` | `2575780c3ce4aff6fe4c3a192e47d640f16e173c69499bf1519d58322ce4d1d7` |
+| `hw.bus.reset` | GATEABLE | `1.1.0` | `SENSITIVE` | `77674131b64d6b52bff2feed230a8e7143ea164d6be9c92f6c36756d78a93398` |
 | `hw.bus.scan` | GATEABLE | `1.1.0` | `INTERNAL` | `81779c981c8490a30d7fd3592434bceef086452b7d4bc76e3bb29d1b47ac760b` |
 | `hw.bus.statistics` | GATEABLE | `1.1.0` | `INTERNAL` | `b81d4247f085424b27aacd553887af8ce89ae32431962f52fc15e531b0cd4dbe` |
 | `hw.bus.status` | GATEABLE | `1.1.0` | `INTERNAL` | `c5e5de974fee7b99369285f6f279ce770d778c68b2cb32a56dcfe797f6045f53` |
@@ -161,15 +174,22 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `hw.compute.status` | GATEABLE | `1.1.0` | `INTERNAL` | `746c3443a62030f2b91ad04bf2a1778ef85b06e3d9e22c8d9b67416dda42af58` |
 | `hw.firmware.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `a7088d2f0b1141071d7fb3a8ff45933006e03479a4203c6eb93aed626167c932` |
 | `hw.firmware.list` | GATEABLE | `1.1.0` | `INTERNAL` | `d973d3eef610a61a67a277f3ea200e71ec59a6b73399e6bc59c8d3cf032fd9fe` |
+| `hw.firmware.rollback` | GATEABLE | `1.1.0` | `SENSITIVE` | `c7ebf44f28b151ef327a2ac71e894728fe3e6298a798f92940cfb63894f9dc47` |
+| `hw.firmware.update` | GATEABLE | `1.1.0` | `SENSITIVE` | `2a17b535206551bdab1cdb124f83c7a29c781482129bcbc09d6d5c793381cf3f` |
 | `hw.firmware.verify` | GATEABLE | `1.1.0` | `INTERNAL` | `7d6d4fde0756a2edc6d9e0d5dadf3b3abce7238b3dd116d5bbd1f2dd13f68441` |
 | `hw.inventory.scan` | RELEASED | `1.1.0` | `INTERNAL` | `5a0bd33a98e9c5b667c3e29fd0f7e2dedb0969d68242b6714ec82871b6aa56e1` |
 | `hw.power.battery.status` | GATEABLE | `1.1.0` | `INTERNAL` | `00b3dbaeaf4df3f9c8717b1f49fb11d168580ef61c7f12750291e815528bd903` |
+| `hw.power.cycle` | GATEABLE | `1.1.0` | `SENSITIVE` | `9b8873740477c7b735cdf3952d408eb72c5fec5032bf7c051f95ed8e5aee8023` |
+| `hw.power.rail.disable` | GATEABLE | `1.1.0` | `SENSITIVE` | `5e3bdc4975099a8c2f66a757159d0369e8040a3e4f6581d913c5bb068b9ca94e` |
+| `hw.power.rail.enable` | GATEABLE | `1.1.0` | `SENSITIVE` | `fa230c5053763f3201a3f9b33293b1afa0b0ce92edd6ea3070f06b33301cee93` |
 | `hw.power.rail.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `d09173b9a862dda4aae026f834ac9ca4559aa23377189d537176a0e48955571e` |
 | `hw.power.rail.list` | GATEABLE | `1.1.0` | `INTERNAL` | `e77a2818851457241d183a41f9975dbef605f6f3be8d98691cf92ae262f62dbd` |
 | `hw.power.status` | GATEABLE | `1.1.0` | `INTERNAL` | `4da57902922ed19a5498ba1d8f95349bfeafeac7ef5fb26a089ea2a0c9f66541` |
+| `hw.sensor.calibrate` | GATEABLE | `1.1.0` | `SENSITIVE` | `a06df556a083d6edf62c16ca3ae7894df3a2218d50fbcd410fd38fe367ce5491` |
 | `hw.sensor.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `148b89a33c8baad88276ccb6992bbf4b7dfeef881507fe0a43bc8191201c7102` |
 | `hw.sensor.list` | GATEABLE | `1.1.0` | `INTERNAL` | `e23aa5cf3021020fc5f449b728dedb045e49382e2073d4b84ce2e7a4dce86995` |
 | `hw.sensor.read` | GATEABLE | `1.1.0` | `SENSITIVE` | `f161dd4068b10798c7666697a326514379e84b3ca42cd18be42b55114e6a948a` |
+| `hw.sensor.reset` | GATEABLE | `1.1.0` | `SENSITIVE` | `8da30c85aa487398fddfa72f29a9384d73e4a756150a647fa20464a0e5945336` |
 | `hw.sensor.status` | GATEABLE | `1.1.0` | `INTERNAL` | `eab48b87c4937fa5fa1be9c4a3e57702818e1eed40bc53f768d9d3d689cabb83` |
 | `hw.storage.status` | GATEABLE | `1.1.0` | `INTERNAL` | `ebed9d7a0918f007a6e96b406f8ee1759a48d3462c507e30340bd3a7a1bf167c` |
 | `hw.thermal.status` | GATEABLE | `1.1.0` | `INTERNAL` | `a7aec29bece1ec720186ee30139ecb5c7445076f02f0472e2504f1c001fb14e2` |
@@ -239,10 +259,14 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `middleware.graph.snapshot` | RELEASED | `1.1.0` | `INTERNAL` | `4ccaf404c971b8fb9066cbf1cfe65e6c4f39277574041f9095d7b44ecb4575cb` |
 | `middleware.inspect` | RELEASED | `1.1.0` | `INTERNAL` | `4acd116d92242c36badfcb47351a8b729b335c1c11ce3ece66934ee4c7a27439` |
 | `middleware.status` | RELEASED | `1.1.0` | `INTERNAL` | `e6d96ec293e77cefa6592b00bea8469d608a9bfd9b808e5daef31182bed8adb4` |
+| `ros.action.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `412ce0f9544d6d6343b2a0cc58e837a41a2b0104620f48046f41eb3ca1814ca5` |
 | `ros.action.describe` | RELEASED | `1.1.0` | `INTERNAL` | `a103b3947e75f4bf79a20e453b6532213c9648c763c54d3004d1038afebffaf9` |
 | `ros.action.list` | RELEASED | `1.1.0` | `INTERNAL` | `0a5b0760cafd3595359729bf98c3f7d73902a18a3901ca3ef38a501b81d6b68c` |
+| `ros.action.send` | GATEABLE | `1.1.0` | `SENSITIVE` | `596105cdcee846d8aa44b14310dc57420f0eae637ea7414aef99495e7aa77487` |
 | `ros.action.status` | GATEABLE | `1.1.0` | `SENSITIVE` | `0af4e2835e25dacb70743976c0ad6f8fdf10853ec84d7ffb69d5416d4fa286ac` |
 | `ros.bag.inspect` | RELEASED | `1.1.0` | `INTERNAL` | `d312aaf354cfe8d76a6311533f6797852c6b2fdbb04bdaa7ef8e8925b59319d4` |
+| `ros.bag.play` | GATEABLE | `1.1.0` | `SENSITIVE` | `9b527e5ca035ab8b9645caa2c570991ef23d7caef368b2a44973ddabbbc1dc3a` |
+| `ros.bag.record` | GATEABLE | `1.1.0` | `SENSITIVE` | `90fb4dfa989c6da842d88ad638e9d5b1ab94eb1eae37b035c61384c43276b453` |
 | `ros.clock.status` | RELEASED | `1.1.0` | `INTERNAL` | `0a7ef2afb29732ba95356c46b2518c3186eaea3c9832b53393cc7f9cbdc7372f` |
 | `ros.diagnostics.snapshot` | GATEABLE | `2.0.0` | `SENSITIVE` | `144d9c5724a67f1b00c858eeaebf2a625788b94b2a0cb84ea8430c7173c5a65f` |
 | `ros.diagnostics.watch` | GATEABLE | `1.1.0` | `SENSITIVE` | `639a1b2ed3bdb30eaac19b097d99ee249b5177618051e80dc848a7dc218c1ecd` |
@@ -260,6 +284,7 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `ros.parameter.load` | GATEABLE | `1.1.0` | `SENSITIVE` | `9c92d4dfd4cdaf95445dbfab0b6be171ea9974490f9ee5bca8a58e5842f25d28` |
 | `ros.parameter.rollback` | GATEABLE | `1.1.0` | `SENSITIVE` | `43bb9088f8c41b2348869a7d66f0ec0bfd49923191d057963fc2294da01ffadd` |
 | `ros.parameter.set` | GATEABLE | `1.1.0` | `SENSITIVE` | `8a057246237d6aa173daa8708d209cdf5e1fa2fa5d22337839fdd70fa52ba300` |
+| `ros.service.call` | GATEABLE | `1.1.0` | `SENSITIVE` | `b411ddce1b418a8deec8ce154b7cd1e8b10ba04584cb95f36ff8352ab7e4195f` |
 | `ros.service.describe` | RELEASED | `1.1.0` | `INTERNAL` | `ac0b23b6788a0069fc79f0e2418ed3b71bf21323dff5febfe3a8e5afcfcb89ca` |
 | `ros.service.list` | RELEASED | `1.1.0` | `INTERNAL` | `ec1f2adc21765f60e9c79d50d3bad9f5cd54eabc079c5dc8a4cefe191a582f70` |
 | `ros.tf.lookup` | GATEABLE | `1.1.0` | `SENSITIVE` | `2f70467c7ba9e850f14712066660babcc5866dd2a5d98d2463f4f3328078973a` |
@@ -269,6 +294,7 @@ Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c59
 | `ros.topic.bandwidth` | GATEABLE | `1.1.0` | `INTERNAL` | `7347e00c188e8b3a4c6941494eee6dd61339071c73171cc1d44e6c31dc852338` |
 | `ros.topic.describe` | RELEASED | `1.1.0` | `INTERNAL` | `b7a1f69371c5ab9884f9b47928277b49c7bce6cc28f528bd9159ea48d33a9f32` |
 | `ros.topic.list` | RELEASED | `1.1.0` | `INTERNAL` | `bdc3122355a2afd0494871dd39461c95087237e3f56428736be6548e35c05e24` |
+| `ros.topic.publish` | GATEABLE | `1.1.0` | `SENSITIVE` | `dd46b432d4f60b6059857f080d8f0aa744bf57d55ed9fb38d636388d8734b49c` |
 | `ros.topic.rate` | GATEABLE | `1.1.0` | `INTERNAL` | `2b1b373afaea5a9ccdf69a7b58a6acb403be5a04b296d0825ab50f87ae158f10` |
 | `ros.topic.sample` | GATEABLE | `1.1.0` | `SENSITIVE` | `efba3bfee2a8cd6683e2602e2f43aa80c24886a404bd8568cdca140222e506ce` |
 | `runtime.health` | RELEASED | `1.1.0` | `INTERNAL` | `a0c6413ec9c6e1c817897265ab65cf7b0eefbe3ee36e33802615e4aac328387f` |
@@ -758,6 +784,88 @@ Output schema:
 }
 ```
 
+## `app.calibration.apply`
+
+Apply one immutable calibration result under a robot execution-quiescence lease.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `60s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `b9e6418d028a670368f690d8e179508fa03a40236752ca3e1b5fda0287588dd2`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "calibration_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "expected_configuration_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "calibration_id",
+    "result_sha256",
+    "expected_configuration_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "calibration_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "rollback_token": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "calibration_id",
+    "change_id",
+    "rollback_token",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.calibration.inspect`
 
 Inspect scope, prerequisites, and bounded metadata for one calibration.
@@ -913,6 +1021,154 @@ Output schema:
   "required": [
     "status",
     "items",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.calibration.rollback`
+
+Roll back one calibration change under a new robot execution-quiescence lease.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `60s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `33d5a6606018bc3012940584e17eb8e9ed04de39dbad228fa7d0f50ab176eb8d`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "calibration_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rollback_token": {
+      "type": "string",
+      "minLength": 12
+    },
+    "expected_configuration_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "calibration_id",
+    "rollback_token",
+    "expected_configuration_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.calibration.run`
+
+Run one bounded target-defined calibration procedure that may command physical motion.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `110s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `00551e759b28470653e66c3bfc1611dba477dd77a9d41a976cf9d7014726edf6`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "calibration_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "procedure_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "execution_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 105
+    }
+  },
+  "required": [
+    "calibration_id",
+    "procedure_sha256",
+    "execution_profile_id",
+    "timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -7155,6 +7411,158 @@ Output schema:
 }
 ```
 
+## `app.robot.restart`
+
+Request one controlled stop-start transition of the robot execution lifecycle.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8cc13063d3f322385c8fc10f03dd8534fac7fde38c2c52a68e2e2ec49509a2ea`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "restart_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "restart_profile_id",
+    "safety_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.robot.start`
+
+Request entry into the target-defined robot execution-ready lifecycle state.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `cbf5d8aa8886b817ceee4652fb044939e7ea76554e49f6926f2ff0b9cb2e48e6`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "execution_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "execution_profile_id",
+    "safety_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.robot.status`
 
 Read the target robot application lifecycle state without changing it.
@@ -7210,6 +7618,77 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.robot.stop`
+
+Request a controlled ordinary stop of the target-defined robot execution lifecycle.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `7a666a53d2960f536e734d9584ba2cc5ac341b1754226d41eab15d8730473aa2`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "stop_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -10861,6 +11340,345 @@ Output schema:
 }
 ```
 
+## `hw.actuator.calibrate`
+
+Request one bounded target-defined calibration of an explicit actuator.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `60s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `0473bfd24515d8c09a33639948929c23d90d48b97742e39ef3e4d0423001ea59`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "calibration_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 55
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "calibration_profile_id",
+    "timeout_s",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.actuator.command`
+
+Submit one bounded typed command to an explicit discovered actuator.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `5c33f7e94ce3db87cd3649a5659a9ba20bb4c8c2052b739719560254a26f84ea`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "position",
+        "velocity",
+        "effort",
+        "duty_cycle"
+      ]
+    },
+    "value": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 5
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "mode",
+    "value",
+    "unit",
+    "duration_s",
+    "safety_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.actuator.disable`
+
+Request controlled disablement of one explicit actuator power or command stage.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `7f56cf3f48d1650d714ccc11df41f8c232b8380724c2b9fa3b227b5069125898`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "disable_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "disable_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.actuator.enable`
+
+Request controlled enablement of one explicit actuator power or command stage.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `f27730286c319098744aff9917d8455ac8c7fcfce0b66743364184ed51e0f6bf`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enable_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "enable_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `hw.actuator.inspect`
 
 Inspect identity, model, limits, and bounded metadata for one actuator.
@@ -11028,6 +11846,83 @@ Output schema:
 }
 ```
 
+## `hw.actuator.reset`
+
+Request a bounded reset of one explicit actuator controller.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `01d3cd72a376a4439da7c4b9478e2d5a50be052f33cc7404e3c91e535334a32a`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reset_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "reset_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `hw.actuator.status`
 
 Read health and bounded diagnostic metrics for one actuator.
@@ -11113,6 +12008,77 @@ Output schema:
   "required": [
     "status",
     "metrics",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.actuator.stop`
+
+Request a controlled operational stop of one explicit actuator.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `c318fff3777ca53e1053ae80a98a4bd66c624a124480be3f916c7137677090f0`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -11280,6 +12246,77 @@ Output schema:
   "required": [
     "status",
     "items",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.bus.reset`
+
+Request a bounded reset of one explicit hardware bus under execution quiescence.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `77674131b64d6b52bff2feed230a8e7143ea164d6be9c92f6c36756d78a93398`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reset_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "reset_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -12065,6 +13102,193 @@ Output schema:
 }
 ```
 
+## `hw.firmware.rollback`
+
+Request rollback to a previously saved firmware image under execution quiescence.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `110s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `c7ebf44f28b151ef327a2ac71e894728fe3e6298a798f92940cfb63894f9dc47`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rollback_token": {
+      "type": "string",
+      "minLength": 12
+    },
+    "expected_current_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "rollback_token",
+    "expected_current_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.firmware.update`
+
+Request firmware installation from a signed digest-pinned protected artifact.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `110s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `2a17b535206551bdab1cdb124f83c7a29c781482129bcbc09d6d5c793381cf3f`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_ref": {
+      "type": "string",
+      "minLength": 12
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "signature_ref": {
+      "type": "string",
+      "minLength": 12
+    },
+    "signature_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "compatibility_manifest_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "expected_current_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000
+    }
+  },
+  "required": [
+    "resource_id",
+    "artifact_ref",
+    "artifact_sha256",
+    "signature_ref",
+    "signature_sha256",
+    "compatibility_manifest_sha256",
+    "expected_current_sha256",
+    "max_bytes"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "rollback_token": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "rollback_token",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `hw.firmware.verify`
 
 Verify reported firmware identity or digest without changing the component.
@@ -12293,6 +13517,243 @@ Output schema:
   "required": [
     "status",
     "metrics",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.power.cycle`
+
+Request one bounded off-on power cycle of an explicit power domain.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `9b8873740477c7b735cdf3952d408eb72c5fec5032bf7c051f95ed8e5aee8023`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "power_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "off_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "power_profile_id",
+    "off_duration_s",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.power.rail.disable`
+
+Request controlled de-energization of one explicit power rail.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `5e3bdc4975099a8c2f66a757159d0369e8040a3e4f6581d913c5bb068b9ca94e`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "power_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "power_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.power.rail.enable`
+
+Request controlled energization of one explicit power rail.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `fa230c5053763f3201a3f9b33293b1afa0b0ce92edd6ea3070f06b33301cee93`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "power_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "power_profile_id",
+    "expected_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -12543,6 +14004,83 @@ Output schema:
   "required": [
     "status",
     "metrics",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.sensor.calibrate`
+
+Request one bounded calibration of an explicit sensor under execution quiescence.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `a06df556a083d6edf62c16ca3ae7894df3a2218d50fbcd410fd38fe367ce5491`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "calibration_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_configuration_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "resource_id",
+    "calibration_profile_id",
+    "expected_configuration_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -12801,6 +14339,77 @@ Output schema:
   "required": [
     "status",
     "metrics",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `hw.sensor.reset`
+
+Request reset of one explicit sensor without resetting its bus or peer devices.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `hw` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8da30c85aa487398fddfa72f29a9384d73e4a756150a647fa20464a0e5945336`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reset_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "reset_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "change_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "resource_id",
+    "change_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -18371,6 +19980,77 @@ Output schema:
 }
 ```
 
+## `ros.action.cancel`
+
+Request ordinary cancellation of one discovery-bound ROS action goal.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `15s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_GOAL, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `412ce0f9544d6d6343b2a0cc58e837a41a2b0104620f48046f41eb3ca1814ca5`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "interface_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "interface_id",
+    "goal_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "interface_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "goal_id",
+    "interface_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `ros.action.describe`
 
 Read client, server, and type metadata for one observed ROS 2 action.
@@ -18534,6 +20214,105 @@ Output schema:
     "data",
     "evidence",
     "warnings"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.action.send`
+
+Submit one typed goal to a discovery-bound allowlisted ROS action endpoint.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, SCHEMA_MISMATCH, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `596105cdcee846d8aa44b14310dc57420f0eae637ea7414aef99495e7aa77487`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "interface_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ros_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interface_schema_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "goal_json": {
+      "type": "string",
+      "maxLength": 1000000
+    },
+    "goal_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 3600
+    }
+  },
+  "required": [
+    "interface_id",
+    "ros_type",
+    "interface_schema_sha256",
+    "goal_json",
+    "goal_sha256",
+    "safety_profile_id",
+    "execution_timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "interface_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "goal_id",
+    "interface_id",
+    "observed_at"
   ],
   "additionalProperties": false
 }
@@ -18718,6 +20497,206 @@ Output schema:
     "data",
     "evidence",
     "warnings"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.bag.play`
+
+Request bounded playback of a digest-pinned protected bag through an allowlisted route.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `35s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, SCHEMA_MISMATCH, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `9b527e5ca035ab8b9645caa2c570991ef23d7caef368b2a44973ddabbbc1dc3a`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "artifact_ref": {
+      "type": "string",
+      "minLength": 12
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 1000000000
+    },
+    "topic_binding_set_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topic_binding_set_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 30
+    },
+    "rate_scale": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 10
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "artifact_ref",
+    "artifact_sha256",
+    "max_bytes",
+    "topic_binding_set_id",
+    "topic_binding_set_sha256",
+    "duration_s",
+    "rate_scale",
+    "safety_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "playback_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "playback_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.bag.record`
+
+Create one bounded protected bag artifact from discovery-bound allowlisted topics.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `35s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, LIMIT_EXCEEDED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `90fb4dfa989c6da842d88ad638e9d5b1ab94eb1eae37b035c61384c43276b453`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "interface_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "interface_set_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 30
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 1000000000
+    }
+  },
+  "required": [
+    "interface_ids",
+    "interface_set_sha256",
+    "duration_s",
+    "max_bytes"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "recording_id": {
+      "type": "string"
+    },
+    "artifact_ref": {
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "type": "string"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "recording_id",
+    "artifact_ref",
+    "artifact_sha256",
+    "bytes",
+    "observed_at"
   ],
   "additionalProperties": false
 }
@@ -20180,6 +22159,105 @@ Output schema:
 }
 ```
 
+## `ros.service.call`
+
+Call one discovery-bound allowlisted ROS service with a digest-bound typed request.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, SCHEMA_MISMATCH, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `b411ddce1b418a8deec8ce154b7cd1e8b10ba04584cb95f36ff8352ab7e4195f`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "interface_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ros_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interface_schema_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "request_json": {
+      "type": "string",
+      "maxLength": 1000000
+    },
+    "request_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 25
+    }
+  },
+  "required": [
+    "interface_id",
+    "ros_type",
+    "interface_schema_sha256",
+    "request_json",
+    "request_sha256",
+    "safety_profile_id",
+    "timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "interface_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "request_id",
+    "interface_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `ros.service.describe`
 
 Read declared type metadata for one observed ROS service.
@@ -21039,6 +23117,105 @@ Output schema:
     "data",
     "evidence",
     "warnings"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.topic.publish`
+
+Publish one typed bounded message to a discovery-bound allowlisted ROS topic.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, SCHEMA_MISMATCH, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `dd46b432d4f60b6059857f080d8f0aa744bf57d55ed9fb38d636388d8734b49c`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "interface_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ros_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interface_schema_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "payload_json": {
+      "type": "string",
+      "maxLength": 1000000
+    },
+    "payload_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deadline_s": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 5
+    }
+  },
+  "required": [
+    "interface_id",
+    "ros_type",
+    "interface_schema_sha256",
+    "payload_json",
+    "payload_sha256",
+    "safety_profile_id",
+    "deadline_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "interface_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "request_id",
+    "interface_id",
+    "observed_at"
   ],
   "additionalProperties": false
 }

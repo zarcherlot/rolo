@@ -62,10 +62,11 @@ stop 也不能用普通速度零指令冒充。
 不得隐式 apply/set。Adapter 可以复用厂商规划器或校验器，但发现其接口同时产生动作或持久
 变更时，不能将该接口绑定到这些只读 operation。
 
-## 尚待明确的 DRAFT 边界
+## DRAFT 边界状态
 
-当前已识别的跨 operation 命名与对象边界均已形成产品决策。后续 DRAFT 保留原因主要是
-动作安全边界、补偿语义或目标资源身份尚未完成契约化，不授权 Adapter Agent 自行补写。
+当前 294 个 Registry operation 的跨 operation 命名、对象边界和风险语义均已形成产品决策，
+`DRAFT` 已清零。这里的完整仅表示产品契约明确，不表示目标存在实现，也不授权 Adapter Agent
+绕过 discovery、adapter 或 conformance 门禁。
 
 ## 已完成的产品决策
 
@@ -99,3 +100,11 @@ stop 也不能用普通速度零指令冒充。
 16. 普通 cancel 只向 supervisor 请求中止，因此保持 R2；直接启动、恢复、暂停、停止、执行、
     回零或改变执行器目标的 operation 均为 R3。普通 stop 与 protective/emergency stop 保持
     独立语义和授权路径，不能互相冒充。
+17. Actuator enable/disable/stop/reset/calibrate 以及 power rail/cycle 可能直接改变物理稳定性，
+    统一采用 R3，不因名称表示“关闭”或“停止”而降为 R2。
+18. 通用 ROS publish/service/action send 采用保守 R3，只允许绑定 discovery 产生的稳定
+    interface ID、ROS type、schema 摘要和 payload 摘要；action cancel 保持 R2。
+19. Bag record 为有时长、字节和 topic 白名单约束的 R2 SENSITIVE artifact 写入；bag play
+    因可能重放控制指令采用 R3，并要求 artifact 与 topic binding set 摘要、watchdog 和 interlock。
+20. Robot start/stop/restart 表示整机执行生命周期并采用 R3；calibration run 可能运动所以为 R3，
+    calibration apply/rollback 与 sensor/bus/firmware mutation 采用带静止 lease 的 R2。
