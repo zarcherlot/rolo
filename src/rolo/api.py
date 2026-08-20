@@ -15,6 +15,10 @@ from rolo.capability_read_models import (
     get_capability_detail,
 )
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
+from rolo.discovery_history_read_models import (
+    DiscoverySnapshotCollection,
+    build_discovery_snapshot_collection,
+)
 from rolo.fleet_read_models import (
     FleetBlockerCollection,
     FleetCollection,
@@ -37,6 +41,10 @@ from rolo.topology_history_read_models import (
     TopologySnapshotCollection,
     build_topology_diff,
     build_topology_snapshot_collection,
+)
+from rolo.topology_path_read_models import (
+    TopologyPathExplanation,
+    explain_topology_path,
 )
 from rolo.wiki_read_models import RobotWikiSnapshot, build_robot_wiki
 from rolo.workbench_read_models import (
@@ -179,6 +187,29 @@ async def get_robot_wiki(robot_id: str, request: Request) -> RobotWikiSnapshot:
         ) from exc
 
 
+@app.get(
+    "/v1/robots/{robot_id}/discoveries",
+    response_model=DiscoverySnapshotCollection,
+)
+async def list_robot_discoveries(
+    robot_id: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> DiscoverySnapshotCollection:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return build_discovery_snapshot_collection(
+        runtime.settings.rolo_artifact_dir,
+        robot_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @app.get("/v1/robots/{robot_id}/topology", response_model=RobotTopology)
 async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
     runtime = get_runtime(request)
@@ -188,6 +219,34 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
     return topology
+
+
+@app.get(
+    "/v1/robots/{robot_id}/topology/path",
+    response_model=TopologyPathExplanation,
+)
+async def get_robot_topology_path(
+    robot_id: str,
+    request: Request,
+    from_node: Annotated[str, Query(alias="from", min_length=1, max_length=128)],
+    to_node: Annotated[str, Query(alias="to", min_length=1, max_length=128)],
+    max_hops: Annotated[int, Query(ge=1, le=12)] = 8,
+) -> TopologyPathExplanation:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
+    try:
+        return explain_topology_path(
+            topology,
+            from_node,
+            to_node,
+            max_hops=max_hops,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown topology node") from exc
 
 
 @app.get(

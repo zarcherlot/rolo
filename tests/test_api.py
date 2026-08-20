@@ -27,6 +27,14 @@ def test_health_and_robot_registry() -> None:
         pipeline = client.get("/v1/robots/demo_diff/pipeline")
         overview = client.get("/v1/robots/demo_diff/overview")
         topology = client.get("/v1/robots/demo_diff/topology")
+        topology_payload = topology.json()
+        topology_path = client.get(
+            "/v1/robots/demo_diff/topology/path",
+            params={
+                "from": topology_payload["edges"][0]["source"],
+                "to": topology_payload["edges"][0]["target"],
+            },
+        )
         capabilities = client.get("/v1/robots/demo_diff/capabilities?limit=10")
         runs = client.get("/v1/robots/demo_diff/runs")
         evidence = client.get("/v1/robots/demo_diff/evidence?limit=5")
@@ -80,6 +88,11 @@ def test_health_and_robot_registry() -> None:
         "Application",
     }
     assert all(node["evidence_ids"] for node in topology.json()["nodes"])
+    assert topology_path.status_code == 200
+    assert topology_path.json()["schema_version"] == "rolo-topology-path-explanation/v1"
+    assert topology_path.json()["found"] is True
+    assert topology_path.json()["hop_count"] == 1
+    assert topology_path.json()["steps"][0]["evidence_ids"]
     assert capabilities.status_code == 200
     assert capabilities.json()["schema_version"] == "rolo-capability-collection/v1"
     assert capabilities.json()["total"] == 294
@@ -313,8 +326,20 @@ def test_overview_openapi_contract_is_versioned() -> None:
         topology_diff_schema["properties"]["schema_version"]["const"]
         == "rolo-topology-diff/v1"
     )
+    topology_path_schema = openapi["components"]["schemas"]["TopologyPathExplanation"]
+    assert (
+        topology_path_schema["properties"]["schema_version"]["const"]
+        == "rolo-topology-path-explanation/v1"
+    )
     wiki_schema = openapi["components"]["schemas"]["RobotWikiSnapshot"]
     assert wiki_schema["properties"]["schema_version"]["const"] == "rolo-robot-wiki/v1"
+    discovery_history_schema = openapi["components"]["schemas"][
+        "DiscoverySnapshotCollection"
+    ]
+    assert (
+        discovery_history_schema["properties"]["schema_version"]["const"]
+        == "rolo-discovery-snapshot-collection/v1"
+    )
     fleet_schema = openapi["components"]["schemas"]["FleetCollection"]
     assert fleet_schema["properties"]["schema_version"]["const"] == "rolo-fleet-collection/v1"
     blocker_schema = openapi["components"]["schemas"]["FleetBlockerCollection"]
@@ -334,6 +359,26 @@ def test_robot_wiki_is_unavailable_without_verified_discovery(tmp_path: Path, mo
 
     assert response.status_code == 404
     assert response.json()["detail"] == "robot Wiki is unavailable"
+
+
+def test_discovery_history_has_a_verified_empty_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from rolo.core.config import get_settings
+
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/discoveries?limit=10&offset=0")
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == (
+        "rolo-discovery-snapshot-collection/v1"
+    )
+    assert response.json()["items"] == []
+    assert response.json()["integrity_status"] == "verified"
+    assert "physical outcomes" in " ".join(response.json()["limitations"])
 
 
 def test_topology_snapshot_history_requires_verified_release_evidence(
