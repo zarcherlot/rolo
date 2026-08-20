@@ -19,15 +19,15 @@ def test_authored_contracts_compile_into_the_complete_product_vocabulary() -> No
     catalog = load_operation_contracts()
     registry = canonical_operation_registry()
 
-    assert len(catalog.contracts) == 234
+    assert len(catalog.contracts) == 240
     assert len(registry.operations) == 294
     assert sum(item.lifecycle == ContractLifecycle.RELEASED for item in catalog.contracts) == 62
-    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 172
+    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 178
     assert sum(item.lifecycle == ContractLifecycle.DEPRECATED for item in catalog.contracts) == 0
     draft_count = sum(
         item.contract_lifecycle == ContractLifecycle.DRAFT for item in registry.operations
     )
-    assert draft_count == 60
+    assert draft_count == 54
     assert registry.contract_catalog_sha256 == catalog.sha256
     assert len(catalog.sha256) == 64
     assert {item.version for item in catalog.contracts} == {"1.1.0", "2.0.0"}
@@ -307,6 +307,62 @@ def test_tuning_evaluation_is_bounded_observation_without_execution() -> None:
     assert contract.rate_limit != "on_demand"
     assert "not applied" in contract.postconditions[0]
     assert "robot motion" in contract.postconditions[0]
+
+
+def test_parameter_and_tuning_mutations_require_quiescence_only_when_applying() -> None:
+    catalog = load_operation_contracts().by_operation()
+    operations = {
+        "app.parameter.set",
+        "app.parameter.rollback",
+        "app.tuning.baseline.create",
+        "app.tuning.candidate.create",
+        "app.tuning.commit",
+        "app.tuning.rollback",
+    }
+    applying = {
+        "app.parameter.set",
+        "app.parameter.rollback",
+        "app.tuning.commit",
+        "app.tuning.rollback",
+    }
+
+    assert all(catalog[name].lifecycle == ContractLifecycle.GATEABLE for name in operations)
+    assert all(catalog[name].risk == "R2" for name in operations)
+    assert all(catalog[name].access == "write" for name in operations)
+    assert all(
+        catalog[name].data_classification.value == "SENSITIVE" for name in operations
+    )
+    assert all(catalog[name].requires_quiescence for name in applying)
+    assert all(
+        not catalog[name].requires_quiescence for name in operations - applying
+    )
+    assert "artifact_ref" in (
+        catalog["app.tuning.candidate.create"].input_schema["required"]
+    )
+    assert "artifact_sha256" in (
+        catalog["app.tuning.candidate.create"].input_schema["required"]
+    )
+    assert "rollback_token" in catalog["app.parameter.set"].output_schema["required"]
+    assert "rollback_token" in catalog["app.tuning.commit"].output_schema["required"]
+    assert "robot motion is started" in (
+        catalog["app.tuning.baseline.create"].postconditions[0]
+    )
+
+
+def test_quiescence_flag_is_rejected_outside_r2_writes() -> None:
+    contract = load_operation_contracts().by_operation()["app.parameter.set"]
+    changed = deepcopy(contract.model_dump(mode="json"))
+    changed["access"] = "read"
+    changed["risk"] = "R0"
+    changed["result_semantics"] = "OBSERVATION"
+
+    with pytest.raises(ValueError, match="quiescence may only be required by R2 write"):
+        OperationContract.model_validate(changed)
+
+    changed = deepcopy(contract.model_dump(mode="json"))
+    changed["max_duration_s"] = 116
+    with pytest.raises(ValueError, match="leave provider lease margin"):
+        OperationContract.model_validate(changed)
 
 
 def test_generic_execution_runs_are_r3_and_have_targeted_cancellation() -> None:

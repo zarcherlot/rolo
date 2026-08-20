@@ -263,6 +263,11 @@
       "default": null,
       "title": "Compensation Operation"
     },
+    "requires_quiescence": {
+      "default": false,
+      "title": "Requires Quiescence",
+      "type": "boolean"
+    },
     "observation_overhead": {
       "default": "BOUNDED",
       "enum": [

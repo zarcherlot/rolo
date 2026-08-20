@@ -1,0 +1,78 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-execution-quiescence-lease/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "ALLOW",
+        "DENY"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "title": "Lease Id",
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "operation": {
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "input_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Input Sha256",
+      "type": "string"
+    },
+    "scope": {
+      "const": "robot_execution",
+      "title": "Scope",
+      "type": "string"
+    },
+    "state_revision": {
+      "minLength": 1,
+      "title": "State Revision",
+      "type": "string"
+    },
+    "quiescent_since": {
+      "format": "date-time",
+      "title": "Quiescent Since",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "decision",
+    "lease_id",
+    "request_id",
+    "robot_id",
+    "operation",
+    "input_sha256",
+    "scope",
+    "state_revision",
+    "quiescent_since",
+    "expires_at"
+  ],
+  "title": "ExecutionQuiescenceLease",
+  "type": "object"
+}

@@ -10,8 +10,10 @@ import pytest
 from rolo.core.hashing import sha256_file
 from rolo.core.models import ToolDescriptor
 from rolo.invocation_policy import (
+    _request_quiescence_lease,
     _request_r3_authorization,
     authorize_content_resource,
+    authorize_execution_quiescence,
     authorize_invocation,
     authorize_write_access,
     validate_config_mutation_input,
@@ -21,7 +23,13 @@ from rolo.invocation_policy import (
 )
 
 
-def _descriptor(operation: str, *, risk: str, access: str = "write") -> ToolDescriptor:
+def _descriptor(
+    operation: str,
+    *,
+    risk: str,
+    access: str = "write",
+    requires_quiescence: bool = False,
+) -> ToolDescriptor:
     return ToolDescriptor(
         operation=operation,
         canonical_cli=["robotctl", "tool", "invoke", operation],
@@ -35,6 +43,7 @@ def _descriptor(operation: str, *, risk: str, access: str = "write") -> ToolDesc
         contract_version="1.1.0",
         contract_sha256="0" * 64,
         data_classification="INTERNAL" if access == "write" else "SENSITIVE",
+        requires_quiescence=requires_quiescence,
     )
 
 
@@ -176,6 +185,100 @@ def test_r3_provider_capability_is_short_lived_and_bound(
 
     assert capability.authorization_id == "approval-1"
     assert capability.operation == "app.teleop.velocity"
+
+
+def test_quiescence_provider_returns_bound_lease_covering_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = tmp_path / "quiescence-provider"
+    provider.write_text("test provider", encoding="utf-8")
+    if os.name == "posix":
+        provider.chmod(0o700)
+    monkeypatch.setattr(
+        "rolo.invocation_policy.validate_protected_file",
+        lambda path, **kwargs: path,
+    )
+
+    def fake_run(args: list[str], **kwargs: object) -> SimpleNamespace:
+        assert args[-1] == "lease"
+        request = json.loads(str(kwargs["input"]))
+        now = datetime.now(timezone.utc)
+        lease = {
+            "schema_version": "rolo-execution-quiescence-lease/v1",
+            "decision": "ALLOW",
+            "lease_id": "lease-1",
+            "request_id": request["request_id"],
+            "robot_id": request["robot_id"],
+            "operation": request["operation"],
+            "input_sha256": request["input_sha256"],
+            "scope": "robot_execution",
+            "state_revision": "state-7",
+            "quiescent_since": (now - timedelta(seconds=5)).isoformat(),
+            "expires_at": (
+                now + timedelta(seconds=request["requested_lease_s"] + 5)
+            ).isoformat(),
+        }
+        return SimpleNamespace(returncode=0, stdout=json.dumps(lease), stderr="")
+
+    monkeypatch.setattr("rolo.invocation_policy.subprocess.run", fake_run)
+
+    lease = _request_quiescence_lease(
+        provider,
+        robot_id="robot-1",
+        operation="app.parameter.set",
+        payload={"id": "controller.gain", "value": 1.0},
+        principal="operator",
+        required_lease_s=30,
+    )
+
+    assert lease.lease_id == "lease-1"
+    assert lease.scope == "robot_execution"
+
+    monkeypatch.setattr(
+        "rolo.invocation_policy._identity",
+        lambda: ("operator", {"operator"}, set()),
+    )
+    audit = tmp_path / "quiescence-audit.jsonl"
+    authorize_execution_quiescence(
+        _descriptor(
+            "app.parameter.set",
+            risk="R2",
+            requires_quiescence=True,
+        ),
+        robot_id="robot-1",
+        payload={"id": "controller.gain", "value": 1.0},
+        audit_path=audit,
+        provider_path=provider,
+        required_lease_s=30,
+    )
+    record = json.loads(audit.read_text(encoding="utf-8"))
+    assert record["policy_domain"] == "quiescence"
+    assert record["outcome"] == "ALLOWED"
+    assert record["lease_id"] == "lease-1"
+    assert "controller.gain" not in audit.read_text(encoding="utf-8")
+
+
+def test_quiescence_required_write_fails_closed_without_provider(tmp_path: Path) -> None:
+    descriptor = _descriptor(
+        "app.parameter.set",
+        risk="R2",
+        requires_quiescence=True,
+    )
+    audit = tmp_path / "audit.jsonl"
+
+    with pytest.raises(ValueError, match="quiescence provider is missing"):
+        authorize_execution_quiescence(
+            descriptor,
+            robot_id="robot-1",
+            payload={"id": "controller.gain"},
+            audit_path=audit,
+            provider_path=None,
+            required_lease_s=30,
+        )
+
+    record = json.loads(audit.read_text(encoding="utf-8"))
+    assert record["policy_domain"] == "quiescence"
+    assert record["outcome"] == "DENIED"
 
 
 def test_content_resource_requires_protected_scope_and_byte_limit(tmp_path: Path) -> None:

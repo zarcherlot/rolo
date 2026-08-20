@@ -88,6 +88,7 @@ class OperationContract(BaseModel):
     rate_limit: str = "on_demand"
     retry_policy: str = "none"
     compensation_operation: str | None = None
+    requires_quiescence: bool = False
 
     @model_validator(mode="after")
     def validate_contract(self) -> OperationContract:
@@ -104,6 +105,14 @@ class OperationContract(BaseModel):
             raise ValueError("only deprecated contracts may declare replacement_operation")
         if self.access == "read" and self.risk in {"R2", "R3"}:
             raise ValueError("read operations may only use R0 or R1 risk")
+        if self.requires_quiescence and not (
+            self.access == "write" and self.risk == "R2"
+        ):
+            raise ValueError("quiescence may only be required by R2 write operations")
+        if self.requires_quiescence and self.max_duration_s > 115:
+            raise ValueError(
+                "quiescence-required operation duration must leave provider lease margin"
+            )
         if self.access == "read" and self.risk == "R1":
             if self.observation_overhead != ObservationOverhead.ELEVATED:
                 raise ValueError("R1 read operations require ELEVATED observation overhead")
@@ -433,6 +442,8 @@ def render_contract_catalog(catalog: OperationContractCatalog) -> str:
                 f"- Replacement operation: `{contract.replacement_operation or 'none'}`",
                 f"- Idempotent/cancelable: `{str(contract.idempotent).lower()}` / "
                 f"`{str(contract.cancelable).lower()}`",
+                f"- Requires execution quiescence: "
+                f"`{str(contract.requires_quiescence).lower()}`",
                 f"- Maximum duration: `{contract.max_duration_s:g}s`",
                 f"- Canonical CLI template: `{' '.join(contract.canonical_cli)}`",
                 f"- Error codes: `{', '.join(contract.error_codes)}`",

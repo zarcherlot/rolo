@@ -15,6 +15,7 @@ from rolo.invocation_policy import (
     validate_config_mutation_result,
     validate_content_result,
     validate_map_import_input,
+    validate_tuning_candidate_input,
 )
 from rolo.schema_subset import validate_object
 from rolo.stages.adapt.models import (
@@ -125,6 +126,7 @@ def invoke_adapter(
     policy_path: Path | None = None,
     audit_path: Path | None = None,
     r3_authorizer_path: Path | None = None,
+    quiescence_provider_path: Path | None = None,
     artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     """Invoke one catalogued operation through the immutable adapter RPC bundle."""
@@ -153,6 +155,8 @@ def invoke_adapter(
         audit_path=audit_path,
         payload=payload,
         r3_authorizer_path=r3_authorizer_path,
+        quiescence_provider_path=quiescence_provider_path,
+        required_quiescence_s=min(timeout_s, descriptor.max_duration_s) + 5,
     )
     validate_config_mutation_input(
         descriptor,
@@ -160,6 +164,11 @@ def invoke_adapter(
         artifact_root=artifact_root,
     )
     validate_map_import_input(
+        descriptor,
+        payload=payload,
+        artifact_root=artifact_root,
+    )
+    validate_tuning_candidate_input(
         descriptor,
         payload=payload,
         artifact_root=artifact_root,

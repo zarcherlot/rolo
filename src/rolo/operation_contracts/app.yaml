@@ -1705,6 +1705,87 @@ contracts:
       required: [status, id, valid, findings, observed_at]
       additionalProperties: false
 
+  - <<: *mutation_defaults
+    contract_id: app.parameter.set
+    operation: app.parameter.set
+    data_classification: SENSITIVE
+    description: Request one typed application parameter update under an execution-quiescence lease.
+    requires_quiescence: true
+    capability_requirements:
+      [typed parameter mutation route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        id resolves to a mutable non-SECRET parameter; expected_current_revision matches; the
+        execution supervisor holds a robot-wide quiescence lease for the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges the update request and returns a revision plus opaque rollback
+        token; parameter state must be read separately and no process, task or motion is started.
+    side_effects: [May change one persisted or in-memory application parameter value.]
+    resource_locks: [application parameter identified by id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        value:
+          type: object
+          properties:
+            type: {type: string, enum: [boolean, integer, number, string, json]}
+            value_json: {type: string, maxLength: 1000000}
+          required: [type, value_json]
+          additionalProperties: false
+        expected_current_revision: {type: string, minLength: 1}
+      required: [id, value, expected_current_revision]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        revision: {type: string}
+        rollback_token: {type: string}
+        observed_at: {type: string}
+      required: [status, id, revision, rollback_token, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.parameter.rollback
+    operation: app.parameter.rollback
+    data_classification: SENSITIVE
+    description: Request rollback of one parameter revision under a new execution-quiescence lease.
+    requires_quiescence: true
+    capability_requirements:
+      [typed parameter rollback route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        rollback_token identifies saved state for id; expected_current_revision matches; the
+        execution supervisor holds a robot-wide quiescence lease for the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges rollback only; parameter state must be read separately and no
+        process, task or motion is started or resumed.
+    side_effects: [May restore one previously saved application parameter value.]
+    resource_locks: [application parameter identified by id, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        id: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+        expected_current_revision: {type: string, minLength: 1}
+      required: [id, rollback_token, expected_current_revision]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        id: {type: string}
+        revision: {type: string}
+        observed_at: {type: string}
+      required: [status, id, revision, observed_at]
+      additionalProperties: false
+
   - <<: *adapter_defaults
     contract_id: app.map.export
     operation: app.map.export
@@ -1972,6 +2053,156 @@ contracts:
         findings: {type: array, maxItems: 100, items: {type: string}}
         observed_at: {type: string}
       required: [status, candidate_id, baseline_id, verdict, metrics, findings, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.tuning.baseline.create
+    operation: app.tuning.baseline.create
+    data_classification: SENSITIVE
+    description: Create an immutable tuning baseline from existing parameter and evidence references.
+    capability_requirements:
+      [immutable tuning baseline repository, protected OS write policy and exact operation allowlist]
+    preconditions:
+      - >-
+        parameter_snapshot_id, evidence_set_id and metric_set_id resolve to immutable bounded records;
+        none may contain SECRET data.
+    postconditions:
+      - >-
+        The response acknowledges baseline record creation only; parameters are not applied and no
+        test, task or robot motion is started.
+    side_effects: [Creates immutable tuning baseline metadata and bounded references.]
+    resource_locks: [tuning baseline repository]
+    input_schema:
+      type: object
+      properties:
+        name: {type: string, minLength: 1, maxLength: 256}
+        parameter_snapshot_id: {type: string, minLength: 1}
+        evidence_set_id: {type: string, minLength: 1}
+        metric_set_id: {type: string, minLength: 1}
+      required: [name, parameter_snapshot_id, evidence_set_id, metric_set_id]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        baseline_id: {type: string}
+        revision: {type: string}
+        observed_at: {type: string}
+      required: [status, baseline_id, revision, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.tuning.candidate.create
+    operation: app.tuning.candidate.create
+    data_classification: SENSITIVE
+    description: Create an inactive tuning candidate from a digest-pinned bounded patch artifact.
+    capability_requirements:
+      [protected artifact resolver with SHA-256 verification, inactive tuning candidate repository,
+        protected OS write policy and exact operation allowlist]
+    preconditions:
+      - >-
+        baseline_id exists; artifact_ref resolves inside the protected artifact root and matches
+        artifact_sha256; the patch contains no SECRET-classified parameter.
+    postconditions:
+      - >-
+        The response acknowledges inactive candidate creation only; candidate values are not applied
+        and no test, task or robot motion is started.
+    side_effects: [Creates inactive tuning candidate metadata and copies one validated patch artifact.]
+    resource_locks: [tuning candidate repository]
+    input_schema:
+      type: object
+      properties:
+        baseline_id: {type: string, minLength: 1}
+        name: {type: string, minLength: 1, maxLength: 256}
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        format: {type: string, enum: [json]}
+        max_bytes: {type: integer, minimum: 1, maximum: 10000000}
+      required: [baseline_id, name, artifact_ref, artifact_sha256, format, max_bytes]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        candidate_id: {type: string}
+        revision: {type: string}
+        observed_at: {type: string}
+      required: [status, candidate_id, revision, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.tuning.commit
+    operation: app.tuning.commit
+    data_classification: SENSITIVE
+    description: Request activation of one evaluated candidate under an execution-quiescence lease.
+    requires_quiescence: true
+    capability_requirements:
+      [tuning candidate activation route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        candidate_id and evaluation_id identify an accepted immutable candidate; expected_active_revision
+        matches; the execution supervisor holds a robot-wide quiescence lease for the invocation.
+    postconditions:
+      - >-
+        The response acknowledges commit and returns an opaque rollback token; active parameters must
+        be observed separately and no test, task, process restart or robot motion is started.
+    side_effects: [May replace the active application parameter revision with the candidate revision.]
+    resource_locks: [active application parameter revision, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        candidate_id: {type: string, minLength: 1}
+        evaluation_id: {type: string, minLength: 1}
+        expected_active_revision: {type: string, minLength: 1}
+      required: [candidate_id, evaluation_id, expected_active_revision]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        commit_id: {type: string}
+        revision: {type: string}
+        rollback_token: {type: string}
+        observed_at: {type: string}
+      required: [status, commit_id, revision, rollback_token, observed_at]
+      additionalProperties: false
+
+  - <<: *mutation_defaults
+    contract_id: app.tuning.rollback
+    operation: app.tuning.rollback
+    data_classification: SENSITIVE
+    description: Request rollback of a tuning commit under a new execution-quiescence lease.
+    requires_quiescence: true
+    capability_requirements:
+      [tuning rollback route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        rollback_token belongs to commit_id; expected_active_revision matches; the execution supervisor
+        holds a robot-wide quiescence lease for the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges rollback only; active parameters must be observed separately and no
+        test, task, process restart or robot motion is started or resumed.
+    side_effects: [May replace the active application parameter revision with a saved revision.]
+    resource_locks: [active application parameter revision, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        commit_id: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+        expected_active_revision: {type: string, minLength: 1}
+      required: [commit_id, rollback_token, expected_active_revision]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        commit_id: {type: string}
+        revision: {type: string}
+        observed_at: {type: string}
+      required: [status, commit_id, revision, observed_at]
       additionalProperties: false
 
   - <<: *r3_run_defaults

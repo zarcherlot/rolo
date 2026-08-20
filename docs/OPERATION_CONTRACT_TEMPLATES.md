@@ -56,6 +56,31 @@ rate_limit: one scan per bus per 30 seconds
 `ELEVATED`、非空 `side_effects` 和非 `on_demand` 的 `rate_limit` 缺一不可；read 不允许
 R2/R3。
 
+## R2 执行静止写操作
+
+不直接发出运动命令、但在机器人运行期间可能立即改变控制行为的参数应用类 operation，
+使用 R2 并声明机器字段：
+
+```yaml
+risk: R2
+access: write
+result_semantics: ACKNOWLEDGEMENT_ONLY
+requires_quiescence: true
+capability_requirements:
+  - protected OS write policy and exact operation allowlist
+  - protected execution supervisor providing a bound quiescence lease
+preconditions:
+  - The execution supervisor holds robot-wide quiescence for the complete invocation.
+postconditions:
+  - The response acknowledges the request only; no task or motion is started.
+resource_locks:
+  - robot execution quiescence lease
+```
+
+Runtime 必须通过 `ROLO_QUIESCENCE_PROVIDER` 取得覆盖完整 invocation timeout 的绑定 lease；
+静态白名单、CLI 参数、Agent 自述和 adapter 返回值都不能代替。该字段只允许用于 R2 write。
+只创建 inactive baseline/candidate 记录且不 apply 的 operation 不应滥用此门禁。
+
 ## R1 有界流式观测
 
 短时 sample/watch/follow 不允许依赖进程超时隐式截断，必须声明 `BOUNDED_STREAM`，输入

@@ -454,6 +454,8 @@ class AdapterPromotionService:
                     or descriptor.retry_policy != definition.retry_policy
                     or descriptor.compensation_operation
                     != definition.compensation_operation
+                    or descriptor.requires_quiescence
+                    != definition.requires_quiescence
                 ):
                     raise ValueError(f"Tool Catalog contract differs from Registry: {operation}")
             if any(tool.availability == "DISCOVERED_UNVERIFIED" for tool in catalog.tools):

@@ -166,6 +166,7 @@ class ToolDescriptor(BaseModel):
     )
     retry_policy: str = "bounded_exponential_backoff_for_read_only_probe"
     compensation_operation: str | None = None
+    requires_quiescence: bool = False
     observation_overhead: Literal["NEGLIGIBLE", "BOUNDED", "ELEVATED"] = "BOUNDED"
     evidence: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)

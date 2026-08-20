@@ -64,6 +64,26 @@ request、robot、operation 和输入摘要，且有效期大于零、不超过�
 协议的机器可读 Schema 为 `R3AuthorizationRequest.schema.json` 和
 `R3AuthorizationCapability.schema.json`。
 
+## 执行静止门禁
+
+`requires_quiescence=true` 是独立于 R2 写授权的机器契约。它用于参数应用、参数回滚、
+tuning commit/rollback 等不直接发出运动命令、但在目标正在执行时可能立即改变控制行为的
+operation。只把“机器人应当空闲”写入 `preconditions` 不构成运行时证明。
+
+`ROLO_QUIESCENCE_PROVIDER` 必须指向 root/Administrators/SYSTEM 所有且不可被普通用户修改
+的执行监督器提供器。Runtime 向其发送 principal、robot、operation、规范化输入 SHA-256 和
+所需 lease 时长，不发送业务 payload。提供器必须原子地确认当前不存在目标执行，并在整个
+lease 有效期内阻止新的 task、test、navigation、manipulation、teleop 或其他物理执行启动。
+
+提供器返回的 lease 必须绑定单次 request、robot、operation 和输入摘要，scope 固定为
+`robot_execution`，包含执行状态 revision、静止起始时间和到期时间。Lease 必须覆盖完整
+operation timeout，最长 120 秒。缺少 provider、目标非静止、无法取得执行锁、字段不匹配、
+lease 太短或审计失败均闭锁拒绝。机器可读协议见
+`ExecutionQuiescenceRequest.schema.json` 和 `ExecutionQuiescenceLease.schema.json`。
+
+Baseline/candidate 等只创建非激活记录的 operation 不要求静止；它们必须明确保证不 apply
+参数、不运行测试、不启动任务或运动。静止 lease 也不是 R3 动作授权，不能用于启动执行。
+
 ## 内容资源分类
 
 `file.read`、配置内容和日志 operation 除 SENSITIVE 身份授权外，还必须匹配
@@ -93,9 +113,10 @@ operation 白名单、SENSITIVE 策略和审计。Token 无效、过期、已消
 
 ## 审计
 
-每次 SENSITIVE、内容资源、write 或 R3 允许/拒绝都会追加一条
+每次 SENSITIVE、内容资源、write、R3 或 execution quiescence 允许/拒绝都会追加一条
 `rolo-invocation-audit/v1` JSONL 记录，包含策略域、时间、robot、operation、数据分类、
-OS principal、结果和原因；不记录输入或输出 payload。R3 允许记录只附授权 ID。无法写入
+OS principal、结果和原因；不记录输入或输出 payload。R3 允许记录只附授权 ID，静止允许
+记录只附 lease ID。无法写入
 审计日志时调用失败关闭。审计文件本身应由部署环境实施留存、轮转和访问控制。
 
 ## 覆盖范围

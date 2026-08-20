@@ -57,6 +57,7 @@ class CanonicalOperationDefinition(BaseModel):
     rate_limit: str = "on_demand"
     retry_policy: str = "none"
     compensation_operation: str | None = None
+    requires_quiescence: bool = False
 
 
 class CanonicalOperationRegistry(BaseModel):
@@ -626,6 +627,9 @@ def canonical_operation_registry() -> CanonicalOperationRegistry:
                     compensation_operation=(
                         contract.compensation_operation if contract else None
                     ),
+                    requires_quiescence=(
+                        contract.requires_quiescence if contract else False
+                    ),
                 )
             )
     if len({item.operation for item in definitions}) != len(definitions):
@@ -843,6 +847,7 @@ def materialize_active_catalog(
                 rate_limit=definition.rate_limit,
                 retry_policy=definition.retry_policy,
                 compensation_operation=definition.compensation_operation,
+                requires_quiescence=definition.requires_quiescence,
                 evidence=candidate.evidence if candidate else [],
                 limitations=[
                     *(candidate.limitations if candidate else []),

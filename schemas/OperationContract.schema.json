@@ -261,6 +261,11 @@
       ],
       "default": null,
       "title": "Compensation Operation"
+    },
+    "requires_quiescence": {
+      "default": false,
+      "title": "Requires Quiescence",
+      "type": "boolean"
     }
   },
   "required": [

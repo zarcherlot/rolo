@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-execution-quiescence-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "principal": {
+      "minLength": 1,
+      "title": "Principal",
+      "type": "string"
+    },
+    "robot_id": {
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "operation": {
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "input_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Input Sha256",
+      "type": "string"
+    },
+    "requested_lease_s": {
+      "exclusiveMinimum": 0,
+      "maximum": 120,
+      "title": "Requested Lease S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "observed_at",
+    "principal",
+    "robot_id",
+    "operation",
+    "input_sha256",
+    "requested_lease_s"
+  ],
+  "title": "ExecutionQuiescenceRequest",
+  "type": "object"
+}

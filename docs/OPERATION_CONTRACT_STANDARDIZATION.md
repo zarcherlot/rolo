@@ -14,8 +14,8 @@ Registry Operation 的日常治理、生命周期升级/降级和运行时使用
 可复制的 R0、R1、R3 与数据敏感度最小模板见
 [OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
 
-当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、172 个为 `GATEABLE`、
-60 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、178 个为 `GATEABLE`、
+54 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
 SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
 容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
 契约及 builtin 不依赖
@@ -111,6 +111,12 @@ Rolo 控制面的 episode list/inspect/export 与 checkpoint list/create/restore
 `GATEABLE` 契约。Episode 查询和导出只处理有界 manifest、事件元数据与 artifact 引用；
 checkpoint restore 只产生新的 Rolo 控制面 revision，不应用真实参数、不恢复主机进程、
 不恢复任务执行，也不触发机器人运动。
+
+Application parameter set/rollback 与 tuning baseline/candidate create、commit/rollback 已形成
+`GATEABLE` 契约。Baseline/candidate 只创建 inactive 记录；candidate patch 使用有界、摘要
+固定的 protected artifact。真正应用参数的 set/rollback/commit/rollback 为 R2，并声明
+`requires_quiescence=true`：runtime 必须从受保护执行监督器取得覆盖完整调用时限的绑定 lease，
+无法证明执行静止时闭锁拒绝。该 lease 不能授权任务、测试或机器人运动。
 
 ## 标准化范围
 

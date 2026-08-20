@@ -550,6 +550,7 @@ def tool_invoke(
                 policy_path=settings.rolo_invocation_policy,
                 audit_path=settings.rolo_invocation_audit_log,
                 r3_authorizer_path=settings.rolo_r3_authorizer,
+                quiescence_provider_path=settings.rolo_quiescence_provider,
                 artifact_root=settings.rolo_artifact_dir,
             )
         )

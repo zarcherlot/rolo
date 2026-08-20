@@ -16,6 +16,8 @@ from rolo.core.models import (
     ToolDescriptor,
 )
 from rolo.invocation_policy import (
+    ExecutionQuiescenceLease,
+    ExecutionQuiescenceRequest,
     InvocationPolicy,
     R3AuthorizationCapability,
     R3AuthorizationRequest,
@@ -53,6 +55,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationContract,
     OperationContractCatalog,
     InvocationPolicy,
+    ExecutionQuiescenceRequest,
+    ExecutionQuiescenceLease,
     R3AuthorizationRequest,
     R3AuthorizationCapability,
     RobotCapability,

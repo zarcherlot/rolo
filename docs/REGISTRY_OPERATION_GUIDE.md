@@ -38,6 +38,7 @@ Application 四层展示；代码内部用 `control`、`hw`、`linux`、`middlew
 | 风险 | `risk`、`data_classification` | 动作风险与数据泄露风险相互独立 |
 | 运行 | `max_duration_s`、`rate_limit`、`retry_policy` | 必须有明确上限，禁止隐式无限运行 |
 | 状态 | `idempotent`、`cancelable`、`compensation_operation` | 可取消写操作必须有有效补偿 operation |
+| 静止 | `requires_quiescence` | R2 参数应用类操作必须取得覆盖完整调用时限的执行静止 lease |
 | 安全 | `preconditions`、`postconditions`、`side_effects`、`resource_locks` | R3 四项不得为空；其他写操作也应明确声明 |
 | 语义 | `semantic_units`、`coordinate_frames`、`time_semantics` | 单位、坐标系和时间来源不能由 adapter 猜测 |
 | 能力 | `capability_requirements`、`canonical_cli` | 声明目标能力与唯一规范调用入口 |
@@ -156,7 +157,7 @@ major change 审查。提高风险或数据分级虽然更保守，也可能使�
 |---|---|---|---|
 | R0 | 低开销、无状态变更的有界观察 | 版本、状态快照、元数据 | read；有界时间和输出 |
 | R1 | 高开销/主动探测观察，或不直接触发物理动作的低风险受控操作 | 总线扫描、有界 monitor | read 时必须 `ELEVATED`、声明副作用和 rate limit；若为 write 仍走写授权 |
-| R2 | 改变主机、应用或非直接运动状态的操作 | service restart、map load、普通 cancel | write 默认拒绝；受保护 OS 身份 + 精确 operation 白名单 + 审计 |
+| R2 | 改变主机、应用或非直接运动状态的操作 | service restart、map load、普通 cancel | write 默认拒绝；受保护 OS 身份 + 精确 operation 白名单 + 审计；必要时另加静止 lease |
 | R3 | 直接或间接可能触发执行器、机器人运动或安全敏感行为 | task/test run、actuator command | 静态策略不得放行；必须使用单次、短时、请求绑定的外部授权能力 |
 
 R3 包括名字看似抽象、但可能间接触发运动的 workflow，例如 `app.task.start`、
@@ -166,6 +167,11 @@ protective stop 或 emergency stop，也不能声称目标已经停止。
 R3 授权能力必须绑定随机 request、robot、operation、规范化输入 SHA-256 和到期时间，最长
 五分钟。提供器必须由 root/Administrators/SYSTEM 所有且普通用户不可修改。任何超时、字段
 不匹配、提供器异常或审计失败都闭锁拒绝。
+
+`requires_quiescence=true` 只允许用于 R2 write。Runtime 必须从受保护的执行监督器取得与
+request、robot、operation、输入摘要和完整调用时限绑定的 `robot_execution` lease；provider
+必须在 lease 内阻止新执行启动。它证明“本次参数类变更在执行静止窗口内”，但不授权 R3
+动作，也不证明参数变更后的行为正确。
 
 ## 7. 数据分级
 
@@ -255,7 +261,8 @@ Runtime 会将本次请求的身份、robot、operation 和输入摘要交给外
 能力后才启动 gated adapter。CLI 参数、Agent 自述或 adapter 返回值都不能替代授权。
 
 部署使用 `ROLO_INVOCATION_POLICY` 指定策略文件，`ROLO_INVOCATION_AUDIT_LOG` 指定审计
-JSONL，`ROLO_R3_AUTHORIZER` 指定 R3 provider。策略和 provider 的主机权限不满足要求时
+JSONL，`ROLO_R3_AUTHORIZER` 指定 R3 provider，`ROLO_QUIESCENCE_PROVIDER` 指定执行静止
+provider。策略和 provider 的主机权限不满足要求时
 调用闭锁拒绝。
 
 ## 9. 新增、修改和删除 operation
@@ -292,6 +299,7 @@ adapter 注册；迁移现有 active release 后再从 Registry 删除。必要�
 - read/write、risk、classification、result semantics 是否一致；
 - R1 观察负载和流边界是否完整；
 - R2 是否要求精确 write allowlist；R3 是否只能由外部短时能力放行；
+- 参数应用类 R2 是否声明并实际执行 `requires_quiescence` 门禁；
 - 写返回值是否仅为 ACK，状态闭环是否由独立观察 operation 完成；
 - cancel、session、replacement 是否指向存在且有效的配对 operation；
 - contract digest、adapter bundle、release manifest 和 Tool Catalog 是否一致；

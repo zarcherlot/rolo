@@ -84,6 +84,35 @@ class R3AuthorizationRequest(BaseModel):
     input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class ExecutionQuiescenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-execution-quiescence-request/v1"]
+    request_id: str = Field(min_length=1)
+    observed_at: datetime
+    principal: str = Field(min_length=1)
+    robot_id: str = Field(min_length=1)
+    operation: str = Field(min_length=1)
+    input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    requested_lease_s: float = Field(gt=0, le=120)
+
+
+class ExecutionQuiescenceLease(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-execution-quiescence-lease/v1"]
+    decision: Literal["ALLOW", "DENY"]
+    lease_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+    robot_id: str = Field(min_length=1)
+    operation: str = Field(min_length=1)
+    input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope: Literal["robot_execution"]
+    state_revision: str = Field(min_length=1)
+    quiescent_since: datetime
+    expires_at: datetime
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -256,11 +285,12 @@ def _write_audit(
     robot_id: str,
     operation: str,
     classification: str,
-    policy_domain: Literal["data", "content", "write", "r3"],
+    policy_domain: Literal["data", "content", "write", "r3", "quiescence"],
     user: str,
     outcome: str,
     reason: str,
     authorization_id: str | None = None,
+    lease_id: str | None = None,
 ) -> None:
     try:
         audit_path.parent.mkdir(parents=True, exist_ok=True)
@@ -277,6 +307,8 @@ def _write_audit(
         }
         if authorization_id is not None:
             record["authorization_id"] = authorization_id
+        if lease_id is not None:
+            record["lease_id"] = lease_id
         with audit_path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
             stream.write("\n")
@@ -292,6 +324,8 @@ def authorize_invocation(
     audit_path: Path | None,
     payload: dict[str, object],
     r3_authorizer_path: Path | None,
+    quiescence_provider_path: Path | None = None,
+    required_quiescence_s: float = 30.0,
 ) -> None:
     authorize_data_access(
         descriptor.data_classification,
@@ -316,6 +350,14 @@ def authorize_invocation(
             audit_path=audit_path,
             r3_authorizer_path=r3_authorizer_path,
         )
+    authorize_execution_quiescence(
+        descriptor,
+        robot_id=robot_id,
+        payload=payload,
+        audit_path=audit_path,
+        provider_path=quiescence_provider_path,
+        required_lease_s=required_quiescence_s,
+    )
 
 
 def authorize_data_access(
@@ -408,7 +450,16 @@ _CONTENT_OPERATIONS = {
     "linux.log.follow",
 }
 
-_CONFIG_MUTATION_OPERATIONS = {"linux.config.apply", "linux.config.rollback"}
+_ROLLBACK_TOKEN_INPUT_OPERATIONS = {
+    "linux.config.rollback",
+    "app.parameter.rollback",
+    "app.tuning.rollback",
+}
+_ROLLBACK_TOKEN_OUTPUT_OPERATIONS = {
+    "linux.config.apply",
+    "app.parameter.set",
+    "app.tuning.commit",
+}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -595,16 +646,16 @@ def validate_config_mutation_input(
     payload: dict[str, object],
     artifact_root: Path | None,
 ) -> None:
-    if descriptor.operation not in _CONFIG_MUTATION_OPERATIONS:
-        return
-    if descriptor.operation == "linux.config.rollback":
+    if descriptor.operation in _ROLLBACK_TOKEN_INPUT_OPERATIONS:
         token = payload.get("rollback_token")
         if (
             not isinstance(token, str)
             or not token.startswith("rollback://")
             or len(token) <= len("rollback://")
         ):
-            raise ValueError("config rollback requires a system-issued rollback:// token")
+            raise ValueError("rollback requires a system-issued rollback:// token")
+        return
+    if descriptor.operation != "linux.config.apply":
         return
     _validate_digest_pinned_artifact(
         payload,
@@ -628,10 +679,25 @@ def validate_map_import_input(
     )
 
 
+def validate_tuning_candidate_input(
+    descriptor: ToolDescriptor,
+    *,
+    payload: dict[str, object],
+    artifact_root: Path | None,
+) -> None:
+    if descriptor.operation != "app.tuning.candidate.create":
+        return
+    _validate_digest_pinned_artifact(
+        payload,
+        artifact_root=artifact_root,
+        label="tuning candidate",
+    )
+
+
 def validate_config_mutation_result(
     descriptor: ToolDescriptor, *, result: dict[str, object]
 ) -> None:
-    if descriptor.operation != "linux.config.apply":
+    if descriptor.operation not in _ROLLBACK_TOKEN_OUTPUT_OPERATIONS:
         return
     token = result.get("rollback_token")
     if (
@@ -639,7 +705,132 @@ def validate_config_mutation_result(
         or not token.startswith("rollback://")
         or len(token) <= len("rollback://")
     ):
-        raise ValueError("config apply must return a system-issued rollback:// token")
+        raise ValueError("mutation must return a system-issued rollback:// token")
+
+
+def _request_quiescence_lease(
+    provider_path: Path,
+    *,
+    robot_id: str,
+    operation: str,
+    payload: dict[str, object],
+    principal: str,
+    required_lease_s: float,
+) -> ExecutionQuiescenceLease:
+    if required_lease_s <= 0 or required_lease_s > 120:
+        raise ValueError("quiescence lease duration must be within 120 seconds")
+    provider = validate_protected_file(
+        provider_path,
+        label="execution quiescence provider",
+        require_admin_owner=True,
+    )
+    if os.name == "posix" and not os.access(provider, os.X_OK):
+        raise ValueError("execution quiescence provider is not executable")
+    request_id = str(uuid4())
+    input_sha256 = _payload_sha256(payload)
+    request = ExecutionQuiescenceRequest(
+        schema_version="rolo-execution-quiescence-request/v1",
+        request_id=request_id,
+        observed_at=datetime.now(timezone.utc),
+        principal=principal,
+        robot_id=robot_id,
+        operation=operation,
+        input_sha256=input_sha256,
+        requested_lease_s=required_lease_s,
+    )
+    completed = subprocess.run(
+        [str(provider), "lease"],
+        input=request.model_dump_json(),
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=5,
+    )
+    if completed.returncode != 0:
+        raise ValueError("execution quiescence provider rejected or failed the request")
+    try:
+        lease = ExecutionQuiescenceLease.model_validate_json(completed.stdout)
+    except ValueError as exc:
+        raise ValueError("execution quiescence provider returned an invalid lease") from exc
+    now = datetime.now(timezone.utc)
+    if lease.expires_at.tzinfo is None or lease.quiescent_since.tzinfo is None:
+        raise ValueError("execution quiescence timestamps must include a timezone")
+    if lease.decision != "ALLOW":
+        raise ValueError("execution quiescence provider denied the invocation")
+    if (
+        lease.request_id != request_id
+        or lease.robot_id != robot_id
+        or lease.operation != operation
+        or lease.input_sha256 != input_sha256
+    ):
+        raise ValueError("execution quiescence lease is not bound to this invocation")
+    lifetime_s = (lease.expires_at.astimezone(timezone.utc) - now).total_seconds()
+    if lifetime_s < required_lease_s or lifetime_s > 120:
+        raise ValueError("execution quiescence lease does not cover the invocation timeout")
+    if lease.quiescent_since.astimezone(timezone.utc) > now:
+        raise ValueError("execution quiescence lease has a future observation time")
+    return lease
+
+
+def authorize_execution_quiescence(
+    descriptor: ToolDescriptor,
+    *,
+    robot_id: str,
+    payload: dict[str, object],
+    audit_path: Path | None,
+    provider_path: Path | None,
+    required_lease_s: float,
+) -> None:
+    if not descriptor.requires_quiescence:
+        return
+    if descriptor.access != "write" or descriptor.risk != "R2":
+        raise ValueError("execution quiescence is only valid for R2 write operations")
+    user, _, _ = _identity()
+    if audit_path is None:
+        raise ValueError("execution quiescence requires an audit log path")
+    outcome = "DENIED"
+    reason = "execution quiescence provider is missing"
+    lease_id: str | None = None
+    try:
+        if provider_path is None:
+            raise ValueError(reason)
+        lease = _request_quiescence_lease(
+            provider_path,
+            robot_id=robot_id,
+            operation=descriptor.operation,
+            payload=payload,
+            principal=user,
+            required_lease_s=required_lease_s,
+        )
+        outcome = "ALLOWED"
+        lease_id = lease.lease_id
+        reason = "execution supervisor returned a bound quiescence lease"
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        reason = str(exc)
+        _write_audit(
+            audit_path,
+            robot_id=robot_id,
+            operation=descriptor.operation,
+            classification=descriptor.data_classification or "UNCLASSIFIED",
+            policy_domain="quiescence",
+            user=user,
+            outcome=outcome,
+            reason=reason,
+        )
+        raise ValueError(reason) from exc
+    _write_audit(
+        audit_path,
+        robot_id=robot_id,
+        operation=descriptor.operation,
+        classification=descriptor.data_classification or "UNCLASSIFIED",
+        policy_domain="quiescence",
+        user=user,
+        outcome=outcome,
+        reason=reason,
+        lease_id=lease_id,
+    )
 
 
 def _request_r3_authorization(
