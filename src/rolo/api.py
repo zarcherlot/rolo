@@ -15,6 +15,12 @@ from rolo.capability_read_models import (
     get_capability_detail,
 )
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
+from rolo.fleet_read_models import (
+    FleetBlockerCollection,
+    FleetCollection,
+    build_fleet_blocker_collection,
+    build_fleet_collection,
+)
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
     LifecycleRunDetail,
@@ -22,7 +28,7 @@ from rolo.lifecycle_read_models import (
     build_lifecycle_run_collection,
     get_lifecycle_run_detail,
 )
-from rolo.read_models import RobotOverview, build_robot_overview
+from rolo.read_models import OverviewState, RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
@@ -76,6 +82,54 @@ async def health(request: Request) -> HealthResponse:
 @app.get("/v1/robots", response_model=list[RobotCapability])
 async def list_robots(request: Request) -> list[RobotCapability]:
     return get_runtime(request).registry.list()
+
+
+def _fleet_pipelines(runtime: RobotUseRuntime) -> dict[str, PipelineAssessment]:
+    return {
+        robot.robot_id: assess_pipeline(
+            runtime.settings.rolo_artifact_dir,
+            robot.robot_id,
+        )
+        for robot in runtime.registry.list()
+    }
+
+
+@app.get("/v1/fleet", response_model=FleetCollection)
+async def get_fleet(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    state: Annotated[OverviewState | None, Query()] = None,
+    query: Annotated[str | None, Query(max_length=128)] = None,
+) -> FleetCollection:
+    runtime = get_runtime(request)
+    return build_fleet_collection(
+        runtime.registry.list(),
+        _fleet_pipelines(runtime),
+        limit=limit,
+        offset=offset,
+        state=state,
+        query=query,
+    )
+
+
+@app.get("/v1/blockers", response_model=FleetBlockerCollection)
+async def list_fleet_blockers(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    robot_id: Annotated[str | None, Query(max_length=128)] = None,
+    stage: Annotated[StageName | None, Query()] = None,
+) -> FleetBlockerCollection:
+    runtime = get_runtime(request)
+    return build_fleet_blocker_collection(
+        runtime.registry.list(),
+        _fleet_pipelines(runtime),
+        limit=limit,
+        offset=offset,
+        robot_id=robot_id,
+        stage=stage,
+    )
 
 
 @app.get("/v1/robots/{robot_id}", response_model=RobotCapability)

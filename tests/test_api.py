@@ -22,6 +22,8 @@ def test_health_and_robot_registry() -> None:
     with TestClient(app) as client:
         health = client.get("/health")
         robots = client.get("/v1/robots")
+        fleet = client.get("/v1/fleet")
+        blockers = client.get("/v1/blockers?limit=1")
         pipeline = client.get("/v1/robots/demo_diff/pipeline")
         overview = client.get("/v1/robots/demo_diff/overview")
         topology = client.get("/v1/robots/demo_diff/topology")
@@ -35,6 +37,16 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["robots"] == 2
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
+    assert fleet.status_code == 200
+    assert fleet.json()["schema_version"] == "rolo-fleet-collection/v1"
+    assert fleet.json()["total"] == 2
+    assert fleet.json()["attention"] == 2
+    assert fleet.json()["blocker_count"] == blockers.json()["total"]
+    assert blockers.status_code == 200
+    assert blockers.json()["schema_version"] == "rolo-fleet-blocker-collection/v1"
+    assert blockers.json()["total"] > 0
+    assert len(blockers.json()["items"]) == 1
+    assert blockers.json()["next_offset"] == 1
     assert [stage["stage"] for stage in pipeline.json()["stages"]] == [
         "adapt",
         "diagnose",
@@ -303,6 +315,13 @@ def test_overview_openapi_contract_is_versioned() -> None:
     )
     wiki_schema = openapi["components"]["schemas"]["RobotWikiSnapshot"]
     assert wiki_schema["properties"]["schema_version"]["const"] == "rolo-robot-wiki/v1"
+    fleet_schema = openapi["components"]["schemas"]["FleetCollection"]
+    assert fleet_schema["properties"]["schema_version"]["const"] == "rolo-fleet-collection/v1"
+    blocker_schema = openapi["components"]["schemas"]["FleetBlockerCollection"]
+    assert (
+        blocker_schema["properties"]["schema_version"]["const"]
+        == "rolo-fleet-blocker-collection/v1"
+    )
 
 
 def test_robot_wiki_is_unavailable_without_verified_discovery(tmp_path: Path, monkeypatch) -> None:
