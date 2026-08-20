@@ -92,6 +92,8 @@ class EvidenceRecord(BaseModel):
         "lifecycle_run",
         "lifecycle_gate",
         "lifecycle_handoff",
+        "wiki_insight",
+        "wiki_diff",
     ]
     integrity_status: Literal["validated", "verified"]
     classification: Literal["INTERNAL"] = "INTERNAL"
@@ -258,6 +260,34 @@ def _add_lifecycle_evidence(
                 observed_at=spec.observed_at,
                 freshness="unknown",
                 confidence=spec.confidence,
+                reference_hint=_reference_hint(spec.reference),
+                reference_digest=_digest(spec.reference),
+                limitations=spec.limitations,
+            ),
+        )
+
+
+def _add_wiki_evidence(
+    records: dict[str, EvidenceRecord],
+    artifact_root: Path,
+    robot_id: str,
+) -> None:
+    from rolo.wiki_read_models import wiki_evidence_specs
+
+    for spec in wiki_evidence_specs(artifact_root, robot_id).values():
+        _add_evidence(
+            records,
+            EvidenceRecord(
+                evidence_id=spec.evidence_id,
+                robot_id=robot_id,
+                title=spec.title,
+                summary=spec.summary,
+                authority=EvidenceAuthority.OBSERVED,
+                source_kind=spec.source_kind,
+                integrity_status="verified",
+                observed_at=spec.observed_at,
+                freshness="unknown",
+                confidence=0.6 if spec.source_kind == "wiki_insight" else 1.0,
                 reference_hint=_reference_hint(spec.reference),
                 reference_digest=_digest(spec.reference),
                 limitations=spec.limitations,
@@ -566,6 +596,7 @@ def build_evidence_collection(
                 )
     if artifact_root is not None:
         _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
+        _add_wiki_evidence(records, artifact_root, robot.robot_id)
     items = sorted(records.values(), key=lambda item: (item.title, item.evidence_id))
     if authority is not None:
         items = [item for item in items if item.authority is authority]
@@ -607,6 +638,7 @@ def find_evidence(
                     )
         if artifact_root is not None:
             _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
+            _add_wiki_evidence(records, artifact_root, robot.robot_id)
         if record := records.get(evidence_id):
             return record
     return None

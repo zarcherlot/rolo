@@ -32,6 +32,7 @@ from rolo.topology_history_read_models import (
     build_topology_diff,
     build_topology_snapshot_collection,
 )
+from rolo.wiki_read_models import RobotWikiSnapshot, build_robot_wiki
 from rolo.workbench_read_models import (
     EvidenceAuthority,
     EvidenceCollection,
@@ -104,6 +105,24 @@ async def get_robot_overview(robot_id: str, request: Request) -> RobotOverview:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     pipeline = assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
     return build_robot_overview(robot, pipeline)
+
+
+@app.get("/v1/robots/{robot_id}/wiki", response_model=RobotWikiSnapshot)
+async def get_robot_wiki(robot_id: str, request: Request) -> RobotWikiSnapshot:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_robot_wiki(runtime.settings.rolo_artifact_dir, robot_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="robot Wiki is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="robot Wiki evidence failed integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/topology", response_model=RobotTopology)

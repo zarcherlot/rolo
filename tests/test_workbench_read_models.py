@@ -19,6 +19,7 @@ from rolo.topology_history_read_models import (
     build_topology_diff,
     build_topology_snapshot_collection,
 )
+from rolo.wiki_read_models import WikiEvidenceSpec
 from rolo.workbench_read_models import (
     EvidenceAuthority,
     TopologyState,
@@ -90,6 +91,46 @@ def test_evidence_collection_is_bounded_and_opaque(tmp_path) -> None:
     found = find_evidence([ROBOT], tmp_path, collection.items[0].evidence_id)
     assert found is not None
     assert found.evidence_id == collection.items[0].evidence_id
+
+
+def test_wiki_machine_evidence_is_resolvable_by_opaque_id(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence_id = "ev_wiki_machine_123"
+    spec = WikiEvidenceSpec(
+        evidence_id=evidence_id,
+        title="Wiki insight: Architecture",
+        summary="A bounded advisory inference.",
+        source_kind="wiki_insight",
+        reference="discovery:disc-1:wiki-insight:0",
+        observed_at=NOW,
+        limitations=["Advisory inference only."],
+    )
+    monkeypatch.setattr(
+        "rolo.wiki_read_models.wiki_evidence_specs",
+        lambda root, robot_id: {evidence_id: spec},
+    )
+
+    collection = build_evidence_collection(
+        ROBOT,
+        tmp_path,
+        artifact_root=tmp_path,
+        observed_at=NOW,
+    )
+    record = next(item for item in collection.items if item.evidence_id == evidence_id)
+    resolved = find_evidence(
+        [ROBOT],
+        tmp_path,
+        evidence_id,
+        artifact_root=tmp_path,
+    )
+
+    assert record.source_kind == "wiki_insight"
+    assert record.authority is EvidenceAuthority.OBSERVED
+    assert record.integrity_status == "verified"
+    assert resolved is not None
+    assert resolved.evidence_id == evidence_id
 
 
 def test_gated_topology_overlays_hash_verified_state_graph(

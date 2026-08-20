@@ -301,6 +301,20 @@ def test_overview_openapi_contract_is_versioned() -> None:
         topology_diff_schema["properties"]["schema_version"]["const"]
         == "rolo-topology-diff/v1"
     )
+    wiki_schema = openapi["components"]["schemas"]["RobotWikiSnapshot"]
+    assert wiki_schema["properties"]["schema_version"]["const"] == "rolo-robot-wiki/v1"
+
+
+def test_robot_wiki_is_unavailable_without_verified_discovery(tmp_path: Path, monkeypatch) -> None:
+    from rolo.core.config import get_settings
+
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/wiki")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "robot Wiki is unavailable"
 
 
 def test_topology_snapshot_history_requires_verified_release_evidence(
