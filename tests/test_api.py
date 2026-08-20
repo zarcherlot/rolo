@@ -21,6 +21,7 @@ def test_health_and_robot_registry() -> None:
         health = client.get("/health")
         robots = client.get("/v1/robots")
         pipeline = client.get("/v1/robots/demo_diff/pipeline")
+        overview = client.get("/v1/robots/demo_diff/overview")
         status = client.get("/v1/robot-use/status")
 
     assert health.status_code == 200
@@ -33,14 +34,63 @@ def test_health_and_robot_registry() -> None:
         "diagnose",
         "verify",
     ]
+    assert overview.status_code == 200
+    assert overview.json()["schema_version"] == "rolo-robot-overview/v1"
+    assert overview.json()["robot_id"] == "demo_diff"
+    assert overview.json()["state"] == "ATTENTION"
+    assert overview.json()["next_action"] == "Run adapt discovery"
+    assert overview.json()["blockers"][0] == {
+        "schema_version": "rolo-blocker-summary/v1",
+        "blocker_id": overview.json()["blockers"][0]["blocker_id"],
+        "stage": "adapt",
+        "message": "Run adapt discovery",
+        "recommended_action": "Run adapt discovery",
+        "owner": "adapter_agent",
+        "observed_at": overview.json()["blockers"][0]["observed_at"],
+        "freshness": "fresh",
+        "source_kind": "pipeline_assessment",
+        "confidence": 1.0,
+        "integrity_status": "validated",
+        "evidence_refs": [],
+    }
     assert status.json()["local_visual_detection"] is False
 
 
 def test_unknown_robot_is_404() -> None:
     with TestClient(app) as client:
         response = client.get("/v1/robots/not-a-robot")
+        overview = client.get("/v1/robots/not-a-robot/overview")
 
     assert response.status_code == 404
+    assert overview.status_code == 404
+
+
+def test_overview_openapi_contract_is_versioned() -> None:
+    openapi = app.openapi()
+    operation = openapi["paths"]["/v1/robots/{robot_id}/overview"]["get"]
+    response = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert response == {"$ref": "#/components/schemas/RobotOverview"}
+
+    schema = openapi["components"]["schemas"]["RobotOverview"]
+    assert set(schema["required"]) >= {
+        "robot_id",
+        "state",
+        "summary",
+        "next_action",
+        "pipeline",
+        "observed_at",
+    }
+    assert schema["properties"]["schema_version"]["const"] == "rolo-robot-overview/v1"
+    pipeline_schema = openapi["components"]["schemas"]["PipelineAssessment"]
+    assert (
+        pipeline_schema["properties"]["schema_version"]["const"]
+        == "robot-three-stage-pipeline/v1"
+    )
+    stage_schema = openapi["components"]["schemas"]["StageAssessment"]
+    assert (
+        stage_schema["properties"]["schema_version"]["const"]
+        == "robot-stage-assessment/v1"
+    )
 
 
 def test_robot_use_poll_uses_offline_backend() -> None:

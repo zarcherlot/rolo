@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 
 from rolo import __version__
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
+from rolo.read_models import RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
 from rolo.stages.contracts import PipelineAssessment
 from rolo.stages.pipeline import assess_pipeline
@@ -61,6 +62,17 @@ async def get_robot_pipeline(robot_id: str, request: Request) -> PipelineAssessm
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
+
+
+@app.get("/v1/robots/{robot_id}/overview", response_model=RobotOverview)
+async def get_robot_overview(robot_id: str, request: Request) -> RobotOverview:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    pipeline = assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
+    return build_robot_overview(robot, pipeline)
 
 
 @app.get("/v1/robot-use/status")

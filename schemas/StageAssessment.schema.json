@@ -32,6 +32,7 @@
   },
   "properties": {
     "schema_version": {
+      "const": "robot-stage-assessment/v1",
       "default": "robot-stage-assessment/v1",
       "title": "Schema Version",
       "type": "string"

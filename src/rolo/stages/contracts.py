@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +30,7 @@ class StageStatus(str, Enum):
 
 
 class StageAssessment(BaseModel):
-    schema_version: str = "robot-stage-assessment/v1"
+    schema_version: Literal["robot-stage-assessment/v1"] = "robot-stage-assessment/v1"
     stage: StageName
     robot_id: str
     status: StageStatus
@@ -43,7 +44,7 @@ class StageAssessment(BaseModel):
 
 
 class PipelineAssessment(BaseModel):
-    schema_version: str = "robot-three-stage-pipeline/v1"
+    schema_version: Literal["robot-three-stage-pipeline/v1"] = "robot-three-stage-pipeline/v1"
     robot_id: str
     stages: list[StageAssessment]
     observed_at: datetime = Field(default_factory=utc_now)
