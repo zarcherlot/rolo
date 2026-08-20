@@ -102,8 +102,19 @@
     },
     "RouteEvidence": {
       "additionalProperties": false,
-      "description": "One normalized operation endpoint observed or declared during discovery.",
+      "description": "One stable, typed operation route observed or declared during discovery.",
       "properties": {
+        "schema_version": {
+          "const": "robot-route-evidence/v2",
+          "default": "robot-route-evidence/v2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "resource_id": {
+          "minLength": 1,
+          "title": "Resource Id",
+          "type": "string"
+        },
         "kind": {
           "enum": [
             "ros_topic",
@@ -115,24 +126,99 @@
           "title": "Kind",
           "type": "string"
         },
-        "name": {
+        "endpoint": {
           "minLength": 1,
-          "title": "Name",
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "interface_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Type"
+        },
+        "interface_schema_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Schema Sha256"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Id"
+        },
+        "runtime_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Revision"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "evidence_origin": {
+          "enum": [
+            "OBSERVED_RUNTIME",
+            "DECLARED_STATIC"
+          ],
+          "title": "Evidence Origin",
           "type": "string"
         },
         "source": {
+          "minLength": 1,
           "title": "Source",
           "type": "string"
         },
-        "observed": {
-          "default": false,
-          "title": "Observed",
-          "type": "boolean"
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
         }
       },
       "required": [
+        "resource_id",
         "kind",
-        "name",
+        "endpoint",
+        "evidence_origin",
         "source"
       ],
       "title": "RouteEvidence",

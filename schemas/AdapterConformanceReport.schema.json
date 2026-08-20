@@ -61,12 +61,25 @@
   "description": "Advisory Agent report retained as audit input to the independent Rolo gate.",
   "properties": {
     "schema_version": {
-      "default": "robot-adapter-conformance/v2",
+      "default": "robot-adapter-conformance/v3",
       "enum": [
         "robot-adapter-conformance/v1",
-        "robot-adapter-conformance/v2"
+        "robot-adapter-conformance/v2",
+        "robot-adapter-conformance/v3"
       ],
       "title": "Schema Version",
+      "type": "string"
+    },
+    "owner": {
+      "const": "ADAPTER_AGENT",
+      "default": "ADAPTER_AGENT",
+      "title": "Owner",
+      "type": "string"
+    },
+    "coverage": {
+      "const": "BUNDLE_CANDIDATES_ONLY",
+      "default": "BUNDLE_CANDIDATES_ONLY",
+      "title": "Coverage",
       "type": "string"
     },
     "robot_id": {

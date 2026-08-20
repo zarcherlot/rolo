@@ -173,14 +173,51 @@ class ToolDescriptor(BaseModel):
 
 
 class RouteEvidence(BaseModel):
-    """One normalized operation endpoint observed or declared during discovery."""
+    """One stable, typed operation route observed or declared during discovery."""
 
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: Literal["robot-route-evidence/v2"] = "robot-route-evidence/v2"
+    resource_id: str = Field(min_length=1)
     kind: Literal["ros_topic", "ros_service", "ros_action", "device", "cli"]
-    name: str = Field(min_length=1)
-    source: str
-    observed: bool = False
+    endpoint: str = Field(min_length=1)
+    interface_type: str | None = None
+    interface_schema_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    provider_id: str | None = None
+    runtime_revision: str | None = None
+    observed_at: datetime | None = None
+    evidence_origin: Literal["OBSERVED_RUNTIME", "DECLARED_STATIC"]
+    source: str = Field(min_length=1)
+    limitations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_v1(cls, value: Any) -> Any:
+        """Accept stored v1 evidence while exposing only the v2 representation."""
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        endpoint = str(migrated.pop("name", migrated.get("endpoint", ""))).strip()
+        kind = str(migrated.get("kind", "")).strip()
+        original_endpoint = endpoint
+        if kind.startswith("ros_") and endpoint:
+            endpoint = f"/{endpoint.lstrip('/')}"
+        migrated["endpoint"] = endpoint
+        if not migrated.get("resource_id") or migrated["resource_id"] == (
+            f"{kind}:{original_endpoint}"
+        ):
+            migrated["resource_id"] = f"{kind}:{endpoint}"
+        observed = bool(migrated.pop("observed", False))
+        migrated.setdefault(
+            "evidence_origin",
+            "OBSERVED_RUNTIME" if observed else "DECLARED_STATIC",
+        )
+        migrated["schema_version"] = "robot-route-evidence/v2"
+        return migrated
+
+    @property
+    def observed(self) -> bool:
+        return self.evidence_origin == "OBSERVED_RUNTIME"
 
 
 class OperationCandidate(BaseModel):

@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings, load_yaml
-from rolo.core.models import RobotCapability
+from rolo.core.models import ProbeResult, RobotCapability
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.discovery import (
     UBUNTU_ROS_DEFAULTS,
@@ -19,6 +19,7 @@ from rolo.stages.adapt.discovery import (
     load_latest_report,
 )
 from rolo.stages.adapt.enrollment import EnrollmentService
+from rolo.stages.adapt.operation_registry import materialize_active_catalog
 
 
 def test_linux_hardware_probe_degrades_when_bus_enumeration_is_unavailable(
@@ -427,6 +428,70 @@ def test_discovery_allows_missing_hardware_profile_in_test_environment(tmp_path:
     assert state["semantic_status"] == "PARTIAL"
     assert "platform.drive_model" in state["unresolved_semantics"]
     assert report.status == "PARTIAL"
+
+
+@pytest.mark.parametrize(
+    ("vendor", "source", "expected_candidates"),
+    [
+        (
+            "unitree_go1",
+            'send_udp("192.168.123.10", 8007, high_command)\n',
+            set(),
+        ),
+        (
+            "wheeltec",
+            'node.create_publisher(Twist, "/cmd_vel", 10)\n'
+            'node.create_subscription(Odometry, "/odom", callback, 10)\n',
+            {"app.teleop.velocity", "app.localization.status"},
+        ),
+    ],
+)
+def test_source_only_vendor_projects_never_create_verified_operations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    vendor: str,
+    source: str,
+    expected_candidates: set[str],
+) -> None:
+    project = tmp_path / vendor
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        f'[project]\nname = "{vendor}"\n\n[project.scripts]\n{vendor} = "driver:main"\n',
+        encoding="utf-8",
+    )
+    (project / "driver.py").write_text(source, encoding="utf-8")
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run",
+        lambda self: ProbeResult(
+            layer="ros",
+            status="UNAVAILABLE",
+            data={"nodes": [], "topics": [], "services": [], "actions": []},
+        ),
+    )
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
+    registry.load()
+
+    report, _ = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+        robot=registry.get("demo_diff"),
+        source_roots=[project],
+    )
+    candidates = {candidate.operation: candidate for candidate in report.operation_candidates}
+    catalog = materialize_active_catalog(report)
+
+    assert set(candidates) == expected_candidates
+    assert all(candidate.status == "DISCOVERED_UNVERIFIED" for candidate in candidates.values())
+    assert all(
+        route.evidence_origin == "DECLARED_STATIC"
+        for candidate in candidates.values()
+        for route in candidate.route_evidence
+    )
+    assert all(
+        route.endpoint.startswith("/")
+        for candidate in candidates.values()
+        for route in candidate.route_evidence
+        if route.kind.startswith("ros_")
+    )
+    assert not any(tool.availability == "VERIFIED" for tool in catalog.tools)
 
 
 def test_discovery_and_product_registry_cli(

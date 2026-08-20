@@ -65,13 +65,19 @@ stage packages.
    behavior, idempotency, cancellation, reliability, or safety. The gate also executes the
    package's bounded `describe` command and requires every
    generated operation to resolve to exactly one bundle entrypoint. The Agent reports only
-   `LOCAL_STATIC` deterministic tests. Rolo independently establishes that an exactly normalized,
-   structured target endpoint was observed, without requiring the operation itself to report success.
+   `LOCAL_STATIC` deterministic tests for bundle candidates; it does not report on Rolo builtin
+   operations. Rolo owns and validates builtin contracts independently. Rolo also establishes that
+   an exactly normalized Route Evidence v2 endpoint was observed, without requiring the operation
+   itself to report success. Route identity covers ROS topic/service/action, CLI, and device routes
+   and can bind interface type/schema digest, provider identity, runtime revision, and observation
+   time when the target exposes them.
    Adapt does not judge physical outcome
    correctness, reliability, performance, or safety; those are Diagnosis responsibilities.
    The gate matches candidate endpoint evidence against immutable runtime introspection; it does not
    trust an Adapter Agent self-assessment and does not actuate the operation to prove availability.
-   Source, documentation, mocks, and simulation cannot satisfy target-runtime availability.
+   Source, documentation, mocks, and simulation cannot satisfy production target-runtime
+   availability. Test-only simulated providers exercise the same gate in automated acceptance tests,
+   but are neither configured nor shipped as production defaults.
    Rolo composes the Active Tool Catalog from the product Registry, discovery candidates, builtin
    implementations and the verified bundle; unknown or extra bundle operations are rejected.
    A discovered operation whose product contract is still `DRAFT` cannot be promoted and stays
@@ -107,6 +113,9 @@ adapt/<robot>/
     ├── handoff.json
     └── summary.json
 ```
+
+The P0 acceptance boundaries and executable verification matrix are recorded in
+[`P0_ADAPT_ACCEPTANCE.md`](P0_ADAPT_ACCEPTANCE.md).
 
 The derived plan is not a mutable `latest/plan.json`; it is carried in the audit prompt. The output
 schema is temporary, and a successful raw final message is normalized into `result.json` rather

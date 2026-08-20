@@ -22,7 +22,7 @@ from rolo.stages.adapt.models import (
     AdaptRunSummary,
     AdaptTask,
 )
-from rolo.stages.adapt.operation_registry import required_conformance_operations
+from rolo.stages.adapt.operation_registry import required_adapter_agent_conformance_operations
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
@@ -201,7 +201,7 @@ class AdaptStageService:
         if not wiki_path.is_file():
             raise FileNotFoundError(f"Robot Wiki is missing for {robot_id}: {wiki_path}")
         candidates = sorted(candidate.operation for candidate in report.operation_candidates)
-        conformance_operations = sorted(required_conformance_operations(report))
+        conformance_operations = sorted(required_adapter_agent_conformance_operations(report))
         blocked = report.status == DiscoveryStatus.FAILED
         tasks = [
             AdaptTask(
@@ -211,7 +211,10 @@ class AdaptStageService:
             ),
             AdaptTask(
                 id="cli-conformance",
-                description="Validate schemas, errors, idempotency, and cancellation locally",
+                description=(
+                    "Validate generated bundle schemas, errors, idempotency, and cancellation "
+                    "locally; Rolo validates builtin operations independently"
+                ),
                 operations=conformance_operations,
             ),
             AdaptTask(

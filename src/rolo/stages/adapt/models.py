@@ -201,9 +201,15 @@ class AdapterConformanceReport(BaseModel):
     """Advisory Agent report retained as audit input to the independent Rolo gate."""
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-conformance/v1", "robot-adapter-conformance/v2"] = (
-        "robot-adapter-conformance/v2"
+    schema_version: Literal[
+        "robot-adapter-conformance/v1",
+        "robot-adapter-conformance/v2",
+        "robot-adapter-conformance/v3",
+    ] = (
+        "robot-adapter-conformance/v3"
     )
+    owner: Literal["ADAPTER_AGENT"] = "ADAPTER_AGENT"
+    coverage: Literal["BUNDLE_CANDIDATES_ONLY"] = "BUNDLE_CANDIDATES_ONLY"
     robot_id: str
     discovery_id: str
     operations: list[OperationConformance]

@@ -115,9 +115,23 @@ Semantic bindings inferred from source or a live ROS graph are emitted as operat
 matches them only to product-defined operations and builds the Active Tool Catalog after bundle and
 conformance checks. This prevents documentation or naming heuristics from becoming an operation
 definition or actuator command.
+
+Every candidate route is normalized as `robot-route-evidence/v2`. It has a stable `resource_id`,
+route kind and endpoint, observed-versus-declared origin, source, limitations, and optional interface
+type/schema SHA-256, provider identity, runtime revision, and observation timestamp. The gate accepts
+ROS topic/service/action, device, and CLI routes only after an exact target-observed match. A declared
+source route may identify Adapter Agent work, but it cannot promote itself. Legacy v1 name/observed
+records are migrated only at the model boundary and are evaluated using the v2 representation.
+
+Adapter Agent conformance covers exactly the discovered bundle candidates. Builtin operations are a
+separate Rolo-owned conformance domain; asking the Agent to repeat or attest builtin checks is rejected
+as incorrect coverage.
 Likewise, velocity candidates remain `DISCOVERED_UNVERIFIED` with `safety_authority: none`. The
 same semantic context is written into Adapt, Diagnose, and Verify agent inputs; only controlled physical
 validation and explicit approval may promote a candidate to a hard motion limit.
+
+Repeatable source-only and simulated-runtime acceptance criteria are documented in
+[`P0_ADAPT_ACCEPTANCE.md`](P0_ADAPT_ACCEPTANCE.md).
 
 When supplied, discovery loads the URDF path from `--urdf`, records its resolved path and SHA-256,
 and performs full structural and semantic parsing. Invalid declared data stops discovery. When it

@@ -63,6 +63,7 @@ from rolo.stages.adapt.inputs import (
 )
 from rolo.stages.adapt.operation_registry import validate_candidate_operations
 from rolo.stages.adapt.review import render_discovery_review_markdown
+from rolo.stages.adapt.routes import persist_route_evidence
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyResolver,
     ResolutionStatus,
@@ -761,7 +762,18 @@ class ApplicationProbe:
 
 
 def _ros_entity_name(value: str) -> str:
-    return value.split(" ", 1)[0].strip()
+    name = value.split(" ", 1)[0].strip()
+    return f"/{name.lstrip('/')}" if name else ""
+
+
+def _ros_entity_type(value: str) -> str | None:
+    parts = value.strip().split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+    interface_type = parts[1].strip()
+    if interface_type.startswith("[") and interface_type.endswith("]"):
+        interface_type = interface_type[1:-1].strip()
+    return interface_type or None
 
 
 def _topic_rule_matches(topic: str, token: str) -> bool:
@@ -784,24 +796,39 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         "map": "semantic://environment/map_2d",
         "battery": "semantic://power/battery_state",
     }
+    ros_probe = probes["ros"]
+    ros_revision = ":".join(
+        str(value)
+        for value in (ros_probe.data.get("ros_distro"), ros_probe.data.get("rmw"))
+        if value
+    )
     topic_evidence = [
-        (raw_topic, "ros2_topic", "live_ros_graph")
-        for raw_topic in probes["ros"].data.get("topics", [])
+        (
+            raw_topic,
+            "ros2_topic",
+            "live_ros_graph",
+            ros_probe.observed_at,
+            ros_revision or None,
+        )
+        for raw_topic in ros_probe.data.get("topics", [])
     ]
     for project in probes["application"].data.get("projects", []):
         topic_evidence.extend(
-            (topic, "ros2_topic_candidate", f"source:{project['root']}")
+            (topic, "ros2_topic_candidate", f"source:{project['root']}", None, None)
             for topic in project.get("ros_names", {}).get("topics", [])
         )
-    for raw_topic, transport, source in topic_evidence:
+    for raw_topic, transport, source, observed_at, runtime_revision in topic_evidence:
         topic = _ros_entity_name(raw_topic)
         for token, semantic_uri in topic_rules.items():
             if _topic_rule_matches(topic, token) and semantic_uri not in bindings:
                 bindings[semantic_uri] = {
                     "transport": transport,
                     "binding": topic,
+                    "interface_type": _ros_entity_type(raw_topic),
                     "status": "DISCOVERED_UNVERIFIED",
                     "evidence": source,
+                    "observed_at": observed_at,
+                    "runtime_revision": runtime_revision,
                 }
     return bindings
 
@@ -1167,11 +1194,23 @@ def _build_operation_candidates(
 
     def route(semantic_uri: str) -> RouteEvidence:
         binding = bindings[semantic_uri]
+        endpoint = _ros_entity_name(str(binding["binding"]))
+        observed = binding.get("evidence") == "live_ros_graph"
+        limitations = [
+            "ROS interface schema digest was not collected",
+            "ROS publisher/provider identity was not collected",
+        ]
         return RouteEvidence(
+            resource_id=f"ros_topic:{endpoint}",
             kind="ros_topic",
-            name=_ros_entity_name(str(binding["binding"])),
+            endpoint=endpoint,
+            interface_type=binding.get("interface_type"),
+            provider_id=None,
+            runtime_revision=binding.get("runtime_revision"),
+            observed_at=binding.get("observed_at"),
+            evidence_origin=("OBSERVED_RUNTIME" if observed else "DECLARED_STATIC"),
             source=str(binding.get("evidence", "unknown")),
-            observed=binding.get("evidence") == "live_ros_graph",
+            limitations=limitations,
         )
 
     semantic_operations = {
@@ -1268,6 +1307,7 @@ class DiscoveryService:
             "ros": ros_probe,
             "application": application_scan.probe,
         }
+        probes = {name: persist_route_evidence(probe) for name, probe in probes.items()}
         bindings = _semantic_bindings(probes)
         operation_candidates = _build_operation_candidates(bindings)
         applicable_probes = {

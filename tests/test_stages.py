@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from rolo.adapter_runtime import invoke_adapter
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -19,7 +20,7 @@ from rolo.stages.adapt.models import (
 )
 from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
-    required_conformance_operations,
+    required_adapter_agent_conformance_operations,
 )
 from rolo.stages.adapt.service import AdaptStageService
 from rolo.stages.pipeline import assess_pipeline
@@ -235,7 +236,10 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
                 "domain_id": "0",
                 "rmw": "test",
                 "nodes": [],
-                "topics": ["/cmd_vel"],
+                "topics": [
+                    "/cmd_vel [geometry_msgs/msg/Twist]",
+                    "/odom [nav_msgs/msg/Odometry]",
+                ],
                 "services": [],
                 "actions": [],
             },
@@ -324,7 +328,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             encoding="utf-8",
         )
         operations = []
-        for operation in sorted(required_conformance_operations(report)):
+        for operation in sorted(required_adapter_agent_conformance_operations(report)):
             operations.append(
                 {
                     "operation": operation,
@@ -339,7 +343,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
         (agent_workspace / "conformance.json").write_text(
             json.dumps(
                 {
-                    "schema_version": "robot-adapter-conformance/v2",
+                    "schema_version": "robot-adapter-conformance/v3",
                     "robot_id": "demo_diff",
                     "discovery_id": discovery_id,
                     "operations": operations,
@@ -414,6 +418,12 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     assert (run_root / "handoff.json").is_file()
     assert (artifact_root / "adapt/demo_diff/latest.json").is_file()
     assert (tmp_path / "output/robots/demo_diff/current.json").is_file()
+    assert invoke_adapter(
+        tmp_path / "output",
+        "demo_diff",
+        "app.localization.status",
+        {},
+    ) == {"status": "SUCCEEDED"}
 
     newer_discovery_id = discover_demo(artifact_root, workspace)
     assert newer_discovery_id != discovery_id

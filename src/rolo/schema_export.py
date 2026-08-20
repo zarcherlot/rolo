@@ -13,6 +13,7 @@ from rolo.core.models import (
     RobotCapability,
     RobotUseRequest,
     RobotUseSupervision,
+    RouteEvidence,
     ToolDescriptor,
 )
 from rolo.invocation_policy import (
@@ -64,6 +65,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     RobotUseSupervision,
     DiscoveryReport,
     DiscoveryLatestIndex,
+    RouteEvidence,
     OperationCandidate,
     CanonicalOperationRegistry,
     ToolDescriptor,

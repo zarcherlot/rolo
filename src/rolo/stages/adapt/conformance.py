@@ -15,7 +15,7 @@ from rolo.adapter_runtime import (
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
-from rolo.core.models import OperationCandidate
+from rolo.core.models import DiscoveryStatus
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ActiveProbeMode
 from rolo.stages.adapt.discovery import load_report
 from rolo.stages.adapt.models import (
@@ -35,37 +35,13 @@ from rolo.stages.adapt.models import (
 from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
     materialize_active_catalog,
-    required_conformance_operations,
+    required_adapter_agent_conformance_operations,
+    required_builtin_conformance_operations,
     validate_definition_contract,
 )
+from rolo.stages.adapt.routes import ROUTE_PROBE_LAYER, candidate_route_observed
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
-
-
-def _ros_name(value: object) -> str:
-    name = str(value).split(" ", 1)[0].strip()
-    return f"/{name.lstrip('/')}".casefold() if name else ""
-
-
-def _candidate_route_observed(candidate: OperationCandidate, probe_data: dict[str, object]) -> bool:
-    """Require an exact normalized endpoint match in structured runtime probe fields."""
-    probe_fields = {
-        "ros_topic": "topics",
-        "ros_service": "services",
-        "ros_action": "actions",
-    }
-    for route in candidate.route_evidence:
-        field = probe_fields.get(route.kind)
-        if not route.observed or field is None:
-            continue
-        observed = {
-            _ros_name(value)
-            for value in probe_data.get(field, [])
-            if isinstance(value, str) and _ros_name(value)
-        }
-        if _ros_name(route.name) in observed:
-            return True
-    return False
 
 
 def _restore_index(path: Path, previous: bytes | None) -> None:
@@ -323,13 +299,11 @@ class AdapterPromotionService:
                     raise ValueError(f"{label} identity does not match the Adapter Agent run")
             checks.append("robot and discovery identity")
 
-            expected_operations = required_conformance_operations(discovery)
+            expected_agent_operations = required_adapter_agent_conformance_operations(discovery)
+            expected_builtin_operations = required_builtin_conformance_operations()
             definitions_by_operation = {
                 definition.operation: definition
                 for definition in canonical_operation_registry().operations
-            }
-            source_by_operation = {
-                tool.operation: tool for tool in materialize_active_catalog(discovery).tools
             }
             expected_bundle_operations = {
                 candidate.operation for candidate in discovery.operation_candidates
@@ -342,9 +316,14 @@ class AdapterPromotionService:
             probe_adapter_package(package_path, bundle)
             checks.append("adapter package describe and entrypoint binding")
             actual = {item.operation: item for item in conformance.operations}
-            if len(actual) != len(conformance.operations) or set(actual) != expected_operations:
-                raise ValueError("conformance coverage must exactly match required operations")
-            checks.append("product registry and required-operation coverage")
+            if (
+                len(actual) != len(conformance.operations)
+                or set(actual) != expected_agent_operations
+            ):
+                raise ValueError(
+                    "Adapter Agent conformance coverage must exactly match bundle candidates"
+                )
+            checks.append("Adapter Agent bundle-candidate coverage")
             active_report = ActiveDiscoveryReport.model_validate_json(
                 resolve_artifact_ref(
                     self.artifacts.root, discovery.active_discovery_report_ref
@@ -356,8 +335,12 @@ class AdapterPromotionService:
             candidates = {
                 candidate.operation: candidate for candidate in discovery.operation_candidates
             }
-            candidate_operations = set(candidates)
-            for operation in expected_operations:
+            for operation in expected_builtin_operations:
+                definition = definitions_by_operation[operation]
+                validate_definition_contract(definition)
+            checks.append("Rolo-owned builtin operation contracts")
+
+            for operation in expected_agent_operations:
                 definition = definitions_by_operation[operation]
                 validate_definition_contract(definition)
                 if operation in bundle_entries:
@@ -367,7 +350,6 @@ class AdapterPromotionService:
                         or entry.contract_sha256 != definition.contract_sha256
                     ):
                         raise ValueError(f"adapter bundle contract binding mismatch: {operation}")
-                source = source_by_operation[operation]
                 check = actual[operation]
                 if not check.agent_reported_passed:
                     raise ValueError(
@@ -376,18 +358,26 @@ class AdapterPromotionService:
                 scopes = set(check.validation_scopes)
                 if ConformanceScope.LOCAL_STATIC not in scopes:
                     raise ValueError(f"local static validation scope is missing: {operation}")
-                target_required = operation in candidate_operations
-                if target_required:
-                    relevant_layer = "ros" if source.layer in {"ros", "app"} else source.layer
-                    probe = discovery.probes.get(relevant_layer)
-                    if not runtime_probe_requested or probe is None or probe.status != "SUCCEEDED":
-                        raise ValueError(
-                            f"target runtime evidence is unavailable for operation: {operation}"
-                        )
-                    if not _candidate_route_observed(candidates[operation], probe.data):
-                        raise ValueError(f"target operation route was not observed: {operation}")
+                candidate = candidates[operation]
+                required_layers = {
+                    ROUTE_PROBE_LAYER[route.kind] for route in candidate.route_evidence
+                }
+                available_layers = {
+                    layer
+                    for layer in required_layers
+                    if (probe := discovery.probes.get(layer)) is not None
+                    and probe.status
+                    in {DiscoveryStatus.SUCCEEDED, DiscoveryStatus.PARTIAL}
+                    and (layer != "ros" or runtime_probe_requested)
+                }
+                if not available_layers:
+                    raise ValueError(
+                        f"target runtime evidence is unavailable for operation: {operation}"
+                    )
+                if not candidate_route_observed(candidate, discovery.probes):
+                    raise ValueError(f"target operation route was not observed: {operation}")
             checks.append("product-owned operation contracts")
-            checks.append("Adapter Agent local-static declarations (advisory)")
+            checks.append("Adapter Agent bundle local-static declarations (advisory)")
             checks.append("target route existence without outcome execution")
 
             _, manifest_path = load_and_verify_discovery_manifest(

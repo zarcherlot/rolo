@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -438,6 +439,13 @@ def _payload_sha256(payload: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _provider_command(provider: Path, action: str) -> list[str]:
+    """Launch a protected provider without relying on platform file associations."""
+    if provider.suffix.casefold() == ".py":
+        return [sys.executable, str(provider), action]
+    return [str(provider), action]
+
+
 _CONTENT_OPERATIONS = {
     "linux.file.read",
     "linux.config.inspect",
@@ -732,7 +740,11 @@ def _request_quiescence_lease(
         label="execution quiescence provider",
         require_admin_owner=True,
     )
-    if os.name == "posix" and not os.access(provider, os.X_OK):
+    if (
+        os.name == "posix"
+        and provider.suffix.casefold() != ".py"
+        and not os.access(provider, os.X_OK)
+    ):
         raise ValueError("execution quiescence provider is not executable")
     request_id = str(uuid4())
     input_sha256 = _payload_sha256(payload)
@@ -747,7 +759,7 @@ def _request_quiescence_lease(
         requested_lease_s=required_lease_s,
     )
     completed = subprocess.run(
-        [str(provider), "lease"],
+        _provider_command(provider, "lease"),
         input=request.model_dump_json(),
         capture_output=True,
         check=False,
@@ -854,7 +866,11 @@ def _request_r3_authorization(
         label="R3 authorization provider",
         require_admin_owner=True,
     )
-    if os.name == "posix" and not os.access(authorizer, os.X_OK):
+    if (
+        os.name == "posix"
+        and authorizer.suffix.casefold() != ".py"
+        and not os.access(authorizer, os.X_OK)
+    ):
         raise ValueError("R3 authorization provider is not executable")
     request_id = str(uuid4())
     input_sha256 = _payload_sha256(payload)
@@ -868,7 +884,7 @@ def _request_r3_authorization(
         input_sha256=input_sha256,
     )
     completed = subprocess.run(
-        [str(authorizer), "authorize"],
+        _provider_command(authorizer, "authorize"),
         input=request.model_dump_json(),
         capture_output=True,
         check=False,

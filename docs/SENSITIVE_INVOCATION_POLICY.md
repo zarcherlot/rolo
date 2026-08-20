@@ -61,6 +61,10 @@ operation 和规范化输入 SHA-256，不发送业务 payload；提供器返回
 request、robot、operation 和输入摘要，且有效期大于零、不超过五分钟。任何字段不匹配、
 超时、拒绝或提供器异常都会闭锁拒绝。
 
+提供器可以是受同等权限保护的独立可执行文件或 Python `.py` 程序；后者由 Runtime 使用
+当前受控 Python 解释器直接启动，不依赖操作系统文件关联。仓库只在 `tests/fixtures/providers`
+提供请求绑定的测试夹具；它们不会写入默认配置，也不构成生产授权实现。
+
 协议的机器可读 Schema 为 `R3AuthorizationRequest.schema.json` 和
 `R3AuthorizationCapability.schema.json`。
 
@@ -129,3 +133,8 @@ OS principal、结果和原因；不记录输入或输出 payload。R3 允许记
 同样必须调用统一授权函数。Adapter Agent 不能通过自定义 entrypoint、修改 Tool Catalog
 分类或添加未经签名的 operation 绕过，因为 active release 的 catalog、contract digest 与
 adapter package 在运行前仍需一致性校验。
+
+端到端回归矩阵从已发布 release 出发，覆盖 R0、SENSITIVE deny/allow、R2 精确 allowlist、
+quiescence、R3 request-bound capability、session start/stop、navigation start/cancel、配置
+apply/rollback、摘要篡改拒绝和无 payload 审计。验收边界见
+[`P0_ADAPT_ACCEPTANCE.md`](P0_ADAPT_ACCEPTANCE.md)。

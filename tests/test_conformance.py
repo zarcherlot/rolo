@@ -6,18 +6,19 @@ import pytest
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import sha256_file
-from rolo.core.models import ProbeResult, utc_now
+from rolo.core.models import OperationCandidate, ProbeResult, RouteEvidence, utc_now
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.conformance import (
     AdapterPromotionService,
     validate_adapter_handoff,
 )
-from rolo.stages.adapt.discovery import DiscoveryService
+from rolo.stages.adapt.discovery import DiscoveryService, load_report
 from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun
 from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
-    required_conformance_operations,
+    required_adapter_agent_conformance_operations,
 )
+from rolo.stages.adapt.routes import candidate_route_observed
 
 
 def _prepare_promotion(
@@ -48,9 +49,9 @@ def _prepare_promotion(
             "rmw": "test",
             "nodes": [],
             "topics": (
-                ["/cmd_vel"]
+                ["/cmd_vel [geometry_msgs/msg/Twist]"]
                 if runtime_ready and route_observed
-                else ["/cmd_vel_extra"]
+                else ["/cmd_vel_extra [geometry_msgs/msg/Twist]"]
                 if runtime_ready
                 else []
             ),
@@ -116,7 +117,7 @@ def _prepare_promotion(
         encoding="utf-8",
     )
     operations = []
-    for operation in sorted(required_conformance_operations(report)):
+    for operation in sorted(required_adapter_agent_conformance_operations(report)):
         operations.append(
             {
                 "operation": operation,
@@ -131,7 +132,7 @@ def _prepare_promotion(
     (workspace / "conformance.json").write_text(
         json.dumps(
             {
-                "schema_version": "robot-adapter-conformance/v2",
+                "schema_version": "robot-adapter-conformance/v3",
                 "robot_id": "demo_diff",
                 "discovery_id": report.discovery_id,
                 "operations": operations,
@@ -180,6 +181,128 @@ def _prepare_promotion(
     return report.discovery_id, run
 
 
+@pytest.mark.parametrize(
+    ("kind", "layer", "endpoint", "interface_type", "probe_data"),
+    [
+        (
+            "ros_topic",
+            "ros",
+            "/camera/image_raw",
+            "sensor_msgs/msg/Image",
+            {"topics": ["/camera/image_raw [sensor_msgs/msg/Image]"]},
+        ),
+        (
+            "ros_service",
+            "ros",
+            "/camera/capture",
+            "std_srvs/srv/Trigger",
+            {"services": ["/camera/capture [std_srvs/srv/Trigger]"]},
+        ),
+        (
+            "ros_action",
+            "ros",
+            "/navigate_to_pose",
+            "nav2_msgs/action/NavigateToPose",
+            {"actions": ["/navigate_to_pose [nav2_msgs/action/NavigateToPose]"]},
+        ),
+        (
+            "device",
+            "hw",
+            "/dev/video0",
+            "camera",
+            {
+                "devices": [
+                    {
+                        "path": "/dev/video0",
+                        "category": "camera",
+                        "driver": "uvcvideo",
+                    }
+                ]
+            },
+        ),
+        (
+            "cli",
+            "linux",
+            "ros2",
+            None,
+            {
+                "executables": {
+                    "ros2": {
+                        "path": "/opt/ros/test/bin/ros2",
+                        "available": True,
+                        "version_output": ["ros2 test"],
+                    }
+                }
+            },
+        ),
+    ],
+)
+def test_candidate_route_matching_covers_every_route_kind(
+    kind: str,
+    layer: str,
+    endpoint: str,
+    interface_type: str | None,
+    probe_data: dict[str, object],
+) -> None:
+    route = RouteEvidence(
+        resource_id=f"{kind}:{endpoint}",
+        kind=kind,
+        endpoint=endpoint,
+        interface_type=interface_type,
+        provider_id="uvcvideo" if kind == "device" else None,
+        evidence_origin="DECLARED_STATIC",
+        source="test-fixture",
+    )
+    candidate = OperationCandidate(operation="app.camera.snapshot", route_evidence=[route])
+    probe = ProbeResult(layer=layer, status="SUCCEEDED", data=probe_data)
+
+    assert candidate_route_observed(candidate, {layer: probe})
+
+
+def test_candidate_route_matching_rejects_interface_or_schema_mismatch() -> None:
+    expected = RouteEvidence(
+        resource_id="ros_topic:/camera/image_raw",
+        kind="ros_topic",
+        endpoint="/camera/image_raw",
+        interface_type="sensor_msgs/msg/Image",
+        interface_schema_sha256="a" * 64,
+        provider_id="camera-node",
+        runtime_revision="runtime-1",
+        evidence_origin="DECLARED_STATIC",
+        source="test-fixture",
+    )
+    observed = expected.model_copy(
+        update={
+            "interface_type": "sensor_msgs/msg/CompressedImage",
+            "evidence_origin": "OBSERVED_RUNTIME",
+        }
+    )
+    candidate = OperationCandidate(operation="app.camera.snapshot", route_evidence=[expected])
+    probe = ProbeResult(
+        layer="ros",
+        status="SUCCEEDED",
+        data={"route_evidence": [observed.model_dump(mode="json")]},
+    )
+
+    assert not candidate_route_observed(candidate, {"ros": probe})
+
+
+def test_route_evidence_v1_is_migrated_at_the_model_boundary() -> None:
+    route = RouteEvidence.model_validate(
+        {
+            "kind": "ros_topic",
+            "name": "odom",
+            "source": "live_ros_graph",
+            "observed": True,
+        }
+    )
+
+    assert route.schema_version == "robot-route-evidence/v2"
+    assert route.resource_id == "ros_topic:/odom"
+    assert route.endpoint == "/odom"
+    assert route.observed
+
+
 def test_promotion_publishes_only_independently_validated_handoff(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
@@ -190,8 +313,13 @@ def test_promotion_publishes_only_independently_validated_handoff(tmp_path: Path
     snapshot, _ = service.snapshot(run)
     assert not hasattr(snapshot, "tool_catalog_ref")
     handoff, path, _, _ = service.promote_run(run, snapshot)
+    discovery = load_report(artifact_root, "demo_diff", discovery_id)
+    observed_routes = discovery.probes["ros"].data["route_evidence"]
 
     assert path.is_file()
+    assert observed_routes
+    assert all(route["schema_version"] == "robot-route-evidence/v2" for route in observed_routes)
+    assert all(route["evidence_origin"] == "OBSERVED_RUNTIME" for route in observed_routes)
     assert handoff.source_discovery_id == discovery_id
     assert (
         validate_adapter_handoff(artifact_root, "demo_diff", output_root=tmp_path / "output")
@@ -212,6 +340,31 @@ def test_promotion_rejects_incomplete_conformance_coverage(tmp_path: Path) -> No
     service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
     with pytest.raises(ValueError, match="coverage"):
         snapshot, _ = service.snapshot(run)
+        service.promote_run(run, snapshot)
+
+
+def test_promotion_rejects_agent_attestation_for_rolo_builtin(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _, run = _prepare_promotion(artifact_root, workspace)
+    payload = json.loads((workspace / "conformance.json").read_text(encoding="utf-8"))
+    payload["operations"].append(
+        {
+            "operation": "runtime.health",
+            "schema_valid": True,
+            "errors_valid": True,
+            "idempotency_valid": True,
+            "cancellation_valid": True,
+            "validation_scopes": ["LOCAL_STATIC"],
+            "evidence": [],
+        }
+    )
+    (workspace / "conformance.json").write_text(json.dumps(payload), encoding="utf-8")
+    service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
+    snapshot, _ = service.snapshot(run)
+
+    with pytest.raises(ValueError, match="bundle candidates"):
         service.promote_run(run, snapshot)
 
 
@@ -255,7 +408,8 @@ def test_v1_conformance_runtime_and_physical_claims_are_ignored(
 
     assert gate.status == "PASSED"
     assert "product-owned operation contracts" in gate.checks
-    assert "Adapter Agent local-static declarations (advisory)" in gate.checks
+    assert "Rolo-owned builtin operation contracts" in gate.checks
+    assert "Adapter Agent bundle local-static declarations (advisory)" in gate.checks
     assert "target route existence without outcome execution" in gate.checks
 
 

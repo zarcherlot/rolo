@@ -644,7 +644,8 @@ def builtin_operations() -> set[str]:
     return set(_BUILTIN_CLI)
 
 
-def required_conformance_operations(report: DiscoveryReport) -> set[str]:
+def required_adapter_agent_conformance_operations(report: DiscoveryReport) -> set[str]:
+    """Operations owned by the generated bundle and therefore reported by its Agent."""
     definitions = {item.operation: item for item in canonical_operation_registry().operations}
     incomplete = sorted(
         candidate.operation
@@ -656,7 +657,20 @@ def required_conformance_operations(report: DiscoveryReport) -> set[str]:
         raise ValueError(
             "discovered operations lack complete product contracts: " + ", ".join(incomplete)
         )
-    return builtin_operations() | {item.operation for item in report.operation_candidates}
+    return {item.operation for item in report.operation_candidates}
+
+
+def required_builtin_conformance_operations() -> set[str]:
+    """Operations whose implementation and conformance are owned by Rolo itself."""
+    return builtin_operations()
+
+
+def required_conformance_operations(report: DiscoveryReport) -> set[str]:
+    """Complete gate surface; callers must preserve the two ownership domains."""
+    return (
+        required_builtin_conformance_operations()
+        | required_adapter_agent_conformance_operations(report)
+    )
 
 
 def validate_definition_contract(definition: CanonicalOperationDefinition) -> None:
