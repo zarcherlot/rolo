@@ -85,7 +85,14 @@ class EvidenceRecord(BaseModel):
     title: str
     summary: str
     authority: EvidenceAuthority
-    source_kind: Literal["robot_manifest", "gated_artifact", "pipeline_artifact"]
+    source_kind: Literal[
+        "robot_manifest",
+        "gated_artifact",
+        "pipeline_artifact",
+        "lifecycle_run",
+        "lifecycle_gate",
+        "lifecycle_handoff",
+    ]
     integrity_status: Literal["validated", "verified"]
     classification: Literal["INTERNAL"] = "INTERNAL"
     observed_at: datetime
@@ -227,6 +234,35 @@ def _add_evidence(
     current.related_node_ids = sorted(
         set(current.related_node_ids) | set(record.related_node_ids)
     )
+
+
+def _add_lifecycle_evidence(
+    records: dict[str, EvidenceRecord],
+    artifact_root: Path,
+    output_root: Path,
+    robot_id: str,
+) -> None:
+    from rolo.lifecycle_read_models import lifecycle_evidence_specs
+
+    for spec in lifecycle_evidence_specs(artifact_root, output_root, robot_id).values():
+        _add_evidence(
+            records,
+            EvidenceRecord(
+                evidence_id=spec.evidence_id,
+                robot_id=robot_id,
+                title=spec.title,
+                summary=spec.summary,
+                authority=EvidenceAuthority(spec.authority),
+                source_kind=spec.source_kind,
+                integrity_status=spec.integrity_status,
+                observed_at=spec.observed_at,
+                freshness="unknown",
+                confidence=spec.confidence,
+                reference_hint=_reference_hint(spec.reference),
+                reference_digest=_digest(spec.reference),
+                limitations=spec.limitations,
+            ),
+        )
 
 
 def _node_layer(kind: str, raw: dict[str, object]) -> TopologyLayer:
@@ -499,6 +535,7 @@ def build_evidence_collection(
     robot: RobotCapability,
     output_root: Path,
     *,
+    artifact_root: Path | None = None,
     limit: int = 50,
     offset: int = 0,
     authority: EvidenceAuthority | None = None,
@@ -523,6 +560,8 @@ def build_evidence_collection(
                         stage.observed_at,
                     ),
                 )
+    if artifact_root is not None:
+        _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
     items = sorted(records.values(), key=lambda item: (item.title, item.evidence_id))
     if authority is not None:
         items = [item for item in items if item.authority is authority]
@@ -544,6 +583,7 @@ def find_evidence(
     output_root: Path,
     evidence_id: str,
     pipelines: dict[str, PipelineAssessment] | None = None,
+    artifact_root: Path | None = None,
 ) -> EvidenceRecord | None:
     for robot in robots:
         _, records = build_robot_topology(robot, output_root)
@@ -561,6 +601,8 @@ def find_evidence(
                             stage.observed_at,
                         ),
                     )
+        if artifact_root is not None:
+            _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
         if record := records.get(evidence_id):
             return record
     return None

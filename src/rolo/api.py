@@ -15,9 +15,16 @@ from rolo.capability_read_models import (
     get_capability_detail,
 )
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
+from rolo.lifecycle_read_models import (
+    LifecycleRunCollection,
+    LifecycleRunDetail,
+    LifecycleRunStatus,
+    build_lifecycle_run_collection,
+    get_lifecycle_run_detail,
+)
 from rolo.read_models import RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
-from rolo.stages.contracts import PipelineAssessment
+from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
 from rolo.workbench_read_models import (
     EvidenceAuthority,
@@ -138,6 +145,58 @@ async def list_robot_capabilities(
     )
 
 
+@app.get("/v1/robots/{robot_id}/runs", response_model=LifecycleRunCollection)
+async def list_robot_runs(
+    robot_id: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    stage: Annotated[StageName | None, Query()] = None,
+    status: Annotated[LifecycleRunStatus | None, Query()] = None,
+) -> LifecycleRunCollection:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    pipeline = assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
+    return build_lifecycle_run_collection(
+        runtime.settings.rolo_artifact_dir,
+        runtime.settings.rolo_output_dir,
+        robot_id,
+        stage=stage,
+        status=status,
+        limit=limit,
+        offset=offset,
+        pipeline=pipeline,
+    )
+
+
+@app.get("/v1/robots/{robot_id}/runs/{run_id}", response_model=LifecycleRunDetail)
+async def get_robot_run(
+    robot_id: str,
+    run_id: str,
+    request: Request,
+) -> LifecycleRunDetail:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        detail = get_lifecycle_run_detail(
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+            robot_id,
+            run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown lifecycle run")
+    return detail
+
+
 @app.get(
     "/v1/robots/{robot_id}/capabilities/{operation}",
     response_model=CapabilityDetail,
@@ -179,6 +238,7 @@ async def list_robot_evidence(
     return build_evidence_collection(
         robot,
         runtime.settings.rolo_output_dir,
+        artifact_root=runtime.settings.rolo_artifact_dir,
         limit=limit,
         offset=offset,
         authority=authority,
@@ -200,6 +260,7 @@ async def get_evidence(evidence_id: str, request: Request) -> EvidenceRecord:
             )
             for robot in runtime.registry.list()
         },
+        artifact_root=runtime.settings.rolo_artifact_dir,
     )
     if record is None:
         raise HTTPException(status_code=404, detail="Unknown evidence ID")

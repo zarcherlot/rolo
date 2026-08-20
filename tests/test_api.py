@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,6 +26,7 @@ def test_health_and_robot_registry() -> None:
         overview = client.get("/v1/robots/demo_diff/overview")
         topology = client.get("/v1/robots/demo_diff/topology")
         capabilities = client.get("/v1/robots/demo_diff/capabilities?limit=10")
+        runs = client.get("/v1/robots/demo_diff/runs")
         evidence = client.get("/v1/robots/demo_diff/evidence?limit=5")
         status = client.get("/v1/robot-use/status")
 
@@ -77,6 +79,9 @@ def test_health_and_robot_registry() -> None:
         "Middleware",
         "Application",
     }.issuperset({item["layer"] for item in capabilities.json()["items"]})
+    assert runs.status_code == 200
+    assert runs.json()["schema_version"] == "rolo-lifecycle-run-collection/v1"
+    assert runs.json()["items"] == []
     assert evidence.status_code == 200
     assert evidence.json()["schema_version"] == "rolo-evidence-collection/v1"
     assert evidence.json()["total"] >= len(evidence.json()["items"]) > 0
@@ -102,6 +107,7 @@ def test_unknown_robot_is_404() -> None:
         capability = client.get(
             "/v1/robots/not-a-robot/capabilities/tool.catalog"
         )
+        runs = client.get("/v1/robots/not-a-robot/runs")
         evidence = client.get("/v1/robots/not-a-robot/evidence")
         evidence_detail = client.get("/v1/evidence/ev_unknown")
 
@@ -110,6 +116,7 @@ def test_unknown_robot_is_404() -> None:
     assert topology.status_code == 404
     assert capabilities.status_code == 404
     assert capability.status_code == 404
+    assert runs.status_code == 404
     assert evidence.status_code == 404
     assert evidence_detail.status_code == 404
 
@@ -169,6 +176,80 @@ def test_capabilities_are_filterable_and_detail_is_contract_bound() -> None:
     assert invalid_limit.status_code == 422
 
 
+def test_lifecycle_runs_expose_bounded_gate_and_evidence_metadata(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    run_root = artifact_root / "adapt/demo_diff/runs/run-failed"
+    run_root.mkdir(parents=True)
+    now = "2026-08-20T08:00:00Z"
+    (run_root / "run.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "robot-adapter-agent-run/v1",
+                "run_id": "run-failed",
+                "robot_id": "demo_diff",
+                "source_discovery_id": "discovery-1",
+                "provider": "codex",
+                "model": "test-model",
+                "status": "FAILED",
+                "workspace": "C:/private/workspace",
+                "command": ["codex", "exec"],
+                "prompt_ref": "artifact://prompt",
+                "event_log_ref": "artifact://events",
+                "stderr_ref": "artifact://stderr",
+                "final_message_ref": "artifact://final",
+                "event_count": 4,
+                "exit_code": 1,
+                "error": "failed at C:/private/workspace",
+                "started_at": now,
+                "completed_at": now,
+                "duration_s": 2.5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_root / "gate.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "robot-adapt-gate/v1",
+                "run_id": "run-failed",
+                "robot_id": "demo_diff",
+                "discovery_id": "discovery-1",
+                "status": "FAILED",
+                "checks": ["frozen output hashes and schemas"],
+                "error": "private path must not be returned",
+                "checked_at": now,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(app) as client:
+        runs = client.get("/v1/robots/demo_diff/runs?stage=adapt&status=FAILED")
+        detail = client.get("/v1/robots/demo_diff/runs/run-failed")
+        unknown = client.get("/v1/robots/demo_diff/runs/not-a-run")
+        evidence_id = detail.json()["run"]["evidence_ids"][0]
+        evidence = client.get(f"/v1/evidence/{evidence_id}")
+
+    assert runs.status_code == 200
+    assert runs.json()["total"] == 1
+    assert runs.json()["items"][0]["status"] == "FAILED"
+    assert detail.status_code == 200
+    assert detail.json()["run"]["provider"] == "codex"
+    assert detail.json()["run"]["model"] == "test-model"
+    assert detail.json()["run"]["handoff_status"] == "MISSING"
+    assert [item["status"] for item in detail.json()["gate_checks"]] == [
+        "PASSED",
+        "FAILED",
+    ]
+    assert "private" not in detail.text.lower()
+    assert unknown.status_code == 404
+    assert evidence.status_code == 200
+    assert evidence.json()["source_kind"] == "lifecycle_run"
+    assert "private" not in evidence.text.lower()
+
+
 def test_overview_openapi_contract_is_versioned() -> None:
     openapi = app.openapi()
     operation = openapi["paths"]["/v1/robots/{robot_id}/overview"]["get"]
@@ -209,6 +290,11 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         capability_schema["properties"]["schema_version"]["const"]
         == "rolo-capability-collection/v1"
+    )
+    lifecycle_schema = openapi["components"]["schemas"]["LifecycleRunCollection"]
+    assert (
+        lifecycle_schema["properties"]["schema_version"]["const"]
+        == "rolo-lifecycle-run-collection/v1"
     )
 
 
