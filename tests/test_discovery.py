@@ -500,6 +500,7 @@ def test_discovery_and_product_registry_cli(
     project = tmp_path / "application"
     make_application_project(project)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("WIKI_INSIGHTS_AGENT_ENABLED", "false")
     get_settings.cache_clear()
     runner = CliRunner()
 

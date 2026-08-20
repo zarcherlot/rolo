@@ -135,11 +135,8 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
-默认启动流程没有变化：`discover run` 仍先完成确定性采集和渲染，Agent 不可用也不会阻断
-discovery。若需要在 Wiki 中加入明确标为“未验证”的启发式洞察，可在 `.env` 中设置
-`WIKI_INSIGHTS_AGENT_ENABLED=true`；此时 Codex 以只读 sandbox 应用
-[`skills/robot-wiki-heuristics/SKILL.md`](skills/robot-wiki-heuristics/SKILL.md)，输出必须通过
-`robot-wiki-insights/v1` schema，失败时自动回退到确定性规则。
+Wiki 启发式 Agent skill 默认开启并在只读 sandbox 中运行；不可用或输出不合规时自动回退到
+确定性规则，可通过 `WIKI_INSIGHTS_AGENT_ENABLED=false` 关闭。
 
 ```text
 robot_wiki.md
@@ -169,13 +166,7 @@ robot_wiki.md
 └── 总工维护建议与自动发现附录
 ```
 
-主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，软件发现与证据契约见
-[`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见
-[`.env.example`](.env.example)。Wiki 的机器配套产物包括 `wiki_insights.json`、`wiki_diff.json`
-和 `wiki_generation.json`；整改计划及低优先级留存项见
-[`docs/WIKI_FEATURE_PLAN.md`](docs/WIKI_FEATURE_PLAN.md)，Wheeltec 本地重渲染审核稿见
-[`docs/review/WHEELTEC_WIKI_REFINED.md`](docs/review/WHEELTEC_WIKI_REFINED.md)，真机复测步骤见
-[`docs/WIKI_DEVICE_VALIDATION.md`](docs/WIKI_DEVICE_VALIDATION.md)。
+主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，Adapter Agent 配置见 [`.env.example`](.env.example)。
 
 #### 第二阶段：诊断
 

@@ -167,32 +167,40 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
+The Wiki heuristic Agent skill is enabled by default and runs in a read-only sandbox. If it is
+unavailable or returns invalid output, discovery automatically falls back to deterministic rules.
+Set `WIKI_INSIGHTS_AGENT_ENABLED=false` to disable it.
+
 ```text
 robot_wiki.md
 ├── Full-stack summary
-│   ├── Discovery status, mode, and confidence
-│   └── Hardware/software compatibility, unknowns, and warnings
+│   ├── Discovery status, mode, compatibility, and key evidence boundaries
+│   └── Evidence-backed, low/medium-confidence heuristic findings pending verification
+├── Changes since the previous discovery
+│   └── Platform, ROS, application, device, operation-candidate, and unknown changes
+├── Startup and health checks
+│   └── Launch entries, argument defaults, includes, startup order, shutdown, and health gaps
 ├── Hardware and robot specifications
 │   ├── Compute platform, CPU architecture, and drive model
-│   ├── Key specifications such as velocity limits
-│   └── Sensors, host devices, and hardware buses
+│   ├── URDF structure, geometry, and key safety specifications
+│   └── Physical device candidates, internal pipeline endpoints, unmerged endpoints, and buses
 ├── Host and software stack
-│   ├── Operating system, ROS distribution, RMW, and Domain ID
+│   ├── Operating system and configuration sources/candidates for ROS, RMW, and Domain ID
 │   └── Tool availability and version evidence
-├── Application and function overview
-│   └── Purpose, entry point, nodes, interfaces, protocols, dependencies, and risks per program
+├── Applications and startup topology
+│   ├── pyproject/setuptools/CMake entries, launch evidence, and risks
+│   └── Python/C++ ROS interfaces attributed by source file/target, plus unattributed candidates
 ├── ROS and communication topology
-│   ├── Node, Topic, Service, and Action inventory
-│   └── Program-to-interface relationship graph
+│   └── Live graph and edge-bounded static candidate graph
+├── Engineering operation candidates
+│   └── Only candidates supported by this discovery, without duplicating the full registry
 ├── Dependencies, differences, and unknowns
-│   └── Missing dependencies, version conflicts, compatibility differences, and risks
-└── Maintenance guidance
-    └── Engineering purpose, owner, deployment relationships, startup order, and version baseline
+│   └── Acquisition-method-grouped gaps, dependencies, and compatibility differences
+└── Chief engineer maintenance guidance and automatic-discovery appendix
 ```
 
-See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
-[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
-and [`.env.example`](../.env.example) for Adapter Agent configuration.
+See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI and
+[`.env.example`](../.env.example) for Adapter Agent configuration.
 
 #### Stage 2: diagnosis
 
@@ -226,6 +234,7 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 
 ```text
 src/rolo/stages/adapt/            Stage 1: discovery, adapters, conformance, and handoff publication
+skills/robot-wiki-heuristics/      Optional read-only Wiki heuristic Agent skill
 src/rolo/stages/diagnose/         Stage 2: Diagnosis Agent loop, tuning, and robot_use
 src/rolo/stages/verify/           Stage 3: optional autonomous verification and acceptance
 src/rolo/commands/                robotctl interfaces grouped by command domain
