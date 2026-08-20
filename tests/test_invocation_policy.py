@@ -19,6 +19,7 @@ from rolo.invocation_policy import (
     validate_config_mutation_input,
     validate_config_mutation_result,
     validate_content_result,
+    validate_digest_pinned_mutation_input,
     validate_map_import_input,
 )
 
@@ -408,6 +409,52 @@ def test_map_import_reuses_digest_pinned_artifact_boundary(tmp_path: Path) -> No
             payload={**payload, "artifact_sha256": "0" * 64},
             artifact_root=tmp_path,
         )
+
+
+def test_ros_parameter_load_requires_digest_pinned_artifact_and_rollback_token(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "parameters" / "controller.yaml"
+    artifact.parent.mkdir()
+    artifact.write_text("controller:\n  gain: 1.0\n", encoding="utf-8")
+    load = _descriptor(
+        "ros.parameter.load",
+        risk="R2",
+        requires_quiescence=True,
+    )
+    payload = {
+        "node": "/controller",
+        "artifact_ref": "artifact://parameters/controller.yaml",
+        "artifact_sha256": sha256_file(artifact),
+        "format": "ros2_yaml",
+        "max_bytes": 4096,
+        "expected_parameter_state_sha256": "1" * 64,
+    }
+
+    validate_digest_pinned_mutation_input(
+        load,
+        payload=payload,
+        artifact_root=tmp_path,
+    )
+    validate_config_mutation_result(
+        load,
+        result={"rollback_token": "rollback://ros/parameter-change-1"},
+    )
+
+    rollback = _descriptor(
+        "ros.parameter.rollback",
+        risk="R2",
+        requires_quiescence=True,
+    )
+    validate_config_mutation_input(
+        rollback,
+        payload={
+            "node": "/controller",
+            "rollback_token": "rollback://ros/parameter-change-1",
+            "expected_parameter_state_sha256": "2" * 64,
+        },
+        artifact_root=None,
+    )
 
 
 def test_config_rollback_requires_non_authorizing_system_token() -> None:

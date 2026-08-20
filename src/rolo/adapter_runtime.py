@@ -14,8 +14,7 @@ from rolo.invocation_policy import (
     validate_config_mutation_input,
     validate_config_mutation_result,
     validate_content_result,
-    validate_map_import_input,
-    validate_tuning_candidate_input,
+    validate_digest_pinned_mutation_input,
 )
 from rolo.schema_subset import validate_object
 from rolo.stages.adapt.models import (
@@ -163,12 +162,7 @@ def invoke_adapter(
         payload=payload,
         artifact_root=artifact_root,
     )
-    validate_map_import_input(
-        descriptor,
-        payload=payload,
-        artifact_root=artifact_root,
-    )
-    validate_tuning_candidate_input(
+    validate_digest_pinned_mutation_input(
         descriptor,
         payload=payload,
         artifact_root=artifact_root,

@@ -53,6 +53,24 @@ node_transition_output: &node_transition_output
   required: [status, node, observed_at]
   additionalProperties: false
 
+parameter_mutation_defaults: &parameter_mutation
+  <<: *probe
+  lifecycle: GATEABLE
+  data_classification: SENSITIVE
+  risk: R2
+  access: write
+  idempotent: false
+  cancelable: false
+  result_semantics: ACKNOWLEDGEMENT_ONLY
+  requires_quiescence: true
+  max_duration_s: 30
+  canonical_cli:
+    [robotctl, tool, invoke, "{operation}", --robot, "{robot_id}", --input, "{input_json}"]
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT,
+      TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
 contracts:
   - <<: *probe
     contract_id: ros.graph.snapshot
@@ -682,4 +700,126 @@ contracts:
         bytes: {type: integer, minimum: 0}
         observed_at: {type: string}
       required: [status, node, artifact_ref, media_type, bytes, observed_at]
+      additionalProperties: false
+
+  - <<: *parameter_mutation
+    contract_id: ros.parameter.set
+    operation: ros.parameter.set
+    description: Request one typed ROS parameter update under an execution-quiescence lease.
+    capability_requirements:
+      [ROS parameter mutation route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        node and name resolve to a mutable non-SECRET parameter; expected_current_sha256 matches the
+        canonical typed current value; robot-wide execution quiescence covers the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges the update and returns an opaque rollback token; parameter state
+        must be read separately and no node transition, process restart, task or motion is started.
+    side_effects: [May change one ROS parameter through its owning parameter service or server.]
+    resource_locks: [ROS parameter identified by node and name, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        name: {type: string, minLength: 1}
+        value:
+          type: object
+          properties:
+            type: {type: string, enum: [boolean, integer, number, string, array, object, "null"]}
+            value_json: {type: string, maxLength: 1000000}
+          required: [type, value_json]
+          additionalProperties: false
+        expected_current_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [node, name, value, expected_current_sha256]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        node: {type: string}
+        name: {type: string}
+        rollback_token: {type: string}
+        observed_at: {type: string}
+      required: [status, node, name, rollback_token, observed_at]
+      additionalProperties: false
+
+  - <<: *parameter_mutation
+    contract_id: ros.parameter.load
+    operation: ros.parameter.load
+    description: Request bounded ROS parameter loading from a digest-pinned protected artifact.
+    max_duration_s: 60
+    capability_requirements:
+      [protected artifact resolver with SHA-256 verification, ROS parameter bulk mutation route,
+        protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        artifact_ref resolves inside the protected artifact root and matches artifact_sha256; the
+        document contains no SECRET values; expected_parameter_state_sha256 matches; robot-wide
+        execution quiescence covers the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges the bounded change set and returns an opaque rollback token;
+        parameter state must be read separately and no node transition, restart, task or motion starts.
+    side_effects: [May change a bounded set of ROS parameters for one explicit node namespace.]
+    resource_locks: [ROS parameter namespace identified by node, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        artifact_ref: {type: string, minLength: 12}
+        artifact_sha256: {type: string, minLength: 64, maxLength: 64}
+        format: {type: string, enum: [ros1_yaml, ros2_yaml]}
+        max_bytes: {type: integer, minimum: 1, maximum: 10000000}
+        expected_parameter_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required:
+        [node, artifact_ref, artifact_sha256, format, max_bytes,
+          expected_parameter_state_sha256]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        node: {type: string}
+        change_set_id: {type: string}
+        rollback_token: {type: string}
+        observed_at: {type: string}
+      required: [status, node, change_set_id, rollback_token, observed_at]
+      additionalProperties: false
+
+  - <<: *parameter_mutation
+    contract_id: ros.parameter.rollback
+    operation: ros.parameter.rollback
+    description: Request rollback of one ROS parameter change set under a new quiescence lease.
+    capability_requirements:
+      [ROS parameter rollback route, protected OS write policy and exact operation allowlist,
+        protected execution supervisor providing a bound quiescence lease]
+    preconditions:
+      - >-
+        rollback_token belongs to node and its saved change set; expected_parameter_state_sha256
+        matches; robot-wide execution quiescence covers the complete invocation.
+    postconditions:
+      - >-
+        The response acknowledges rollback only; parameter state must be read separately and no node
+        transition, process restart, task or motion is started or resumed.
+    side_effects: [May restore a previously saved bounded ROS parameter change set.]
+    resource_locks: [ROS parameter namespace identified by node, robot execution quiescence lease]
+    input_schema:
+      type: object
+      properties:
+        node: {type: string, minLength: 1}
+        rollback_token: {type: string, minLength: 12}
+        expected_parameter_state_sha256: {type: string, minLength: 64, maxLength: 64}
+      required: [node, rollback_token, expected_parameter_state_sha256]
+      additionalProperties: false
+    output_schema:
+      type: object
+      properties:
+        status: {type: string}
+        node: {type: string}
+        change_set_id: {type: string}
+        observed_at: {type: string}
+      required: [status, node, change_set_id, observed_at]
       additionalProperties: false

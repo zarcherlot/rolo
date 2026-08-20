@@ -14,8 +14,8 @@ Registry Operation 的日常治理、生命周期升级/降级和运行时使用
 可复制的 R0、R1、R3 与数据敏感度最小模板见
 [OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
 
-当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、178 个为 `GATEABLE`、
-54 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、181 个为 `GATEABLE`、
+51 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
 SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
 容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
 契约及 builtin 不依赖
@@ -117,6 +117,11 @@ Application parameter set/rollback 与 tuning baseline/candidate create、commit
 固定的 protected artifact。真正应用参数的 set/rollback/commit/rollback 为 R2，并声明
 `requires_quiescence=true`：runtime 必须从受保护执行监督器取得覆盖完整调用时限的绑定 lease，
 无法证明执行静止时闭锁拒绝。该 lease 不能授权任务、测试或机器人运动。
+
+ROS parameter set/load/rollback 采用相同 R2 静止门禁。Set 使用当前规范化 typed value 的
+SHA-256 做乐观并发保护；load 只接受有界、摘要固定的 protected artifact；set/load 返回的
+rollback token 不授予权限，rollback 必须重新通过 SENSITIVE、write 与 quiescence 三重门禁。
+这些 operation 均禁止隐式 node transition、进程重启、任务启动或机器人运动。
 
 ## 标准化范围
 

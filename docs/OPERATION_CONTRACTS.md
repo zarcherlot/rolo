@@ -5,7 +5,7 @@ This document is generated from `src/rolo/operation_contracts/*.yaml`.
 implemented and promoted by Adapt. The remaining product vocabulary stays `DRAFT` 
 and cannot become `VERIFIED` until an authored contract is added.
 
-Catalog SHA-256: `fc7bb4a386645d7c9ab373e84263b2c83026f7dcf6a5499e279e0ea8e6246399`
+Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d65635`
 
 | Operation | Lifecycle | Version | Data | Contract SHA-256 |
 |---|---|---|---|---|
@@ -232,6 +232,9 @@ Catalog SHA-256: `fc7bb4a386645d7c9ab373e84263b2c83026f7dcf6a5499e279e0ea8e62463
 | `ros.parameter.dump` | GATEABLE | `1.1.0` | `SENSITIVE` | `9d867719dc2e7490f43f59c6bb6110234ae96293aabb3fc7501100f4802c04a4` |
 | `ros.parameter.get` | RELEASED | `1.1.0` | `SENSITIVE` | `aa03ac032dbb357d4630aaa6a532ff27f18a1e701445bef704c35ba7a7df9ab8` |
 | `ros.parameter.list` | RELEASED | `1.1.0` | `INTERNAL` | `77ccc4c8687e0306341d3f424c1df0f2516dbdce4a37e9d76d40d5c0a0cff12a` |
+| `ros.parameter.load` | GATEABLE | `1.1.0` | `SENSITIVE` | `9c92d4dfd4cdaf95445dbfab0b6be171ea9974490f9ee5bca8a58e5842f25d28` |
+| `ros.parameter.rollback` | GATEABLE | `1.1.0` | `SENSITIVE` | `43bb9088f8c41b2348869a7d66f0ec0bfd49923191d057963fc2294da01ffadd` |
+| `ros.parameter.set` | GATEABLE | `1.1.0` | `SENSITIVE` | `8a057246237d6aa173daa8708d209cdf5e1fa2fa5d22337839fdd70fa52ba300` |
 | `ros.service.describe` | RELEASED | `1.1.0` | `INTERNAL` | `ac0b23b6788a0069fc79f0e2418ed3b71bf21323dff5febfe3a8e5afcfcb89ca` |
 | `ros.service.list` | RELEASED | `1.1.0` | `INTERNAL` | `ec1f2adc21765f60e9c79d50d3bad9f5cd54eabc079c5dc8a4cefe191a582f70` |
 | `ros.tf.lookup` | GATEABLE | `1.1.0` | `SENSITIVE` | `2f70467c7ba9e850f14712066660babcc5866dd2a5d98d2463f4f3328078973a` |
@@ -17953,6 +17956,292 @@ Output schema:
     "data",
     "evidence",
     "warnings"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.parameter.load`
+
+Request bounded ROS parameter loading from a digest-pinned protected artifact.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `60s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `9c92d4dfd4cdaf95445dbfab0b6be171ea9974490f9ee5bca8a58e5842f25d28`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_ref": {
+      "type": "string",
+      "minLength": 12
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "ros1_yaml",
+        "ros2_yaml"
+      ]
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000000
+    },
+    "expected_parameter_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "node",
+    "artifact_ref",
+    "artifact_sha256",
+    "format",
+    "max_bytes",
+    "expected_parameter_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "node": {
+      "type": "string"
+    },
+    "change_set_id": {
+      "type": "string"
+    },
+    "rollback_token": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "node",
+    "change_set_id",
+    "rollback_token",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.parameter.rollback`
+
+Request rollback of one ROS parameter change set under a new quiescence lease.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `43bb9088f8c41b2348869a7d66f0ec0bfd49923191d057963fc2294da01ffadd`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rollback_token": {
+      "type": "string",
+      "minLength": 12
+    },
+    "expected_parameter_state_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "node",
+    "rollback_token",
+    "expected_parameter_state_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "node": {
+      "type": "string"
+    },
+    "change_set_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "node",
+    "change_set_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `ros.parameter.set`
+
+Request one typed ROS parameter update under an execution-quiescence lease.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `ros` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `true`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, PRECONDITION_FAILED, CONFLICT, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8a057246237d6aa173daa8708d209cdf5e1fa2fa5d22337839fdd70fa52ba300`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "boolean",
+            "integer",
+            "number",
+            "string",
+            "array",
+            "object",
+            "null"
+          ]
+        },
+        "value_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "type",
+        "value_json"
+      ],
+      "additionalProperties": false
+    },
+    "expected_current_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "node",
+    "name",
+    "value",
+    "expected_current_sha256"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "node": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "rollback_token": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "node",
+    "name",
+    "rollback_token",
+    "observed_at"
   ],
   "additionalProperties": false
 }

@@ -454,11 +454,14 @@ _ROLLBACK_TOKEN_INPUT_OPERATIONS = {
     "linux.config.rollback",
     "app.parameter.rollback",
     "app.tuning.rollback",
+    "ros.parameter.rollback",
 }
 _ROLLBACK_TOKEN_OUTPUT_OPERATIONS = {
     "linux.config.apply",
     "app.parameter.set",
     "app.tuning.commit",
+    "ros.parameter.set",
+    "ros.parameter.load",
 }
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -670,27 +673,32 @@ def validate_map_import_input(
     payload: dict[str, object],
     artifact_root: Path | None,
 ) -> None:
-    if descriptor.operation != "app.map.import":
-        return
-    _validate_digest_pinned_artifact(
-        payload,
-        artifact_root=artifact_root,
-        label="map import",
-    )
+    if descriptor.operation == "app.map.import":
+        validate_digest_pinned_mutation_input(
+            descriptor,
+            payload=payload,
+            artifact_root=artifact_root,
+        )
 
 
-def validate_tuning_candidate_input(
+def validate_digest_pinned_mutation_input(
     descriptor: ToolDescriptor,
     *,
     payload: dict[str, object],
     artifact_root: Path | None,
 ) -> None:
-    if descriptor.operation != "app.tuning.candidate.create":
+    labels = {
+        "app.map.import": "map import",
+        "app.tuning.candidate.create": "tuning candidate",
+        "ros.parameter.load": "ROS parameter load",
+    }
+    label = labels.get(descriptor.operation)
+    if label is None:
         return
     _validate_digest_pinned_artifact(
         payload,
         artifact_root=artifact_root,
-        label="tuning candidate",
+        label=label,
     )
 
 

@@ -84,6 +84,10 @@ lease 太短或审计失败均闭锁拒绝。机器可读协议见
 Baseline/candidate 等只创建非激活记录的 operation 不要求静止；它们必须明确保证不 apply
 参数、不运行测试、不启动任务或运动。静止 lease 也不是 R3 动作授权，不能用于启动执行。
 
+ROS parameter set/load/rollback 同样要求静止。Bulk load 只接受经过 runtime SHA-256 和大小
+复核的 protected artifact；set/load 生成的 `rollback://` token 只定位保存状态，rollback
+仍需重新授权、重新取得静止 lease，并通过当前参数状态摘要的并发检查。
+
 ## 内容资源分类
 
 `file.read`、配置内容和日志 operation 除 SENSITIVE 身份授权外，还必须匹配

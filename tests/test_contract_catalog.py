@@ -19,15 +19,15 @@ def test_authored_contracts_compile_into_the_complete_product_vocabulary() -> No
     catalog = load_operation_contracts()
     registry = canonical_operation_registry()
 
-    assert len(catalog.contracts) == 240
+    assert len(catalog.contracts) == 243
     assert len(registry.operations) == 294
     assert sum(item.lifecycle == ContractLifecycle.RELEASED for item in catalog.contracts) == 62
-    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 178
+    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 181
     assert sum(item.lifecycle == ContractLifecycle.DEPRECATED for item in catalog.contracts) == 0
     draft_count = sum(
         item.contract_lifecycle == ContractLifecycle.DRAFT for item in registry.operations
     )
-    assert draft_count == 54
+    assert draft_count == 51
     assert registry.contract_catalog_sha256 == catalog.sha256
     assert len(catalog.sha256) == 64
     assert {item.version for item in catalog.contracts} == {"1.1.0", "2.0.0"}
@@ -413,6 +413,37 @@ def test_ros_node_lifecycle_transitions_are_gateable_writes() -> None:
         assert contract.access == "write"
         assert contract.risk == "R2"
         assert contract.result_semantics.value == "ACKNOWLEDGEMENT_ONLY"
+
+
+def test_ros_parameter_mutations_are_digest_bound_quiescent_r2_writes() -> None:
+    catalog = load_operation_contracts().by_operation()
+    operations = {
+        "ros.parameter.set",
+        "ros.parameter.load",
+        "ros.parameter.rollback",
+    }
+
+    assert all(catalog[name].lifecycle == ContractLifecycle.GATEABLE for name in operations)
+    assert all(catalog[name].risk == "R2" for name in operations)
+    assert all(catalog[name].access == "write" for name in operations)
+    assert all(catalog[name].requires_quiescence for name in operations)
+    assert all(
+        catalog[name].result_semantics.value == "ACKNOWLEDGEMENT_ONLY"
+        for name in operations
+    )
+    assert "expected_current_sha256" in (
+        catalog["ros.parameter.set"].input_schema["required"]
+    )
+    assert "artifact_sha256" in (
+        catalog["ros.parameter.load"].input_schema["required"]
+    )
+    assert "expected_parameter_state_sha256" in (
+        catalog["ros.parameter.load"].input_schema["required"]
+    )
+    assert "rollback_token" in (
+        catalog["ros.parameter.load"].output_schema["required"]
+    )
+    assert "process restart" in catalog["ros.parameter.set"].postconditions[0]
 
 
 def test_sensitive_results_and_evidence_are_gateable_but_not_preverified() -> None:
