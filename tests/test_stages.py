@@ -41,6 +41,26 @@ def discover_demo(artifact_root: Path, source_root: Path) -> str:
     return report.discovery_id
 
 
+def _runtime_ros_probe() -> ProbeResult:
+    return ProbeResult(
+        layer="ros",
+        status="SUCCEEDED",
+        data={
+            "ros_distro": "test",
+            "installed_distros": ["test"],
+            "domain_id": "0",
+            "rmw": "test",
+            "nodes": [],
+            "topics": [
+                "/cmd_vel [geometry_msgs/msg/Twist]",
+                "/odom [nav_msgs/msg/Odometry]",
+            ],
+            "services": [],
+            "actions": [],
+        },
+    )
+
+
 def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     discovery_id = discover_demo(artifact_root, tmp_path)
@@ -55,13 +75,15 @@ def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) 
     assert adapt_inputs["semantic_context_ref"].endswith("/semantic_context.json")
     assert not (artifact_root / "adapt/demo_diff/latest/plan.json").exists()
     assert plan.stage == "adapt"
-    assert plan.status == "REQUIRES_CODING"
+    assert plan.status == "BLOCKED"
+    assert plan.eligible_operations == []
+    assert plan.deferred_operations == {}
     assert plan.adapter_agent.provider == "codex"
     assert plan.adapter_agent.model is None
     assert plan.adapter_agent.api_key_configured is False
     assert plan.semantic_context_ref == adapt_inputs["semantic_context_ref"]
     assert plan.robot_wiki_ref.endswith("/robot_wiki.md")
-    assert plan.schema_version == "robot-adapt-plan/v2"
+    assert plan.schema_version == "robot-adapt-plan/v3"
     assert (artifact_root / "diagnose/demo_diff/latest/inputs.json").is_file()
     assert (artifact_root / "verify/demo_diff/latest/inputs.json").is_file()
     discovery_run = artifact_root / "discovery/demo_diff/runs" / discovery_id
@@ -369,6 +391,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
                 "state_graph": "state_graph.json",
                 "conformance_report": "conformance.json",
             },
+            files=[],
         )
         store = ArtifactStore(artifact_root)
         result_path = store.write_json(
@@ -432,8 +455,8 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     newer_discovery_id = discover_demo(artifact_root, workspace)
     assert newer_discovery_id != discovery_id
     adapt = assess_pipeline(artifact_root, "demo_diff").stages[0]
-    assert adapt.status != "COMPLETE"
-    assert any("stale" in blocker.casefold() for blocker in adapt.blockers)
+    assert adapt.status == "COMPLETE"
+    assert not adapt.blockers
 
 
 def test_adapt_run_prepares_dependency_without_confirmation(
@@ -442,6 +465,9 @@ def test_adapt_run_prepares_dependency_without_confirmation(
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run", lambda self: _runtime_ros_probe()
+    )
     discover_demo(artifact_root, workspace)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     get_settings.cache_clear()
@@ -482,6 +508,9 @@ def test_adapt_run_rejects_scratch_and_output_inside_rolo_source(
     artifact_root = tmp_path / "artifacts"
     source = tmp_path / "source"
     source.mkdir()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run", lambda self: _runtime_ros_probe()
+    )
     discover_demo(artifact_root, source)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(Path.cwd() / "forbidden-adapter-output"))

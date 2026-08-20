@@ -32,6 +32,23 @@ rejected. Agent booleans remain advisory audit input. Rolo independently validat
 the package `describe` surface, target-observed routes, the generated catalog, and immutable release
 hashes.
 
+Eligibility is evaluated per operation. A mixed report may publish the exact observed/gateable
+subset; remaining candidates stay `UNAVAILABLE` with `PRODUCT_CONTRACT_NOT_GATEABLE`,
+`TARGET_ROUTE_NOT_DECLARED`, or `TARGET_ROUTE_NOT_OBSERVED`. Deferred candidates cannot become
+`VERIFIED` and do not prevent an unrelated eligible operation from publishing.
+
+The v2 bundle enumerates its entrypoint and all support files by SHA-256. Snapshot, publication,
+load, and invocation verify the complete set. The published State Graph is Rolo-owned v2 output
+rebuilt from discovery and bundle bindings. A stable target fingerprint makes a release non-callable
+when current route, platform, or hardware evidence changes.
+
+The real Agent handoff uses `robot-adapter-agent-result/v2`. Exact artifact Schemas are queried from
+the workspace-local inspection snapshot rather than guessed. A deterministic `adapt handoff pack`
+preflight verifies bundle hashes and `describe`, encodes only final files, and rejects path escape,
+symlinks, duplicates, more than 256 files, files over 2 MiB, or an Agent response over 8 MiB. Rolo
+then rechecks base64, hashes, identities, operation coverage and larger product limits while
+rebuilding its frozen snapshot. Workspace file paths are not trusted as the handoff authority.
+
 ## Acceptance paths
 
 ### Source-only negative path
@@ -88,3 +105,19 @@ uv run pytest tests/test_runtime_authorization_e2e.py tests/test_invocation_poli
 uv run pytest
 uv run ruff check .
 ```
+
+An opt-in acceptance test starts the installed, authenticated Codex CLI against synthetic read-only
+ROS evidence and then runs the real freeze/gate/publish path:
+
+```powershell
+$env:ROLO_RUN_REAL_CODEX_ADAPT = "1"
+uv run pytest tests/test_real_codex_adapt.py
+```
+
+This call sends the bounded synthetic plan, Workset and on-demand evidence to the configured Codex
+service. It is excluded from normal CI and must be explicitly authorized in the environment where it
+runs. Real target evidence follows [`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md).
+
+The 2026-08-20 opt-in acceptance completed with a real authenticated Codex CLI, a v2 structured
+handoff, `robot-adapt-gate/v1` status `PASSED`, a Rolo-owned State Graph v2, and an activated
+`robot-adapter-release/v2`. No target operation or hardware was invoked.

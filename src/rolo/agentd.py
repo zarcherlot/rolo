@@ -153,7 +153,11 @@ def create_agentd_app(robot_id: str) -> FastAPI:
     @agentd.get("/v1/tools")
     async def tool_catalog() -> ToolCatalog:
         try:
-            _, _, _, catalog = load_current_release(runtime.settings.rolo_output_dir, robot_id)
+            _, _, _, catalog = load_current_release(
+                runtime.settings.rolo_output_dir,
+                robot_id,
+                artifact_root=runtime.settings.rolo_artifact_dir,
+            )
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return catalog

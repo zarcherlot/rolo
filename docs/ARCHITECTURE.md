@@ -56,11 +56,14 @@ stage packages.
    The standardization scope and maturity gates are documented in
    [`OPERATION_CONTRACT_STANDARDIZATION.md`](OPERATION_CONTRACT_STANDARDIZATION.md).
 6. `adapt run` creates a fresh temporary adapter project outside the rolo source tree. The Adapter
-   Agent writes only a standalone `robot-adapter-rpc/v1` package, bundle manifest, State Graph, and
-   conformance files. It never writes a Tool Catalog. The project is deleted after the run.
+   Agent writes a standalone `robot-adapter-rpc/v1` implementation, a `robot-adapter-bundle/v2`
+   manifest listing one entrypoint plus bounded support files by SHA-256, a State Graph proposal,
+   and conformance files. It never writes a Tool Catalog. The project is deleted after the run.
 7. The same `adapt run` freezes those proposed files before an independent rolo gate validates
-   identities, exact operation coverage, complete product-owned schemas and policy metadata,
-   package bindings, and verified route availability. The Adapter Agent's local-static booleans
+   identities, eligible-operation coverage, complete product-owned schemas and policy metadata,
+   package bindings, and verified route availability. Rolo discards the Agent graph proposal as an
+   authority source and deterministically builds the published `robot-state-graph/v2` from the
+   gated bundle and discovery routes. The Adapter Agent's local-static booleans
    are retained as advisory audit input; they are not represented as Rolo proof of runtime
    behavior, idempotency, cancellation, reliability, or safety. The gate also executes the
    package's bounded `describe` command and requires every
@@ -80,20 +83,32 @@ stage packages.
    but are neither configured nor shipped as production defaults.
    Rolo composes the Active Tool Catalog from the product Registry, discovery candidates, builtin
    implementations and the verified bundle; unknown or extra bundle operations are rejected.
-   A discovered operation whose product contract is still `DRAFT` cannot be promoted and stays
-   `UNAVAILABLE` even when a route was observed.
-8. A passed gate publishes an immutable release under external `ROLO_OUTPUT_DIR`, binds the package,
+   Eligibility is per operation. A nongateable contract, missing declared route, or unobserved target
+   route leaves only that operation `UNAVAILABLE` with a deferral reason; it does not block unrelated
+   eligible operations.
+8. A passed gate publishes an immutable release under external `ROLO_OUTPUT_DIR`, binds every adapter
+   file,
    Active Tool Catalog, State Graph, conformance and gate report by hash, writes the audit handoff, and only
    then transactionally updates both current indexes with compensation rollback. A failed publication
-   restores both prior indexes and removes the incomplete release.
-9. Diagnose validates the full adapt handoff; Verify validates a structured diagnosis handoff.
+   restores both prior indexes and removes the incomplete release. The release also binds a stable
+   target fingerprint. Runtime access rejects a release after route, platform, or hardware facts
+   change, while an equivalent rediscovery does not force needless regeneration.
+9. The Adapter Agent queries a bounded workspace-local snapshot and exact artifact Schemas. Its
+   deterministic handoff pack validates hashes and `describe`, returns only final file payloads in a
+   structured result, and removes Agent-created workspace files. Rolo reconstructs and gates the
+   snapshot without trusting Agent filesystem access.
+10. Diagnose validates the full adapt handoff; Verify validates a structured diagnosis handoff.
    Merely creating a file at a handoff path never opens the next gate.
 
 The Adapter Agent provider is configurable through `CODING_AGENT_*` settings for compatibility.
 Secrets remain process-local; plans and audit artifacts contain only secret-free configuration.
 `ROLO_OUTPUT_DIR` must resolve outside the rolo source checkout. Runtime invocation reads only its
 atomic `robots/<robot>/current.json` and calls the hash-verified adapter through the generic
-`robotctl tool invoke OPERATION --robot ID --input JSON` dispatcher.
+`robotctl tool invoke OPERATION --robot ID --input JSON` dispatcher. Generated adapter and hardware
+provider processes share one argv-only runner with a sanitized environment, private temporary home,
+bounded stdout/stderr, timeout, process-tree termination, and POSIX resource limits. Production
+deployments should additionally isolate the Rolo service account/container because this portable
+runner is not a kernel network/filesystem sandbox.
 
 The retained Adapt artifacts are deliberately small and centralized:
 

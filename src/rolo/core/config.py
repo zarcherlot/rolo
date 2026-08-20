@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     )
     rolo_r3_authorizer: Path | None = None
     rolo_quiescence_provider: Path | None = None
+    rolo_hardware_evidence_provider: Path | None = None
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     coding_agent_provider: str = "codex"

@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-hardware-evidence-request/v1",
+      "default": "robot-hardware-evidence-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "mode": {
+      "const": "READ_ONLY",
+      "default": "READ_ONLY",
+      "title": "Mode",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id"
+  ],
+  "title": "HardwareEvidenceProviderRequest",
+  "type": "object"
+}

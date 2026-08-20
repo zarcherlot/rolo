@@ -1,4 +1,35 @@
 {
+  "$defs": {
+    "PublishedAdapterFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "role": {
+          "default": "SUPPORT",
+          "enum": [
+            "ENTRYPOINT",
+            "SUPPORT"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "PublishedAdapterFile",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -39,6 +70,13 @@
       "pattern": "^[0-9a-f]{64}$",
       "title": "Adapter Package Sha256",
       "type": "string"
+    },
+    "adapter_files": {
+      "items": {
+        "$ref": "#/$defs/PublishedAdapterFile"
+      },
+      "title": "Adapter Files",
+      "type": "array"
     },
     "state_graph_ref": {
       "title": "State Graph Ref",

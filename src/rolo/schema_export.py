@@ -24,6 +24,10 @@ from rolo.invocation_policy import (
     R3AuthorizationRequest,
 )
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.hardware_provider import (
+    HardwareEvidenceProviderRequest,
+    HardwareEvidenceProviderResult,
+)
 from rolo.stages.adapt.inputs import AdaptInputs
 from rolo.stages.adapt.models import (
     AdapterAgentDependencyReport,
@@ -96,6 +100,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DirectDependencyReport,
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
+    HardwareEvidenceProviderRequest,
+    HardwareEvidenceProviderResult,
     WikiInsightBundle,
     WikiDiscoveryDiff,
 )

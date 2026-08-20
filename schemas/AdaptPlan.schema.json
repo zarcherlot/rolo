@@ -112,8 +112,11 @@
   },
   "properties": {
     "schema_version": {
-      "const": "robot-adapt-plan/v2",
-      "default": "robot-adapt-plan/v2",
+      "default": "robot-adapt-plan/v3",
+      "enum": [
+        "robot-adapt-plan/v2",
+        "robot-adapt-plan/v3"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -139,6 +142,20 @@
       },
       "title": "Tasks",
       "type": "array"
+    },
+    "eligible_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Eligible Operations",
+      "type": "array"
+    },
+    "deferred_operations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Deferred Operations",
+      "type": "object"
     },
     "adapter_agent": {
       "$ref": "#/$defs/AdapterAgentConfig"

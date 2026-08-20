@@ -16,6 +16,7 @@ from rolo.stages.adapt.operation_registry import (
     builtin_operations,
     canonical_operation_registry,
 )
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 
 
@@ -100,7 +101,12 @@ def build_operation_workset(
         release_id = release.release_id
         release_discovery_id = release.discovery_id
         active_by_operation = {tool.operation: tool for tool in catalog.tools}
-    release_matches = release_discovery_id == report.discovery_id
+    release_matches = bool(
+        release_id is not None
+        and release.target_fingerprint_sha256 is not None
+        and release.target_fingerprint_sha256
+        == target_fingerprint_sha256(report, artifact_root)
+    )
     bundle_operations = {item.operation for item in bundle.operations} if bundle else set()
 
     items: list[OperationWorkItem] = []

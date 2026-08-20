@@ -1,3 +1,4 @@
+import base64
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -5,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import OperationCandidate, ProbeResult, RouteEvidence, utc_now
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.conformance import (
@@ -78,10 +79,15 @@ def _prepare_promotion(
         for candidate in report.operation_candidates
     ]
     operation_map = {item["operation"]: item["entrypoint"] for item in bundle_operations}
+    support_path = workspace / "adapter_support.py"
+    support_path.write_text(
+        f"OPERATIONS = {operation_map!r}\n",
+        encoding="utf-8",
+    )
     package_path = workspace / "demo_adapter.py"
     package_path.write_text(
         "import json, sys\n"
-        f"OPERATIONS = {operation_map!r}\n"
+        "from adapter_support import OPERATIONS\n"
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': OPERATIONS}))\n"
         "elif sys.argv[1] == 'invoke':\n"
@@ -91,7 +97,7 @@ def _prepare_promotion(
     (workspace / "adapter-manifest.json").write_text(
         json.dumps(
             {
-                "schema_version": "robot-adapter-bundle/v1",
+                "schema_version": "robot-adapter-bundle/v2",
                 "bundle_id": "demo-adapter",
                 "bundle_version": "1.0.0",
                 "robot_id": "demo_diff",
@@ -99,6 +105,18 @@ def _prepare_promotion(
                 "runtime_protocol": "robot-adapter-rpc/v1",
                 "package_file": package_path.name,
                 "package_sha256": sha256_file(package_path),
+                "files": [
+                    {
+                        "path": package_path.name,
+                        "sha256": sha256_file(package_path),
+                        "role": "ENTRYPOINT",
+                    },
+                    {
+                        "path": support_path.name,
+                        "sha256": sha256_file(support_path),
+                        "role": "SUPPORT",
+                    },
+                ],
                 "operations": bundle_operations,
             }
         ),
@@ -154,6 +172,7 @@ def _prepare_promotion(
             "state_graph": "state_graph.json",
             "conformance_report": "conformance.json",
         },
+        files=[],
     )
     store = ArtifactStore(artifact_root)
     result_path = store.write_json(
@@ -312,6 +331,15 @@ def test_promotion_publishes_only_independently_validated_handoff(tmp_path: Path
     service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
     snapshot, _ = service.snapshot(run)
     assert not hasattr(snapshot, "tool_catalog_ref")
+    frozen_graph = json.loads(
+        (
+            artifact_root
+            / "adapt/demo_diff/runs/run-test/output-snapshot/state-graph.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert frozen_graph["schema_version"] == "robot-state-graph/v2"
+    assert frozen_graph["owner"] == "ROLO_GATE"
+    assert any(item["kind"] == "operation" for item in frozen_graph["nodes"])
     handoff, path, _, _ = service.promote_run(run, snapshot)
     discovery = load_report(artifact_root, "demo_diff", discovery_id)
     observed_routes = discovery.probes["ros"].data["route_evidence"]
@@ -326,6 +354,57 @@ def test_promotion_publishes_only_independently_validated_handoff(tmp_path: Path
         == handoff
     )
     assert (tmp_path / "output/robots/demo_diff/current.json").is_file()
+    release_root = tmp_path / "output/robots/demo_diff/releases/run-test"
+    release = json.loads((release_root / "manifest.json").read_text(encoding="utf-8"))
+    assert release["schema_version"] == "robot-adapter-release/v2"
+    assert {item["path"] for item in release["adapter_files"]} == {
+        "adapter/demo_adapter.py",
+        "adapter/adapter_support.py",
+    }
+    assert (release_root / "adapter/adapter_support.py").is_file()
+
+
+def test_snapshot_reconstructs_structured_handoff_without_workspace_reads(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    output_root = tmp_path / "output"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _, run = _prepare_promotion(
+        artifact_root, workspace, include_write_operation=True
+    )
+    names = [
+        "adapter-manifest.json",
+        "demo_adapter.py",
+        "adapter_support.py",
+        "state_graph.json",
+        "conformance.json",
+    ]
+    files = []
+    for name in names:
+        payload = (workspace / name).read_bytes()
+        files.append(
+            {
+                "path": name,
+                "encoding": "base64",
+                "content": base64.b64encode(payload).decode("ascii"),
+                "sha256": sha256_bytes(payload),
+            }
+        )
+    result_path = artifact_root / run.result_ref.removeprefix("artifact://")
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["schema_version"] = "robot-adapter-agent-result/v2"
+    result["files"] = files
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+    for name in names:
+        (workspace / name).unlink()
+
+    snapshot, _ = AdapterPromotionService(ArtifactStore(artifact_root), output_root).snapshot(run)
+
+    assert snapshot.adapter_files
+    package_ref = snapshot.adapter_package_ref.removeprefix("artifact://")
+    assert (artifact_root / package_ref).is_file()
 
 
 def test_promotion_rejects_incomplete_conformance_coverage(tmp_path: Path) -> None:
@@ -341,6 +420,18 @@ def test_promotion_rejects_incomplete_conformance_coverage(tmp_path: Path) -> No
     with pytest.raises(ValueError, match="coverage"):
         snapshot, _ = service.snapshot(run)
         service.promote_run(run, snapshot)
+
+
+def test_snapshot_rejects_tampered_bundle_support_file(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _, run = _prepare_promotion(artifact_root, workspace)
+    (workspace / "adapter_support.py").write_text("tampered\n", encoding="utf-8")
+
+    service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
+    with pytest.raises(ValueError, match="file digest mismatch"):
+        service.snapshot(run)
 
 
 def test_promotion_rejects_agent_attestation_for_rolo_builtin(tmp_path: Path) -> None:
@@ -424,10 +515,8 @@ def test_runtime_presence_without_candidate_route_cannot_be_promoted(tmp_path: P
         route_observed=False,
     )
     service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
-    snapshot, _ = service.snapshot(run)
-
-    with pytest.raises(ValueError, match="route was not observed"):
-        service.promote_run(run, snapshot)
+    with pytest.raises(ValueError, match="no target-observed"):
+        service.snapshot(run)
 
 
 def test_unavailable_runtime_probe_cannot_be_promoted_by_agent_claim(
@@ -440,10 +529,8 @@ def test_unavailable_runtime_probe_cannot_be_promoted_by_agent_claim(
         artifact_root, workspace, include_write_operation=True, runtime_ready=False
     )
     service = AdapterPromotionService(ArtifactStore(artifact_root), tmp_path / "output")
-    snapshot, _ = service.snapshot(run)
-
-    with pytest.raises(ValueError, match="target runtime evidence is unavailable"):
-        service.promote_run(run, snapshot)
+    with pytest.raises(ValueError, match="no target-observed"):
+        service.snapshot(run)
 
 
 def test_failed_handoff_validation_removes_unactivated_release(tmp_path: Path) -> None:

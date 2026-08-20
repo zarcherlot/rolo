@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import shutil
 from pathlib import Path
 
@@ -14,7 +16,7 @@ from rolo.adapter_runtime import (
 )
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryStatus
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ActiveProbeMode
 from rolo.stages.adapt.discovery import load_report
@@ -40,6 +42,11 @@ from rolo.stages.adapt.operation_registry import (
     validate_definition_contract,
 )
 from rolo.stages.adapt.routes import ROUTE_PROBE_LAYER, candidate_route_observed
+from rolo.stages.adapt.state_graph import (
+    build_state_graph_baseline,
+    validate_state_graph_baseline,
+)
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
@@ -70,11 +77,73 @@ def _workspace_output(workspace: Path, relative: str) -> Path:
     return path
 
 
+def _workspace_bundle_files(
+    workspace: Path, bundle: AdapterBundleManifest
+) -> list[tuple[object, Path]]:
+    root = workspace.expanduser().resolve()
+    resolved: list[tuple[object, Path]] = []
+    total_bytes = 0
+    declared = bundle.declared_files()
+    if len(declared) > 256:
+        raise ValueError("adapter bundle exceeds the 256-file limit")
+    for item in declared:
+        raw = root / item.path
+        if raw.is_symlink() or any(
+            parent.is_symlink() for parent in raw.parents if parent != root.parent
+        ):
+            raise ValueError(f"adapter bundle file cannot be a symlink: {item.path}")
+        path = _workspace_output(workspace, item.path)
+        if sha256_file(path) != item.sha256:
+            raise ValueError(f"adapter bundle file digest mismatch: {item.path}")
+        total_bytes += path.stat().st_size
+        if total_bytes > 512 * 1024 * 1024:
+            raise ValueError("adapter bundle exceeds the 512 MiB total size limit")
+        resolved.append((item, path))
+    return resolved
+
+
 def _read_model(path: Path, model: type[BaseModel]) -> BaseModel:
     try:
         return model.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"invalid {model.__name__} at {path}: {exc}") from exc
+
+
+def _structured_output_files(result: AdapterAgentResult) -> dict[str, bytes]:
+    if len(result.files) > 256:
+        raise ValueError("Adapter Agent structured handoff exceeds the 256-file limit")
+    decoded: dict[str, bytes] = {}
+    total_bytes = 0
+    for item in result.files:
+        candidate = Path(item.path)
+        if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
+            raise ValueError(f"Adapter Agent file path is unsafe: {item.path}")
+        normalized = candidate.as_posix()
+        if normalized in decoded:
+            raise ValueError(f"Adapter Agent file path is duplicated: {item.path}")
+        try:
+            payload = base64.b64decode(item.content, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"Adapter Agent file is not valid base64: {item.path}") from exc
+        if len(payload) > 16 * 1024 * 1024:
+            raise ValueError(f"Adapter Agent file exceeds the 16 MiB handoff limit: {item.path}")
+        total_bytes += len(payload)
+        if total_bytes > 64 * 1024 * 1024:
+            raise ValueError("Adapter Agent structured handoff exceeds the 64 MiB total limit")
+        if sha256_bytes(payload) != item.sha256:
+            raise ValueError(f"Adapter Agent structured file digest mismatch: {item.path}")
+        decoded[normalized] = payload
+    return decoded
+
+
+def _payload(decoded: dict[str, bytes], relative: str) -> bytes:
+    candidate = Path(relative)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError(f"adapter output must be workspace-relative: {relative}")
+    try:
+        return decoded[candidate.as_posix()]
+    except KeyError as exc:
+        raise ValueError(f"adapter output is missing from structured handoff: {relative}") from exc
 
 
 def latest_adapter_handoff_path(artifact_root: Path, robot_id: str) -> Path:
@@ -160,47 +229,103 @@ class AdapterPromotionService:
             raise ValueError("Adapter Agent result is not ready for independent conformance")
 
         workspace = Path(run.workspace)
-        bundle_manifest_path = _workspace_output(workspace, result.outputs.adapter_manifest)
-        adapter_package_path = _workspace_output(workspace, result.outputs.adapter_package)
-        graph_path = _workspace_output(workspace, result.outputs.state_graph)
-        conformance_path = _workspace_output(workspace, result.outputs.conformance_report)
-        bundle = _read_model(bundle_manifest_path, AdapterBundleManifest)
-        graph = _read_model(graph_path, StateGraphBaseline)
-        conformance = _read_model(conformance_path, AdapterConformanceReport)
+        decoded = _structured_output_files(result) if result.files else {}
+        bundle_manifest_payload: bytes | None = None
+        bundle_payloads: list[tuple[object, bytes]] | None = None
+        if decoded:
+            bundle_manifest_payload = _payload(decoded, result.outputs.adapter_manifest)
+            adapter_package_payload = _payload(decoded, result.outputs.adapter_package)
+            graph_payload = _payload(decoded, result.outputs.state_graph)
+            conformance_payload = _payload(decoded, result.outputs.conformance_report)
+            bundle = AdapterBundleManifest.model_validate_json(bundle_manifest_payload)
+            graph = StateGraphBaseline.model_validate_json(graph_payload)
+            conformance = AdapterConformanceReport.model_validate_json(conformance_payload)
+            bundle_payloads = []
+            total_bytes = 0
+            for item in bundle.declared_files():
+                payload = _payload(decoded, item.path)
+                if sha256_bytes(payload) != item.sha256:
+                    raise ValueError(f"adapter bundle file digest mismatch: {item.path}")
+                total_bytes += len(payload)
+                if total_bytes > 512 * 1024 * 1024:
+                    raise ValueError("adapter bundle exceeds the 512 MiB total size limit")
+                bundle_payloads.append((item, payload))
+            entry_payload = next(
+                payload for item, payload in bundle_payloads if item.role == "ENTRYPOINT"
+            )
+            if entry_payload != adapter_package_payload:
+                raise ValueError("adapter result entrypoint does not match the bundle file payload")
+        else:
+            bundle_manifest_path = _workspace_output(workspace, result.outputs.adapter_manifest)
+            adapter_package_path = _workspace_output(workspace, result.outputs.adapter_package)
+            graph_path = _workspace_output(workspace, result.outputs.state_graph)
+            conformance_path = _workspace_output(workspace, result.outputs.conformance_report)
+            bundle = _read_model(bundle_manifest_path, AdapterBundleManifest)
+            graph = _read_model(graph_path, StateGraphBaseline)
+            conformance = _read_model(conformance_path, AdapterConformanceReport)
         assert isinstance(bundle, AdapterBundleManifest)
         assert isinstance(graph, StateGraphBaseline)
         assert isinstance(conformance, AdapterConformanceReport)
         if bundle.robot_id != run.robot_id or bundle.discovery_id != run.source_discovery_id:
             raise ValueError("adapter bundle identity does not match the Adapter Agent run")
-        if Path(bundle.package_file).name != adapter_package_path.name:
+        if Path(bundle.package_file).as_posix() != Path(result.outputs.adapter_package).as_posix():
             raise ValueError("adapter bundle package_file does not match the proposed package")
-        if sha256_file(adapter_package_path) != bundle.package_sha256:
-            raise ValueError("adapter package hash does not match its bundle manifest")
+        if decoded:
+            if sha256_bytes(adapter_package_payload) != bundle.package_sha256:
+                raise ValueError("adapter package hash does not match its bundle manifest")
+        else:
+            if sha256_file(adapter_package_path) != bundle.package_sha256:
+                raise ValueError("adapter package hash does not match its bundle manifest")
+            bundle_files = _workspace_bundle_files(workspace, bundle)
+            entry_path = next(path for item, path in bundle_files if item.role == "ENTRYPOINT")
+            if entry_path != adapter_package_path:
+                raise ValueError(
+                    "adapter result entrypoint does not match the bundle file manifest"
+                )
         bundle_operations = [item.operation for item in bundle.operations]
         if len(bundle_operations) != len(set(bundle_operations)):
             raise ValueError("adapter bundle contains duplicate operations")
         discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
-        expected_bundle_operations = {
-            candidate.operation for candidate in discovery.operation_candidates
-        }
+        expected_bundle_operations = required_adapter_agent_conformance_operations(discovery)
+        if not expected_bundle_operations:
+            raise ValueError("no target-observed adapter operations are eligible for promotion")
         if set(bundle_operations) != expected_bundle_operations:
             raise ValueError(
-                "adapter bundle operation coverage must exactly match discovered candidates"
+                "adapter bundle operation coverage must exactly match eligible operations"
             )
-        identified_outputs = (
-            (graph, "State Graph"),
-            (conformance, "conformance report"),
-        )
+        graph = build_state_graph_baseline(discovery, bundle)
+        identified_outputs = ((graph, "State Graph"), (conformance, "conformance report"))
         for value, label in identified_outputs:
             if value.robot_id != run.robot_id or value.discovery_id != run.source_discovery_id:
                 raise ValueError(f"{label} identity does not match the Adapter Agent run")
 
         snapshot_root = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "output-snapshot"
         bundle_manifest_out = snapshot_root / "adapter-manifest.json"
-        adapter_package_out = snapshot_root / adapter_package_path.name
         snapshot_root.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(bundle_manifest_path, bundle_manifest_out)
-        shutil.copy2(adapter_package_path, adapter_package_out)
+        if bundle_manifest_payload is not None:
+            bundle_manifest_out.write_bytes(bundle_manifest_payload)
+        else:
+            shutil.copy2(bundle_manifest_path, bundle_manifest_out)
+        snapshot_files = []
+        adapter_package_out: Path | None = None
+        sources = bundle_payloads if bundle_payloads is not None else bundle_files
+        for item, source in sources:
+            destination = snapshot_root / "adapter-files" / item.path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(source, bytes):
+                destination.write_bytes(source)
+            else:
+                shutil.copy2(source, destination)
+            snapshot_files.append(
+                {
+                    "path": self.layout.ref(destination),
+                    "sha256": item.sha256,
+                    "role": item.role,
+                }
+            )
+            if item.role == "ENTRYPOINT":
+                adapter_package_out = destination
+        assert adapter_package_out is not None
         graph_out = self.artifacts.write_json(
             self.layout.relative(snapshot_root / "state-graph.json"),
             graph.model_dump(mode="json"),
@@ -217,6 +342,7 @@ class AdapterPromotionService:
             adapter_manifest_sha256=sha256_file(bundle_manifest_out),
             adapter_package_ref=self.layout.ref(adapter_package_out),
             adapter_package_sha256=sha256_file(adapter_package_out),
+            adapter_files=snapshot_files,
             state_graph_ref=self.layout.ref(graph_out),
             state_graph_sha256=sha256_file(graph_out),
             conformance_report_ref=self.layout.ref(conformance_out),
@@ -241,6 +367,7 @@ class AdapterPromotionService:
             (snapshot.adapter_package_ref, snapshot.adapter_package_sha256),
             (snapshot.state_graph_ref, snapshot.state_graph_sha256),
             (snapshot.conformance_report_ref, snapshot.conformance_report_sha256),
+            *[(item.path, item.sha256) for item in snapshot.adapter_files],
         )
         for reference, expected in pairs:
             path = resolve_artifact_ref(self.artifacts.root, reference)
@@ -261,6 +388,12 @@ class AdapterPromotionService:
         assert isinstance(bundle, AdapterBundleManifest)
         assert isinstance(graph, StateGraphBaseline)
         assert isinstance(conformance, AdapterConformanceReport)
+        declared = bundle.declared_files()
+        if len(snapshot.adapter_files) != len(declared) or any(
+            published.sha256 != expected.sha256 or published.role != expected.role
+            for expected, published in zip(declared, snapshot.adapter_files, strict=True)
+        ):
+            raise ValueError("adapter output snapshot file manifest differs from bundle")
         return bundle, package_path, graph, conformance
 
     def promote_run(
@@ -298,6 +431,8 @@ class AdapterPromotionService:
                 if value.robot_id != run.robot_id or value.discovery_id != run.source_discovery_id:
                     raise ValueError(f"{label} identity does not match the Adapter Agent run")
             checks.append("robot and discovery identity")
+            validate_state_graph_baseline(graph, discovery, bundle)
+            checks.append("Rolo-owned State Graph identity, binding, and route coverage")
 
             expected_agent_operations = required_adapter_agent_conformance_operations(discovery)
             expected_builtin_operations = required_builtin_conformance_operations()
@@ -305,13 +440,13 @@ class AdapterPromotionService:
                 definition.operation: definition
                 for definition in canonical_operation_registry().operations
             }
-            expected_bundle_operations = {
-                candidate.operation for candidate in discovery.operation_candidates
-            }
+            expected_bundle_operations = required_adapter_agent_conformance_operations(discovery)
+            if not expected_bundle_operations:
+                raise ValueError("no target-observed adapter operations are eligible for promotion")
             bundle_entries = {item.operation: item for item in bundle.operations}
             if set(bundle_entries) != expected_bundle_operations:
                 raise ValueError(
-                    "adapter bundle operation coverage must exactly match generated candidates"
+                    "adapter bundle operation coverage must exactly match eligible operations"
                 )
             probe_adapter_package(package_path, bundle)
             checks.append("adapter package describe and entrypoint binding")
@@ -471,10 +606,23 @@ class AdapterPromotionService:
                 robot_id=run.robot_id,
                 release_id=run.run_id,
                 discovery_id=run.source_discovery_id,
+                target_fingerprint_sha256=target_fingerprint_sha256(
+                    discovery, self.artifacts.root
+                ),
                 bundle_manifest_path=resolve_artifact_ref(
                     self.artifacts.root, snapshot.adapter_manifest_ref
                 ),
                 adapter_package_path=package_path,
+                adapter_files=[
+                    (
+                        declared.path,
+                        resolve_artifact_ref(self.artifacts.root, published.path),
+                        declared.role,
+                    )
+                    for declared, published in zip(
+                        bundle.declared_files(), snapshot.adapter_files, strict=True
+                    )
+                ],
                 tool_catalog_path=catalog_out,
                 state_graph_path=resolve_artifact_ref(
                     self.artifacts.root, snapshot.state_graph_ref

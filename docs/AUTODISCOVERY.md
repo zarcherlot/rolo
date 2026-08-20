@@ -25,7 +25,11 @@ declared value, observed value, and adopted value. A component that is present o
 shown normally. The generic probe currently enumerates video/input/IIO devices, serial and I2C
 interfaces, USB/PCI/network buses, the compute board, and thermal zones. Motor-controller,
 encoder, firmware, lidar/IMU model, and vendor board-driver details require a hardware-specific
-read-only adapter to publish standardized `components` evidence.
+read-only evidence provider to publish standardized `components` evidence. Configure its executable
+path with `ROLO_HARDWARE_EVIDENCE_PROVIDER`. Rolo sends a bounded `READ_ONLY` request, validates the
+returned robot identity, and merges components by kind and name. Provider facts take precedence over
+generic/URDF fields. A missing provider is a supported degraded path, not a BSP state or an Adapt
+failure.
 
 ## Run
 
@@ -97,6 +101,11 @@ artifacts/discovery/<robot_id>/
 `robot_wiki.md` is the editable system view passed to downstream work. Adapt requires that it can be
 loaded, while `manifest.json` covers machine evidence only so Wiki edits do not invalidate discovery.
 Untrusted operation candidates are stored once in `report.json` rather than copied to a second file.
+The Wiki renders only the candidates discovered for this robot, not the entire product operation
+Registry. It also filters build-only artifacts from the application section, deduplicates and bounds
+static communication edges, groups unknowns by acquisition strategy, and labels every heuristic
+finding with its basis and required verification. Full-fidelity observations remain in the JSON and
+active-discovery reports.
 
 The source scanner recognizes `pyproject.toml`, setuptools, CMake, Cargo, ROS `package.xml`, launch
 files, configuration files, Python console scripts and statically visible ROS publisher,
@@ -126,6 +135,8 @@ records are migrated only at the model boundary and are evaluated using the v2 r
 Adapter Agent conformance covers exactly the discovered bundle candidates. Builtin operations are a
 separate Rolo-owned conformance domain; asking the Agent to repeat or attest builtin checks is rejected
 as incorrect coverage.
+Candidates are evaluated independently: target-observed, gateable operations may be published while
+other candidates remain `UNAVAILABLE` with a stable deferral reason.
 Likewise, velocity candidates remain `DISCOVERED_UNVERIFIED` with `safety_authority: none`. The
 same semantic context is written into Adapt, Diagnose, and Verify agent inputs; only controlled physical
 validation and explicit approval may promote a candidate to a hard motion limit.

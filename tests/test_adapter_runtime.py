@@ -10,12 +10,26 @@ from rolo.adapter_runtime import activate_release, invoke_adapter, publish_relea
 from rolo.cli import app
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
-from rolo.core.models import ToolDescriptor
+from rolo.core.models import DiscoveryReport, DiscoveryStatus, ToolDescriptor
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 
-def _publish_demo_release(tmp_path: Path) -> Path:
+def _target_report() -> DiscoveryReport:
+    return DiscoveryReport(
+        discovery_id="disc-1",
+        robot_id="demo",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={},
+        capability_manifest={},
+        probes={},
+    )
+
+
+def _publish_demo_release(
+    tmp_path: Path, *, target_report: DiscoveryReport | None = None
+) -> Path:
     definition = next(
         item
         for item in canonical_operation_registry().operations
@@ -23,15 +37,22 @@ def _publish_demo_release(tmp_path: Path) -> Path:
     )
     source = tmp_path / "source"
     source.mkdir()
+    helper = source / "demo_support.py"
+    helper.write_text(
+        "def result(payload):\n"
+        "    return {'status': 'SUCCEEDED', 'camera': payload['camera']}\n",
+        encoding="utf-8",
+    )
     package = source / "demo_adapter.py"
     package.write_text(
         "import json, sys\n"
+        "from demo_support import result\n"
         "OPS = {'app.camera.snapshot': 'camera_snapshot'}\n"
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': OPS}))\n"
         "elif sys.argv[1] == 'invoke':\n"
         "    payload = json.load(sys.stdin)\n"
-        "    print(json.dumps({'status': 'SUCCEEDED', 'camera': payload['camera']}))\n",
+        "    print(json.dumps(result(payload)))\n",
         encoding="utf-8",
     )
     bundle = AdapterBundleManifest(
@@ -41,6 +62,18 @@ def _publish_demo_release(tmp_path: Path) -> Path:
         discovery_id="disc-1",
         package_file=package.name,
         package_sha256=sha256_file(package),
+        files=[
+            {
+                "path": package.name,
+                "sha256": sha256_file(package),
+                "role": "ENTRYPOINT",
+            },
+            {
+                "path": helper.name,
+                "sha256": sha256_file(helper),
+                "role": "SUPPORT",
+            },
+        ],
         operations=[
             {
                 "operation": "app.camera.snapshot",
@@ -120,8 +153,15 @@ def _publish_demo_release(tmp_path: Path) -> Path:
         robot_id="demo",
         release_id="release-1",
         discovery_id="disc-1",
+        target_fingerprint_sha256=(
+            target_fingerprint_sha256(target_report) if target_report is not None else None
+        ),
         bundle_manifest_path=bundle_path,
         adapter_package_path=package,
+        adapter_files=[
+            (package.name, package, "ENTRYPOINT"),
+            (helper.name, helper, "SUPPORT"),
+        ],
         tool_catalog_path=catalog_path,
         state_graph_path=state_graph,
         conformance_path=conformance,
@@ -211,6 +251,55 @@ def test_runtime_rejects_a_tampered_adapter_package(tmp_path: Path) -> None:
         invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": "front"})
 
 
+def test_runtime_rejects_a_tampered_adapter_support_file(tmp_path: Path) -> None:
+    output = _publish_demo_release(tmp_path)
+    support = output / "robots/demo/releases/release-1/adapter/demo_support.py"
+    support.write_text("tampered", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": "front"})
+
+
+def test_runtime_rejects_release_when_latest_target_fingerprint_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report = _target_report()
+    output = _publish_demo_release(tmp_path, target_report=report)
+    changed = report.model_copy(update={"platform": {"architecture": "different"}})
+    monkeypatch.setattr("rolo.stages.adapt.discovery.load_latest_report", lambda *_: changed)
+
+    with pytest.raises(ValueError, match="release is stale"):
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front"},
+            discovery_artifact_root=tmp_path / "artifacts",
+        )
+
+
+def test_runtime_keeps_release_for_equivalent_rediscovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    report = _target_report()
+    output = _publish_demo_release(tmp_path, target_report=report)
+    equivalent = report.model_copy(update={"discovery_id": "disc-2"})
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.load_latest_report", lambda *_: equivalent
+    )
+    policy, audit = _sensitive_access(tmp_path)
+
+    assert invoke_adapter(
+        output,
+        "demo",
+        "app.camera.snapshot",
+        {"camera": "front"},
+        policy_path=policy,
+        audit_path=audit,
+        discovery_artifact_root=tmp_path / "artifacts",
+    )["status"] == "SUCCEEDED"
+
+
 def test_runtime_rejects_operation_missing_from_active_catalog(tmp_path: Path) -> None:
     output = _publish_demo_release(tmp_path)
 
@@ -236,11 +325,13 @@ def test_runtime_enforces_registered_input_field_types(tmp_path: Path) -> None:
 def test_generic_tool_invoke_cli_routes_through_active_release(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    output = _publish_demo_release(tmp_path)
+    report = _target_report()
+    output = _publish_demo_release(tmp_path, target_report=report)
     policy, audit = _sensitive_access(tmp_path)
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(output))
     monkeypatch.setenv("ROLO_INVOCATION_POLICY", str(policy))
     monkeypatch.setenv("ROLO_INVOCATION_AUDIT_LOG", str(audit))
+    monkeypatch.setattr("rolo.stages.adapt.discovery.load_latest_report", lambda *_: report)
     get_settings.cache_clear()
 
     result = CliRunner().invoke(
@@ -267,11 +358,13 @@ def test_generic_tool_invoke_cli_routes_through_active_release(
 def test_state_graph_cli_reads_only_the_active_gated_release(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    output = _publish_demo_release(tmp_path)
+    report = _target_report()
+    output = _publish_demo_release(tmp_path, target_report=report)
     policy, audit = _sensitive_access(tmp_path)
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(output))
     monkeypatch.setenv("ROLO_INVOCATION_POLICY", str(policy))
     monkeypatch.setenv("ROLO_INVOCATION_AUDIT_LOG", str(audit))
+    monkeypatch.setattr("rolo.stages.adapt.discovery.load_latest_report", lambda *_: report)
     get_settings.cache_clear()
 
     snapshot = CliRunner().invoke(app, ["state", "graph", "snapshot", "--robot", "demo"])

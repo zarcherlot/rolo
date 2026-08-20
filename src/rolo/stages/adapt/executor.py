@@ -20,10 +20,19 @@ from rolo.stages.adapt.models import (
     AdapterAgentResult,
     AdapterAgentRun,
     AdapterAgentRunStatus,
+    AdapterBundleManifest,
+    AdapterConformanceReport,
     AdaptPlan,
     AdaptPlanStatus,
+    StateGraphBaseline,
 )
-from rolo.stages.adapt.workset import compact_agent_boot_context
+from rolo.stages.adapt.workset import (
+    build_operation_workset,
+    candidate_detail,
+    compact_agent_boot_context,
+    load_active_discovery,
+    operation_detail,
+)
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
@@ -89,6 +98,7 @@ def build_codex_command(
         "exec",
         "--json",
         "--ephemeral",
+        "--skip-git-repo-check",
         "--sandbox",
         "workspace-write",
         "--cd",
@@ -178,7 +188,7 @@ class CodexAdaptExecutor:
         final_message_path = run_root / "final-message.json"
         result_path = run_root / "result.json"
 
-        agent_tool = self._install_agent_tool_launcher(workspace)
+        agent_tool = self._install_agent_tool_launcher(workspace, plan)
         prompt = self._build_prompt(plan, agent_tool=agent_tool)
         prompt_path.write_text(prompt, encoding="utf-8")
         schema_path.write_text(
@@ -281,36 +291,106 @@ class CodexAdaptExecutor:
 
     def _child_environment(self, agent_tool: Path, plan: AdaptPlan) -> dict[str, str]:
         environment = os.environ.copy()
-        # Only the deliberately configured secret may reach the Codex process. The
-        # shell environment policy above keeps KEY/SECRET/TOKEN values out of tools
-        # launched by the model.
-        for name in ("CODING_AGENT_API_KEY", "CODEX_API_KEY", "OPENAI_API_KEY"):
-            environment.pop(name, None)
+        # Keep host credentials unrelated to the configured coding provider out of
+        # the Codex process itself, in addition to Codex's tool environment policy.
+        secret_markers = ("KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
+        for name in list(environment):
+            if any(marker in name.upper() for marker in secret_markers):
+                environment.pop(name, None)
         if self.api_key:
             environment["CODEX_API_KEY"] = self.api_key
         environment["ROLO_AGENT_TOOL"] = str(agent_tool)
         environment["ROLO_AGENT_DISCOVERY_ID"] = plan.source_discovery_id
-        environment["ROLO_ARTIFACT_DIR"] = str(self.artifacts.root.resolve())
-        environment["ROLO_OUTPUT_DIR"] = str(self.output_root)
         return environment
 
-    def _install_agent_tool_launcher(self, workspace: Path) -> Path:
+    def _install_agent_tool_launcher(self, workspace: Path, plan: AdaptPlan) -> Path:
+        """Install a sandbox-local query snapshot; it never imports rolo at runtime."""
         python = Path(sys.executable).resolve()
-        source_root = Path(__file__).resolve().parents[3]
+        report = load_report(self.artifacts.root, plan.robot_id, plan.source_discovery_id)
+        active = load_active_discovery(self.artifacts.root, report)
+        workset = build_operation_workset(
+            self.artifacts.root,
+            self.output_root,
+            plan.robot_id,
+            plan.source_discovery_id,
+        )
+        prepared_operations = sorted(
+            set(plan.eligible_operations)
+            | set(plan.deferred_operations)
+            | {candidate.operation for candidate in report.operation_candidates}
+        )
+        operation_details: dict[str, Any] = {}
+        candidate_details: dict[str, Any] = {}
+        candidate_operations = {
+            candidate.operation for candidate in report.operation_candidates
+        }
+        for operation in prepared_operations:
+            try:
+                operation_details[operation] = operation_detail(
+                    self.artifacts.root,
+                    self.output_root,
+                    plan.robot_id,
+                    operation,
+                    plan.source_discovery_id,
+                )
+            except ValueError:
+                continue
+            if operation in candidate_operations:
+                candidate_details[operation] = candidate_detail(
+                    self.artifacts.root,
+                    plan.robot_id,
+                    operation,
+                    plan.source_discovery_id,
+                )
+        wiki_path = resolve_artifact_ref(self.artifacts.root, report.review_ref)
+        snapshot = {
+            "schema_version": "robot-adapter-agent-inspection/v1",
+            "robot_id": plan.robot_id,
+            "discovery_id": plan.source_discovery_id,
+            "discovery_manifest_sha256": plan.discovery_manifest_sha256,
+            "workset_summary": workset.model_dump(mode="json", exclude={"operations"}),
+            "workset_operations": [item.model_dump(mode="json") for item in workset.operations],
+            "operation_details": operation_details,
+            "candidate_details": candidate_details,
+            "executables": {
+                item.executable_id: item.model_dump(mode="json") for item in active.executables
+            },
+            "dependency_summary": {
+                "robot_id": plan.robot_id,
+                "discovery_id": plan.source_discovery_id,
+                "software_summary": report.software_summary,
+                "dependency_summary": active.dependency_summary,
+                "dependency_report_ref": report.dependency_report_ref,
+            },
+            "wiki": {
+                "ref": report.review_ref,
+                "content": wiki_path.read_text(encoding="utf-8", errors="replace"),
+            },
+            "schemas": {
+                "AdapterBundleManifest": AdapterBundleManifest.model_json_schema(),
+                "StateGraphBaseline": StateGraphBaseline.model_json_schema(),
+                "AdapterConformanceReport": AdapterConformanceReport.model_json_schema(),
+            },
+            "evidence": {},
+        }
+        snapshot_path = workspace / "rolo-agent-inspection.json"
+        snapshot_path.write_text(
+            json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        tool_script = workspace / "rolo_agent_inspection_tool.py"
+        shutil.copyfile(Path(__file__).with_name("agent_inspection_tool.py"), tool_script)
         if os.name == "nt":
             launcher = workspace / "rolo-agent-tool.cmd"
             launcher.write_text(
                 "@echo off\r\n"
-                f'set "PYTHONPATH={source_root};%PYTHONPATH%"\r\n'
-                f'"{python}" -m rolo.agent_tool %*\r\n',
+                f'"{python}" "{tool_script}" %*\r\n',
                 encoding="utf-8",
             )
         else:
             launcher = workspace / "rolo-agent-tool"
             launcher.write_text(
                 "#!/bin/sh\n"
-                f'PYTHONPATH="{source_root}:$PYTHONPATH" exec "{python}" '
-                '-m rolo.agent_tool "$@"\n',
+                f'exec "{python}" "{tool_script}" "$@"\n',
                 encoding="utf-8",
             )
             launcher.chmod(0o700)
@@ -338,6 +418,7 @@ class CodexAdaptExecutor:
         tool_prefix = f'& "{tool}"' if os.name == "nt" else f'"{tool}"'
         context["agent_tool"] = {
             "path": tool,
+            "workspace_root": str(agent_tool.parent) if agent_tool else ".",
             "discovery_pinned": plan.source_discovery_id,
             "examples": [
                 f"{tool_prefix} adapt operations summary --robot {plan.robot_id}",
@@ -348,16 +429,26 @@ class CodexAdaptExecutor:
                 f"{tool_prefix} adapt executable inspect --robot {plan.robot_id} EXECUTABLE_ID",
                 f"{tool_prefix} adapt launch inspect --robot {plan.robot_id} EXECUTABLE_ID",
                 f"{tool_prefix} adapt dependency inspect --robot {plan.robot_id}",
+                f"{tool_prefix} adapt schema inspect --robot {plan.robot_id} "
+                "AdapterBundleManifest",
                 f"{tool_prefix} adapt wiki search --robot {plan.robot_id} QUERY",
                 f"{tool_prefix} adapt wiki section --robot {plan.robot_id} HEADING",
                 f"{tool_prefix} adapt evidence snippet --robot {plan.robot_id} PATH",
+                f"{tool_prefix} adapt handoff pack --robot {plan.robot_id} "
+                "--adapter-manifest MANIFEST --adapter-package ENTRYPOINT "
+                "--state-graph GRAPH --conformance-report REPORT",
             ],
         }
         return (
             "You are the Stage 1 Adapter Agent for rolo. The supplied workspace is a new, "
             "isolated adapter project outside the rolo source tree. Work only inside it and "
             "implement the approved plan below. Never edit or add files to the rolo product "
-            "repository. Start from deployed artifacts, "
+            "repository. On Windows, explicitly set the shell location to the absolute "
+            "agent_tool.workspace_root before inspecting or writing files; do not enumerate the "
+            "drive root. The supplied inspection command and its bounded snapshot are local to "
+            "that workspace and require no access to the rolo source tree or original artifact "
+            "directory. Do not include rolo-agent-tool, rolo_agent_inspection_tool.py, or "
+            "rolo-agent-inspection.json in the adapter bundle. Start from deployed artifacts, "
             "documentation, manifests, launch files, and declared entrypoints. Do not attempt to "
             "understand or summarize the whole source tree; inspect additional source only when a "
             "concrete adapter gap requires it. Preserve unrelated user changes, complete the plan "
@@ -365,16 +456,37 @@ class CodexAdaptExecutor:
             "targeted validation. Never weaken safety gates or expose credentials. Do not create "
             "or publish any rolo handoff or latest index; rolo's independent conformance gate "
             "owns publication. Produce a standalone robot-adapter-rpc/v1 executable (or a "
-            "standalone Python adapter entry script), its adapter bundle manifest, the State "
-            "Graph baseline, and per-operation local-static report. The product registry and final "
+            "standalone Python adapter entry script), a robot-adapter-bundle/v2 manifest with an "
+            "exact SHA-256 file list and one ENTRYPOINT, a State Graph proposal, and a "
+            "per-operation local-static report. Rolo rebuilds the final evidence-bound State "
+            "Graph baseline independently. The product registry and final "
             "Active Tool Catalog are owned and generated only by rolo; do not create a catalog. "
-            "For every bundle operation, copy contract_version and contract_sha256 exactly from "
+            "Include only plan.eligible_operations in the bundle; plan.deferred_operations remain "
+            "unregistered and must not block otherwise eligible operations. For every bundle "
+            "operation, copy contract_version and contract_sha256 exactly from "
             "the operation contract returned by the read-only inspection tool. "
             "The executable must support `describe` and bounded `invoke` commands. Remove build "
             "caches and temporary files before completion. When handoff_ready is true, outputs "
             "must name workspace-relative final files for all four outputs. Return only the JSON "
-            "object required by the supplied output "
-            "schema.\n\n"
+            "object required by the supplied output schema. Before authoring each artifact, query "
+            "the exact AdapterBundleManifest, StateGraphBaseline, and AdapterConformanceReport "
+            "schemas through `adapt schema inspect`; do not guess product-owned fields. Use "
+            "robot-adapter-agent-result/v2. For every final file named by outputs and every file "
+            "declared by the bundle manifest, include one files entry containing its "
+            "workspace-relative path, encoding=base64, exact base64 content, and SHA-256. Include "
+            "the State Graph and conformance report as files too. Do not include tests, caches, "
+            "the inspection snapshot, or other intermediate files. Generate the exact outputs and "
+            "files objects by running the supplied `adapt handoff pack` command with all four "
+            "output path options; copy its JSON fields without manually recreating base64 or "
+            "hashes. The pack command also verifies bundle file hashes and requires `describe` to "
+            "return exactly `{'operations': {operation: entrypoint}}`; fix any pack error before "
+            "handoff. Rolo reconstructs these "
+            "payloads in its own permission domain before independent validation; filesystem "
+            "paths alone are not a handoff. After all payloads and hashes are captured for the "
+            "final JSON, remove every file and directory you created, including adapter outputs "
+            "and tests, from the workspace. Leave only the three supplied rolo-agent inspection "
+            "helper files. The structured files array is the authoritative handoff and output "
+            "paths need not remain on disk.\n\n"
             "Semantic candidates are unverified diagnostic inputs. Never encode them as hard "
             "motion safety limits without explicit validation and approval.\n\n"
             "Treat operation data_classification as binding policy metadata. Do not copy "

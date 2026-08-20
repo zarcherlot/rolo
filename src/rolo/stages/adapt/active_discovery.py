@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
 from rolo.core.models import DiscoveryStatus, ProbeResult
+from rolo.stages.adapt.binary_dependencies import inspect_binary_dependencies
 from rolo.stages.adapt.discovery_status import derive_discovery_status
 from rolo.stages.adapt.evidence import (
     BASE_SKIP_DIRECTORIES,
@@ -269,6 +270,7 @@ class ExecutableDiscovery(BaseModel):
     sha256: str | None = None
     file_format: str | None = None
     architecture: str | None = None
+    binary_dependencies: dict[str, Any] = Field(default_factory=dict)
     version: dict[str, Any] = Field(default_factory=dict)
     source_analysis: SourceAnalysis = Field(default_factory=SourceAnalysis)
     artifact_analysis: ArtifactAnalysis = Field(default_factory=ArtifactAnalysis)
@@ -1423,6 +1425,7 @@ class ActiveDiscoveryAnalyzer:
                     sha256=sha256,
                     file_format=file_format,
                     architecture=architecture,
+                    binary_dependencies=inspect_binary_dependencies(path),
                     version={"value": None, "source": None, "confidence": "LOW"},
                     source_analysis=source_analysis,
                     artifact_analysis=ArtifactAnalysis(

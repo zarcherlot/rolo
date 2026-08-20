@@ -29,6 +29,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import (
     DiscoveryLatestIndex,
@@ -58,6 +59,7 @@ from rolo.stages.adapt.evidence import (
     read_text,
     walk_files,
 )
+from rolo.stages.adapt.hardware_provider import collect_hardware_provider_evidence
 from rolo.stages.adapt.inputs import (
     AdaptInputs,
     SemanticCandidate,
@@ -196,8 +198,48 @@ def detect_compute_platform(device_tree_model: str | None) -> str:
     return "unknown"
 
 
+def _merge_hardware_provider(
+    data: dict[str, Any],
+    warnings: list[str],
+    *,
+    robot_id: str,
+    provider_path: Path | None,
+) -> None:
+    provider = provider_path or get_settings().rolo_hardware_evidence_provider
+    if provider is None:
+        return
+    try:
+        evidence = collect_hardware_provider_evidence(provider, robot_id=robot_id)
+    except ValueError as exc:
+        warnings.append(str(exc))
+        data["hardware_provider"] = {
+            "path": str(provider.expanduser().resolve()),
+            "status": "FAILED",
+            "error": str(exc),
+        }
+        return
+    merged = {
+        (str(item.get("kind")), str(item.get("name"))): item
+        for item in data["components"]
+    }
+    for component in evidence.components:
+        merged[(component.kind, component.name)] = component.model_dump(mode="json")
+    data["components"] = list(merged.values())
+    data["devices"].extend(item.model_dump(mode="json") for item in evidence.devices)
+    warnings.extend(evidence.warnings)
+    data["hardware_provider"] = {
+        "path": str(provider.expanduser().resolve()),
+        "status": "SUCCEEDED",
+    }
+
+
 class HardwareProbe:
-    def run(self) -> ProbeResult:
+    def run(
+        self,
+        *,
+        robot_id: str = "unregistered",
+        provider_path: Path | None = None,
+    ) -> ProbeResult:
         device_tree_model = _device_tree_model()
         data: dict[str, Any] = {
             "architecture": platform.machine().lower(),
@@ -212,6 +254,12 @@ class HardwareProbe:
         warnings: list[str] = []
         if platform.system() != "Linux":
             warnings.append("Linux /sys and /dev hardware enumeration is unavailable on this host")
+            _merge_hardware_provider(
+                data,
+                warnings,
+                robot_id=robot_id,
+                provider_path=provider_path,
+            )
             return ProbeResult(
                 layer="hw", status=DiscoveryStatus.PARTIAL, data=data, warnings=warnings
             )
@@ -304,6 +352,12 @@ class HardwareProbe:
                     continue
                 data["thermal_zones"].append({"name": zone_type.strip(), "temperature_c": value_c})
 
+        _merge_hardware_provider(
+            data,
+            warnings,
+            robot_id=robot_id,
+            provider_path=provider_path,
+        )
         return ProbeResult(
             layer="hw",
             status=DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED,
@@ -1624,7 +1678,7 @@ class DiscoveryService:
         )
         application_scan = ApplicationProbe().scan(active_inputs.source_roots)
         probes = {
-            "hw": HardwareProbe().run(),
+            "hw": HardwareProbe().run(robot_id=robot.robot_id),
             "linux": LinuxProbe().run(),
             "ros": ros_probe,
             "application": application_scan.probe,

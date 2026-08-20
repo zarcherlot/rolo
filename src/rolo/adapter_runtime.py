@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from rolo.adapter_runner import AdapterRunner, BoundedAdapterRunner
 from rolo.core.hashing import sha256_file
 from rolo.invocation_policy import (
     authorize_invocation,
@@ -21,6 +21,7 @@ from rolo.stages.adapt.models import (
     AdapterBundleManifest,
     AdapterReleaseIndex,
     AdapterReleaseManifest,
+    PublishedAdapterFile,
     ToolCatalog,
 )
 
@@ -63,7 +64,10 @@ class AdapterOutputLayout:
 
 
 def load_current_release(
-    output_root: Path, robot_id: str
+    output_root: Path,
+    robot_id: str,
+    *,
+    artifact_root: Path | None = None,
 ) -> tuple[Path, AdapterReleaseManifest, AdapterBundleManifest, ToolCatalog]:
     layout = AdapterOutputLayout(output_root)
     index_path = layout.current(robot_id)
@@ -88,6 +92,9 @@ def load_current_release(
     for relative, expected in checks:
         if sha256_file(_relative_file(release_root, relative)) != expected:
             raise ValueError(f"adapter release file hash mismatch: {relative}")
+    for item in release.adapter_files:
+        if sha256_file(_relative_file(release_root, item.path)) != item.sha256:
+            raise ValueError(f"adapter release file hash mismatch: {item.path}")
     bundle = AdapterBundleManifest.model_validate_json(
         _relative_file(release_root, release.bundle_manifest).read_text(encoding="utf-8")
     )
@@ -100,6 +107,18 @@ def load_current_release(
         raise ValueError("active Tool Catalog identity mismatch")
     if bundle.package_sha256 != release.adapter_package_sha256:
         raise ValueError("adapter bundle and release package hashes differ")
+    published_files = {
+        Path(item.path).relative_to("adapter").as_posix(): item
+        for item in release.adapter_files
+    }
+    if published_files:
+        declared_files = {item.path: item for item in bundle.declared_files()}
+        if set(published_files) != set(declared_files):
+            raise ValueError("adapter bundle and release file manifests differ")
+        for path, declared in declared_files.items():
+            published = published_files[path]
+            if published.sha256 != declared.sha256 or published.role != declared.role:
+                raise ValueError(f"adapter bundle file binding mismatch: {path}")
     descriptors = {item.operation: item for item in catalog.tools}
     for entry in bundle.operations:
         descriptor = descriptors.get(entry.operation)
@@ -112,6 +131,18 @@ def load_current_release(
             or descriptor.contract_sha256 != entry.contract_sha256
         ):
             raise ValueError(f"adapter contract binding mismatch: {entry.operation}")
+    if artifact_root is not None:
+        from rolo.stages.adapt.discovery import load_latest_report
+        from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+
+        latest = load_latest_report(artifact_root, robot_id)
+        if release.target_fingerprint_sha256 is None:
+            raise ValueError("active adapter release predates target freshness validation")
+        if (
+            target_fingerprint_sha256(latest, artifact_root)
+            != release.target_fingerprint_sha256
+        ):
+            raise ValueError("active adapter release is stale for the latest target evidence")
     return release_root, release, bundle, catalog
 
 
@@ -127,9 +158,13 @@ def invoke_adapter(
     r3_authorizer_path: Path | None = None,
     quiescence_provider_path: Path | None = None,
     artifact_root: Path | None = None,
+    discovery_artifact_root: Path | None = None,
+    runner: AdapterRunner | None = None,
 ) -> dict[str, Any]:
     """Invoke one catalogued operation through the immutable adapter RPC bundle."""
-    release_root, release, bundle, catalog = load_current_release(output_root, robot_id)
+    release_root, release, bundle, catalog = load_current_release(
+        output_root, robot_id, artifact_root=discovery_artifact_root
+    )
     descriptor = next((tool for tool in catalog.tools if tool.operation == operation), None)
     if descriptor is None:
         raise ValueError(f"operation is not in the active Tool Catalog: {operation}")
@@ -168,20 +203,17 @@ def invoke_adapter(
         artifact_root=artifact_root,
     )
     package_path = _relative_file(release_root, release.adapter_package)
-    try:
-        completed = subprocess.run(
-            adapter_command(package_path)
-            + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
-            input=json.dumps(payload, ensure_ascii=False),
-            capture_output=True,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=min(timeout_s, descriptor.max_duration_s),
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("adapter invocation timed out") from exc
+    completed = (runner or BoundedAdapterRunner()).run(
+        adapter_command(package_path)
+        + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
+        stdin=json.dumps(payload, ensure_ascii=False),
+        cwd=release_root,
+        timeout_s=min(timeout_s, descriptor.max_duration_s),
+    )
+    if completed.timed_out:
+        raise RuntimeError("adapter invocation timed out")
+    if completed.output_limited:
+        raise RuntimeError("adapter invocation exceeded its output limit")
     if completed.returncode != 0:
         raise RuntimeError(
             f"adapter invocation failed with code {completed.returncode}: "
@@ -211,21 +243,24 @@ def adapter_command(package_path: Path) -> list[str]:
 
 
 def probe_adapter_package(
-    package_path: Path, manifest: AdapterBundleManifest, *, timeout_s: float = 10.0
+    package_path: Path,
+    manifest: AdapterBundleManifest,
+    *,
+    timeout_s: float = 10.0,
+    runner: AdapterRunner | None = None,
 ) -> None:
     """Require the generated package to self-describe exactly the declared entrypoints."""
-    try:
-        completed = subprocess.run(
-            adapter_command(package_path) + ["describe"],
-            capture_output=True,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_s,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError("adapter package describe timed out") from exc
+    completed = (runner or BoundedAdapterRunner()).run(
+        adapter_command(package_path) + ["describe"],
+        cwd=package_path.parent,
+        timeout_s=timeout_s,
+        max_stdout_bytes=200_000,
+        max_stderr_bytes=200_000,
+    )
+    if completed.timed_out:
+        raise ValueError("adapter package describe timed out")
+    if completed.output_limited:
+        raise ValueError("adapter package describe exceeded its output limit")
     if completed.returncode != 0:
         raise ValueError(
             f"adapter package describe failed with code {completed.returncode}: "
@@ -246,8 +281,10 @@ def publish_release(
     robot_id: str,
     release_id: str,
     discovery_id: str,
+    target_fingerprint_sha256: str | None = None,
     bundle_manifest_path: Path,
     adapter_package_path: Path,
+    adapter_files: list[tuple[str, Path, str]] | None = None,
     tool_catalog_path: Path,
     state_graph_path: Path,
     conformance_path: Path,
@@ -263,26 +300,52 @@ def publish_release(
         raise ValueError(f"adapter release staging path already exists: {staging}")
     staging.mkdir(parents=True)
     try:
+        declared_adapter_files = adapter_files or [
+            (adapter_package_path.name, adapter_package_path, "ENTRYPOINT")
+        ]
+        entrypoints = [item for item in declared_adapter_files if item[2] == "ENTRYPOINT"]
+        if len(entrypoints) != 1 or entrypoints[0][1].resolve() != adapter_package_path.resolve():
+            raise ValueError("published adapter files require one matching entrypoint")
         files = {
             "adapter/adapter-manifest.json": bundle_manifest_path,
-            f"adapter/{adapter_package_path.name}": adapter_package_path,
             "tool-catalog.json": tool_catalog_path,
             "state-graph.json": state_graph_path,
             "conformance-report.json": conformance_path,
             "gate-report.json": gate_report_path,
         }
+        for relative, source, _ in declared_adapter_files:
+            candidate = Path(relative)
+            if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
+                raise ValueError(f"unsafe adapter bundle file path: {relative}")
+            files[f"adapter/{candidate.as_posix()}"] = source
         for relative, source in files.items():
             destination = staging / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
+        published_adapter_files = [
+            PublishedAdapterFile(
+                path=f"adapter/{Path(relative).as_posix()}",
+                sha256=sha256_file(staging / "adapter" / relative),
+                role=role,
+            )
+            for relative, _, role in declared_adapter_files
+        ]
+        entry = next(item for item in published_adapter_files if item.role == "ENTRYPOINT")
         release = AdapterReleaseManifest(
+            schema_version=(
+                "robot-adapter-release/v2"
+                if target_fingerprint_sha256 is not None
+                else "robot-adapter-release/v1"
+            ),
             release_id=release_id,
             robot_id=robot_id,
             discovery_id=discovery_id,
+            target_fingerprint_sha256=target_fingerprint_sha256,
             bundle_manifest="adapter/adapter-manifest.json",
             bundle_manifest_sha256=sha256_file(staging / "adapter/adapter-manifest.json"),
-            adapter_package=f"adapter/{adapter_package_path.name}",
-            adapter_package_sha256=sha256_file(staging / f"adapter/{adapter_package_path.name}"),
+            adapter_package=entry.path,
+            adapter_package_sha256=entry.sha256,
+            adapter_files=published_adapter_files,
             tool_catalog="tool-catalog.json",
             tool_catalog_sha256=sha256_file(staging / "tool-catalog.json"),
             state_graph="state-graph.json",

@@ -339,6 +339,11 @@
           "default": null,
           "title": "Architecture"
         },
+        "binary_dependencies": {
+          "additionalProperties": true,
+          "title": "Binary Dependencies",
+          "type": "object"
+        },
         "version": {
           "additionalProperties": true,
           "title": "Version",

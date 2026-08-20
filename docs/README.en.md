@@ -156,8 +156,11 @@ The flow is “discover and generate the Wiki → Adapter Agent retrieves eviden
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
   --build-root /path/to/robot-application/build \
+  --install-root /path/to/robot-application/install \
   --doc-root /path/to/robot-application/docs \
-  --source-root /path/to/robot-application  # supporting evidence only
+  --launch-root /path/to/robot-application/launch \
+  --source-root /path/to/robot-application \
+  --active-probe runtime-readonly  # supporting source; target route presence only
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt operations summary --robot "$ROBOT_ID"
 uv run robotctl adapt operations list --robot "$ROBOT_ID" \
@@ -170,6 +173,12 @@ uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 The Wiki heuristic Agent skill is enabled by default and runs in a read-only sandbox. If it is
 unavailable or returns invalid output, discovery automatically falls back to deterministic rules.
 Set `WIKI_INSIGHTS_AGENT_ENABLED=false` to disable it.
+
+Adapt gates operations independently. Target-observed routes can become `VERIFIED` without waiting
+for unrelated missing routes; deferred candidates remain `UNAVAILABLE` with a reason. Runtime
+verifies the multi-file adapter, Rolo-owned State Graph, and target fingerprint. Adapt does not
+execute write operations to judge behavior; that work starts in Diagnose. See
+[`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md) for the real-device procedure.
 
 ```text
 robot_wiki.md
@@ -199,8 +208,9 @@ robot_wiki.md
 └── Chief engineer maintenance guidance and automatic-discovery appendix
 ```
 
-See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI and
-[`.env.example`](../.env.example) for Adapter Agent configuration.
+See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
+[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
+and [`.env.example`](../.env.example) for Adapter Agent configuration.
 
 #### Stage 2: diagnosis
 

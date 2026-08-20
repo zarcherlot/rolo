@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "AdapterBundleFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "role": {
+          "default": "SUPPORT",
+          "enum": [
+            "ENTRYPOINT",
+            "SUPPORT"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "AdapterBundleFile",
+      "type": "object"
+    },
     "AdapterBundleOperation": {
       "additionalProperties": false,
       "description": "One canonical operation exported by an isolated adapter executable.",
@@ -36,8 +65,11 @@
   "description": "Immutable contract between a generated adapter and the rolo runtime.",
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-bundle/v1",
-      "default": "robot-adapter-bundle/v1",
+      "default": "robot-adapter-bundle/v2",
+      "enum": [
+        "robot-adapter-bundle/v1",
+        "robot-adapter-bundle/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -71,6 +103,13 @@
       "pattern": "^[0-9a-f]{64}$",
       "title": "Package Sha256",
       "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/AdapterBundleFile"
+      },
+      "title": "Files",
+      "type": "array"
     },
     "operations": {
       "items": {

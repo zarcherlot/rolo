@@ -2,8 +2,11 @@
   "additionalProperties": true,
   "properties": {
     "schema_version": {
-      "const": "robot-state-graph/v1",
-      "default": "robot-state-graph/v1",
+      "default": "robot-state-graph/v2",
+      "enum": [
+        "robot-state-graph/v1",
+        "robot-state-graph/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -13,6 +16,15 @@
     },
     "discovery_id": {
       "title": "Discovery Id",
+      "type": "string"
+    },
+    "owner": {
+      "default": "ADAPTER_AGENT",
+      "enum": [
+        "ADAPTER_AGENT",
+        "ROLO_GATE"
+      ],
+      "title": "Owner",
       "type": "string"
     },
     "nodes": {
