@@ -54,7 +54,7 @@ def test_overview_state_follows_pipeline_status(
     overview = build_robot_overview(ROBOT, pipeline)
 
     assert overview.state is expected
-    assert overview.schema_version == "rolo-robot-overview/v1"
+    assert overview.schema_version == "rolo-robot-overview/v2"
     assert overview.pipeline.schema_version == "robot-three-stage-pipeline/v1"
 
 
@@ -72,6 +72,27 @@ def test_blocked_overview_has_stable_evidence_bound_blocker() -> None:
     assert first.blockers[0].blocker_id == second.blockers[0].blocker_id
     assert first.blockers[0].recommended_action == "Run adapt discovery"
     assert first.blockers[0].source_kind == "pipeline_assessment"
+
+
+def test_overview_exposes_opaque_evidence_ids_instead_of_artifact_paths() -> None:
+    raw_path = r"C:\private\adapt\inputs.json"
+    escaped_path = raw_path.replace("\\", "\\\\")
+    blocked = stage(StageStatus.BLOCKED, [f"Fix missing input at {escaped_path}"])
+    blocked.prerequisites = [raw_path]
+    blocked.artifacts = {"inputs": raw_path}
+    pipeline = PipelineAssessment(
+        robot_id=ROBOT.robot_id,
+        stages=[blocked],
+        observed_at=NOW,
+    )
+
+    overview = build_robot_overview(ROBOT, pipeline)
+
+    assert overview.blockers[0].evidence_ids[0].startswith("ev_")
+    assert overview.blockers[0].message == "Fix missing input at artifact:inputs.json"
+    assert overview.pipeline.stages[0].prerequisites == ["artifact:inputs.json"]
+    assert overview.pipeline.stages[0].artifacts == {"inputs": "artifact:inputs.json"}
+    assert r"C:\private" not in overview.model_dump_json()
 
 
 def test_empty_pipeline_is_not_ready_instead_of_crashing() -> None:
