@@ -624,6 +624,27 @@
           "title": "Arguments",
           "type": "array"
         },
+        "argument_defaults": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Argument Defaults",
+          "type": "object"
+        },
+        "included_launch_files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Included Launch Files",
+          "type": "array"
+        },
         "remappings": {
           "items": {
             "additionalProperties": {
@@ -796,6 +817,14 @@
         "$ref": "#/$defs/ExecutableDiscovery"
       },
       "title": "Executables",
+      "type": "array"
+    },
+    "unattributed_source_interfaces": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Unattributed Source Interfaces",
       "type": "array"
     },
     "dependency_summary": {

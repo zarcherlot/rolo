@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "WikiHeuristicFinding": {
+      "additionalProperties": false,
+      "description": "One advisory inference that can never replace discovered machine evidence.",
+      "properties": {
+        "category": {
+          "enum": [
+            "SAFETY",
+            "ARCHITECTURE",
+            "HARDWARE",
+            "OPERATIONS",
+            "MAINTENANCE"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Basis",
+          "type": "array"
+        },
+        "verification": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Verification",
+          "type": "string"
+        },
+        "source": {
+          "default": "DETERMINISTIC_RULE",
+          "enum": [
+            "DETERMINISTIC_RULE",
+            "ADAPT_AGENT_SKILL"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "statement",
+        "confidence",
+        "basis",
+        "verification"
+      ],
+      "title": "WikiHeuristicFinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Skill-shaped output contract for optional, non-authoritative Wiki enrichment.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-wiki-insights/v1",
+      "default": "robot-wiki-insights/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/WikiHeuristicFinding"
+      },
+      "maxItems": 40,
+      "title": "Findings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id"
+  ],
+  "title": "WikiInsightBundle",
+  "type": "object"
+}

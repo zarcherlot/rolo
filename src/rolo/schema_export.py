@@ -47,6 +47,8 @@ from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
 )
+from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
+from rolo.stages.adapt.wiki_insights import WikiInsightBundle
 from rolo.stages.adapt.workset import AdaptOperationWorkset
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
@@ -94,6 +96,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DirectDependencyReport,
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
+    WikiInsightBundle,
+    WikiDiscoveryDiff,
 )
 
 

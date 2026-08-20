@@ -135,32 +135,47 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
+默认启动流程没有变化：`discover run` 仍先完成确定性采集和渲染，Agent 不可用也不会阻断
+discovery。若需要在 Wiki 中加入明确标为“未验证”的启发式洞察，可在 `.env` 中设置
+`WIKI_INSIGHTS_AGENT_ENABLED=true`；此时 Codex 以只读 sandbox 应用
+[`skills/robot-wiki-heuristics/SKILL.md`](skills/robot-wiki-heuristics/SKILL.md)，输出必须通过
+`robot-wiki-insights/v1` schema，失败时自动回退到确定性规则。
+
 ```text
 robot_wiki.md
 ├── 全栈摘要
-│   ├── 发现状态、模式与置信度
-│   └── 软硬件兼容性、未知项和警告
+│   ├── 发现状态、模式、兼容性与关键证据边界
+│   └── 有依据、低/中置信度且待验证的启发式发现
+├── 与上次发现的差异
+│   └── 平台、ROS、应用、设备、操作候选和未知项变化
+├── 启动与健康检查
+│   └── launch 入口、参数默认值、include、启动顺序、停止与健康检查缺口
 ├── 硬件与机器人规格
 │   ├── 计算平台、CPU 架构与驱动模型
-│   ├── 速度等关键规格
-│   └── 传感器、主机设备与硬件总线
+│   ├── URDF 结构、几何与关键安全规格
+│   └── 物理设备候选、内部流水线端点、未归并端点与硬件总线
 ├── 主机与软件栈
-│   ├── 操作系统、ROS 发行版、RMW 与 Domain ID
+│   ├── 操作系统及 ROS/RMW/Domain 的配置来源与候选值
 │   └── 工具可用性和版本证据
-├── 应用程序与功能概览
-│   └── 每个程序的用途、入口、节点、接口、协议、依赖与风险
+├── 应用程序与启动拓扑
+│   ├── pyproject/setuptools/CMake 入口、launch 证据与风险
+│   └── 按源文件/target 归属的 Python/C++ ROS 接口及未归属候选
 ├── ROS 与通信拓扑
-│   ├── Node、Topic、Service、Action 清单
-│   └── 程序与通信接口关系图
+│   └── 在线图与有边数上限的静态候选关系图
+├── 工程操作候选
+│   └── 只显示本次发现有适用证据的候选，不复制完整 registry
 ├── 依赖、差异与未知项
-│   └── 缺失依赖、版本冲突、兼容性差异和风险
-└── 维护建议
-    └── 工程用途、负责人、部署关系、启动顺序和版本基线
+│   └── 按获取方式归类的缺口、依赖与兼容性差异
+└── 总工维护建议与自动发现附录
 ```
 
 主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，软件发现与证据契约见
 [`docs/SOFTWARE_DISCOVERY.md`](docs/SOFTWARE_DISCOVERY.md)，Adapter Agent 配置见
-[`.env.example`](.env.example)。
+[`.env.example`](.env.example)。Wiki 的机器配套产物包括 `wiki_insights.json`、`wiki_diff.json`
+和 `wiki_generation.json`；整改计划及低优先级留存项见
+[`docs/WIKI_FEATURE_PLAN.md`](docs/WIKI_FEATURE_PLAN.md)，Wheeltec 本地重渲染审核稿见
+[`docs/review/WHEELTEC_WIKI_REFINED.md`](docs/review/WHEELTEC_WIKI_REFINED.md)，真机复测步骤见
+[`docs/WIKI_DEVICE_VALIDATION.md`](docs/WIKI_DEVICE_VALIDATION.md)。
 
 #### 第二阶段：诊断
 
@@ -189,6 +204,7 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 
 ```text
 src/rolo/stages/adapt/            第一阶段：发现、适配、conformance 与 handoff 发布
+skills/robot-wiki-heuristics/      可选只读 Wiki 启发式 Agent skill
 src/rolo/stages/diagnose/         第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
 src/rolo/stages/verify/           第三阶段：可选自主验证与正式验收
 src/rolo/commands/                按命令域拆分的 robotctl 接口

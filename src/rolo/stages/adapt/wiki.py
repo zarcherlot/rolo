@@ -37,6 +37,9 @@ class WikiGenerationMetadata(BaseModel):
     draft_sha256: str
     generated_sha256: str
     fallback_reason: str | None = None
+    insight_provider: str | None = None
+    insight_count: int = Field(default=0, ge=0)
+    insight_fallback_reason: str | None = None
 
 
 class OpenAIWikiNarrativePolisher:

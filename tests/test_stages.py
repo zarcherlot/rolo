@@ -43,7 +43,7 @@ def discover_demo(artifact_root: Path, source_root: Path) -> str:
 
 def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
-    discover_demo(artifact_root, tmp_path)
+    discovery_id = discover_demo(artifact_root, tmp_path)
 
     adapt_inputs = json.loads(
         (artifact_root / "adapt/demo_diff/latest/inputs.json").read_text(encoding="utf-8")
@@ -64,6 +64,9 @@ def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) 
     assert plan.schema_version == "robot-adapt-plan/v2"
     assert (artifact_root / "diagnose/demo_diff/latest/inputs.json").is_file()
     assert (artifact_root / "verify/demo_diff/latest/inputs.json").is_file()
+    discovery_run = artifact_root / "discovery/demo_diff/runs" / discovery_id
+    assert (discovery_run / "wiki_insights.json").is_file()
+    assert (discovery_run / "wiki_diff.json").is_file()
 
 
 def test_pipeline_exposes_three_ordered_stages(tmp_path: Path) -> None:
