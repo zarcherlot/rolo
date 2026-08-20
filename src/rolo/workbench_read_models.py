@@ -317,6 +317,9 @@ def build_robot_topology(
     output_root: Path,
     *,
     observed_at: datetime | None = None,
+    gated_graph: dict[str, object] | None = None,
+    load_active_graph: bool = True,
+    snapshot_id: str | None = None,
 ) -> tuple[RobotTopology, dict[str, EvidenceRecord]]:
     observed_at = observed_at or utc_now()
     records: dict[str, EvidenceRecord] = {}
@@ -431,7 +434,7 @@ def build_robot_topology(
         "Only registry declarations are available; runtime presence is not asserted."
     ]
     confidence = 0.7
-    graph = _load_gated_graph(output_root, robot.robot_id)
+    graph = _load_gated_graph(output_root, robot.robot_id) if load_active_graph else gated_graph
     if graph is not None:
         raw_nodes = [item for item in graph["nodes"] if isinstance(item, dict)]
         raw_edges = [item for item in graph["edges"] if isinstance(item, dict)]
@@ -514,7 +517,8 @@ def build_robot_topology(
 
     topology = RobotTopology(
         robot_id=robot.robot_id,
-        snapshot_id=_stable_id(
+        snapshot_id=snapshot_id
+        or _stable_id(
             "topology",
             f"{robot.robot_id}\0{coverage}\0{'|'.join(sorted(nodes))}\0{'|'.join(sorted(edges))}",
         ),

@@ -296,6 +296,33 @@ def test_overview_openapi_contract_is_versioned() -> None:
         lifecycle_schema["properties"]["schema_version"]["const"]
         == "rolo-lifecycle-run-collection/v1"
     )
+    topology_diff_schema = openapi["components"]["schemas"]["TopologyDiff"]
+    assert (
+        topology_diff_schema["properties"]["schema_version"]["const"]
+        == "rolo-topology-diff/v1"
+    )
+
+
+def test_topology_snapshot_history_requires_verified_release_evidence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from rolo.core.config import get_settings
+
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        snapshots = client.get("/v1/robots/demo_diff/topology/snapshots")
+        unknown = client.get(
+            "/v1/robots/demo_diff/topology/diff?from=unknown&to=missing"
+        )
+
+    assert snapshots.status_code == 200
+    assert snapshots.json()["schema_version"] == "rolo-topology-snapshot-collection/v1"
+    assert snapshots.json()["items"] == []
+    assert "No verified topology" in " ".join(snapshots.json()["limitations"])
+    assert unknown.status_code == 404
 
 
 def test_robot_use_poll_uses_offline_backend() -> None:

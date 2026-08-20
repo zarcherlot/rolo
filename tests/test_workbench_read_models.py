@@ -12,6 +12,13 @@ from rolo.stages.contracts import (
     StageName,
     StageStatus,
 )
+from rolo.topology_history_read_models import (
+    TopologyChangeKind,
+    TopologySnapshotSummary,
+    _VerifiedSnapshot,
+    build_topology_diff,
+    build_topology_snapshot_collection,
+)
 from rolo.workbench_read_models import (
     EvidenceAuthority,
     TopologyState,
@@ -211,3 +218,126 @@ def test_pipeline_artifact_resolves_by_opaque_id_without_leaking_path(tmp_path) 
     assert reference not in record.model_dump_json()
     assert resolved is not None
     assert resolved.evidence_id == evidence_id
+
+
+def _historical_topology(tmp_path, snapshot_id: str, operation: str):
+    graph = {
+        "schema_version": "robot-state-graph/v2",
+        "robot_id": ROBOT.robot_id,
+        "discovery_id": snapshot_id,
+        "nodes": [
+            {
+                "id": f"robot:{ROBOT.robot_id}",
+                "kind": "robot",
+                "evidence_refs": [f"discovery:{snapshot_id}"],
+            },
+            {
+                "id": "adapter:bundle-history",
+                "kind": "adapter",
+                "bundle_id": "bundle-history",
+                "evidence_refs": ["bundle:bundle-history"],
+            },
+            {
+                "id": f"operation:{operation}",
+                "kind": "operation",
+                "operation": operation,
+                "contract_version": "1.0.0",
+                "evidence_refs": [f"bundle:{snapshot_id}"],
+            },
+        ],
+        "edges": [
+            {
+                "source": f"robot:{ROBOT.robot_id}",
+                "target": "adapter:bundle-history",
+                "relation": "contains",
+                "evidence_refs": [f"discovery:{snapshot_id}"],
+            },
+            {
+                "source": "adapter:bundle-history",
+                "target": f"operation:{operation}",
+                "relation": "implements",
+                "evidence_refs": [f"bundle:{snapshot_id}"],
+            },
+        ],
+    }
+    topology, _ = build_robot_topology(
+        ROBOT,
+        tmp_path,
+        observed_at=NOW,
+        gated_graph=graph,
+        load_active_graph=False,
+        snapshot_id=snapshot_id,
+    )
+    return topology
+
+
+def test_topology_history_diff_is_bounded_to_verified_opaque_snapshots(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = _historical_topology(tmp_path, "topology_snapshot_before", "ros.topic.list")
+    after = _historical_topology(tmp_path, "topology_snapshot_after", "ros.service.list")
+    snapshots = [
+        _VerifiedSnapshot(
+            summary=TopologySnapshotSummary(
+                snapshot_id=before.snapshot_id,
+                release_id="release-before",
+                published_at=NOW,
+                node_count=len(before.nodes),
+                edge_count=len(before.edges),
+            ),
+            topology=before,
+        ),
+        _VerifiedSnapshot(
+            summary=TopologySnapshotSummary(
+                snapshot_id=after.snapshot_id,
+                release_id="release-after",
+                published_at=NOW,
+                node_count=len(after.nodes),
+                edge_count=len(after.edges),
+                is_current=True,
+            ),
+            topology=after,
+        ),
+    ]
+    monkeypatch.setattr(
+        "rolo.topology_history_read_models._discover_verified_snapshots",
+        lambda robot, artifact_root, output_root: (snapshots, 1),
+    )
+
+    collection = build_topology_snapshot_collection(ROBOT, tmp_path, tmp_path)
+    diff = build_topology_diff(
+        ROBOT,
+        tmp_path,
+        tmp_path,
+        before.snapshot_id,
+        after.snapshot_id,
+    )
+
+    assert collection.total == 2
+    assert collection.items[1].is_current
+    assert "1 unverified" in " ".join(collection.limitations)
+    assert diff is not None
+    assert diff.integrity_status == "verified"
+    assert diff.added_nodes == 1
+    assert diff.removed_nodes == 1
+    assert diff.added_edges == 1
+    assert diff.removed_edges == 1
+    assert {item.change for item in diff.node_changes} == {
+        TopologyChangeKind.ADDED,
+        TopologyChangeKind.REMOVED,
+        TopologyChangeKind.CHANGED,
+    }
+    assert "private" not in diff.model_dump_json().lower()
+
+
+def test_topology_diff_does_not_resolve_unknown_snapshot_ids(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "rolo.topology_history_read_models._discover_verified_snapshots",
+        lambda robot, artifact_root, output_root: ([], 0),
+    )
+
+    assert build_topology_diff(ROBOT, tmp_path, tmp_path, "../../secret", "missing") is None

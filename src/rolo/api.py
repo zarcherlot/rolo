@@ -26,6 +26,12 @@ from rolo.read_models import RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
+from rolo.topology_history_read_models import (
+    TopologyDiff,
+    TopologySnapshotCollection,
+    build_topology_diff,
+    build_topology_snapshot_collection,
+)
 from rolo.workbench_read_models import (
     EvidenceAuthority,
     EvidenceCollection,
@@ -109,6 +115,50 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
     return topology
+
+
+@app.get(
+    "/v1/robots/{robot_id}/topology/snapshots",
+    response_model=TopologySnapshotCollection,
+)
+async def list_robot_topology_snapshots(
+    robot_id: str,
+    request: Request,
+) -> TopologySnapshotCollection:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return build_topology_snapshot_collection(
+        robot,
+        runtime.settings.rolo_artifact_dir,
+        runtime.settings.rolo_output_dir,
+    )
+
+
+@app.get("/v1/robots/{robot_id}/topology/diff", response_model=TopologyDiff)
+async def get_robot_topology_diff(
+    robot_id: str,
+    request: Request,
+    from_snapshot: Annotated[str, Query(alias="from", min_length=1, max_length=128)],
+    to_snapshot: Annotated[str, Query(alias="to", min_length=1, max_length=128)],
+) -> TopologyDiff:
+    runtime = get_runtime(request)
+    try:
+        robot = runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    diff = build_topology_diff(
+        robot,
+        runtime.settings.rolo_artifact_dir,
+        runtime.settings.rolo_output_dir,
+        from_snapshot,
+        to_snapshot,
+    )
+    if diff is None:
+        raise HTTPException(status_code=404, detail="topology snapshot was not found")
+    return diff
 
 
 @app.get("/v1/robots/{robot_id}/capabilities", response_model=CapabilityCollection)
