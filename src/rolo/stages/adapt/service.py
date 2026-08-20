@@ -26,7 +26,6 @@ from rolo.stages.adapt.operation_registry import (
     adapter_operation_eligibility,
     required_adapter_agent_conformance_operations,
 )
-from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
@@ -294,13 +293,14 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
     if handoff_index.is_file():
         try:
             handoff = validate_adapter_handoff(artifact_root, robot_id)
-            _, release, _, _ = load_current_release(get_settings().rolo_output_dir, robot_id)
+            _, release, _, _ = load_current_release(
+                get_settings().rolo_output_dir,
+                robot_id,
+                artifact_root=artifact_root,
+            )
             handoff_valid = (
                 handoff.source_discovery_id == release.discovery_id
                 and release.release_id == handoff.source_agent_run_id
-                and release.target_fingerprint_sha256 is not None
-                and release.target_fingerprint_sha256
-                == target_fingerprint_sha256(report, artifact_root)
             )
             if not handoff_valid:
                 handoff_error = "The gated adapter release is stale for the latest discovery"

@@ -40,6 +40,7 @@ from rolo.core.models import (
     RobotCapability,
     RouteEvidence,
 )
+from rolo.runtime_context import admitted_runtime_environment
 from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
@@ -102,14 +103,6 @@ SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "vendors",
 }
 UBUNTU_ROS_DEFAULTS = {"20.04": "foxy", "22.04": "humble", "24.04": "jazzy"}
-SAFE_ENV_KEYS = (
-    "ROS_DISTRO",
-    "ROS_DOMAIN_ID",
-    "ROS_LOCALHOST_ONLY",
-    "RMW_IMPLEMENTATION",
-    "AMENT_PREFIX_PATH",
-    "COLCON_PREFIX_PATH",
-)
 SEMANTIC_PARAMETER_ALIASES = {
     "max_vel_x": ("geometry.hard_max_linear_velocity_mps", "m/s"),
     "max_linear_velocity": ("geometry.hard_max_linear_velocity_mps", "m/s"),
@@ -233,6 +226,23 @@ def _merge_hardware_provider(
     }
 
 
+def _assign_hardware_resource_ids(data: dict[str, Any]) -> None:
+    """Attach a stable identity without deriving it from mutable hardware attributes."""
+    for component in data.get("components", []):
+        if not isinstance(component, dict):
+            continue
+        if provider_id := component.get("provider_id"):
+            identity = (
+                f"hardware_provider:{provider_id}:"
+                f"{component.get('kind')}:{component.get('name')}"
+            )
+        elif path := component.get("path"):
+            identity = f"hardware_path:{path}"
+        else:
+            identity = f"hardware_component:{component.get('kind')}:{component.get('name')}"
+        component["resource_id"] = identity
+
+
 class HardwareProbe:
     def run(
         self,
@@ -260,6 +270,7 @@ class HardwareProbe:
                 robot_id=robot_id,
                 provider_path=provider_path,
             )
+            _assign_hardware_resource_ids(data)
             return ProbeResult(
                 layer="hw", status=DiscoveryStatus.PARTIAL, data=data, warnings=warnings
             )
@@ -358,6 +369,7 @@ class HardwareProbe:
             robot_id=robot_id,
             provider_path=provider_path,
         )
+        _assign_hardware_resource_ids(data)
         return ProbeResult(
             layer="hw",
             status=DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED,
@@ -378,7 +390,7 @@ class LinuxProbe:
                 "hostname": platform.node(),
                 "os_release": os_release,
             },
-            "environment": {key: os.environ[key] for key in SAFE_ENV_KEYS if key in os.environ},
+            "environment": admitted_runtime_environment(os.environ),
             "executables": {},
             "processes": [],
         }
@@ -483,6 +495,7 @@ class RosProbe:
             "rmw": configured_rmw,
             "rmw_source": "ENVIRONMENT" if configured_rmw else "NOT_SELECTED",
             "rmw_candidates": self._rmw_candidates(setup),
+            "runtime_environment": admitted_runtime_environment(self.environment),
             "nodes": [],
             "topics": [],
             "services": [],
@@ -1611,6 +1624,54 @@ def _build_operation_candidates(
     return candidates
 
 
+def _bind_candidate_evidence_ids(
+    candidates: list[OperationCandidate],
+    active_report: ActiveDiscoveryReport,
+    hardware_probe: ProbeResult,
+) -> list[OperationCandidate]:
+    """Bind candidates only to explicitly attributable executable and hardware IDs."""
+    executable_endpoints: dict[str, set[str]] = {}
+    for executable in active_report.executables:
+        endpoints: set[str] = set()
+        for role in ("publishers", "subscribers", "services", "clients"):
+            for interface in executable.communication.ros.get(role, []):
+                if isinstance(interface, dict) and interface.get("name"):
+                    endpoints.add(_ros_entity_name(str(interface["name"])))
+        executable_endpoints[executable.executable_id] = endpoints
+
+    hardware_components = [
+        item
+        for item in hardware_probe.data.get("components", [])
+        if isinstance(item, dict) and item.get("resource_id")
+    ]
+    bound: list[OperationCandidate] = []
+    for candidate in candidates:
+        route_endpoints = {_ros_entity_name(route.endpoint) for route in candidate.route_evidence}
+        route_providers = {
+            route.provider_id for route in candidate.route_evidence if route.provider_id
+        }
+        executable_ids = sorted(
+            executable_id
+            for executable_id, endpoints in executable_endpoints.items()
+            if endpoints & route_endpoints
+        )
+        hardware_resource_ids = sorted(
+            str(component["resource_id"])
+            for component in hardware_components
+            if str(component.get("path", "")) in route_endpoints
+            or str(component["resource_id"]) in route_providers
+        )
+        bound.append(
+            candidate.model_copy(
+                update={
+                    "executable_ids": executable_ids,
+                    "hardware_resource_ids": hardware_resource_ids,
+                }
+            )
+        )
+    return bound
+
+
 class DiscoveryService:
     def __init__(
         self,
@@ -1706,6 +1767,11 @@ class DiscoveryService:
             robot_id=robot.robot_id,
             technical_status=probe_status.value,
             created_at=now,
+        )
+        operation_candidates = _bind_candidate_evidence_ids(
+            operation_candidates,
+            active_report,
+            probes["hw"],
         )
         dependency_report = DirectDependencyResolver(self.software_policy).resolve(
             discovery_id=discovery_id,

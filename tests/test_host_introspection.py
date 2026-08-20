@@ -24,19 +24,13 @@ def test_host_inventory_exposes_bootstrap_control_planes() -> None:
     }
 
 
-def test_retired_host_inspect_operation_keeps_cli_compatibility(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    payload = {"operation": "linux.host.inventory", "status": "SUCCEEDED"}
-    monkeypatch.setattr(host_introspection, "host_inventory", lambda: payload)
+def test_retired_host_inspect_cli_is_removed() -> None:
     runner = CliRunner()
 
     inspect_result = runner.invoke(app, ["linux", "host", "inspect"])
-    inventory_result = runner.invoke(app, ["linux", "host", "inventory"])
 
-    assert inspect_result.exit_code == 0
-    assert inventory_result.exit_code == 0
-    assert json.loads(inspect_result.output) == json.loads(inventory_result.output) == payload
+    assert inspect_result.exit_code != 0
+    assert "No such command" in inspect_result.output
 
 
 def test_generic_host_resource_and_time_operations_are_callable(tmp_path: Path) -> None:

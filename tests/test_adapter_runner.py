@@ -1,8 +1,12 @@
 import json
+import os
 import sys
 from pathlib import Path
 
+import pytest
+
 from rolo.adapter_runner import BoundedAdapterRunner
+from rolo.runtime_context import AdapterRuntimeContext, admitted_runtime_environment
 
 
 def test_runner_sanitizes_environment_and_private_home(
@@ -71,3 +75,76 @@ def test_runner_never_inherits_openai_or_codex_credentials(
     assert json.loads(result.stdout) == {"OPENAI_API_KEY": None, "CODEX_API_KEY": None}
     assert "openai-secret" not in result.stdout + result.stderr
     assert "codex-secret" not in result.stdout + result.stderr
+
+
+def test_runner_passes_only_admitted_robot_runtime_context(tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    runtime = admitted_runtime_environment(
+        {
+            "ROS_DOMAIN_ID": "42",
+            "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+            "AMENT_PREFIX_PATH": str(overlay),
+            "OPENAI_API_KEY": "must-not-be-admitted",
+        }
+    )
+
+    result = BoundedAdapterRunner().run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,os; print(json.dumps({key: os.getenv(key) for key in "
+                "['ROS_DOMAIN_ID','RMW_IMPLEMENTATION','AMENT_PREFIX_PATH',"
+                "'OPENAI_API_KEY']}))"
+            ),
+        ],
+        cwd=tmp_path,
+        timeout_s=5,
+        runtime_environment=runtime,
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {
+        "ROS_DOMAIN_ID": "42",
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+        "AMENT_PREFIX_PATH": str(overlay.resolve()),
+        "OPENAI_API_KEY": None,
+    }
+
+
+def test_runtime_context_drops_missing_and_relative_overlay_paths(tmp_path: Path) -> None:
+    runtime = admitted_runtime_environment(
+        {
+            "AMENT_PREFIX_PATH": os.pathsep.join(
+                ["relative-overlay", str(tmp_path / "missing-overlay")]
+            )
+        }
+    )
+
+    assert runtime == {}
+
+
+def test_runtime_context_canonicalizes_fastdds_profile_file(tmp_path: Path) -> None:
+    profile = tmp_path / "fastdds.xml"
+    profile.write_text("<profiles/>", encoding="utf-8")
+
+    runtime = admitted_runtime_environment(
+        {"FASTRTPS_DEFAULT_PROFILES_FILE": str(profile)}
+    )
+
+    assert runtime == {"FASTRTPS_DEFAULT_PROFILES_FILE": str(profile.resolve())}
+
+
+def test_runtime_context_contract_rejects_unknown_fields() -> None:
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        AdapterRuntimeContext.model_validate({"OPENAI_API_KEY": "secret"})
+
+
+def test_runtime_context_release_validation_rejects_unavailable_paths(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="available absolute path"):
+        AdapterRuntimeContext.model_validate(
+            {"AMENT_PREFIX_PATH": str(tmp_path / "missing")}
+        )

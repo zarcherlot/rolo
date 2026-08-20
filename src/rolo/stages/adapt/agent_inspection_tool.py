@@ -5,8 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -71,7 +69,7 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
     operations = manifest.get("operations")
     if not isinstance(operations, list) or not operations:
         raise ValueError("bundle manifest must contain operations")
-    expected_operations: dict[str, str] = {}
+    expected_operations: set[str] = set()
     for item in operations:
         if (
             not isinstance(item, dict)
@@ -79,7 +77,9 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
             or not isinstance(item.get("entrypoint"), str)
         ):
             raise ValueError("bundle manifest contains an invalid operation entry")
-        expected_operations[item["operation"]] = item["entrypoint"]
+        if item["operation"] in expected_operations:
+            raise ValueError(f"bundle manifest contains duplicate operation: {item['operation']}")
+        expected_operations.add(item["operation"])
     unique_paths = list(dict.fromkeys(paths))
     if len(unique_paths) > 256:
         raise ValueError("handoff pack exceeds the 256-file limit")
@@ -109,38 +109,6 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
     package_actual = actual_by_path[Path(package_relative).as_posix()]["sha256"]
     if manifest.get("package_sha256") != package_actual:
         raise ValueError("bundle package_sha256 does not match the entrypoint payload")
-    package_path = _workspace_file(package_relative)
-    command = [sys.executable, str(package_path), "describe"]
-    environment = {
-        name: value
-        for name, value in os.environ.items()
-        if not any(
-            marker in name.upper()
-            for marker in ("KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
-        )
-    }
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=package_path.parent,
-            env=environment,
-            capture_output=True,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError(f"adapter describe preflight could not complete: {exc}") from exc
-    if completed.returncode != 0:
-        raise ValueError(f"adapter describe preflight failed: {completed.stderr[:1000]}")
-    try:
-        described = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError("adapter describe preflight returned invalid JSON") from exc
-    if not isinstance(described, dict) or described.get("operations") != expected_operations:
-        raise ValueError("adapter describe preflight does not match the bundle operations map")
     return {"outputs": output_options, "files": files}
 
 

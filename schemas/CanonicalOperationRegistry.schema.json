@@ -24,27 +24,22 @@
           "type": "string"
         },
         "risk": {
-          "default": "R0",
           "title": "Risk",
           "type": "string"
         },
         "access": {
-          "default": "read",
           "title": "Access",
           "type": "string"
         },
         "idempotent": {
-          "default": true,
           "title": "Idempotent",
           "type": "boolean"
         },
         "cancelable": {
-          "default": false,
           "title": "Cancelable",
           "type": "boolean"
         },
         "max_duration_s": {
-          "default": 30.0,
           "title": "Max Duration S",
           "type": "number"
         },
@@ -73,63 +68,28 @@
           "type": "array"
         },
         "contract_lifecycle": {
-          "$ref": "#/$defs/ContractLifecycle",
-          "default": "DRAFT"
+          "$ref": "#/$defs/ContractLifecycle"
         },
         "contract_version": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Contract Version"
+          "title": "Contract Version",
+          "type": "string"
         },
         "contract_sha256": {
-          "anyOf": [
-            {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Contract Sha256"
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Contract Sha256",
+          "type": "string"
         },
         "data_classification": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/DataClassification"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "$ref": "#/$defs/DataClassification"
         },
         "result_semantics": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ResultSemantics"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "$ref": "#/$defs/ResultSemantics"
         },
         "observation_overhead": {
-          "$ref": "#/$defs/ObservationOverhead",
-          "default": "BOUNDED"
+          "$ref": "#/$defs/ObservationOverhead"
         },
         "execution_mode": {
-          "$ref": "#/$defs/ExecutionMode",
-          "default": "REQUEST_RESPONSE"
+          "$ref": "#/$defs/ExecutionMode"
         },
         "paired_operation": {
           "anyOf": [
@@ -140,7 +100,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "title": "Paired Operation"
         },
         "replacement_operation": {
@@ -152,7 +111,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "title": "Replacement Operation"
         },
         "capability_requirements": {
@@ -191,7 +149,6 @@
           "type": "array"
         },
         "time_semantics": {
-          "default": "",
           "title": "Time Semantics",
           "type": "string"
         },
@@ -210,12 +167,10 @@
           "type": "array"
         },
         "rate_limit": {
-          "default": "on_demand",
           "title": "Rate Limit",
           "type": "string"
         },
         "retry_policy": {
-          "default": "none",
           "title": "Retry Policy",
           "type": "string"
         },
@@ -228,11 +183,9 @@
               "type": "null"
             }
           ],
-          "default": null,
           "title": "Compensation Operation"
         },
         "requires_quiescence": {
-          "default": false,
           "title": "Requires Quiescence",
           "type": "boolean"
         }
@@ -241,7 +194,36 @@
         "operation",
         "layer",
         "description",
-        "canonical_cli"
+        "risk",
+        "access",
+        "idempotent",
+        "cancelable",
+        "max_duration_s",
+        "canonical_cli",
+        "input_schema",
+        "output_schema",
+        "error_codes",
+        "contract_lifecycle",
+        "contract_version",
+        "contract_sha256",
+        "data_classification",
+        "result_semantics",
+        "observation_overhead",
+        "execution_mode",
+        "paired_operation",
+        "replacement_operation",
+        "capability_requirements",
+        "preconditions",
+        "postconditions",
+        "semantic_units",
+        "coordinate_frames",
+        "time_semantics",
+        "side_effects",
+        "resource_locks",
+        "rate_limit",
+        "retry_policy",
+        "compensation_operation",
+        "requires_quiescence"
       ],
       "title": "CanonicalOperationDefinition",
       "type": "object"

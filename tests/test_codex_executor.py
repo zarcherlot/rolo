@@ -266,14 +266,16 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
     assert entrypoint["sha256"] == adapter_sha
 
     (workspace / "adapter.py").write_text(
-        "import json\nprint(json.dumps({'operations': []}))\n", encoding="utf-8"
+        "from pathlib import Path\n"
+        "Path('agent-preflight-executed').write_text('unsafe', encoding='utf-8')\n",
+        encoding="utf-8",
     )
     bad_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
     manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
     manifest["package_sha256"] = bad_sha
     manifest["files"][0]["sha256"] = bad_sha
     (workspace / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    rejected = subprocess.run(
+    statically_packed = subprocess.run(
         pack_command,
         capture_output=True,
         check=False,
@@ -281,8 +283,8 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
         encoding="utf-8",
     )
 
-    assert rejected.returncode == 2
-    assert "describe preflight does not match" in rejected.stderr
+    assert statically_packed.returncode == 0, statically_packed.stderr
+    assert not (workspace / "agent-preflight-executed").exists()
 
 
 def test_codex_executor_passes_key_only_in_child_environment(

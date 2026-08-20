@@ -47,6 +47,9 @@ def test_hardware_probe_merges_provider_evidence_on_non_linux(
     component = next(item for item in result.data["components"] if item["name"] == "base_mcu")
     assert component["source"] == "hardware_provider"
     assert component["firmware_version"] == "1.2.3"
+    assert component["resource_id"] == (
+        "hardware_provider:wheeltec-readonly/v1:motor_controller:base_mcu"
+    )
     assert result.data["hardware_provider"]["status"] == "SUCCEEDED"
     assert any(item["path"] == "/dev/ttyUSB0" for item in result.data["devices"])
 

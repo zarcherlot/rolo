@@ -80,10 +80,11 @@ mounted into the Agent workspace. The initial prompt contains only a compact wor
 summary; Codex uses the launcher to retrieve one operation, candidate, executable, launch record,
 dependency view, Wiki section, or exact product-owned artifact Schema as needed.
 
-Before handoff, `adapt handoff pack` validates bundle hashes and the adapter's read-only `describe`
-surface, then deterministically produces base64 file payloads and SHA-256 values. Codex returns those
+Before handoff, `adapt handoff pack` validates paths and bundle hashes without executing generated
+code, then deterministically produces base64 file payloads and SHA-256 values. Codex returns those
 payloads through `robot-adapter-agent-result/v2` and removes every file it created. Rolo reconstructs
-the frozen snapshot in its own permission domain and independently gates it. This avoids trusting
+the frozen snapshot in its own permission domain, validates the adapter's read-only `describe`
+surface through the bounded generated-code runner, and independently gates it. This avoids trusting
 Agent filesystem paths, handles Windows sandbox ACL isolation without weakening the sandbox, and
 leaves no coding project or intermediate output in the Rolo checkout. The three temporary query
 helper files disappear when the workspace is removed and are never published as adapter code.

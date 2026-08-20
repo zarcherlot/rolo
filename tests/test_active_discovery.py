@@ -659,6 +659,35 @@ def test_help_probe_enforces_output_limit(tmp_path: Path, monkeypatch: pytest.Mo
     assert len(output.read_bytes()) == 32
 
 
+def test_executable_id_is_stable_when_unrelated_executable_is_added(tmp_path: Path) -> None:
+    target = tmp_path / "z-target.exe"
+    unrelated = tmp_path / "a-unrelated.exe"
+    target.write_bytes(b"MZ-target")
+    unrelated.write_bytes(b"MZ-unrelated")
+    before = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                executables=[target], active_probe=ActiveProbeMode.NONE
+            ),
+            projects=[],
+            run_root=tmp_path / "run-before",
+        )
+    )
+    after = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                executables=[unrelated, target], active_probe=ActiveProbeMode.NONE
+            ),
+            projects=[],
+            run_root=tmp_path / "run-after",
+        )
+    )
+
+    before_id = next(item.executable_id for item in before.executables if item.name == target.name)
+    after_id = next(item.executable_id for item in after.executables if item.name == target.name)
+    assert before_id == after_id
+
+
 def test_help_probe_timeout_does_not_wait_for_blocked_output_reader(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

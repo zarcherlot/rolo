@@ -46,7 +46,10 @@ from rolo.stages.adapt.state_graph import (
     build_state_graph_baseline,
     validate_state_graph_baseline,
 )
-from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+from rolo.stages.adapt.target_fingerprint import (
+    runtime_environment_from_report,
+    target_fingerprint_sha256,
+)
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
@@ -423,6 +426,7 @@ class AdapterPromotionService:
             checks.append("frozen output hashes and schemas")
 
             discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
+            runtime_environment = runtime_environment_from_report(discovery)
             identified_outputs = (
                 (graph, "State Graph"),
                 (conformance, "conformance report"),
@@ -448,7 +452,11 @@ class AdapterPromotionService:
                 raise ValueError(
                     "adapter bundle operation coverage must exactly match eligible operations"
                 )
-            probe_adapter_package(package_path, bundle)
+            probe_adapter_package(
+                package_path,
+                bundle,
+                runtime_environment=runtime_environment,
+            )
             checks.append("adapter package describe and entrypoint binding")
             actual = {item.operation: item for item in conformance.operations}
             if (
@@ -607,8 +615,11 @@ class AdapterPromotionService:
                 release_id=run.run_id,
                 discovery_id=run.source_discovery_id,
                 target_fingerprint_sha256=target_fingerprint_sha256(
-                    discovery, self.artifacts.root
+                    discovery,
+                    self.artifacts.root,
+                    operations=[entry.operation for entry in bundle.operations],
                 ),
+                runtime_environment=runtime_environment,
                 bundle_manifest_path=resolve_artifact_ref(
                     self.artifacts.root, snapshot.adapter_manifest_ref
                 ),
@@ -671,14 +682,23 @@ class AdapterPromotionService:
                 latest.model_dump(mode="json"),
             )
             adapt_index_written = True
-            activate_release(self.output_root, run.robot_id, run.run_id)
+            activate_release(
+                self.output_root,
+                run.robot_id,
+                run.run_id,
+                artifact_root=self.artifacts.root,
+            )
             runtime_index_written = True
             validate_adapter_handoff(
                 self.artifacts.root,
                 run.robot_id,
                 output_root=self.output_root,
             )
-            _, active_release, _, _ = load_current_release(self.output_root, run.robot_id)
+            _, active_release, _, _ = load_current_release(
+                self.output_root,
+                run.robot_id,
+                artifact_root=self.artifacts.root,
+            )
             if (
                 active_release.release_id != run.run_id
                 or active_release.discovery_id != run.source_discovery_id

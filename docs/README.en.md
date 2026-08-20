@@ -176,7 +176,8 @@ Set `WIKI_INSIGHTS_AGENT_ENABLED=false` to disable it.
 
 Adapt gates operations independently. Target-observed routes can become `VERIFIED` without waiting
 for unrelated missing routes; deferred candidates remain `UNAVAILABLE` with a reason. Runtime
-verifies the multi-file adapter, Rolo-owned State Graph, and target fingerprint. Adapt does not
+verifies the multi-file adapter, Rolo-owned State Graph, operation-scoped target fingerprint, and
+allowlisted ROS runtime context. Adapt does not
 execute write operations to judge behavior; that work starts in Diagnose. See
 [`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md) for the real-device procedure.
 

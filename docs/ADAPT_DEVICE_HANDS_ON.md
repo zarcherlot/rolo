@@ -22,6 +22,9 @@ codex login
 `ROLO_OUTPUT_DIR` must be outside the checkout. Source the same ROS setup and workspace overlays used
 by the robot application before continuing. A BSP and URDF are optional. If a deployment-owned
 read-only hardware provider exists, set `ROLO_HARDWARE_EVIDENCE_PROVIDER` to its executable path.
+Discovery captures the schema-defined, allowlisted non-secret Runtime Context from this shell. The gated release
+reuses that context for adapter `describe` and invocation; changing the ROS domain, RMW selection or
+an admitted overlay path requires rediscovery and a new release.
 
 ## 2. Collect target evidence
 
@@ -98,7 +101,10 @@ Accept the hands-on run when:
 - deferred operations are `UNAVAILABLE`, never `DISCOVERED_UNVERIFIED` in the gated catalog;
 - the State Graph is `robot-state-graph/v2`, owned by `ROLO_GATE`, and includes operation-to-route
   edges for every bundled operation;
-- the release manifest is v2, lists every adapter file and a target fingerprint; and
+- the release manifest is v2, lists every adapter file, the admitted runtime context and an
+  operation-scoped target fingerprint; and
+- candidate activation has validated the complete release and matching passed gate before replacing
+  the atomic current pointer; and
 - running the same discovery again with equivalent evidence leaves Adapt `COMPLETE`.
 
 Stop before `robotctl tool invoke`. Executing a write and assessing success/failure, state closure,

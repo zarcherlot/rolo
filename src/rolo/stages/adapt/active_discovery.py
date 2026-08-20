@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryStatus, ProbeResult
 from rolo.stages.adapt.binary_dependencies import inspect_binary_dependencies
 from rolo.stages.adapt.discovery_status import derive_discovery_status
@@ -63,6 +63,11 @@ SUPPLEMENTAL_SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "vendor",
     "vendors",
 }
+
+
+def _stable_executable_id(name: str, path: Path | None = None) -> str:
+    identity = f"path:{path.resolve()}" if path is not None else f"declared:{name}"
+    return f"exe-{sha256_bytes(identity.encode('utf-8'))[:16]}"
 
 
 class DiscoveryModeLevel(str, Enum):
@@ -1286,7 +1291,8 @@ class ActiveDiscoveryAnalyzer:
         help_probe_count = 0
         executable_hash_bytes = 0
         hash_warnings: list[str] = []
-        for index, path in enumerate(all_paths, start=1):
+        for path in all_paths:
+            executable_id = _stable_executable_id(path.name, path)
             explicit = path in explicit_paths
             from_build_root = path in discovered_build_paths
             executable_projects = _projects_for_executable(
@@ -1340,7 +1346,7 @@ class ActiveDiscoveryAnalyzer:
                     )
                 else:
                     help_probe_count += 1
-                    output_path = self.run_root / "active_probes" / f"help-{index:04d}.txt"
+                    output_path = self.run_root / "active_probes" / f"help-{executable_id}.txt"
                     help_result = run_bounded_help(path, output_path)
                     if output_path.is_file():
                         help_result.output_ref = (
@@ -1412,7 +1418,7 @@ class ActiveDiscoveryAnalyzer:
             executable_ros["remappings"] = launch_analysis.remappings
             executables.append(
                 ExecutableDiscovery(
-                    executable_id=f"exe-{index:04d}",
+                    executable_id=executable_id,
                     name=path.name,
                     path=str(path),
                     origin=(
@@ -1525,7 +1531,6 @@ class ActiveDiscoveryAnalyzer:
                 for executable in executables
             ):
                 continue
-            index = len(executables) + 1
             launch_analysis = launch_analysis_for(name)
             origin = "SOURCE_DECLARED" if name in source_names else "LAUNCH_DECLARED"
             executable_projects = source_projects_by_name.get(name) or _projects_for_executable(
@@ -1570,7 +1575,7 @@ class ActiveDiscoveryAnalyzer:
             executable_ros["remappings"] = launch_analysis.remappings
             executables.append(
                 ExecutableDiscovery(
-                    executable_id=f"exe-{index:04d}",
+                    executable_id=_stable_executable_id(name),
                     name=name,
                     origin=origin,
                     source_analysis=source_analysis,
