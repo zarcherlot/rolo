@@ -163,6 +163,9 @@ major change 审查。提高风险或数据分级虽然更保守，也可能使�
 R3 包括名字看似抽象、但可能间接触发运动的 workflow，例如 `app.task.start`、
 `app.test.run`、`app.regression.run`。普通 cancel 通常是 R2：它只请求中止，不能冒充
 protective stop 或 emergency stop，也不能声称目标已经停止。
+直接改变运动或执行器状态的普通 start、resume、pause、stop、execute、recover、home、open、
+close 和 set 属于 R3。这里的普通 stop 即使最终映射为减速、保持或零速度命令，也不能降为
+R2；它与 protective/emergency stop 使用不同契约和安全路径，响应仅确认命令已被接受。
 
 R3 授权能力必须绑定随机 request、robot、operation、规范化输入 SHA-256 和到期时间，最长
 五分钟。提供器必须由 root/Administrators/SYSTEM 所有且普通用户不可修改。任何超时、字段

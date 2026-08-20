@@ -19,15 +19,15 @@ def test_authored_contracts_compile_into_the_complete_product_vocabulary() -> No
     catalog = load_operation_contracts()
     registry = canonical_operation_registry()
 
-    assert len(catalog.contracts) == 243
+    assert len(catalog.contracts) == 268
     assert len(registry.operations) == 294
     assert sum(item.lifecycle == ContractLifecycle.RELEASED for item in catalog.contracts) == 62
-    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 181
+    assert sum(item.lifecycle == ContractLifecycle.GATEABLE for item in catalog.contracts) == 206
     assert sum(item.lifecycle == ContractLifecycle.DEPRECATED for item in catalog.contracts) == 0
     draft_count = sum(
         item.contract_lifecycle == ContractLifecycle.DRAFT for item in registry.operations
     )
-    assert draft_count == 51
+    assert draft_count == 26
     assert registry.contract_catalog_sha256 == catalog.sha256
     assert len(catalog.sha256) == 64
     assert {item.version for item in catalog.contracts} == {"1.1.0", "2.0.0"}
@@ -391,6 +391,68 @@ def test_generic_execution_runs_are_r3_and_have_targeted_cancellation() -> None:
         assert cancel.access == "write"
         assert cancel.input_schema["required"] == ["run_id"]
         assert "stopped state must be observed separately" in cancel.postconditions[0]
+
+
+def test_physical_application_controls_separate_r3_actions_from_r2_cancel() -> None:
+    catalog = load_operation_contracts().by_operation()
+    direct_physical_controls = {
+        "app.teleop.pose",
+        "app.teleop.joint",
+        "app.teleop.stop",
+        "app.base.velocity",
+        "app.base.move_distance",
+        "app.base.rotate",
+        "app.base.stop",
+        "app.base.recover",
+        "app.manipulation.execute",
+        "app.manipulation.stop",
+        "app.manipulation.home",
+        "app.gripper.open",
+        "app.gripper.close",
+        "app.gripper.set",
+        "app.gripper.stop",
+        "app.navigation.start",
+        "app.navigation.pause",
+        "app.navigation.resume",
+        "app.navigation.stop",
+        "app.navigation.recover",
+        "app.task.pause",
+        "app.task.resume",
+        "app.task.stop",
+    }
+
+    assert all(
+        catalog[name].lifecycle == ContractLifecycle.GATEABLE
+        for name in direct_physical_controls
+    )
+    assert all(catalog[name].access == "write" for name in direct_physical_controls)
+    assert all(catalog[name].risk == "R3" for name in direct_physical_controls)
+    assert all(
+        catalog[name].result_semantics.value == "ACKNOWLEDGEMENT_ONLY"
+        for name in direct_physical_controls
+    )
+
+    ordinary_cancellations = {
+        "app.manipulation.cancel",
+        "app.navigation.cancel",
+    }
+    assert all(catalog[name].risk == "R2" for name in ordinary_cancellations)
+    assert all(catalog[name].access == "write" for name in ordinary_cancellations)
+    assert all(
+        "stopped state must be observed separately" in catalog[name].postconditions[0]
+        for name in ordinary_cancellations
+    )
+
+    assert catalog["app.base.move_distance"].compensation_operation == "app.base.stop"
+    assert catalog["app.manipulation.execute"].compensation_operation == (
+        "app.manipulation.cancel"
+    )
+    assert catalog["app.navigation.start"].compensation_operation == (
+        "app.navigation.cancel"
+    )
+    for name in {"app.teleop.stop", "app.base.stop", "app.navigation.stop"}:
+        assert "protective-stop" in catalog[name].postconditions[0]
+        assert "emergency-stop" in catalog[name].postconditions[0]
 
 
 def test_cancelable_write_contract_requires_active_write_compensation() -> None:

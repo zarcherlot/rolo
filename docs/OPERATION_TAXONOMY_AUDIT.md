@@ -96,3 +96,6 @@ stop 也不能用普通速度零指令冒充。
     只计算既有证据，不 apply 候选或启动测试。
 15. Task/test/regression/diagnosis 的通用 run/start 一律视为可能间接运动的 R3；每项必须具有
     target-bound 普通 cancel。`app.regression.cancel` 因此加入 Registry，普通 cancel 不等于安全停机。
+16. 普通 cancel 只向 supervisor 请求中止，因此保持 R2；直接启动、恢复、暂停、停止、执行、
+    回零或改变执行器目标的 operation 均为 R3。普通 stop 与 protective/emergency stop 保持
+    独立语义和授权路径，不能互相冒充。

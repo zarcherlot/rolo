@@ -38,6 +38,24 @@ run_ack_output: &run_ack_output
   required: [status, run_id, observed_at]
   additionalProperties: false
 
+motion_ack_output: &motion_ack_output
+  type: object
+  properties:
+    status: {type: string}
+    command_id: {type: string}
+    resource_id: {type: string}
+    observed_at: {type: string}
+  required: [status, command_id, observed_at]
+  additionalProperties: false
+
+run_control_input: &run_control_input
+  type: object
+  properties:
+    run_id: {type: string, minLength: 1}
+    reason: {type: string, maxLength: 512}
+  required: [run_id]
+  additionalProperties: false
+
 selector_input: &selector_input
   type: object
   properties: {id: {type: string, minLength: 1}}
@@ -185,6 +203,26 @@ r3_run_defaults: &r3_run_defaults
   output_schema: *run_ack_output
   error_codes:
     [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY,
+      PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
+  retry_policy: none
+
+r3_motion_defaults: &r3_motion_defaults
+  <<: *mutation_defaults
+  data_classification: SENSITIVE
+  risk: R3
+  max_duration_s: 30
+  output_schema: *motion_ack_output
+  capability_requirements:
+    [external R3 authorization provider, target physical execution route,
+      active physical interlock and watchdog route]
+  preconditions:
+    [External R3 authorization and target physical interlocks are active.]
+  postconditions:
+    [The response acknowledges command acceptance only; physical outcome must be observed separately.]
+  side_effects: [May directly change robot motion or actuator state.]
+  resource_locks: [robot physical execution]
+  error_codes:
+    [UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY,
       PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED]
   retry_policy: none
 
@@ -2381,4 +2419,499 @@ contracts:
         run_id: {type: string, minLength: 1}
         reason: {type: string, maxLength: 512}
       required: [run_id]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.teleop.pose
+    operation: app.teleop.pose
+    description: Submit one bounded supervised Cartesian pose setpoint to a teleoperation resource.
+    semantic_units: {x_m: m, y_m: m, z_m: m, roll_rad: rad, pitch_rad: rad, yaw_rad: rad}
+    coordinate_frames: [target-declared teleoperation frame]
+    time_semantics: The setpoint expires under the target teleoperation watchdog.
+    side_effects: [May cause supervised physical motion toward the requested Cartesian setpoint.]
+    resource_locks: [teleoperation resource identified by resource_id]
+    rate_limit: target-declared bounded teleoperation setpoint rate
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        frame_id: {type: string, minLength: 1}
+        x_m: {type: number}
+        y_m: {type: number}
+        z_m: {type: number}
+        roll_rad: {type: number}
+        pitch_rad: {type: number}
+        yaw_rad: {type: number}
+        watchdog_timeout_s: {type: number, minimum: 0.05, maximum: 5}
+      required:
+        [resource_id, frame_id, x_m, y_m, z_m, roll_rad, pitch_rad, yaw_rad,
+          watchdog_timeout_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.teleop.joint
+    operation: app.teleop.joint
+    description: Submit bounded supervised joint setpoints to one teleoperation resource.
+    time_semantics: Joint setpoints expire under the target teleoperation watchdog.
+    side_effects: [May cause supervised physical joint motion toward the requested setpoints.]
+    resource_locks: [teleoperation resource identified by resource_id]
+    rate_limit: target-declared bounded teleoperation setpoint rate
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        joints:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: object
+            properties:
+              name: {type: string, minLength: 1}
+              position: {type: number}
+              unit: {type: string, enum: [rad, m]}
+            required: [name, position, unit]
+            additionalProperties: false
+        watchdog_timeout_s: {type: number, minimum: 0.05, maximum: 5}
+      required: [resource_id, joints, watchdog_timeout_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.teleop.stop
+    operation: app.teleop.stop
+    description: Request a controlled operational stop of one active teleoperation resource.
+    idempotent: true
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; stopped state must be observed
+        separately and this operation does not claim protective-stop or emergency-stop semantics.
+    side_effects: [May command controlled deceleration or hold of the teleoperated resource.]
+    resource_locks: [teleoperation resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [resource_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.base.velocity
+    operation: app.base.velocity
+    description: Submit one bounded application-controlled planar base velocity command.
+    semantic_units: {linear_x_mps: m/s, linear_y_mps: m/s, angular_z_radps: rad/s,
+      command_duration_s: s}
+    coordinate_frames: [base_link]
+    time_semantics: The command expires after command_duration_s under the base watchdog.
+    side_effects: [May cause physical mobile-base translation or rotation.]
+    resource_locks: [mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        linear_x_mps: {type: number}
+        linear_y_mps: {type: number}
+        angular_z_radps: {type: number}
+        command_duration_s: {type: number, minimum: 0.05, maximum: 5}
+        safety_profile_id: {type: string, minLength: 1}
+      required:
+        [resource_id, linear_x_mps, linear_y_mps, angular_z_radps, command_duration_s,
+          safety_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.base.move_distance
+    operation: app.base.move_distance
+    description: Submit one bounded straight-line mobile-base motion under external R3 authorization.
+    compensation_operation: app.base.stop
+    capability_requirements:
+      [bounded base distance route, external R3 authorization provider,
+        active base interlock and ordinary operational-stop route]
+    preconditions:
+      [The base is ready and localized as required; external R3 authorization and interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; displacement and final pose must be observed separately.]
+    side_effects: [May cause physical base translation along the requested frame axis.]
+    resource_locks: [mobile base motion]
+    semantic_units: {distance_m: m, max_speed_mps: m/s, max_run_duration_s: s}
+    coordinate_frames: [base_link, odom]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        frame_id: {type: string, enum: [base_link, odom]}
+        distance_m: {type: number}
+        max_speed_mps: {type: number, minimum: 0.001}
+        safety_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 300}
+      required:
+        [resource_id, frame_id, distance_m, max_speed_mps, safety_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.base.rotate
+    operation: app.base.rotate
+    description: Submit one bounded in-place mobile-base rotation under external R3 authorization.
+    compensation_operation: app.base.stop
+    capability_requirements:
+      [bounded base rotation route, external R3 authorization provider,
+        active base interlock and ordinary operational-stop route]
+    preconditions:
+      [The base is ready; external R3 authorization and physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; angular displacement must be observed separately.]
+    side_effects: [May cause physical mobile-base rotation.]
+    resource_locks: [mobile base motion]
+    semantic_units: {angle_rad: rad, max_angular_speed_radps: rad/s, max_run_duration_s: s}
+    coordinate_frames: [base_link, odom]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        frame_id: {type: string, enum: [base_link, odom]}
+        angle_rad: {type: number}
+        max_angular_speed_radps: {type: number, minimum: 0.001}
+        safety_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 300}
+      required:
+        [resource_id, frame_id, angle_rad, max_angular_speed_radps, safety_profile_id,
+          max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.base.stop
+    operation: app.base.stop
+    description: Request a controlled operational stop of the mobile base.
+    idempotent: true
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; base stopped state must be
+        observed separately and this is not a protective-stop or emergency-stop operation.
+    side_effects: [May command controlled mobile-base deceleration and zero-motion hold.]
+    resource_locks: [mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        run_id: {type: string}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [resource_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.base.recover
+    operation: app.base.recover
+    description: Submit one bounded target-defined base recovery behavior under R3 authorization.
+    compensation_operation: app.base.stop
+    capability_requirements:
+      [bounded base recovery route, external R3 authorization provider,
+        active base interlock and ordinary operational-stop route]
+    preconditions:
+      [The recovery profile is applicable to current base state; R3 authorization and interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; recovery outcome must be observed separately.]
+    side_effects: [May command physical base motion to leave a target-defined recoverable condition.]
+    resource_locks: [mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        recovery_profile_id: {type: string, minLength: 1}
+        safety_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 300}
+      required: [resource_id, recovery_profile_id, safety_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.manipulation.execute
+    operation: app.manipulation.execute
+    description: Submit one immutable manipulation plan for bounded physical execution.
+    compensation_operation: app.manipulation.cancel
+    capability_requirements:
+      [manipulation plan execution supervisor, external R3 authorization provider,
+        active manipulator interlocks and ordinary cancellation route]
+    preconditions:
+      - >-
+        plan_id identifies an immutable plan compatible with the current robot and environment;
+        external R3 authorization and required manipulator interlocks are active.
+    postconditions:
+      [A run identifier acknowledges submission only; trajectory execution and outcome must be observed separately.]
+    side_effects: [May command physical manipulator and attached-tool motion.]
+    resource_locks: [manipulator execution resource]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        plan_id: {type: string, minLength: 1}
+        execution_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 3600}
+      required: [resource_id, plan_id, execution_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *cancel_defaults
+    contract_id: app.manipulation.cancel
+    operation: app.manipulation.cancel
+    description: Request ordinary cancellation of one supervised manipulation run.
+    preconditions: [run_id identifies a manipulation run visible to the target execution supervisor.]
+    side_effects: [Requests trajectory interruption through the non-safety manipulation supervisor.]
+    resource_locks: [manipulator execution resource]
+    input_schema: *run_control_input
+
+  - <<: *r3_motion_defaults
+    contract_id: app.manipulation.stop
+    operation: app.manipulation.stop
+    description: Request a controlled operational stop of one manipulation execution resource.
+    idempotent: true
+    output_schema: *run_ack_output
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; stopped state must be observed
+        separately and no protective-stop or emergency-stop claim is made.
+    side_effects:
+      - May command controlled manipulator deceleration, hold or brake engagement.
+    resource_locks: [manipulator execution resource]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [run_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.manipulation.home
+    operation: app.manipulation.home
+    description: Submit one bounded manipulator homing motion under external R3 authorization.
+    compensation_operation: app.manipulation.cancel
+    capability_requirements:
+      [bounded manipulator homing route, external R3 authorization provider,
+        active manipulator interlocks and ordinary cancellation route]
+    preconditions:
+      [The homing profile is valid for current manipulator state; R3 authorization and interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges submission only; final homed state must be observed separately.]
+    side_effects: [May command physical manipulator motion to a target-defined home configuration.]
+    resource_locks: [manipulator execution resource]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        home_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 600}
+      required: [resource_id, home_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.gripper.open
+    operation: app.gripper.open
+    description: Request bounded physical opening of one gripper resource.
+    semantic_units: {max_speed_mps: m/s, max_force_n: N, timeout_s: s}
+    side_effects: [May move gripper joints and release a held object.]
+    resource_locks: [gripper resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        max_speed_mps: {type: number, minimum: 0.0001}
+        max_force_n: {type: number, minimum: 0}
+        timeout_s: {type: number, minimum: 0.1, maximum: 60}
+      required: [resource_id, max_speed_mps, max_force_n, timeout_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.gripper.close
+    operation: app.gripper.close
+    description: Request bounded physical closing of one gripper resource.
+    semantic_units: {max_speed_mps: m/s, max_force_n: N, timeout_s: s}
+    side_effects: [May move gripper joints and apply force to an object.]
+    resource_locks: [gripper resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        max_speed_mps: {type: number, minimum: 0.0001}
+        max_force_n: {type: number, minimum: 0}
+        timeout_s: {type: number, minimum: 0.1, maximum: 60}
+      required: [resource_id, max_speed_mps, max_force_n, timeout_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.gripper.set
+    operation: app.gripper.set
+    description: Request one bounded physical gripper opening setpoint.
+    semantic_units: {opening_m: m, max_speed_mps: m/s, max_force_n: N, timeout_s: s}
+    side_effects: [May move gripper joints and apply force while approaching the opening setpoint.]
+    resource_locks: [gripper resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        opening_m: {type: number, minimum: 0}
+        max_speed_mps: {type: number, minimum: 0.0001}
+        max_force_n: {type: number, minimum: 0}
+        timeout_s: {type: number, minimum: 0.1, maximum: 60}
+      required: [resource_id, opening_m, max_speed_mps, max_force_n, timeout_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.gripper.stop
+    operation: app.gripper.stop
+    description: Request a controlled operational stop of one gripper resource.
+    idempotent: true
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; gripper stopped or holding state
+        must be observed separately and no protective-stop or emergency-stop claim is made.
+    side_effects: [May stop gripper motion and enter a target-defined bounded hold state.]
+    resource_locks: [gripper resource identified by resource_id]
+    input_schema:
+      type: object
+      properties:
+        resource_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [resource_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.navigation.start
+    operation: app.navigation.start
+    description: Submit one immutable navigation plan for bounded physical execution.
+    compensation_operation: app.navigation.cancel
+    capability_requirements:
+      [navigation execution supervisor, external R3 authorization provider,
+        active navigation interlocks and ordinary cancellation route]
+    preconditions:
+      - >-
+        plan_id and map_id identify an immutable compatible plan and map; localization, external R3
+        authorization and required physical interlocks are active.
+    postconditions:
+      [A run identifier acknowledges submission only; navigation start and outcome must be observed separately.]
+    side_effects: [May command physical mobile-base motion along the selected navigation plan.]
+    resource_locks: [navigation execution supervisor, mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        plan_id: {type: string, minLength: 1}
+        map_id: {type: string, minLength: 1}
+        execution_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 86400}
+      required: [plan_id, map_id, execution_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.navigation.pause
+    operation: app.navigation.pause
+    description: Request a physically controlled pause of one active navigation run.
+    output_schema: *run_ack_output
+    postconditions:
+      [The response acknowledges pause acceptance only; paused and stopped states must be observed separately.]
+    side_effects: [May command mobile-base deceleration and hold while retaining navigation context.]
+    resource_locks: [navigation execution supervisor, mobile base motion]
+    input_schema: *run_control_input
+
+  - <<: *r3_motion_defaults
+    contract_id: app.navigation.resume
+    operation: app.navigation.resume
+    description: Request resumption of physical motion for one paused navigation run.
+    output_schema: *run_ack_output
+    preconditions:
+      - The run is paused; localization, R3 authorization and required physical interlocks are active.
+    side_effects: [May resume mobile-base motion along the retained navigation plan.]
+    resource_locks: [navigation execution supervisor, mobile base motion]
+    input_schema: *run_control_input
+
+  - <<: *cancel_defaults
+    contract_id: app.navigation.cancel
+    operation: app.navigation.cancel
+    description: Request ordinary cancellation of one supervised navigation run.
+    preconditions: [run_id identifies a navigation run visible to the target execution supervisor.]
+    side_effects: [Requests navigation interruption through the non-safety execution supervisor.]
+    resource_locks: [navigation execution supervisor]
+    input_schema: *run_control_input
+
+  - <<: *r3_motion_defaults
+    contract_id: app.navigation.stop
+    operation: app.navigation.stop
+    description: Request a controlled operational stop of one navigation run.
+    idempotent: true
+    output_schema: *run_ack_output
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; stopped state must be observed
+        separately and no protective-stop or emergency-stop claim is made.
+    side_effects: [May command controlled mobile-base deceleration and navigation hold.]
+    resource_locks: [navigation execution supervisor, mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [run_id, stop_profile_id]
+      additionalProperties: false
+
+  - <<: *r3_run_defaults
+    contract_id: app.navigation.recover
+    operation: app.navigation.recover
+    description: Submit one bounded navigation recovery behavior under external R3 authorization.
+    compensation_operation: app.navigation.cancel
+    capability_requirements:
+      [bounded navigation recovery route, external R3 authorization provider,
+        active navigation interlocks and ordinary cancellation route]
+    preconditions:
+      [The recovery profile applies to run_id; R3 authorization and physical interlocks are active.]
+    postconditions:
+      [A run identifier acknowledges recovery submission only; recovery outcome must be observed separately.]
+    side_effects: [May command physical base motion and change retained navigation execution context.]
+    resource_locks: [navigation execution supervisor, mobile base motion]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        recovery_profile_id: {type: string, minLength: 1}
+        max_run_duration_s: {type: number, minimum: 0.1, maximum: 600}
+      required: [run_id, recovery_profile_id, max_run_duration_s]
+      additionalProperties: false
+
+  - <<: *r3_motion_defaults
+    contract_id: app.task.pause
+    operation: app.task.pause
+    description: Request a physically controlled pause of one active target-defined task run.
+    output_schema: *run_ack_output
+    postconditions:
+      [The response acknowledges pause acceptance only; paused and stopped states must be observed separately.]
+    side_effects: [May pause scheduling and command controlled deceleration or actuator hold.]
+    resource_locks: [robot task execution supervisor, robot physical execution]
+    input_schema: *run_control_input
+
+  - <<: *r3_motion_defaults
+    contract_id: app.task.resume
+    operation: app.task.resume
+    description: Request resumption of one paused target-defined task run.
+    output_schema: *run_ack_output
+    preconditions:
+      [The task is paused; external R3 authorization and required physical interlocks are active.]
+    side_effects:
+      - May resume task scheduling, actuator commands and physical robot motion.
+    resource_locks: [robot task execution supervisor, robot physical execution]
+    input_schema: *run_control_input
+
+  - <<: *r3_motion_defaults
+    contract_id: app.task.stop
+    operation: app.task.stop
+    description: Request a controlled operational stop of one target-defined task run.
+    idempotent: true
+    output_schema: *run_ack_output
+    postconditions:
+      - >-
+        The response acknowledges an operational-stop request only; stopped state must be observed
+        separately and no protective-stop or emergency-stop claim is made.
+    side_effects:
+      - May command controlled deceleration, actuator hold and task scheduling stop.
+    resource_locks: [robot task execution supervisor, robot physical execution]
+    input_schema:
+      type: object
+      properties:
+        run_id: {type: string, minLength: 1}
+        stop_profile_id: {type: string, minLength: 1}
+      required: [run_id, stop_profile_id]
       additionalProperties: false

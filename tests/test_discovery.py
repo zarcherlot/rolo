@@ -497,12 +497,23 @@ def test_product_registry_exposes_only_authored_contracts_as_gateable() -> None:
         "--input",
         "{input_json}",
     ]
-    assert operations["app.navigation.start"].contract_lifecycle.value == "DRAFT"
+    assert any(
+        item.contract_lifecycle.value == "DRAFT" for item in operations.values()
+    )
 
 
 def test_incomplete_product_contract_cannot_enter_conformance() -> None:
     from rolo.core.models import DiscoveryReport, OperationCandidate
-    from rolo.stages.adapt.operation_registry import required_conformance_operations
+    from rolo.stages.adapt.operation_registry import (
+        canonical_operation_registry,
+        required_conformance_operations,
+    )
+
+    incomplete_operation = next(
+        item.operation
+        for item in canonical_operation_registry().operations
+        if item.contract_lifecycle.value == "DRAFT"
+    )
 
     report = DiscoveryReport(
         discovery_id="disc-incomplete",
@@ -511,7 +522,7 @@ def test_incomplete_product_contract_cannot_enter_conformance() -> None:
         platform={},
         capability_manifest={},
         probes={},
-        operation_candidates=[OperationCandidate(operation="app.navigation.start")],
+        operation_candidates=[OperationCandidate(operation=incomplete_operation)],
     )
 
     with pytest.raises(ValueError, match="lack complete product contracts"):

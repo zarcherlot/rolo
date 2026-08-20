@@ -5,11 +5,16 @@ This document is generated from `src/rolo/operation_contracts/*.yaml`.
 implemented and promoted by Adapt. The remaining product vocabulary stays `DRAFT` 
 and cannot become `VERIFIED` until an authored contract is added.
 
-Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d65635`
+Catalog SHA-256: `1559083bcb01a95ba9cd8d9e5af5f906e5c1329e27b2bff60c69f204242c5997`
 
 | Operation | Lifecycle | Version | Data | Contract SHA-256 |
 |---|---|---|---|---|
+| `app.base.move_distance` | GATEABLE | `1.1.0` | `SENSITIVE` | `45b8b826a01cac759dc97fa2b2724ca8b1fd31eac18178738a25635a6f760945` |
+| `app.base.recover` | GATEABLE | `1.1.0` | `SENSITIVE` | `9325f6e6b8e3cc724c240a312a74225b7ef9b6dfed09b80981f4d0b50947a67c` |
+| `app.base.rotate` | GATEABLE | `1.1.0` | `SENSITIVE` | `fbc406380e39d56aad3bf95f8d5ceecfbea08ee8001bbf95a2c6fdce2e962e45` |
 | `app.base.status` | GATEABLE | `1.1.0` | `INTERNAL` | `a86e2e8bd0f0cf83df6f4203b5615bcc6a7b51efbc66c443d3c4c664d3cf0e47` |
+| `app.base.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `20f1a748d5636059d81dfbdd10f90a376adbbb1fbb0c69b65c27c65a84716508` |
+| `app.base.velocity` | GATEABLE | `1.1.0` | `SENSITIVE` | `85f91c5e8c7ba69ebd09091409e0841b49e964c4b8327a10f34b8d92a0fc6ece` |
 | `app.calibration.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `79442bd94b62c07fc17589eab66fbc33e3fead8a82f4d8fb04ff004351636233` |
 | `app.calibration.list` | GATEABLE | `1.1.0` | `INTERNAL` | `25f5c2e0418fd9834a74100c923f7ebdb39c1b781ab2da9be92162a47fdac9b2` |
 | `app.calibration.status` | GATEABLE | `1.1.0` | `INTERNAL` | `9575987f77a34dbb909bb3cf2d08178acedc9c2a87d8bb182a91fecc31bad7e5` |
@@ -33,7 +38,11 @@ Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d656
 | `app.gnss.list` | GATEABLE | `1.1.0` | `INTERNAL` | `804a1f4a8117186940ee085d9fdacc38e9c7943e2975a82788bcb611e96010ba` |
 | `app.gnss.sample` | GATEABLE | `1.1.0` | `SENSITIVE` | `ea9eb8b490d9c1f7cf05c3d53790d170241bb7ca34c8f298a7ef257469c1e494` |
 | `app.gnss.status` | GATEABLE | `1.1.0` | `INTERNAL` | `cae0e43f5266d6b6cba646b3ec75aa43d9ca7df53f99023269385101875dc523` |
+| `app.gripper.close` | GATEABLE | `1.1.0` | `SENSITIVE` | `35185e297557b7af3e76ae5e31bcee945cab92b28ed4f992fc3d5102da578fe0` |
+| `app.gripper.open` | GATEABLE | `1.1.0` | `SENSITIVE` | `8a0b1b2ccb85254181202b6e363ee7264831f7f2ade8b1c206a91e7d9f90cc7b` |
+| `app.gripper.set` | GATEABLE | `1.1.0` | `SENSITIVE` | `89482e3c13e9c38c857fe5aa0da0501b648d2606219c31f548e84d7fe361c61e` |
 | `app.gripper.status` | GATEABLE | `1.1.0` | `INTERNAL` | `65fc2daa1d22f4b9b2869eef246cc7e7095af4caa018142422a4f060cc6c4ff6` |
+| `app.gripper.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `549699df52239e4e6610a0d3a3252f9adf6a0dec7c46a36cc5240a475e49feb3` |
 | `app.imu.calibration.status` | GATEABLE | `1.1.0` | `INTERNAL` | `1149975c8eb054edcf87650a716f87e638a2c3f5a48b3698325dec16ee5089cc` |
 | `app.imu.inspect` | GATEABLE | `1.1.0` | `INTERNAL` | `70173f03cfe85bfbe983ef11d21b77eb97253a889e4c696db6b410a411480e8e` |
 | `app.imu.list` | GATEABLE | `1.1.0` | `INTERNAL` | `d3fba08dccd9b0012d4abc9fe30463b586789635bd4de43ff96d74bc029157ef` |
@@ -50,8 +59,12 @@ Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d656
 | `app.localization.relocalize` | GATEABLE | `1.1.0` | `SENSITIVE` | `f8701f5c1baa8fb6743e4e7aa0ed3c0eb5099fcc7bef362531e862d5fbda2bfd` |
 | `app.localization.reset` | GATEABLE | `1.1.0` | `INTERNAL` | `c5929325a6c55a3a0de598a890c2c6dafce5a805ed488d677c8f467a1eceecfe` |
 | `app.localization.status` | GATEABLE | `1.1.0` | `INTERNAL` | `1967add5892c7df8f374c608bb965654931c672f97bf903ab1f00e824d388a30` |
+| `app.manipulation.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `5d6695b50cd16495cc907febaa7a7cbd51e9334d170e2aaedeb0580754e4a8db` |
+| `app.manipulation.execute` | GATEABLE | `1.1.0` | `SENSITIVE` | `3d38ac4323829daafd6ae9c3178f07492f03b1a0205ded5d2ac33624d84197bf` |
+| `app.manipulation.home` | GATEABLE | `1.1.0` | `SENSITIVE` | `535f9eaabbdd6850a54e5296ee9e55418020cc8492a2d758ed1290f6a45bf352` |
 | `app.manipulation.plan` | GATEABLE | `1.1.0` | `SENSITIVE` | `d2b6db540f177347bfe184b2aecefba2391feea028f415d960563df354b5d999` |
 | `app.manipulation.status` | GATEABLE | `1.1.0` | `INTERNAL` | `9633a8acb55ed1bc1e7b6cafed54aa9074eea8852133c910202a50ed59553f6d` |
+| `app.manipulation.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `8df1e427e82d468bc8779198919a92a7992fe5bf3daddf23475f569b0297a755` |
 | `app.map.clear` | GATEABLE | `1.1.0` | `SENSITIVE` | `db4c63c79285ef89df7a8d1958c50e13ad4baed33f8d3cf7b193fe8842e2f31d` |
 | `app.map.create` | GATEABLE | `1.1.0` | `SENSITIVE` | `e724ca8e092b1a85427ad4490499b40ee2146549fdeb90a629bfe54561ce3ec2` |
 | `app.map.export` | GATEABLE | `1.1.0` | `SENSITIVE` | `fe8da03642d0ff77fbd2f40ec58e86f2fe753296c0259e3ccd17c605744ff16e` |
@@ -60,10 +73,16 @@ Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d656
 | `app.map.list` | GATEABLE | `1.1.0` | `SENSITIVE` | `a39851f7bfa16d261f295fa5ea0d4bb4f0a2cbeb9c960588441726a014d5e985` |
 | `app.map.load` | GATEABLE | `1.1.0` | `SENSITIVE` | `769c8e4321ce7ca82d136e2eb8ead08cec341dd647ef4439305b967a9c32c01b` |
 | `app.map.save` | GATEABLE | `1.1.0` | `SENSITIVE` | `7043e54e06b7cfe9a270e012fce3342a4e9d1a9c1df167af656a0f80a42c056f` |
+| `app.navigation.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `20b97b46f0d1eb0f495673cffbd3140a3eb2a79b49f0744c79937922c5fbc2cb` |
 | `app.navigation.costmap.inspect` | GATEABLE | `1.1.0` | `SENSITIVE` | `feac0abe8822fff0d24a32af842c32d36e40111bd625b6948f4c970c1e6669e9` |
 | `app.navigation.path.inspect` | GATEABLE | `1.1.0` | `SENSITIVE` | `34bfcb3dad7b5f6a306a3b02ec1071d8b146f85a07cbb3fc78298accd42b204f` |
+| `app.navigation.pause` | GATEABLE | `1.1.0` | `SENSITIVE` | `62c3bc2d465bfb56d1b680712567c9b7791531b7753c8c7625513aba51e79b10` |
 | `app.navigation.plan` | GATEABLE | `1.1.0` | `SENSITIVE` | `ad692d32ec5a57742dfb815c00bf40a16d173ff8ef8cae3dbda94ca25723ea68` |
+| `app.navigation.recover` | GATEABLE | `1.1.0` | `SENSITIVE` | `7daa5e9a444c026a1909c92c3bd70001bbea71218df96304c9c5cc07dd5c62eb` |
+| `app.navigation.resume` | GATEABLE | `1.1.0` | `SENSITIVE` | `53952b592a25ca403be388c1cfb3f35cab69d43b0a878cdcf1158b4d8d205c82` |
+| `app.navigation.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `843e4417a48d57dd117207a75938a31e6bf970da779769475f8a45cb313e862c` |
 | `app.navigation.status` | GATEABLE | `1.1.0` | `INTERNAL` | `caf2ace79fae5304feadff92e4df9ebaced386313dc8e1c2095d120ff5ac5e9a` |
+| `app.navigation.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `26db2da4a310e1da43f8cbb4b409c6a36086db1fe121c5270268215b6661706b` |
 | `app.odometry.reset` | GATEABLE | `1.1.0` | `INTERNAL` | `0c16fd8ef8124f5de708250f12439a05fb0e222bd393e91eac259924a244f5b4` |
 | `app.odometry.sample` | GATEABLE | `1.1.0` | `SENSITIVE` | `3b9a0eed492163c2dfe05d6695d62f83e9113e694dfda270b25b0d45001a5603` |
 | `app.odometry.status` | GATEABLE | `1.1.0` | `INTERNAL` | `e775b371b4ef791d4ae9ba29b5ea246e15568ed283f5a22dfb6a77bd1b3fb8e3` |
@@ -94,12 +113,18 @@ Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d656
 | `app.task.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `ebe41931d6089b83ea3cdd6f5ea594b3231a994af4157486f0a23f1a0ec5a630` |
 | `app.task.describe` | GATEABLE | `1.1.0` | `INTERNAL` | `60b7abf9aa66e37dbe7bd099698b935444440424cc231553694b758f43676660` |
 | `app.task.list` | GATEABLE | `1.1.0` | `INTERNAL` | `cfda88e7b83622a2f17ff4302c212e152802a2802fcf4bbb05ef073a3fdea219` |
+| `app.task.pause` | GATEABLE | `1.1.0` | `SENSITIVE` | `005522266222e710e9cb96c79529d1dde8de334134e234a990742edd7dd57bfe` |
 | `app.task.result` | GATEABLE | `1.1.0` | `SENSITIVE` | `5fbc572358d278410e092fed85014426151cfb21b13c7086f48c35d558dc63fe` |
+| `app.task.resume` | GATEABLE | `1.1.0` | `SENSITIVE` | `15e158abd43dee4d1a1ee27b4f708b54600b176e3642fb914830b8854e36057c` |
 | `app.task.start` | GATEABLE | `1.1.0` | `SENSITIVE` | `fbb41bdd3268f404eb6ef4c56fc26ea9c1b32c48115dadf9c16188ca75323aac` |
 | `app.task.status` | GATEABLE | `1.1.0` | `INTERNAL` | `f5a060a38d5f351ab649f60c2c15990bcee1c93e33ad7c3de585f768902e76f7` |
+| `app.task.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `be2a7271ebcb2bcea1e58941a3ba4d475c472624625cfe0a92d856f82db16cc7` |
 | `app.telemetry.export` | GATEABLE | `1.1.0` | `SENSITIVE` | `6de2bcc7352be7d7283d29c28241a170294661a91da058fe898127ee75efabe5` |
 | `app.telemetry.snapshot` | GATEABLE | `1.1.0` | `SENSITIVE` | `7febbe20318b3e1b588015b34ef89167b3ebdaa7bd9bee2958adab33f701fb59` |
 | `app.telemetry.watch` | GATEABLE | `1.1.0` | `SENSITIVE` | `a919ded06f4bb596ded1833068f9c9b7d31716209380bc8bdcfe2e86ea19a227` |
+| `app.teleop.joint` | GATEABLE | `1.1.0` | `SENSITIVE` | `3e38851fb6c4732a58c1f5626e79f2ef200315e02f9e762198ca2837b8763c16` |
+| `app.teleop.pose` | GATEABLE | `1.1.0` | `SENSITIVE` | `a816f4b11d688159f048f57d1fcb7798ee71c6f7a0e1027888a19f5d97bd36d7` |
+| `app.teleop.stop` | GATEABLE | `1.1.0` | `SENSITIVE` | `8fed4eba95c0c858f5a9f74d04f057b09d3760d288986980086a4dd191ffea70` |
 | `app.teleop.velocity` | GATEABLE | `1.1.0` | `INTERNAL` | `2e779398303a5f810f7c328a6f20af4d82ccbb4513eaa626257be3e8e33e9661` |
 | `app.test.cancel` | GATEABLE | `1.1.0` | `SENSITIVE` | `60edabf0d07b75a056cb4e63c035ae469311f69e5d343dd03d5b3b5a0379238d` |
 | `app.test.describe` | GATEABLE | `1.1.0` | `INTERNAL` | `43d8478f1e363b94336f80ca78110f007c3297286b418cddbc57ebe8155e9330` |
@@ -253,6 +278,264 @@ Catalog SHA-256: `8408a7e8f7bc49d4121a973148ba6eb4dee1c1c3a1ad232e79259e3f21d656
 | `tool.catalog` | RELEASED | `1.1.0` | `INTERNAL` | `c1a599f007eec664ef961a173aa6e9b5d88770b93b3f5c2029418cdef2c7a3f0` |
 | `tool.schema` | RELEASED | `1.1.0` | `INTERNAL` | `737435d57292f7665dcf78a7693c435af9c5d5fd90e91018b5d025a8fa478beb` |
 
+## `app.base.move_distance`
+
+Submit one bounded straight-line mobile-base motion under external R3 authorization.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `45b8b826a01cac759dc97fa2b2724ca8b1fd31eac18178738a25635a6f760945`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frame_id": {
+      "type": "string",
+      "enum": [
+        "base_link",
+        "odom"
+      ]
+    },
+    "distance_m": {
+      "type": "number"
+    },
+    "max_speed_mps": {
+      "type": "number",
+      "minimum": 0.001
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 300
+    }
+  },
+  "required": [
+    "resource_id",
+    "frame_id",
+    "distance_m",
+    "max_speed_mps",
+    "safety_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.base.recover`
+
+Submit one bounded target-defined base recovery behavior under R3 authorization.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `9325f6e6b8e3cc724c240a312a74225b7ef9b6dfed09b80981f4d0b50947a67c`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recovery_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 300
+    }
+  },
+  "required": [
+    "resource_id",
+    "recovery_profile_id",
+    "safety_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.base.rotate`
+
+Submit one bounded in-place mobile-base rotation under external R3 authorization.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `fbc406380e39d56aad3bf95f8d5ceecfbea08ee8001bbf95a2c6fdce2e962e45`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frame_id": {
+      "type": "string",
+      "enum": [
+        "base_link",
+        "odom"
+      ]
+    },
+    "angle_rad": {
+      "type": "number"
+    },
+    "max_angular_speed_radps": {
+      "type": "number",
+      "minimum": 0.001
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 300
+    }
+  },
+  "required": [
+    "resource_id",
+    "frame_id",
+    "angle_rad",
+    "max_angular_speed_radps",
+    "safety_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.base.status`
 
 Read mobile-base readiness, control mode, and bounded health metadata.
@@ -308,6 +591,167 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.base.stop`
+
+Request a controlled operational stop of the mobile base.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `20f1a748d5636059d81dfbdd10f90a376adbbb1fbb0c69b65c27c65a84716508`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.base.velocity`
+
+Submit one bounded application-controlled planar base velocity command.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `85f91c5e8c7ba69ebd09091409e0841b49e964c4b8327a10f34b8d92a0fc6ece`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "linear_x_mps": {
+      "type": "number"
+    },
+    "linear_y_mps": {
+      "type": "number"
+    },
+    "angular_z_radps": {
+      "type": "number"
+    },
+    "command_duration_s": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 5
+    },
+    "safety_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "linear_x_mps",
+    "linear_y_mps",
+    "angular_z_radps",
+    "command_duration_s",
+    "safety_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -2067,6 +2511,254 @@ Output schema:
 }
 ```
 
+## `app.gripper.close`
+
+Request bounded physical closing of one gripper resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `35185e297557b7af3e76ae5e31bcee945cab92b28ed4f992fc3d5102da578fe0`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_speed_mps": {
+      "type": "number",
+      "minimum": 0.0001
+    },
+    "max_force_n": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60
+    }
+  },
+  "required": [
+    "resource_id",
+    "max_speed_mps",
+    "max_force_n",
+    "timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.gripper.open`
+
+Request bounded physical opening of one gripper resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8a0b1b2ccb85254181202b6e363ee7264831f7f2ade8b1c206a91e7d9f90cc7b`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_speed_mps": {
+      "type": "number",
+      "minimum": 0.0001
+    },
+    "max_force_n": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60
+    }
+  },
+  "required": [
+    "resource_id",
+    "max_speed_mps",
+    "max_force_n",
+    "timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.gripper.set`
+
+Request one bounded physical gripper opening setpoint.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `89482e3c13e9c38c857fe5aa0da0501b648d2606219c31f548e84d7fe361c61e`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "opening_m": {
+      "type": "number",
+      "minimum": 0
+    },
+    "max_speed_mps": {
+      "type": "number",
+      "minimum": 0.0001
+    },
+    "max_force_n": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timeout_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60
+    }
+  },
+  "required": [
+    "resource_id",
+    "opening_m",
+    "max_speed_mps",
+    "max_force_n",
+    "timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.gripper.status`
 
 Read gripper readiness, opening state, and bounded health metadata.
@@ -2122,6 +2814,76 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.gripper.stop`
+
+Request a controlled operational stop of one gripper resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `549699df52239e4e6610a0d3a3252f9adf6a0dec7c46a36cc5240a475e49feb3`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -3294,6 +4056,223 @@ Output schema:
 }
 ```
 
+## `app.manipulation.cancel`
+
+Request ordinary cancellation of one supervised manipulation run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `5d6695b50cd16495cc907febaa7a7cbd51e9334d170e2aaedeb0580754e4a8db`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.manipulation.execute`
+
+Submit one immutable manipulation plan for bounded physical execution.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `3d38ac4323829daafd6ae9c3178f07492f03b1a0205ded5d2ac33624d84197bf`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 3600
+    }
+  },
+  "required": [
+    "resource_id",
+    "plan_id",
+    "execution_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.manipulation.home`
+
+Submit one bounded manipulator homing motion under external R3 authorization.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `535f9eaabbdd6850a54e5296ee9e55418020cc8492a2d758ed1290f6a45bf352`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "home_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 600
+    }
+  },
+  "required": [
+    "resource_id",
+    "home_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.manipulation.plan`
 
 Compute a bounded manipulation plan without executing actuator commands.
@@ -3460,6 +4439,73 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.manipulation.stop`
+
+Request a controlled operational stop of one manipulation execution resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8df1e427e82d468bc8779198919a92a7992fe5bf3daddf23475f569b0297a755`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "run_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -4052,6 +5098,72 @@ Output schema:
 }
 ```
 
+## `app.navigation.cancel`
+
+Request ordinary cancellation of one supervised navigation run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R2`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `20b97b46f0d1eb0f495673cffbd3140a3eb2a79b49f0744c79937922c5fbc2cb`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.navigation.costmap.inspect`
 
 Inspect bounded costmap metadata and a protected artifact reference.
@@ -4252,6 +5364,72 @@ Output schema:
 }
 ```
 
+## `app.navigation.pause`
+
+Request a physically controlled pause of one active navigation run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `62c3bc2d465bfb56d1b680712567c9b7791531b7753c8c7625513aba51e79b10`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.navigation.plan`
 
 Compute a bounded navigation plan without starting or authorizing robot motion.
@@ -4408,6 +5586,223 @@ Output schema:
 }
 ```
 
+## `app.navigation.recover`
+
+Submit one bounded navigation recovery behavior under external R3 authorization.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `7daa5e9a444c026a1909c92c3bd70001bbea71218df96304c9c5cc07dd5c62eb`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recovery_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 600
+    }
+  },
+  "required": [
+    "run_id",
+    "recovery_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.navigation.resume`
+
+Request resumption of physical motion for one paused navigation run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `53952b592a25ca403be388c1cfb3f35cab69d43b0a878cdcf1158b4d8d205c82`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.navigation.start`
+
+Submit one immutable navigation plan for bounded physical execution.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `true`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_PLAN, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `843e4417a48d57dd117207a75938a31e6bf970da779769475f8a45cb313e862c`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "map_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_run_duration_s": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 86400
+    }
+  },
+  "required": [
+    "plan_id",
+    "map_id",
+    "execution_profile_id",
+    "max_run_duration_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.navigation.status`
 
 Read navigation lifecycle, current activity, and bounded readiness metadata.
@@ -4463,6 +5858,73 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.navigation.stop`
+
+Request a controlled operational stop of one navigation run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `26db2da4a310e1da43f8cbb4b409c6a36086db1fe121c5270268215b6661706b`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "run_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -6561,6 +8023,72 @@ Output schema:
 }
 ```
 
+## `app.task.pause`
+
+Request a physically controlled pause of one active target-defined task run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `005522266222e710e9cb96c79529d1dde8de334134e234a990742edd7dd57bfe`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
 ## `app.task.result`
 
 Read the bounded target-defined result document for one completed task instance.
@@ -6623,6 +8151,72 @@ Output schema:
     "status",
     "id",
     "result",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.task.resume`
+
+Request resumption of one paused target-defined task run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `15e158abd43dee4d1a1ee27b4f708b54600b176e3642fb914830b8854e36057c`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -6770,6 +8364,73 @@ Output schema:
   },
   "required": [
     "status",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.task.stop`
+
+Request a controlled operational stop of one target-defined task run.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `be2a7271ebcb2bcea1e58941a3ba4d475c472624625cfe0a92d856f82db16cc7`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "run_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "run_id",
     "observed_at"
   ],
   "additionalProperties": false
@@ -7039,6 +8700,278 @@ Output schema:
     "observed_at",
     "truncated",
     "items"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.teleop.joint`
+
+Submit bounded supervised joint setpoints to one teleoperation resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `3e38851fb6c4732a58c1f5626e79f2ef200315e02f9e762198ca2837b8763c16`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "joints": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "position": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "rad",
+              "m"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "position",
+          "unit"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "watchdog_timeout_s": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 5
+    }
+  },
+  "required": [
+    "resource_id",
+    "joints",
+    "watchdog_timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.teleop.pose`
+
+Submit one bounded supervised Cartesian pose setpoint to a teleoperation resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `false` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `a816f4b11d688159f048f57d1fcb7798ee71c6f7a0e1027888a19f5d97bd36d7`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frame_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "x_m": {
+      "type": "number"
+    },
+    "y_m": {
+      "type": "number"
+    },
+    "z_m": {
+      "type": "number"
+    },
+    "roll_rad": {
+      "type": "number"
+    },
+    "pitch_rad": {
+      "type": "number"
+    },
+    "yaw_rad": {
+      "type": "number"
+    },
+    "watchdog_timeout_s": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 5
+    }
+  },
+  "required": [
+    "resource_id",
+    "frame_id",
+    "x_m",
+    "y_m",
+    "z_m",
+    "roll_rad",
+    "pitch_rad",
+    "yaw_rad",
+    "watchdog_timeout_s"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## `app.teleop.stop`
+
+Request a controlled operational stop of one active teleoperation resource.
+
+- Lifecycle/version: `GATEABLE` / `1.1.0`
+- Layer/access/risk: `app` / `write` / `R3`
+- Data classification: `SENSITIVE`
+- Result semantics: `ACKNOWLEDGEMENT_ONLY`
+- Observation overhead: `BOUNDED`
+- Execution mode: `REQUEST_RESPONSE`
+- Paired operation: `none`
+- Replacement operation: `none`
+- Idempotent/cancelable: `true` / `false`
+- Requires execution quiescence: `false`
+- Maximum duration: `30s`
+- Canonical CLI template: `robotctl tool invoke {operation} --robot {robot_id} --input {input_json}`
+- Error codes: `UNAVAILABLE, NOT_AUTHORIZED, INVALID_TARGET, INVALID_INPUT, INTERLOCK_BLOCKED, BUSY, PRECONDITION_FAILED, TIMEOUT, OPERATION_FAILED`
+- Contract SHA-256: `8fed4eba95c0c858f5a9f74d04f057b09d3760d288986980086a4dd191ffea70`
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_profile_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "resource_id",
+    "stop_profile_id"
+  ],
+  "additionalProperties": false
+}
+```
+
+Output schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "command_id",
+    "observed_at"
   ],
   "additionalProperties": false
 }

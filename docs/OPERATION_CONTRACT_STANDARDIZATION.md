@@ -14,8 +14,8 @@ Registry Operation 的日常治理、生命周期升级/降级和运行时使用
 可复制的 R0、R1、R3 与数据敏感度最小模板见
 [OPERATION_CONTRACT_TEMPLATES.md](OPERATION_CONTRACT_TEMPLATES.md)。
 
-当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、181 个为 `GATEABLE`、
-51 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
+当前基线：294 个产品 operation 中，62 个契约为 `RELEASED`、206 个为 `GATEABLE`、
+26 个保持 `DRAFT`。已提前发布的通用 Linux 只读能力包括主机状态与 uptime、文件
 SHA-256、文件元数据和有界目录清单、路由与网卡信息、CPU/内存/磁盘/GPU 资源、进程与
 容器资源快照、二进制与软件包完整性、软件包元数据、连接与 DNS 状态和时钟状态。这些
 契约及 builtin 不依赖
@@ -96,6 +96,12 @@ evaluate 固定为对既有候选、基线和证据的 R1 有界只读计算，�
 普通 cancel operation；为补齐该不变量，Registry 新增 `app.regression.cancel`。普通 cancel
 为 R2 且只请求中止，不冒充 protective/emergency stop，也不声称目标已经停止。契约编译器
 现在拒绝任何缺少 active write compensation contract 的 cancelable write。
+
+Teleop、base、manipulation、gripper、navigation 和 task 的直接物理控制已形成 `GATEABLE`
+契约。会启动、恢复、暂停、停止、执行、回零或改变执行器目标的 operation 统一采用 R3；
+普通 cancel 保持 R2，因为它只向 supervisor 请求取消。普通 stop 即使以减速、保持或零速度
+实现，仍是直接改变运动状态的 R3，但不得声称触发了 protective stop 或 emergency stop。
+所有响应只确认命令或请求被接受，物理结果和停止状态必须在后续诊断阶段另行观测。
 
 `access=read` 不再被错误地等同于 `risk=R0`。只读 operation 可以因总线探测流量、持续
 采样负载等原因成为 R1，但必须声明 `ELEVATED` observation overhead、具体副作用和非
