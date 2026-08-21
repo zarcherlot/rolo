@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "CapabilityResolution": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ResolutionStatus"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "capability_id": {
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "capability_version": {
+          "title": "Capability Version",
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Id"
+        },
+        "route_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Ref"
+        },
+        "candidate_provider_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Candidate Provider Ids",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "status",
+        "operation",
+        "capability_id",
+        "capability_version"
+      ],
+      "title": "CapabilityResolution",
+      "type": "object"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "RESOLVED",
+        "UNAVAILABLE",
+        "AMBIGUOUS"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-capability-resolution-shadow/v1",
+      "default": "robot-capability-resolution-shadow/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "profile_id": {
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Profile Sha256",
+      "type": "string"
+    },
+    "provider_manifest_sha256": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Provider Manifest Sha256",
+      "type": "array"
+    },
+    "resolutions": {
+      "items": {
+        "$ref": "#/$defs/CapabilityResolution"
+      },
+      "title": "Resolutions",
+      "type": "array"
+    },
+    "discovery_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Discovery Evidence",
+      "type": "array"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "profile_id",
+    "profile_sha256"
+  ],
+  "title": "ShadowResolutionArtifact",
+  "type": "object"
+}
