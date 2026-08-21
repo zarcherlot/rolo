@@ -4,6 +4,13 @@ This package is intentionally disconnected from the active registry and release
 pipeline. It provides contracts that platform providers can implement later.
 """
 
+from rolo.capabilities.host import (
+    CapabilityWriteAuthorizer,
+    ProviderHost,
+    ProviderHostSnapshot,
+    ProviderRegistration,
+    ProviderRegistrationStatus,
+)
 from rolo.capabilities.models import (
     CapabilityAccess,
     CapabilityAvailability,
@@ -39,6 +46,7 @@ __all__ = [
     "CapabilityResolution",
     "CapabilityResolutionShadow",
     "CapabilityResolver",
+    "CapabilityWriteAuthorizer",
     "InspectRequest",
     "InspectResult",
     "InvokeRequest",
@@ -49,7 +57,11 @@ __all__ = [
     "ProviderCapabilitiesResult",
     "ProviderCapability",
     "ProviderManifest",
+    "ProviderHost",
+    "ProviderHostSnapshot",
     "ProviderProbeResult",
+    "ProviderRegistration",
+    "ProviderRegistrationStatus",
     "ProviderStatus",
     "ResolutionStatus",
     "SemanticLayer",

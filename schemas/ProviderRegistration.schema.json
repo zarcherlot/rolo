@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "ProviderRegistrationStatus": {
+      "enum": [
+        "REGISTERED",
+        "UNAVAILABLE",
+        "REJECTED"
+      ],
+      "title": "ProviderRegistrationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-provider-registration/v1",
+      "default": "robot-provider-registration/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "provider_id": {
+      "minLength": 1,
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "provider_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Version"
+    },
+    "status": {
+      "$ref": "#/$defs/ProviderRegistrationStatus"
+    },
+    "manifest_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Manifest Sha256"
+    },
+    "capability_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Capability Count",
+      "type": "integer"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "provider_id",
+    "status"
+  ],
+  "title": "ProviderRegistration",
+  "type": "object"
+}

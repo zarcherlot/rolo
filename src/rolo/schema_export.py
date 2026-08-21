@@ -9,7 +9,9 @@ from rolo.capabilities import (
     CapabilityDescriptor,
     CapabilityResolutionShadow,
     PlatformProfile,
+    ProviderHostSnapshot,
     ProviderManifest,
+    ProviderRegistration,
 )
 from rolo.contract_catalog import OperationContract, OperationContractCatalog
 from rolo.core.models import (
@@ -87,6 +89,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationDispositionLedger,
     CapabilityDescriptor,
     ProviderManifest,
+    ProviderRegistration,
+    ProviderHostSnapshot,
     PlatformProfile,
     CapabilityResolutionShadow,
     ToolDescriptor,

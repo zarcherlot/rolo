@@ -48,7 +48,8 @@ Shadow Artifact 必须满足：
 - write capability 统一接入 Runtime policy；
 - 空 Provider、未知 Provider、能力缺失均为正常状态。
 
-状态：待开发。
+状态：首批实现已完成。ProviderHost 当前保持与 Active Tool Catalog 和 release 解耦；
+写能力默认拒绝，只有显式注入 Runtime policy authorizer 后才能调用 Provider。
 
 ## P3.3 Conformance Kit
 
