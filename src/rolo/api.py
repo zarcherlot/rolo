@@ -6,6 +6,12 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from rolo import __version__
+from rolo.adapt_read_models import (
+    ADAPT_API_FEATURES,
+    OperationGovernanceCollection,
+    build_operation_governance_collection,
+    build_robot_target_operation_slice,
+)
 from rolo.capability_read_models import (
     CapabilityAvailability,
     CapabilityCollection,
@@ -34,6 +40,14 @@ from rolo.lifecycle_read_models import (
 )
 from rolo.read_models import OverviewState, RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
+from rolo.stages.adapt.operation_governance import (
+    ExecutionClass,
+    MigrationStatus,
+)
+from rolo.stages.adapt.operation_governance import (
+    SemanticLayer as GovernanceSemanticLayer,
+)
+from rolo.stages.adapt.workset import TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
 from rolo.topology_history_read_models import (
@@ -84,12 +98,63 @@ async def health(request: Request) -> HealthResponse:
         robots=len(runtime.registry),
         robot_use_backend=runtime.robot_use_backend.name,
         openai_key_configured=bool(runtime.settings.openai_api_key),
+        api_features=list(ADAPT_API_FEATURES),
     )
 
 
 @app.get("/v1/robots", response_model=list[RobotCapability])
 async def list_robots(request: Request) -> list[RobotCapability]:
     return get_runtime(request).registry.list()
+
+
+@app.get("/v1/operations/governance", response_model=OperationGovernanceCollection)
+async def list_operation_governance(
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    query: Annotated[str | None, Query(max_length=128)] = None,
+    semantic_layer: Annotated[GovernanceSemanticLayer | None, Query()] = None,
+    execution_class: Annotated[ExecutionClass | None, Query()] = None,
+    migration_status: Annotated[MigrationStatus | None, Query()] = None,
+) -> OperationGovernanceCollection:
+    return build_operation_governance_collection(
+        limit=limit,
+        offset=offset,
+        query=query,
+        semantic_layer=semantic_layer,
+        execution_class=execution_class,
+        migration_status=migration_status,
+    )
+
+
+@app.get(
+    "/v1/robots/{robot_id}/adapt/operation-slice",
+    response_model=TargetOperationSlice,
+)
+def get_robot_target_operation_slice(
+    robot_id: str,
+    request: Request,
+) -> TargetOperationSlice:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_robot_target_operation_slice(
+            runtime.artifacts,
+            runtime.settings.rolo_output_dir,
+            robot_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Adapt target operation slice is unavailable",
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt target operation slice failed integrity validation",
+        ) from exc
 
 
 def _fleet_pipelines(runtime: RobotUseRuntime) -> dict[str, PipelineAssessment]:

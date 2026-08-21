@@ -105,6 +105,7 @@ class HealthResponse(BaseModel):
     robots: int
     robot_use_backend: str
     openai_key_configured: bool
+    api_features: list[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=utc_now)
 
 

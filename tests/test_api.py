@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from inspect import iscoroutinefunction
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,10 @@ def test_health_and_robot_registry() -> None:
     assert health.status_code == 200
     assert health.json()["status"] == "HEALTHY"
     assert health.json()["robots"] == 2
+    assert health.json()["api_features"] == [
+        "adapt.operation-governance/v1",
+        "adapt.target-operation-slice/v1",
+    ]
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
     assert fleet.status_code == 200
@@ -135,6 +140,9 @@ def test_unknown_robot_is_404() -> None:
         runs = client.get("/v1/robots/not-a-robot/runs")
         evidence = client.get("/v1/robots/not-a-robot/evidence")
         evidence_detail = client.get("/v1/evidence/ev_unknown")
+        operation_slice = client.get(
+            "/v1/robots/not-a-robot/adapt/operation-slice"
+        )
 
     assert response.status_code == 404
     assert overview.status_code == 404
@@ -144,6 +152,72 @@ def test_unknown_robot_is_404() -> None:
     assert runs.status_code == 404
     assert evidence.status_code == 404
     assert evidence_detail.status_code == 404
+    assert operation_slice.status_code == 404
+
+
+def test_operation_governance_is_bounded_external_metadata() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/operations/governance",
+            params={"limit": 2, "offset": 0, "semantic_layer": "os"},
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["schema_version"] == "rolo-operation-governance-collection/v1"
+    assert payload["total"] > 2
+    assert len(payload["items"]) == 2
+    assert payload["next_offset"] == 2
+    assert payload["influences_registry"] is False
+    assert all(item["semantic_layer"] == "os" for item in payload["items"])
+    assert all(item["current_registry_action"] == "KEEP" for item in payload["items"])
+
+
+def test_target_operation_slice_is_explicitly_unavailable_without_discovery() -> None:
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/adapt/operation-slice")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Adapt target operation slice is unavailable"
+
+
+def test_target_operation_slice_route_returns_shadow_contract(monkeypatch) -> None:
+    from rolo.stages.adapt.workset import TargetOperationSlice
+
+    shadow = TargetOperationSlice(
+        robot_id="demo_diff",
+        discovery_id="discovery-1",
+        registry_sha256="a" * 64,
+        slice_sha256="b" * 64,
+        primary_operations=["app.navigation.start"],
+        dependency_operations=["app.navigation.cancel"],
+        agent_native_operations=["app.navigation.start"],
+        builtin_operations=["app.navigation.cancel"],
+        deferred_summary={"NO_ROUTE": 2},
+    )
+    monkeypatch.setattr(
+        "rolo.api.build_robot_target_operation_slice",
+        lambda artifacts, output_root, robot_id: shadow,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/adapt/operation-slice")
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "robot-target-operation-slice/v1"
+    assert response.json()["slice_sha256"] == "b" * 64
+    assert response.json()["target_adapter_operations"] == []
+
+
+def test_target_operation_slice_rebuild_runs_off_the_async_event_loop() -> None:
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None)
+        == "/v1/robots/{robot_id}/adapt/operation-slice"
+    )
+
+    assert not iscoroutinefunction(route.endpoint)
 
 
 def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
@@ -346,6 +420,18 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         blocker_schema["properties"]["schema_version"]["const"]
         == "rolo-fleet-blocker-collection/v1"
+    )
+    governance_schema = openapi["components"]["schemas"][
+        "OperationGovernanceCollection"
+    ]
+    assert (
+        governance_schema["properties"]["schema_version"]["const"]
+        == "rolo-operation-governance-collection/v1"
+    )
+    target_slice_schema = openapi["components"]["schemas"]["TargetOperationSlice"]
+    assert (
+        target_slice_schema["properties"]["schema_version"]["const"]
+        == "robot-target-operation-slice/v1"
     )
 
 
