@@ -125,6 +125,30 @@ def test_boot_prompt_does_not_scale_with_unrelated_registry_operations(tmp_path:
     assert "app.unrelated.0000" not in scaled
 
 
+def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace).model_copy(deep=True)
+    deferred = plan.eligible_operations.pop(0)
+    plan.deferred_operations[deferred] = "SHADOW_CLASSIFICATION_ONLY"
+
+    prompt = CodexAdaptExecutor(ArtifactStore(artifact_root))._build_prompt(plan)
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
+        "\n\nDISCOVERY CONTEXT:\n", 1
+    )[0]
+    compact_plan = json.loads(serialized)
+
+    assert deferred not in compact_plan["target_adapter_operations"]
+    assert compact_plan["target_adapter_operation_count"] == len(plan.eligible_operations)
+    assert all(
+        deferred not in task["operations"] for task in compact_plan["tasks"]
+    )
+    assert "authoritative bundle operation set" in prompt
+
+
 def test_robot_wiki_is_retrievable_but_not_embedded_in_agent_context(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"

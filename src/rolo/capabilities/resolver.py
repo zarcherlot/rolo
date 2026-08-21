@@ -5,12 +5,12 @@ from collections.abc import Iterable, Sequence
 from rolo.capabilities.models import (
     CapabilityAvailability,
     CapabilityResolution,
+    CapabilityResolutionShadow,
     OperationCapabilityRequirement,
     PlatformProfile,
     ProviderManifest,
     ProviderStatus,
     ResolutionStatus,
-    ShadowResolutionArtifact,
 )
 
 
@@ -105,7 +105,7 @@ class CapabilityResolver:
         manifests: Sequence[ProviderManifest],
         *,
         discovery_evidence: Iterable[str] = (),
-    ) -> ShadowResolutionArtifact:
+    ) -> CapabilityResolutionShadow:
         evidence = sorted(set(discovery_evidence))
         resolutions = [
             self.resolve(item, profile, manifests, discovery_evidence=evidence)
@@ -114,7 +114,7 @@ class CapabilityResolver:
                 key=lambda value: (value.operation, value.capability_id),
             )
         ]
-        return ShadowResolutionArtifact(
+        return CapabilityResolutionShadow(
             profile_id=profile.profile_id,
             profile_sha256=profile.core_digest(),
             provider_manifest_sha256=sorted(item.core_digest() for item in manifests),

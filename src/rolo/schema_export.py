@@ -5,6 +5,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from rolo.capabilities import (
+    CapabilityDescriptor,
+    CapabilityResolutionShadow,
+    PlatformProfile,
+    ProviderManifest,
+)
 from rolo.contract_catalog import OperationContract, OperationContractCatalog
 from rolo.core.models import (
     DiscoveryLatestIndex,
@@ -46,6 +52,7 @@ from rolo.stages.adapt.models import (
     StateGraphBaseline,
     ToolCatalog,
 )
+from rolo.stages.adapt.operation_governance import OperationDispositionLedger
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
@@ -74,6 +81,11 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     RouteEvidence,
     OperationCandidate,
     CanonicalOperationRegistry,
+    OperationDispositionLedger,
+    CapabilityDescriptor,
+    ProviderManifest,
+    PlatformProfile,
+    CapabilityResolutionShadow,
     ToolDescriptor,
     AdaptInputs,
     AdaptPlan,
