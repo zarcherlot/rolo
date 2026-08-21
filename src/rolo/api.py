@@ -10,6 +10,7 @@ from rolo.adapt_read_models import (
     ADAPT_API_FEATURES,
     OperationGovernanceCollection,
     build_operation_governance_collection,
+    build_robot_slice_stability,
     build_robot_target_operation_slice,
 )
 from rolo.capability_read_models import (
@@ -47,6 +48,7 @@ from rolo.stages.adapt.operation_governance import (
 from rolo.stages.adapt.operation_governance import (
     SemanticLayer as GovernanceSemanticLayer,
 )
+from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.workset import TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
@@ -154,6 +156,35 @@ def get_robot_target_operation_slice(
         raise HTTPException(
             status_code=409,
             detail="Adapt target operation slice failed integrity validation",
+        ) from exc
+
+
+@app.get(
+    "/v1/robots/{robot_id}/adapt/slice-stability",
+    response_model=SliceStabilityReport,
+)
+def get_robot_slice_stability(
+    robot_id: str,
+    request: Request,
+    max_runs: Annotated[int, Query(ge=1, le=100)] = 50,
+    min_successful_canary_runs: Annotated[int, Query(ge=1, le=100)] = 10,
+) -> SliceStabilityReport:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_robot_slice_stability(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            max_runs=max_runs,
+            min_successful_canary_runs=min_successful_canary_runs,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt Slice stability evidence failed integrity validation",
         ) from exc
 
 

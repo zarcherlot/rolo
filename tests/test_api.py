@@ -46,6 +46,7 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["robots"] == 2
     assert health.json()["api_features"] == [
         "adapt.operation-governance/v1",
+        "adapt.slice-stability/v1",
         "adapt.target-operation-slice/v1",
     ]
     assert robots.status_code == 200
@@ -143,6 +144,9 @@ def test_unknown_robot_is_404() -> None:
         operation_slice = client.get(
             "/v1/robots/not-a-robot/adapt/operation-slice"
         )
+        slice_stability = client.get(
+            "/v1/robots/not-a-robot/adapt/slice-stability"
+        )
 
     assert response.status_code == 404
     assert overview.status_code == 404
@@ -153,6 +157,7 @@ def test_unknown_robot_is_404() -> None:
     assert evidence.status_code == 404
     assert evidence_detail.status_code == 404
     assert operation_slice.status_code == 404
+    assert slice_stability.status_code == 404
 
 
 def test_operation_governance_is_bounded_external_metadata() -> None:
@@ -218,6 +223,60 @@ def test_target_operation_slice_rebuild_runs_off_the_async_event_loop() -> None:
     )
 
     assert not iscoroutinefunction(route.endpoint)
+
+
+def test_slice_stability_route_returns_verified_empty_observation_window() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/robots/demo_diff/adapt/slice-stability",
+            params={"max_runs": 12, "min_successful_canary_runs": 3},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "robot-target-operation-slice-stability/v1",
+        "robot_id": "demo_diff",
+        "max_runs": 12,
+        "min_successful_canary_runs": 3,
+        "observation_count": 0,
+        "selected_canary_count": 0,
+        "activated_count": 0,
+        "fallback_count": 0,
+        "successful_canary_count": 0,
+        "agent_failed_count": 0,
+        "gate_failed_count": 0,
+        "context_budget_exceeded_count": 0,
+        "average_potential_context_reduction_ratio": 0.0,
+        "average_effective_context_reduction_ratio": 0.0,
+        "outcome_counts": {},
+        "alert_counts": {},
+        "recommendation": "INSUFFICIENT_DATA",
+        "recommendation_reasons": ["MINIMUM_SUCCESSFUL_CANARY_RUNS_NOT_MET"],
+        "observations": [],
+        "influences_release": False,
+    }
+
+
+def test_slice_stability_route_is_bounded_and_runs_off_the_async_event_loop() -> None:
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None)
+        == "/v1/robots/{robot_id}/adapt/slice-stability"
+    )
+
+    assert not iscoroutinefunction(route.endpoint)
+    with TestClient(app) as client:
+        too_many_runs = client.get(
+            "/v1/robots/demo_diff/adapt/slice-stability?max_runs=101"
+        )
+        invalid_threshold = client.get(
+            "/v1/robots/demo_diff/adapt/slice-stability"
+            "?min_successful_canary_runs=0"
+        )
+
+    assert too_many_runs.status_code == 422
+    assert invalid_threshold.status_code == 422
 
 
 def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
@@ -432,6 +491,11 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         target_slice_schema["properties"]["schema_version"]["const"]
         == "robot-target-operation-slice/v1"
+    )
+    stability_schema = openapi["components"]["schemas"]["SliceStabilityReport"]
+    assert (
+        stability_schema["properties"]["schema_version"]["const"]
+        == "robot-target-operation-slice-stability/v1"
     )
 
 
