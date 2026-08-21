@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryStatus, ProbeResult
 from rolo.stages.adapt.binary_dependencies import inspect_binary_dependencies
 from rolo.stages.adapt.discovery_status import derive_discovery_status
@@ -63,6 +63,11 @@ SUPPLEMENTAL_SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "vendor",
     "vendors",
 }
+
+
+def _stable_executable_id(name: str, path: Path | None = None) -> str:
+    identity = f"path:{path.resolve()}" if path is not None else f"declared:{name}"
+    return f"exe-{sha256_bytes(identity.encode('utf-8'))[:16]}"
 
 
 class DiscoveryModeLevel(str, Enum):
@@ -374,8 +379,19 @@ def _binary_identity(path: Path) -> tuple[str | None, str | None]:
 
 
 def _looks_executable(path: Path) -> bool:
-    lower_parts = {part.lower() for part in path.parts}
-    if path.suffix.lower() in {".exe", ".bat", ".cmd", ".com", ".ps1"}:
+    lower_parts = {part.casefold() for part in path.parts}
+    lower_name = path.name.casefold()
+    if (
+        "cmakefiles" in lower_parts
+        or "hook" in lower_parts
+        or path.suffix.casefold() in (INTERMEDIATE_SUFFIXES - {".exe"})
+        or lower_name in {"a.out", "setup.sh", "local_setup.sh", "setup.bash", "local_setup.bash"}
+        or lower_name.startswith(("cmakeccompilerid", "cmakecxxcompilerid", "cmtc_"))
+    ):
+        return False
+    if path.suffix.casefold() == ".ps1":
+        return os.name == "nt" and path.is_file()
+    if path.suffix.casefold() in {".exe", ".bat", ".cmd", ".com"}:
         return True
     if {"bin", "sbin", "libexec", "scripts"} & lower_parts:
         return path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))
@@ -1108,8 +1124,8 @@ def _ros_communication(
     source_interfaces = [interface for interfaces, _ in selected for interface in interfaces]
     unattributed_count = sum(count for _, count in selected)
     return {
-        # The live ROS graph is robot-global evidence.  It must not be copied onto
-        # every executable unless a future probe can prove process/node ownership.
+        # The live ROS graph is robot-global evidence. It must not be copied onto
+        # every executable without process/node ownership evidence.
         "nodes": [],
         "publishers": [item for item in source_interfaces if item.get("role") == "publisher"],
         "subscribers": [item for item in source_interfaces if item.get("role") == "subscriber"],
@@ -1202,20 +1218,49 @@ class ActiveDiscoveryAnalyzer:
             launch_files = launch_files[:MAX_TEXT_EVIDENCE_FILES]
         launch_evidence = _extract_launch_evidence(launch_files, self.evidence_text)
 
-        explicit_paths = [path for path in self.inputs.executables if path.is_file()]
-        invalid_explicit_paths = [path for path in self.inputs.executables if not path.is_file()]
-        discovered_build_paths = [path for path in build_files if _looks_executable(path)]
-        discovered_install_paths = [path for path in install_files if _looks_executable(path)]
-        all_discovered_paths = list(
-            dict.fromkeys([*explicit_paths, *discovered_build_paths, *discovered_install_paths])
-        )
-        executable_truncated = len(all_discovered_paths) > MAX_REPORT_EXECUTABLES
-        all_paths = all_discovered_paths[:MAX_REPORT_EXECUTABLES]
         source_projects_by_name: dict[str, list[dict[str, Any]]] = {}
         for project in usable_projects:
             for entry in project.get("entrypoints", []):
                 if name := entry.get("name"):
                     source_projects_by_name.setdefault(str(name), []).append(project)
+        source_names = set(source_projects_by_name)
+        declared_names = source_names | set(launch_evidence)
+
+        explicit_paths = [path for path in self.inputs.executables if path.is_file()]
+        invalid_explicit_paths = [path for path in self.inputs.executables if not path.is_file()]
+        discovered_build_paths = [path for path in build_files if _looks_executable(path)]
+        discovered_install_paths = [path for path in install_files if _looks_executable(path)]
+        explicit_path_set = set(explicit_paths)
+        build_path_set = set(discovered_build_paths)
+        install_path_set = set(discovered_install_paths)
+        discovered_candidates = list(
+            dict.fromkeys([*explicit_paths, *discovered_install_paths, *discovered_build_paths])
+        )
+
+        def artifact_priority(path: Path) -> tuple[int, str]:
+            names = {path.name, path.stem}
+            if path in explicit_path_set:
+                rank = 0
+            elif names & declared_names:
+                rank = 1
+            elif path in install_path_set:
+                rank = 2
+            else:
+                rank = 3
+            return rank, str(path).casefold()
+
+        all_discovered_paths = sorted(discovered_candidates, key=artifact_priority)
+        discovered_names = {
+            name for path in all_discovered_paths for name in (path.name, path.stem)
+        }
+        represented_declarations = declared_names & discovered_names
+        declaration_reserve = min(
+            MAX_REPORT_EXECUTABLES,
+            len(declared_names - represented_declarations),
+        )
+        artifact_limit = MAX_REPORT_EXECUTABLES - declaration_reserve
+        executable_truncated = len(all_discovered_paths) > artifact_limit
+        all_paths = all_discovered_paths[:artifact_limit]
         if not all_paths and not source_projects_by_name:
             for project in usable_projects:
                 for package in project.get("packages", []):
@@ -1280,9 +1325,10 @@ class ActiveDiscoveryAnalyzer:
         help_probe_count = 0
         executable_hash_bytes = 0
         hash_warnings: list[str] = []
-        for index, path in enumerate(all_paths, start=1):
-            explicit = path in explicit_paths
-            from_build_root = path in discovered_build_paths
+        for path in all_paths:
+            executable_id = _stable_executable_id(path.name, path)
+            explicit = path in explicit_path_set
+            from_build_root = path in build_path_set
             executable_projects = _projects_for_executable(
                 path.name,
                 usable_projects,
@@ -1332,7 +1378,7 @@ class ActiveDiscoveryAnalyzer:
                     )
                 else:
                     help_probe_count += 1
-                    output_path = self.run_root / "active_probes" / f"help-{index:04d}.txt"
+                    output_path = self.run_root / "active_probes" / f"help-{executable_id}.txt"
                     help_result = run_bounded_help(path, output_path)
                     if output_path.is_file():
                         help_result.output_ref = (
@@ -1404,7 +1450,7 @@ class ActiveDiscoveryAnalyzer:
             executable_ros["remappings"] = launch_analysis.remappings
             executables.append(
                 ExecutableDiscovery(
-                    executable_id=f"exe-{index:04d}",
+                    executable_id=executable_id,
                     name=path.name,
                     path=str(path),
                     origin=(
@@ -1515,7 +1561,6 @@ class ActiveDiscoveryAnalyzer:
                 for executable in executables
             ):
                 continue
-            index = len(executables) + 1
             launch_analysis = launch_analysis_for(name)
             origin = "SOURCE_DECLARED" if name in source_names else "LAUNCH_DECLARED"
             executable_projects = source_projects_by_name.get(name) or _projects_for_executable(
@@ -1558,7 +1603,7 @@ class ActiveDiscoveryAnalyzer:
             executable_ros["remappings"] = launch_analysis.remappings
             executables.append(
                 ExecutableDiscovery(
-                    executable_id=f"exe-{index:04d}",
+                    executable_id=_stable_executable_id(name),
                     name=name,
                     origin=origin,
                     source_analysis=source_analysis,

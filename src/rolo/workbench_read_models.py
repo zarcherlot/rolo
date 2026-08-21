@@ -256,9 +256,18 @@ def _safe_graph_attributes(raw: dict[str, object]) -> dict[str, SafeAttribute]:
     }
 
 
-def _load_gated_graph(output_root: Path, robot_id: str) -> dict[str, object] | None:
+def _load_gated_graph(
+    output_root: Path,
+    robot_id: str,
+    *,
+    artifact_root: Path,
+) -> dict[str, object] | None:
     try:
-        release_root, release, _, _ = load_current_release(output_root, robot_id)
+        release_root, release, _, _ = load_current_release(
+            output_root,
+            robot_id,
+            artifact_root=artifact_root,
+        )
     except FileNotFoundError:
         return None
     graph_path = (release_root / release.state_graph).resolve()
@@ -280,6 +289,7 @@ def build_robot_topology(
     robot: RobotCapability,
     output_root: Path,
     *,
+    artifact_root: Path,
     observed_at: datetime | None = None,
 ) -> tuple[RobotTopology, dict[str, EvidenceRecord]]:
     observed_at = observed_at or utc_now()
@@ -395,7 +405,11 @@ def build_robot_topology(
         "Only registry declarations are available; runtime presence is not asserted."
     ]
     confidence = 0.7
-    graph = _load_gated_graph(output_root, robot.robot_id)
+    graph = _load_gated_graph(
+        output_root,
+        robot.robot_id,
+        artifact_root=artifact_root,
+    )
     if graph is not None:
         raw_nodes = [item for item in graph["nodes"] if isinstance(item, dict)]
         raw_edges = [item for item in graph["edges"] if isinstance(item, dict)]
@@ -499,6 +513,7 @@ def build_evidence_collection(
     robot: RobotCapability,
     output_root: Path,
     *,
+    artifact_root: Path,
     limit: int = 50,
     offset: int = 0,
     authority: EvidenceAuthority | None = None,
@@ -508,6 +523,7 @@ def build_evidence_collection(
     topology, records = build_robot_topology(
         robot,
         output_root,
+        artifact_root=artifact_root,
         observed_at=observed_at,
     )
     if pipeline is not None:
@@ -543,10 +559,16 @@ def find_evidence(
     robots: list[RobotCapability],
     output_root: Path,
     evidence_id: str,
+    *,
+    artifact_root: Path,
     pipelines: dict[str, PipelineAssessment] | None = None,
 ) -> EvidenceRecord | None:
     for robot in robots:
-        _, records = build_robot_topology(robot, output_root)
+        _, records = build_robot_topology(
+            robot,
+            output_root,
+            artifact_root=artifact_root,
+        )
         pipeline = (pipelines or {}).get(robot.robot_id)
         if pipeline is not None:
             for stage in pipeline.stages:

@@ -55,6 +55,29 @@ def _decode_process_output(value: str | bytes | None) -> str:
     return value
 
 
+def _codex_user_home(environment: dict[str, str], executable: str) -> Path | None:
+    """Resolve a usable user home even in stripped service/test environments."""
+    candidates: list[Path] = []
+    for name in ("HOME", "USERPROFILE"):
+        if value := environment.get(name):
+            candidates.append(Path(value))
+    if environment.get("HOMEDRIVE") and environment.get("HOMEPATH"):
+        candidates.append(Path(environment["HOMEDRIVE"] + environment["HOMEPATH"]))
+    for name in ("LOCALAPPDATA", "APPDATA"):
+        if value := environment.get(name):
+            app_data = Path(value)
+            if len(app_data.parents) > 1:
+                candidates.append(app_data.parents[1])
+    if value := environment.get("CODEX_HOME"):
+        candidates.append(Path(value).parent)
+    resolved_executable = shutil.which(executable) or executable
+    for parent in Path(resolved_executable).expanduser().resolve().parents:
+        if parent.name.casefold() == ".codex":
+            candidates.append(parent.parent)
+            break
+    return next((path.resolve() for path in candidates if path.is_dir()), None)
+
+
 def _shadow_operation_classifier() -> dict[str, str]:
     """Return governance ownership without changing current Adapt eligibility."""
     return {
@@ -380,6 +403,14 @@ class CodexAdaptExecutor:
                 environment.pop(name, None)
         if self.api_key:
             environment["CODEX_API_KEY"] = self.api_key
+        user_home = _codex_user_home(environment, self.executable)
+        if user_home is not None:
+            environment.setdefault("HOME", str(user_home))
+            if os.name == "nt":
+                environment.setdefault("USERPROFILE", str(user_home))
+            codex_home = user_home / ".codex"
+            if codex_home.is_dir():
+                environment.setdefault("CODEX_HOME", str(codex_home))
         environment["ROLO_AGENT_TOOL"] = str(agent_tool)
         environment["ROLO_AGENT_DISCOVERY_ID"] = plan.source_discovery_id
         return environment
@@ -652,9 +683,8 @@ class CodexAdaptExecutor:
             "the inspection snapshot, or other intermediate files. Generate the exact outputs and "
             "files objects by running the supplied `adapt handoff pack` command with all four "
             "output path options; copy its JSON fields without manually recreating base64 or "
-            "hashes. The pack command also verifies bundle file hashes and requires `describe` to "
-            "return exactly `{'operations': {operation: entrypoint}}`; fix any pack error before "
-            "handoff. Rolo reconstructs these "
+            "hashes. The pack command verifies paths, file counts, sizes, identities and bundle "
+            "hashes without executing generated code. Rolo reconstructs these "
             "payloads in its own permission domain before independent validation; filesystem "
             "paths alone are not a handoff. After all payloads and hashes are captured for the "
             "final JSON, remove every file and directory you created, including adapter outputs "

@@ -25,40 +25,36 @@ class CanonicalOperationDefinition(BaseModel):
     operation: str
     layer: Literal["control", "hw", "linux", "middleware", "ros", "app"]
     description: str
-    risk: str = "R0"
-    access: str = "read"
-    idempotent: bool = True
-    cancelable: bool = False
-    max_duration_s: float = 30.0
+    risk: str
+    access: str
+    idempotent: bool
+    cancelable: bool
+    max_duration_s: float
     canonical_cli: list[str]
-    input_schema: dict[str, Any] = Field(
-        default_factory=lambda: {"type": "object", "additionalProperties": False}
-    )
-    output_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
-    error_codes: list[str] = Field(
-        default_factory=lambda: ["UNAVAILABLE", "TIMEOUT", "OPERATION_FAILED"]
-    )
-    contract_lifecycle: ContractLifecycle = ContractLifecycle.DRAFT
-    contract_version: str | None = None
-    contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    data_classification: DataClassification | None = None
-    result_semantics: ResultSemantics | None = None
-    observation_overhead: ObservationOverhead = ObservationOverhead.BOUNDED
-    execution_mode: ExecutionMode = ExecutionMode.REQUEST_RESPONSE
-    paired_operation: str | None = None
-    replacement_operation: str | None = None
-    capability_requirements: list[str] = Field(default_factory=list)
-    preconditions: list[str] = Field(default_factory=list)
-    postconditions: list[str] = Field(default_factory=list)
-    semantic_units: dict[str, str] = Field(default_factory=dict)
-    coordinate_frames: list[str] = Field(default_factory=list)
-    time_semantics: str = ""
-    side_effects: list[str] = Field(default_factory=list)
-    resource_locks: list[str] = Field(default_factory=list)
-    rate_limit: str = "on_demand"
-    retry_policy: str = "none"
-    compensation_operation: str | None = None
-    requires_quiescence: bool = False
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    error_codes: list[str]
+    contract_lifecycle: ContractLifecycle
+    contract_version: str
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    data_classification: DataClassification
+    result_semantics: ResultSemantics
+    observation_overhead: ObservationOverhead
+    execution_mode: ExecutionMode
+    paired_operation: str | None
+    replacement_operation: str | None
+    capability_requirements: list[str]
+    preconditions: list[str]
+    postconditions: list[str]
+    semantic_units: dict[str, str]
+    coordinate_frames: list[str]
+    time_semantics: str
+    side_effects: list[str]
+    resource_locks: list[str]
+    rate_limit: str
+    retry_policy: str
+    compensation_operation: str | None
+    requires_quiescence: bool
 
 
 class CanonicalOperationRegistry(BaseModel):
@@ -446,97 +442,6 @@ _BUILTIN_CLI: dict[str, str] = {
 }
 
 
-_DRAFT_INPUT_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
-_DRAFT_OUTPUT_SCHEMA = {"type": "object"}
-
-
-def _is_write(operation: str) -> bool:
-    verb = operation.rsplit(".", 1)[-1]
-    return operation.endswith((".emergency_stop", ".protective_stop")) or verb in {
-        "activate",
-        "apply",
-        "calibrate",
-        "call",
-        "cancel",
-        "clear",
-        "close",
-        "command",
-        "commit",
-        "create",
-        "cycle",
-        "deactivate",
-        "disable",
-        "enable",
-        "execute",
-        "export",
-        "home",
-        "import",
-        "initialize",
-        "load",
-        "open",
-        "pause",
-        "play",
-        "publish",
-        "reboot",
-        "record",
-        "recover",
-        "relocalize",
-        "reset",
-        "restart",
-        "restore",
-        "resume",
-        "rollback",
-        "run",
-        "save",
-        "send",
-        "set",
-        "shutdown",
-        "signal",
-        "start",
-        "stop",
-        "synchronize",
-        "update",
-    }
-
-
-def _is_physical(operation: str) -> bool:
-    physical_suffixes = {
-        "calibrate",
-        "cancel",
-        "close",
-        "command",
-        "disable",
-        "enable",
-        "execute",
-        "home",
-        "joint",
-        "move_distance",
-        "open",
-        "pause",
-        "pose",
-        "recover",
-        "reset",
-        "resume",
-        "rotate",
-        "set",
-        "start",
-        "stop",
-        "velocity",
-    }
-    family = operation.startswith(
-        (
-            "hw.actuator.",
-            "app.teleop.",
-            "app.base.",
-            "app.manipulation.",
-            "app.gripper.",
-            "app.navigation.",
-            "app.safety.",
-        )
-    )
-    return family and operation.rsplit(".", 1)[-1] in physical_suffixes
-
-
 def canonical_operation_registry() -> CanonicalOperationRegistry:
     catalog = load_operation_contracts()
     contracts = {contract.operation: contract for contract in catalog.contracts}
@@ -544,93 +449,50 @@ def canonical_operation_registry() -> CanonicalOperationRegistry:
     unknown_contracts = sorted(set(contracts) - vocabulary)
     if unknown_contracts:
         raise RuntimeError(f"contracts are outside the product vocabulary: {unknown_contracts}")
+    missing_contracts = sorted(vocabulary - set(contracts))
+    if missing_contracts:
+        raise RuntimeError(f"product operations lack explicit contracts: {missing_contracts}")
     definitions: list[CanonicalOperationDefinition] = []
     for layer, operations in _GROUPS.items():
         for operation in operations:
-            write = _is_write(operation) or _is_physical(operation)
-            contract = contracts.get(operation)
-            if contract is not None and contract.layer != layer:
+            contract = contracts[operation]
+            if contract.layer != layer:
                 raise RuntimeError(f"contract layer mismatch: {operation}")
             definitions.append(
                 CanonicalOperationDefinition(
                     operation=operation,
                     layer=layer,  # type: ignore[arg-type]
-                    description=(
-                        contract.description if contract else operation.replace(".", " ")
-                    ),
-                    risk=(
-                        contract.risk
-                        if contract
-                        else "R3"
-                        if _is_physical(operation) or operation.startswith("app.safety.") and write
-                        else "R2"
-                        if write
-                        else "R0"
-                    ),
-                    access=contract.access if contract else "write" if write else "read",
-                    idempotent=contract.idempotent if contract else not write,
-                    cancelable=contract.cancelable if contract else False,
-                    max_duration_s=contract.max_duration_s if contract else 30.0,
-                    canonical_cli=(
-                        contract.canonical_cli
-                        if contract
-                        else [
-                            "robotctl",
-                            "tool",
-                            "invoke",
-                            "{operation}",
-                            "--robot",
-                            "{robot_id}",
-                            "--input",
-                            "{input_json}",
-                        ]
-                    ),
-                    input_schema=contract.input_schema if contract else _DRAFT_INPUT_SCHEMA,
-                    output_schema=contract.output_schema if contract else _DRAFT_OUTPUT_SCHEMA,
-                    error_codes=(
-                        contract.error_codes
-                        if contract
-                        else ["UNAVAILABLE", "CONTRACT_INCOMPLETE"]
-                    ),
-                    contract_lifecycle=(
-                        contract.lifecycle if contract else ContractLifecycle.DRAFT
-                    ),
-                    contract_version=contract.version if contract else None,
-                    contract_sha256=contract.sha256 if contract else None,
-                    data_classification=(contract.data_classification if contract else None),
-                    result_semantics=(contract.result_semantics if contract else None),
-                    observation_overhead=(
-                        contract.observation_overhead
-                        if contract
-                        else ObservationOverhead.BOUNDED
-                    ),
-                    execution_mode=(
-                        contract.execution_mode
-                        if contract
-                        else ExecutionMode.REQUEST_RESPONSE
-                    ),
-                    paired_operation=contract.paired_operation if contract else None,
-                    replacement_operation=(
-                        contract.replacement_operation if contract else None
-                    ),
-                    capability_requirements=(
-                        contract.capability_requirements if contract else []
-                    ),
-                    preconditions=contract.preconditions if contract else [],
-                    postconditions=contract.postconditions if contract else [],
-                    semantic_units=contract.semantic_units if contract else {},
-                    coordinate_frames=contract.coordinate_frames if contract else [],
-                    time_semantics=contract.time_semantics if contract else "",
-                    side_effects=contract.side_effects if contract else [],
-                    resource_locks=contract.resource_locks if contract else [],
-                    rate_limit=contract.rate_limit if contract else "on_demand",
-                    retry_policy=contract.retry_policy if contract else "none",
-                    compensation_operation=(
-                        contract.compensation_operation if contract else None
-                    ),
-                    requires_quiescence=(
-                        contract.requires_quiescence if contract else False
-                    ),
+                    description=contract.description,
+                    risk=contract.risk,
+                    access=contract.access,
+                    idempotent=contract.idempotent,
+                    cancelable=contract.cancelable,
+                    max_duration_s=contract.max_duration_s,
+                    canonical_cli=contract.canonical_cli,
+                    input_schema=contract.input_schema,
+                    output_schema=contract.output_schema,
+                    error_codes=contract.error_codes,
+                    contract_lifecycle=contract.lifecycle,
+                    contract_version=contract.version,
+                    contract_sha256=contract.sha256,
+                    data_classification=contract.data_classification,
+                    result_semantics=contract.result_semantics,
+                    observation_overhead=contract.observation_overhead,
+                    execution_mode=contract.execution_mode,
+                    paired_operation=contract.paired_operation,
+                    replacement_operation=contract.replacement_operation,
+                    capability_requirements=contract.capability_requirements,
+                    preconditions=contract.preconditions,
+                    postconditions=contract.postconditions,
+                    semantic_units=contract.semantic_units,
+                    coordinate_frames=contract.coordinate_frames,
+                    time_semantics=contract.time_semantics,
+                    side_effects=contract.side_effects,
+                    resource_locks=contract.resource_locks,
+                    rate_limit=contract.rate_limit,
+                    retry_policy=contract.retry_policy,
+                    compensation_operation=contract.compensation_operation,
+                    requires_quiescence=contract.requires_quiescence,
                 )
             )
     if len({item.operation for item in definitions}) != len(definitions):
@@ -727,12 +589,6 @@ def validate_definition_contract(definition: CanonicalOperationDefinition) -> No
         raise ValueError(
             f"cancelable operation must be a write or bounded stream: {definition.operation}"
         )
-    if definition.contract_version is None or definition.contract_sha256 is None:
-        raise ValueError(f"canonical operation lacks version/hash binding: {definition.operation}")
-    if definition.data_classification is None:
-        raise ValueError(f"canonical operation lacks data classification: {definition.operation}")
-    if definition.result_semantics is None:
-        raise ValueError(f"canonical operation lacks result semantics: {definition.operation}")
     expected_result = (
         ResultSemantics.SESSION_HANDLE
         if definition.execution_mode == ExecutionMode.SESSION_START
@@ -855,16 +711,8 @@ def materialize_active_catalog(
                 contract_lifecycle=definition.contract_lifecycle.value,
                 contract_version=definition.contract_version,
                 contract_sha256=definition.contract_sha256,
-                data_classification=(
-                    definition.data_classification.value
-                    if definition.data_classification is not None
-                    else None
-                ),
-                result_semantics=(
-                    definition.result_semantics.value
-                    if definition.result_semantics is not None
-                    else None
-                ),
+                data_classification=definition.data_classification.value,
+                result_semantics=definition.result_semantics.value,
                 observation_overhead=definition.observation_overhead.value,
                 execution_mode=definition.execution_mode.value,
                 paired_operation=definition.paired_operation,

@@ -1,15 +1,24 @@
 import getpass
 import json
 import os
+from functools import partial
 from pathlib import Path
 
 import pytest
 
 from rolo.adapter_runtime import activate_release, invoke_adapter, publish_release
 from rolo.core.hashing import sha256_file
-from rolo.core.models import ToolDescriptor
+from rolo.core.models import (
+    DiscoveryReport,
+    DiscoveryStatus,
+    OperationCandidate,
+    ProbeResult,
+    RouteEvidence,
+    ToolDescriptor,
+)
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 _OPERATIONS = (
     "app.localization.status",
@@ -24,6 +33,51 @@ _OPERATIONS = (
     "linux.config.apply",
     "linux.config.rollback",
 )
+
+
+def _target_report() -> DiscoveryReport:
+    routes = [
+        RouteEvidence(
+            resource_id=f"cli:{operation}",
+            kind="cli",
+            endpoint=operation,
+            evidence_origin="OBSERVED_RUNTIME",
+            source="runtime_probe:linux",
+        )
+        for operation in _OPERATIONS
+    ]
+    return DiscoveryReport(
+        discovery_id="d",
+        robot_id="r",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={},
+        capability_manifest={},
+        probes={
+            "linux": ProbeResult(
+                layer="linux",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [route.model_dump(mode="json") for route in routes],
+                    "environment": {},
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation=operation,
+                evidence=[route.endpoint],
+                route_evidence=[route],
+            )
+            for operation, route in zip(_OPERATIONS, routes, strict=True)
+        ],
+    )
+
+
+@pytest.fixture(autouse=True)
+def _latest_target_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.load_latest_report", lambda *_: _target_report()
+    )
 
 
 def _publish_runtime_matrix(tmp_path: Path) -> Path:
@@ -168,13 +222,30 @@ def _publish_runtime_matrix(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     gate = source / "gate-report.json"
-    gate.write_text('{"status":"PASSED"}', encoding="utf-8")
+    gate.write_text(
+        json.dumps(
+            {
+                "schema_version": "robot-adapt-gate/v1",
+                "run_id": "x",
+                "robot_id": "r",
+                "discovery_id": "d",
+                "status": "PASSED",
+                "checks": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     output = tmp_path / "o"
+    report = _target_report()
     publish_release(
         output_root=output,
         robot_id="r",
         release_id="x",
         discovery_id="d",
+        target_fingerprint_sha256=target_fingerprint_sha256(
+            report, operations=_OPERATIONS
+        ),
+        runtime_environment={},
         bundle_manifest_path=bundle_path,
         adapter_package_path=package,
         tool_catalog_path=catalog_path,
@@ -182,7 +253,7 @@ def _publish_runtime_matrix(tmp_path: Path) -> Path:
         conformance_path=conformance,
         gate_report_path=gate,
     )
-    activate_release(output, "r", "x")
+    activate_release(output, "r", "x", artifact_root=tmp_path / "artifacts")
     return output
 
 
@@ -216,6 +287,12 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = _publish_runtime_matrix(tmp_path)
+    invoke = partial(
+        invoke_adapter,
+        output,
+        "r",
+        artifact_root=tmp_path / "artifacts",
+    )
     audit = tmp_path / "runtime-audit.jsonl"
     allowed_writes = [
         "linux.service.restart",
@@ -235,21 +312,15 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
         lambda path, **kwargs: path,
     )
 
-    assert invoke_adapter(
-        output, "r", "app.localization.status", {}
-    ) == {"status": "SUCCEEDED"}
+    assert invoke("app.localization.status", {}) == {"status": "SUCCEEDED"}
 
     with pytest.raises(ValueError, match="SENSITIVE invocation policy is missing"):
-        invoke_adapter(
-            output,
-            "r",
+        invoke(
             "app.camera.snapshot",
             {"camera": "private-camera-id"},
             audit_path=audit,
         )
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "app.camera.snapshot",
         {"camera": "private-camera-id"},
         policy_path=policy,
@@ -258,26 +329,20 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
 
     service_payload = {"resource_id": "service:controller", "timeout_s": 5.0}
     with pytest.raises(ValueError, match="not present in the protected allowlist"):
-        invoke_adapter(
-            output,
-            "r",
+        invoke(
             "linux.service.restart",
             service_payload,
             policy_path=denied_policy,
             audit_path=audit,
         )
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "linux.service.restart",
         service_payload,
         policy_path=policy,
         audit_path=audit,
     )["status"] == "SUCCEEDED"
 
-    parameter_result = invoke_adapter(
-        output,
-        "r",
+    parameter_result = invoke(
         "app.parameter.set",
         {
             "id": "controller.gain",
@@ -290,35 +355,27 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
     )
     assert parameter_result["rollback_token"].startswith("rollback://")
 
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "app.teleop.velocity",
         {"linear_x_mps": 0.1, "angular_z_radps": 0.0},
         audit_path=audit,
         r3_authorizer_path=r3_provider,
     )["status"] == "SUCCEEDED"
 
-    session = invoke_adapter(
-        output,
-        "r",
+    session = invoke(
         "app.camera.stream.start",
         {"camera": "front", "ttl_s": 30.0, "max_bytes": 4096},
         policy_path=policy,
         audit_path=audit,
     )
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "app.camera.stream.stop",
         {"session_id": session["session_id"]},
         policy_path=policy,
         audit_path=audit,
     )["session_id"] == session["session_id"]
 
-    navigation = invoke_adapter(
-        output,
-        "r",
+    navigation = invoke(
         "app.navigation.start",
         {
             "plan_id": "plan-1",
@@ -330,9 +387,7 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
         audit_path=audit,
         r3_authorizer_path=r3_provider,
     )
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "app.navigation.cancel",
         {"run_id": navigation["run_id"], "reason": "test cancellation"},
         policy_path=policy,
@@ -342,9 +397,7 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
     artifact = tmp_path / "artifacts" / "config" / "controller.yaml"
     artifact.parent.mkdir(parents=True)
     artifact.write_text("controller: safe\n", encoding="utf-8")
-    applied = invoke_adapter(
-        output,
-        "r",
+    applied = invoke(
         "linux.config.apply",
         {
             "target_resource_id": "config:controller",
@@ -355,11 +408,8 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
         },
         policy_path=policy,
         audit_path=audit,
-        artifact_root=artifact.parents[1],
     )
-    assert invoke_adapter(
-        output,
-        "r",
+    assert invoke(
         "linux.config.rollback",
         {
             "target_resource_id": "config:controller",

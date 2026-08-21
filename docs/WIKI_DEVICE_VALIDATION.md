@@ -5,11 +5,11 @@
 
 ## 1. 部署与环境
 
-- 部署 `refine-wiki` 的固定 commit，记录 commit SHA；不要直接部署未提交工作区。
+- 部署 `main` 的固定 commit，记录 commit SHA；不要直接部署未提交工作区。
 - 使用机器人应用实际运行用户，并 source 正常使用的 ROS setup 和 workspace overlay。
 - 确认 `ROS_DISTRO`、`RMW_IMPLEMENTATION`、`ROS_DOMAIN_ID` 是否显式配置；未配置也要记录。
 - `ROLO_ARTIFACT_DIR` 和 `ROLO_OUTPUT_DIR` 放在源码目录之外。
-- 若验证启发式 skill，先完成 `codex login`，并设置：
+- 启发式 skill 默认开启；验证前先完成 `codex login`，并可显式设置：
 
 ```bash
 export WIKI_INSIGHTS_AGENT_ENABLED=true

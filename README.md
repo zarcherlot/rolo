@@ -135,6 +135,9 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
 
+Wiki 启发式 Agent skill 默认开启并在只读 sandbox 中运行；不可用或输出不合规时自动回退到
+确定性规则，可通过 `WIKI_INSIGHTS_AGENT_ENABLED=false` 关闭。
+
 ```text
 robot_wiki.md
 ├── 全栈摘要

@@ -45,7 +45,12 @@ ROBOT = RobotCapability(
 
 
 def test_registry_topology_is_declared_and_evidence_bound(tmp_path) -> None:
-    topology, records = build_robot_topology(ROBOT, tmp_path, observed_at=NOW)
+    topology, records = build_robot_topology(
+        ROBOT,
+        tmp_path,
+        artifact_root=tmp_path,
+        observed_at=NOW,
+    )
 
     assert topology.schema_version == "rolo-robot-topology/v1"
     assert topology.coverage == "REGISTRY_ONLY"
@@ -69,6 +74,7 @@ def test_evidence_collection_is_bounded_and_opaque(tmp_path) -> None:
     collection = build_evidence_collection(
         ROBOT,
         tmp_path,
+        artifact_root=tmp_path,
         limit=2,
         offset=1,
         observed_at=NOW,
@@ -80,7 +86,12 @@ def test_evidence_collection_is_bounded_and_opaque(tmp_path) -> None:
     assert collection.next_offset == 3
     assert all(item.evidence_id.startswith("ev_") for item in collection.items)
     assert all(item.reference_digest != item.evidence_id for item in collection.items)
-    found = find_evidence([ROBOT], tmp_path, collection.items[0].evidence_id)
+    found = find_evidence(
+        [ROBOT],
+        tmp_path,
+        collection.items[0].evidence_id,
+        artifact_root=tmp_path,
+    )
     assert found is not None
     assert found.evidence_id == collection.items[0].evidence_id
 
@@ -147,7 +158,7 @@ def test_gated_topology_overlays_hash_verified_state_graph(
     (release_root / "state-graph.json").write_text(json.dumps(graph), encoding="utf-8")
     monkeypatch.setattr(
         "rolo.workbench_read_models.load_current_release",
-        lambda output_root, robot_id: (
+        lambda output_root, robot_id, *, artifact_root: (
             release_root,
             SimpleNamespace(state_graph="state-graph.json"),
             None,
@@ -155,7 +166,12 @@ def test_gated_topology_overlays_hash_verified_state_graph(
         ),
     )
 
-    topology, records = build_robot_topology(ROBOT, tmp_path, observed_at=NOW)
+    topology, records = build_robot_topology(
+        ROBOT,
+        tmp_path,
+        artifact_root=tmp_path,
+        observed_at=NOW,
+    )
 
     assert topology.coverage == "GATED_RELEASE"
     assert topology.source_kind == "gated_state_graph"
@@ -194,6 +210,7 @@ def test_pipeline_artifact_resolves_by_opaque_id_without_leaking_path(tmp_path) 
     collection = build_evidence_collection(
         ROBOT,
         tmp_path,
+        artifact_root=tmp_path,
         pipeline=pipeline,
         observed_at=NOW,
     )
@@ -203,6 +220,7 @@ def test_pipeline_artifact_resolves_by_opaque_id_without_leaking_path(tmp_path) 
         [ROBOT],
         tmp_path,
         evidence_id,
+        artifact_root=tmp_path,
         pipelines={ROBOT.robot_id: pipeline},
     )
 

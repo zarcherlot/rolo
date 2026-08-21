@@ -240,8 +240,19 @@ def _ros_candidate(
         )
     return candidate.model_copy(
         update={
-            "status": CandidateResolutionStatus.MISSING,
-            "reason": "package is absent from all readable ament prefixes",
+            "status": (
+                CandidateResolutionStatus.MISSING
+                if "launch" in candidate.scopes
+                else CandidateResolutionStatus.UNKNOWN
+            ),
+            "reason": (
+                "launch package is absent from all readable ament prefixes"
+                if "launch" in candidate.scopes
+                else (
+                    "package.xml dependency is absent from the ament index, but may be a "
+                    "rosdep key resolved by a system package manager"
+                )
+            ),
         }
     )
 

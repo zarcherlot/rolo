@@ -155,12 +155,6 @@ def hw_inventory_scan() -> None:
     emit(HardwareProbe().run())
 
 
-@linux_host_app.command("inspect")
-def linux_host_inspect() -> None:
-    """Backward-compatible alias for `linux host inventory`."""
-    emit(host_introspection.host_inventory())
-
-
 @linux_host_app.command("inventory")
 def linux_host_inventory() -> None:
     """Inventory host identity and available control planes without changing them."""
@@ -555,12 +549,11 @@ def tool_invoke(
                 robot,
                 operation,
                 payload,
+                artifact_root=settings.rolo_artifact_dir,
                 policy_path=settings.rolo_invocation_policy,
                 audit_path=settings.rolo_invocation_audit_log,
                 r3_authorizer_path=settings.rolo_r3_authorizer,
                 quiescence_provider_path=settings.rolo_quiescence_provider,
-                artifact_root=settings.rolo_artifact_dir,
-                discovery_artifact_root=settings.rolo_artifact_dir,
             )
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:

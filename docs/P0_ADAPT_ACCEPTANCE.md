@@ -39,14 +39,24 @@ subset; remaining candidates stay `UNAVAILABLE` with `PRODUCT_CONTRACT_NOT_GATEA
 
 The v2 bundle enumerates its entrypoint and all support files by SHA-256. Snapshot, publication,
 load, and invocation verify the complete set. The published State Graph is Rolo-owned v2 output
-rebuilt from discovery and bundle bindings. A stable target fingerprint makes a release non-callable
-when current route, platform, or hardware evidence changes.
+rebuilt from discovery and bundle bindings. An operation-scoped target fingerprint makes a release
+non-callable when its relevant route, executable, hardware, platform, or admitted ROS runtime
+context changes, without invalidating it for unrelated discovery growth.
+Operation candidates bind executable and hardware evidence by stable exact IDs. Ambiguous global
+ROS observations may establish a route, but are not guessed into a process or hardware binding.
+
+Activation is fail-closed: the candidate is parsed and checked as a complete release, including all
+declared file hashes, identities, bundle/catalog contract bindings, State Graph, conformance report,
+matching passed gate and current target fingerprint. Only then is `current.json` atomically replaced;
+any failure leaves the prior current release unchanged. Runtime uses this same verification path.
 
 The real Agent handoff uses `robot-adapter-agent-result/v2`. Exact artifact Schemas are queried from
 the workspace-local inspection snapshot rather than guessed. A deterministic `adapt handoff pack`
-preflight verifies bundle hashes and `describe`, encodes only final files, and rejects path escape,
+preflight verifies paths and bundle hashes without executing generated code, encodes only final files,
+and rejects path escape,
 symlinks, duplicates, more than 256 files, files over 2 MiB, or an Agent response over 8 MiB. Rolo
-then rechecks base64, hashes, identities, operation coverage and larger product limits while
+then rechecks base64, hashes, identities, operation coverage and larger product limits, and executes
+the package `describe` command only through the bounded generated-code runner while
 rebuilding its frozen snapshot. Workspace file paths are not trusted as the handoff authority.
 
 ## Acceptance paths
@@ -91,6 +101,7 @@ The published-release test matrix covers:
 - cancelable start plus its compensation/cancel operation;
 - digest-pinned config apply plus independently authorized rollback;
 - release/package hash mismatch rejection;
+- tampered candidate activation rejection with preservation of the prior current release;
 - audit records that contain authorization identifiers but no input/output payload.
 
 The R3 and quiescence programs under `tests/fixtures/providers` are executable protocol fixtures only.

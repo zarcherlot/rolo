@@ -10,11 +10,11 @@ SDK 函数就自动合并；产品语义、授权域、输入输出和后续诊�
 
 ### `linux.host.inspect` 与 `linux.host.inventory`
 
-当前 `robotctl linux host inspect` 是 `host inventory` 的兼容别名，两者调用同一实现并返回
-相同 operation payload。这是实际重复，而不是领域分层。
+旧的 `robotctl linux host inspect` 曾是 `host inventory` 的兼容别名，两者调用同一实现并
+返回相同 operation payload。这是实际重复，而不是领域分层。
 
-处理结果：迁移窗口完成后，`linux.host.inspect` 已从产品 Registry 和正式契约目录移除；
-CLI 兼容入口继续转发到 `linux.host.inventory`，但不得重新进入 Tool Catalog。
+处理结果：迁移窗口完成后，`linux.host.inspect` 已从产品 Registry、正式契约目录和 CLI
+移除。
 
 ### `ros.node.status` 与 `ros.node.inspect`
 
@@ -70,7 +70,7 @@ stop 也不能用普通速度零指令冒充。
 
 ## 已完成的产品决策
 
-1. `linux.host.inspect` 完成 DEPRECATED 迁移后退出产品 Registry；兼容 CLI 暂时保留。
+1. `linux.host.inspect` 完成 DEPRECATED 迁移后退出产品 Registry 和 CLI。
 2. `ros.node.status` 以 2.0 紧凑状态存在，`inspect` 负责接口详情。
 3. `ros.topic.echo` 从产品 Registry 移除，只允许 Adapter 将底层 ROS CLI echo 用作实现绑定。
 4. 流式读取采用有界采样与显式 session handle 的混合模型。

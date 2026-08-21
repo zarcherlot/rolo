@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rolo.adapter_runtime import load_current_release
+from rolo.adapter_runtime import StaleAdapterReleaseError, load_current_release
 from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryReport, OperationCandidate
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ExecutableDiscovery
@@ -229,18 +229,36 @@ def build_operation_workset(
     release_id: str | None = None
     release_discovery_id: str | None = None
     active_by_operation: dict[str, Any] = {}
+    current_release_is_fresh = False
     try:
-        _, release, bundle, catalog = load_current_release(output_root, robot_id)
+        _, release, bundle, catalog = load_current_release(
+            output_root,
+            robot_id,
+            artifact_root=artifact_root,
+        )
+    except StaleAdapterReleaseError as exc:
+        release = exc.release
+        bundle = exc.bundle
+        catalog = exc.catalog
+        release_id = release.release_id
+        release_discovery_id = release.discovery_id
+        active_by_operation = {tool.operation: tool for tool in catalog.tools}
     except FileNotFoundError:
         bundle = None
     else:
+        current_release_is_fresh = True
         release_id = release.release_id
         release_discovery_id = release.discovery_id
         active_by_operation = {tool.operation: tool for tool in catalog.tools}
     release_matches = bool(
-        release_id is not None
-        and release.target_fingerprint_sha256 is not None
-        and release.target_fingerprint_sha256 == target_fingerprint_sha256(report, artifact_root)
+        current_release_is_fresh
+        and release_id is not None
+        and release.target_fingerprint_sha256
+        == target_fingerprint_sha256(
+            report,
+            artifact_root,
+            operations=[item.operation for item in bundle.operations] if bundle else [],
+        )
     )
     bundle_operations = {item.operation for item in bundle.operations} if bundle else set()
 

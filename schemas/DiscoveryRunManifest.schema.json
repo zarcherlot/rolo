@@ -1,5 +1,37 @@
 {
   "$defs": {
+    "DiscoveryProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "rolo",
+          "default": "rolo",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "build_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build Revision"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "DiscoveryProducer",
+      "type": "object"
+    },
     "ManifestEntry": {
       "additionalProperties": false,
       "properties": {
@@ -42,6 +74,9 @@
     "discovery_id": {
       "title": "Discovery Id",
       "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/DiscoveryProducer"
     },
     "files": {
       "items": {

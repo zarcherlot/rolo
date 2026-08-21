@@ -40,6 +40,7 @@ from rolo.core.models import (
     RobotCapability,
     RouteEvidence,
 )
+from rolo.runtime_context import admitted_runtime_environment
 from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
@@ -102,14 +103,6 @@ SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "vendors",
 }
 UBUNTU_ROS_DEFAULTS = {"20.04": "foxy", "22.04": "humble", "24.04": "jazzy"}
-SAFE_ENV_KEYS = (
-    "ROS_DISTRO",
-    "ROS_DOMAIN_ID",
-    "ROS_LOCALHOST_ONLY",
-    "RMW_IMPLEMENTATION",
-    "AMENT_PREFIX_PATH",
-    "COLCON_PREFIX_PATH",
-)
 SEMANTIC_PARAMETER_ALIASES = {
     "max_vel_x": ("geometry.hard_max_linear_velocity_mps", "m/s"),
     "max_linear_velocity": ("geometry.hard_max_linear_velocity_mps", "m/s"),
@@ -155,6 +148,55 @@ def _run(args: Sequence[str], *, timeout_s: float = 8.0) -> dict[str, Any]:
         "stdout": completed.stdout[:MAX_COMMAND_OUTPUT],
         "stderr": completed.stderr[:20_000],
     }
+
+
+def _command_diagnostic(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain bounded failure evidence without treating process launch as success."""
+    stderr = str(result.get("stderr") or "")[:4_000]
+    error = str(result.get("error") or "")[:1_000]
+    diagnostic = {
+        "argv": [str(item) for item in result.get("argv", [])],
+        "installed": bool(result.get("available")),
+        "succeeded": result.get("returncode") == 0,
+        "returncode": result.get("returncode"),
+        "error": error or None,
+        "stderr_excerpt": stderr or None,
+    }
+    attempts = result.get("attempts")
+    if isinstance(attempts, list):
+        diagnostic["attempts"] = attempts
+    return diagnostic
+
+
+def _command_failure_summary(result: Mapping[str, Any]) -> str:
+    if result.get("error"):
+        return str(result["error"]).splitlines()[0][:300]
+    stderr_lines = str(result.get("stderr") or "").splitlines()
+    detail = stderr_lines[0][:300] if stderr_lines else "no diagnostic output"
+    return f"exit {result.get('returncode', 'unknown')}: {detail}"
+
+
+def _ros_failure_class(result: Mapping[str, Any], *, codex_network_sandboxed: bool) -> str:
+    detail = "\n".join(
+        str(result.get(key) or "") for key in ("error", "stderr", "stdout")
+    ).casefold()
+    if result.get("returncode") == 2 and any(
+        marker in detail
+        for marker in ("unrecognized arguments", "invalid choice", "usage:")
+    ):
+        return "CLI_ARGUMENT_UNSUPPORTED"
+    if not result.get("available"):
+        return "ROS_CLI_UNAVAILABLE"
+    sandbox_markers = (
+        "sandbox",
+        "permissionerror",
+        "operation not permitted",
+        "localhost socket",
+        "network is unreachable",
+    )
+    if codex_network_sandboxed and any(marker in detail for marker in sandbox_markers):
+        return "EXECUTION_SANDBOX_RESTRICTED"
+    return "ROS_CLI_FAILED"
 
 
 def _parse_os_release() -> dict[str, str]:
@@ -233,51 +275,21 @@ def _merge_hardware_provider(
     }
 
 
-def _command_diagnostic(result: Mapping[str, Any]) -> dict[str, Any]:
-    """Retain bounded command evidence without treating process launch as success."""
-    diagnostic: dict[str, Any] = {
-        "argv": [str(item) for item in result.get("argv", [])],
-        "installed": bool(result.get("available")),
-        "succeeded": result.get("returncode") == 0,
-        "returncode": result.get("returncode"),
-        "error": str(result.get("error") or "")[:1_000] or None,
-        "stderr_excerpt": str(result.get("stderr") or "")[:4_000] or None,
-    }
-    attempts = result.get("attempts")
-    if isinstance(attempts, list):
-        diagnostic["attempts"] = attempts
-    return diagnostic
-
-
-def _command_failure_summary(result: Mapping[str, Any]) -> str:
-    if result.get("error"):
-        return str(result["error"]).splitlines()[0][:300]
-    stderr_lines = str(result.get("stderr") or "").splitlines()
-    detail = stderr_lines[0][:300] if stderr_lines else "no diagnostic output"
-    return f"exit {result.get('returncode', 'unknown')}: {detail}"
-
-
-def _ros_failure_class(result: Mapping[str, Any], *, codex_network_sandboxed: bool) -> str:
-    detail = "\n".join(
-        str(result.get(key) or "") for key in ("error", "stderr", "stdout")
-    ).casefold()
-    if result.get("returncode") == 2 and any(
-        marker in detail
-        for marker in ("unrecognized arguments", "invalid choice", "usage:")
-    ):
-        return "CLI_ARGUMENT_UNSUPPORTED"
-    if not result.get("available"):
-        return "ROS_CLI_UNAVAILABLE"
-    sandbox_markers = (
-        "sandbox",
-        "permissionerror",
-        "operation not permitted",
-        "localhost socket",
-        "network is unreachable",
-    )
-    if codex_network_sandboxed and any(marker in detail for marker in sandbox_markers):
-        return "EXECUTION_SANDBOX_RESTRICTED"
-    return "ROS_CLI_FAILED"
+def _assign_hardware_resource_ids(data: dict[str, Any]) -> None:
+    """Attach a stable identity without deriving it from mutable hardware attributes."""
+    for component in data.get("components", []):
+        if not isinstance(component, dict):
+            continue
+        if provider_id := component.get("provider_id"):
+            identity = (
+                f"hardware_provider:{provider_id}:"
+                f"{component.get('kind')}:{component.get('name')}"
+            )
+        elif path := component.get("path"):
+            identity = f"hardware_path:{path}"
+        else:
+            identity = f"hardware_component:{component.get('kind')}:{component.get('name')}"
+        component["resource_id"] = identity
 
 
 class HardwareProbe:
@@ -307,6 +319,7 @@ class HardwareProbe:
                 robot_id=robot_id,
                 provider_path=provider_path,
             )
+            _assign_hardware_resource_ids(data)
             return ProbeResult(
                 layer="hw", status=DiscoveryStatus.PARTIAL, data=data, warnings=warnings
             )
@@ -405,6 +418,7 @@ class HardwareProbe:
             robot_id=robot_id,
             provider_path=provider_path,
         )
+        _assign_hardware_resource_ids(data)
         return ProbeResult(
             layer="hw",
             status=DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED,
@@ -425,7 +439,7 @@ class LinuxProbe:
                 "hostname": platform.node(),
                 "os_release": os_release,
             },
-            "environment": {key: os.environ[key] for key in SAFE_ENV_KEYS if key in os.environ},
+            "environment": admitted_runtime_environment(os.environ),
             "executables": {},
             "processes": [],
         }
@@ -441,13 +455,22 @@ class LinuxProbe:
         }
         for name, command in executable_checks.items():
             result = _run(command, timeout_s=5)
+            succeeded = result.get("returncode") == 0
             data["executables"][name] = {
                 "path": shutil.which(command[0]),
-                "available": result.get("available", False),
+                "installed": bool(result.get("available")),
+                "available": succeeded,
+                "returncode": result.get("returncode"),
+                "error": result.get("error"),
+                "stderr_excerpt": str(result.get("stderr") or "")[:4_000] or None,
                 "version_output": (result.get("stdout") or result.get("stderr") or "").splitlines()[
                     :1
                 ],
             }
+            if result.get("available") and not succeeded:
+                warnings.append(
+                    f"{name} self-description failed: {_command_failure_summary(result)}"
+                )
 
         if platform.system() == "Linux":
             processes = _run(["ps", "-eo", "pid=,ppid=,stat=,comm="])
@@ -457,7 +480,9 @@ class LinuxProbe:
             warnings.append("Linux process probes were skipped on a non-Linux host")
 
         status = (
-            DiscoveryStatus.SUCCEEDED if platform.system() == "Linux" else DiscoveryStatus.PARTIAL
+            DiscoveryStatus.PARTIAL
+            if warnings or platform.system() != "Linux"
+            else DiscoveryStatus.SUCCEEDED
         )
         return ProbeResult(layer="linux", status=status, data=data, warnings=warnings)
 
@@ -516,7 +541,10 @@ class RosProbe:
             if direct is not None:
                 fallback["attempts"] = [
                     {"context": "inherited_environment", **_command_diagnostic(direct)},
-                    {"context": "clean_ros_base_setup", **_command_diagnostic(fallback)},
+                    {
+                        "context": "clean_ros_base_setup",
+                        **_command_diagnostic(fallback),
+                    },
                 ]
             return fallback
         if direct is not None:
@@ -549,6 +577,7 @@ class RosProbe:
             "rmw": configured_rmw,
             "rmw_source": "ENVIRONMENT" if configured_rmw else "NOT_SELECTED",
             "rmw_candidates": self._rmw_candidates(setup),
+            "runtime_environment": admitted_runtime_environment(self.environment),
             "execution_environment": {
                 "codex_sandbox_network_disabled": codex_network_sandboxed,
             },
@@ -1212,6 +1241,12 @@ def _ros_entity_name(value: str) -> str:
     return f"/{name.lstrip('/')}" if name else ""
 
 
+def _is_concrete_ros_endpoint(value: str) -> bool:
+    """Accept only fully resolved ROS graph names as routable evidence."""
+    endpoint = _ros_entity_name(value)
+    return bool(re.fullmatch(r"/[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*", endpoint))
+
+
 def _ros_entity_type(value: str) -> str | None:
     parts = value.strip().split(maxsplit=1)
     if len(parts) != 2:
@@ -1265,6 +1300,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         )
     for raw_topic, transport, source, observed_at, runtime_revision in topic_evidence:
         topic = _ros_entity_name(raw_topic)
+        if not _is_concrete_ros_endpoint(raw_topic):
+            continue
         for token, semantic_uri in topic_rules.items():
             if _topic_rule_matches(topic, token) and semantic_uri not in bindings:
                 bindings[semantic_uri] = {
@@ -1697,6 +1734,54 @@ def _build_operation_candidates(
     return candidates
 
 
+def _bind_candidate_evidence_ids(
+    candidates: list[OperationCandidate],
+    active_report: ActiveDiscoveryReport,
+    hardware_probe: ProbeResult,
+) -> list[OperationCandidate]:
+    """Bind candidates only to explicitly attributable executable and hardware IDs."""
+    executable_endpoints: dict[str, set[str]] = {}
+    for executable in active_report.executables:
+        endpoints: set[str] = set()
+        for role in ("publishers", "subscribers", "services", "clients"):
+            for interface in executable.communication.ros.get(role, []):
+                if isinstance(interface, dict) and interface.get("name"):
+                    endpoints.add(_ros_entity_name(str(interface["name"])))
+        executable_endpoints[executable.executable_id] = endpoints
+
+    hardware_components = [
+        item
+        for item in hardware_probe.data.get("components", [])
+        if isinstance(item, dict) and item.get("resource_id")
+    ]
+    bound: list[OperationCandidate] = []
+    for candidate in candidates:
+        route_endpoints = {_ros_entity_name(route.endpoint) for route in candidate.route_evidence}
+        route_providers = {
+            route.provider_id for route in candidate.route_evidence if route.provider_id
+        }
+        executable_ids = sorted(
+            executable_id
+            for executable_id, endpoints in executable_endpoints.items()
+            if endpoints & route_endpoints
+        )
+        hardware_resource_ids = sorted(
+            str(component["resource_id"])
+            for component in hardware_components
+            if str(component.get("path", "")) in route_endpoints
+            or str(component["resource_id"]) in route_providers
+        )
+        bound.append(
+            candidate.model_copy(
+                update={
+                    "executable_ids": executable_ids,
+                    "hardware_resource_ids": hardware_resource_ids,
+                }
+            )
+        )
+    return bound
+
+
 class DiscoveryService:
     def __init__(
         self,
@@ -1792,6 +1877,11 @@ class DiscoveryService:
             robot_id=robot.robot_id,
             technical_status=probe_status.value,
             created_at=now,
+        )
+        operation_candidates = _bind_candidate_evidence_ids(
+            operation_candidates,
+            active_report,
+            probes["hw"],
         )
         dependency_report = DirectDependencyResolver(self.software_policy).resolve(
             discovery_id=discovery_id,

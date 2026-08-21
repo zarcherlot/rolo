@@ -92,7 +92,11 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
+    topology, _ = build_robot_topology(
+        robot,
+        runtime.settings.rolo_output_dir,
+        artifact_root=runtime.settings.rolo_artifact_dir,
+    )
     return topology
 
 
@@ -112,6 +116,7 @@ async def list_robot_evidence(
     return build_evidence_collection(
         robot,
         runtime.settings.rolo_output_dir,
+        artifact_root=runtime.settings.rolo_artifact_dir,
         limit=limit,
         offset=offset,
         authority=authority,
@@ -126,6 +131,7 @@ async def get_evidence(evidence_id: str, request: Request) -> EvidenceRecord:
         runtime.registry.list(),
         runtime.settings.rolo_output_dir,
         evidence_id,
+        artifact_root=runtime.settings.rolo_artifact_dir,
         pipelines={
             robot.robot_id: assess_pipeline(
                 runtime.settings.rolo_artifact_dir,
