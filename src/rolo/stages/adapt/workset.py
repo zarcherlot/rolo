@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable, Mapping
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
@@ -7,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from rolo.adapter_runtime import load_current_release
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryReport, OperationCandidate
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ExecutableDiscovery
 from rolo.stages.adapt.discovery import load_latest_report, load_report
@@ -38,6 +40,15 @@ class OperationRegistration(str, Enum):
     STALE = "STALE"
 
 
+class OperationExecutionClass(str, Enum):
+    """Shadow-only ownership classification; it does not alter Registry eligibility."""
+
+    AGENT_NATIVE = "AGENT_NATIVE"
+    PRODUCT_BUILTIN = "PRODUCT_BUILTIN"
+    TARGET_ADAPTER = "TARGET_ADAPTER"
+    PLATFORM_SPECIFIC = "PLATFORM_SPECIFIC"
+
+
 class OperationWorkItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -65,6 +76,130 @@ class AdaptOperationWorkset(BaseModel):
     release_discovery_id: str | None = None
     release_matches_discovery: bool = False
     operations: list[OperationWorkItem] = Field(default_factory=list)
+
+
+class TargetOperationSlice(BaseModel):
+    """Deterministic, shadow-only operation view prepared for one Adapt plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-target-operation-slice/v1"] = (
+        "robot-target-operation-slice/v1"
+    )
+    robot_id: str
+    discovery_id: str
+    registry_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    slice_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    primary_operations: list[str] = Field(default_factory=list)
+    dependency_operations: list[str] = Field(default_factory=list)
+    agent_native_operations: list[str] = Field(default_factory=list)
+    builtin_operations: list[str] = Field(default_factory=list)
+    target_adapter_operations: list[str] = Field(default_factory=list)
+    platform_specific_operations: list[str] = Field(default_factory=list)
+    deferred_summary: dict[str, int] = Field(default_factory=dict)
+
+
+OperationClassifier = Mapping[str, OperationExecutionClass | str] | Callable[
+    [str], OperationExecutionClass | str
+]
+
+
+def _stable_sha256(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return sha256_bytes(payload.encode("utf-8"))
+
+
+def operation_definition_digest(definition: CanonicalOperationDefinition) -> str:
+    """Digest an index entry without changing the canonical Registry digest contract."""
+    return definition.contract_sha256 or _stable_sha256(definition.model_dump(mode="json"))
+
+
+def _execution_class(
+    operation: str,
+    *,
+    classifier: OperationClassifier | None,
+    builtins: set[str],
+) -> OperationExecutionClass:
+    if classifier is None:
+        return (
+            OperationExecutionClass.PRODUCT_BUILTIN
+            if operation in builtins
+            else OperationExecutionClass.TARGET_ADAPTER
+        )
+    raw = classifier(operation) if callable(classifier) else classifier.get(operation)
+    if raw is None:
+        return (
+            OperationExecutionClass.PRODUCT_BUILTIN
+            if operation in builtins
+            else OperationExecutionClass.TARGET_ADAPTER
+        )
+    return OperationExecutionClass(raw)
+
+
+def build_target_operation_slice(
+    artifact_root: Path,
+    output_root: Path,
+    robot_id: str,
+    discovery_id: str,
+    *,
+    eligible_operations: list[str],
+    deferred_operations: Mapping[str, str],
+    task_operations: list[str] | None = None,
+    classifier: OperationClassifier | None = None,
+) -> TargetOperationSlice:
+    """Build a deterministic dependency closure without changing Adapt eligibility.
+
+    ``classifier`` is the integration seam for the P0 disposition ledger. Missing entries
+    deliberately preserve the current baseline by treating non-builtins as TARGET_ADAPTER.
+    """
+    report = _load_selected_report(artifact_root, robot_id, discovery_id)
+    registry = canonical_operation_registry()
+    definitions = {item.operation: item for item in registry.operations}
+    observed = {candidate.operation for candidate in report.operation_candidates}
+    primary = {
+        operation
+        for operation in [*observed, *eligible_operations, *(task_operations or [])]
+        if operation in definitions
+    }
+    closure = set(primary)
+    pending = sorted(primary)
+    while pending:
+        definition = definitions[pending.pop(0)]
+        for dependency in (
+            definition.paired_operation,
+            definition.compensation_operation,
+            definition.replacement_operation,
+        ):
+            if dependency and dependency in definitions and dependency not in closure:
+                closure.add(dependency)
+                pending.append(dependency)
+        pending.sort()
+
+    builtins = builtin_operations()
+    classified: dict[OperationExecutionClass, list[str]] = {
+        value: [] for value in OperationExecutionClass
+    }
+    for operation in sorted(closure):
+        classified[_execution_class(operation, classifier=classifier, builtins=builtins)].append(
+            operation
+        )
+    deferred_summary: dict[str, int] = {}
+    for reason in deferred_operations.values():
+        deferred_summary[reason] = deferred_summary.get(reason, 0) + 1
+    registry_sha256 = _stable_sha256(registry.model_dump(mode="json"))
+    content = {
+        "robot_id": robot_id,
+        "discovery_id": report.discovery_id,
+        "registry_sha256": registry_sha256,
+        "primary_operations": sorted(primary),
+        "dependency_operations": sorted(closure - primary),
+        "agent_native_operations": classified[OperationExecutionClass.AGENT_NATIVE],
+        "builtin_operations": classified[OperationExecutionClass.PRODUCT_BUILTIN],
+        "target_adapter_operations": classified[OperationExecutionClass.TARGET_ADAPTER],
+        "platform_specific_operations": classified[OperationExecutionClass.PLATFORM_SPECIFIC],
+        "deferred_summary": dict(sorted(deferred_summary.items())),
+    }
+    return TargetOperationSlice(**content, slice_sha256=_stable_sha256(content))
 
 
 def load_active_discovery(artifact_root: Path, report: DiscoveryReport) -> ActiveDiscoveryReport:
@@ -438,7 +573,7 @@ def compact_agent_boot_context(
     report = _load_selected_report(artifact_root, robot_id, discovery_id)
     active = load_active_discovery(artifact_root, report)
     workset = build_operation_workset(artifact_root, output_root, robot_id, discovery_id)
-    candidates = [candidate.operation for candidate in report.operation_candidates]
+    candidates = sorted(candidate.operation for candidate in report.operation_candidates)
     return {
         "robot_id": robot_id,
         "discovery_id": report.discovery_id,
@@ -452,7 +587,8 @@ def compact_agent_boot_context(
             "registered_operations": workset.registered_operation_count,
             "release_matches_discovery": workset.release_matches_discovery,
         },
-        "candidate_operations": candidates,
+        "candidate_operations": candidates[:20],
+        "candidate_operations_truncated": len(candidates) > 20,
         "discovery": {
             "technical_status": active.technical_status,
             "executable_count": len(active.executables),

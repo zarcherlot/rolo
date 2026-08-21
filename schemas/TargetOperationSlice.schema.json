@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "description": "Deterministic, shadow-only operation view prepared for one Adapt plan.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-operation-slice/v1",
+      "default": "robot-target-operation-slice/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {"title": "Robot Id", "type": "string"},
+    "discovery_id": {"title": "Discovery Id", "type": "string"},
+    "registry_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Sha256",
+      "type": "string"
+    },
+    "slice_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Slice Sha256",
+      "type": "string"
+    },
+    "primary_operations": {
+      "items": {"type": "string"},
+      "title": "Primary Operations",
+      "type": "array"
+    },
+    "dependency_operations": {
+      "items": {"type": "string"},
+      "title": "Dependency Operations",
+      "type": "array"
+    },
+    "agent_native_operations": {
+      "items": {"type": "string"},
+      "title": "Agent Native Operations",
+      "type": "array"
+    },
+    "builtin_operations": {
+      "items": {"type": "string"},
+      "title": "Builtin Operations",
+      "type": "array"
+    },
+    "target_adapter_operations": {
+      "items": {"type": "string"},
+      "title": "Target Adapter Operations",
+      "type": "array"
+    },
+    "platform_specific_operations": {
+      "items": {"type": "string"},
+      "title": "Platform Specific Operations",
+      "type": "array"
+    },
+    "deferred_summary": {
+      "additionalProperties": {"type": "integer"},
+      "title": "Deferred Summary",
+      "type": "object"
+    }
+  },
+  "required": ["robot_id", "discovery_id", "registry_sha256", "slice_sha256"],
+  "title": "TargetOperationSlice",
+  "type": "object"
+}

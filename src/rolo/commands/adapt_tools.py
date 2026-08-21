@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Annotated
@@ -32,6 +33,9 @@ launch_app = typer.Typer(help="Inspect launch evidence without loading the whole
 dependency_app = typer.Typer(help="Inspect dependency evidence on demand.")
 evidence_app = typer.Typer(help="Resolve and read bounded discovery evidence.")
 wiki_app = typer.Typer(help="Search the robot Wiki or read one section at a time.")
+MAX_OPERATION_LIST_LIMIT = 50
+MAX_BATCH_INSPECT = 8
+MAX_QUERY_RESPONSE_BYTES = 16 * 1024
 
 
 def register_adapt_query_commands(parent: typer.Typer) -> None:
@@ -85,6 +89,10 @@ def operations_list(
     implementation: Annotated[OperationImplementation | None, typer.Option()] = None,
     registration: Annotated[OperationRegistration | None, typer.Option()] = None,
     layer: Annotated[str | None, typer.Option()] = None,
+    scope: Annotated[str | None, typer.Option("--scope")] = None,
+    limit: Annotated[int | None, typer.Option("--limit", min=1, max=50)] = None,
+    cursor: Annotated[int, typer.Option("--cursor", min=0)] = 0,
+    all_operations: Annotated[bool, typer.Option("--all")] = False,
 ) -> None:
     """List operations using orthogonal applicability, implementation and registration filters."""
     artifact_root, output_root = _settings()
@@ -101,11 +109,64 @@ def operations_list(
         items = [item for item in items if item.registration == registration]
     if layer:
         items = [item for item in items if item.layer == layer]
+    selected_scope = "all" if all_operations else scope
+    if selected_scope not in {None, "all", "target", "current-task"}:
+        raise typer.BadParameter("scope must be current-task, target, or all")
+    if selected_scope in {"target", "current-task"}:
+        items = [item for item in items if item.applicability == OperationApplicability.OBSERVED]
+    if selected_scope == "current-task":
+        items = [item for item in items if item.implementation == OperationImplementation.UNBOUND]
+    legacy = selected_scope is None and limit is None and cursor == 0
+    page_limit = limit or 20
+    selected = items if legacy else items[cursor : cursor + page_limit]
+    payload = {
+        "robot_id": robot,
+        "discovery_id": workset.discovery_id,
+        "operations": [item.model_dump(mode="json") for item in selected],
+    }
+    if not legacy:
+        next_cursor = cursor + len(selected)
+        payload.update(
+            scope=selected_scope or "all",
+            returned_count=len(selected),
+            truncated=next_cursor < len(items),
+            next_cursor=str(next_cursor) if next_cursor < len(items) else None,
+            total_count=len(items),
+        )
+    emit(payload)
+
+
+@operations_app.command("search")
+def operations_search(
+    query: Annotated[str, typer.Argument()],
+    robot: Annotated[str, typer.Option("--robot")],
+    limit: Annotated[int, typer.Option("--limit", min=1, max=50)] = 10,
+    cursor: Annotated[int, typer.Option("--cursor", min=0)] = 0,
+) -> None:
+    """Search compact operation identities without loading full contracts."""
+    artifact_root, output_root = _settings()
+    try:
+        workset = build_operation_workset(artifact_root, output_root, robot, _discovery_id())
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    folded = query.casefold()
+    matches = [
+        item
+        for item in workset.operations
+        if folded in item.operation.casefold() or folded in item.layer.casefold()
+    ]
+    selected = matches[cursor : cursor + limit]
+    next_cursor = cursor + len(selected)
     emit(
         {
             "robot_id": robot,
             "discovery_id": workset.discovery_id,
-            "operations": [item.model_dump(mode="json") for item in items],
+            "query": query,
+            "operations": [item.model_dump(mode="json") for item in selected],
+            "returned_count": len(selected),
+            "truncated": next_cursor < len(matches),
+            "next_cursor": str(next_cursor) if next_cursor < len(matches) else None,
+            "total_count": len(matches),
         }
     )
 
@@ -121,6 +182,28 @@ def operations_inspect(
         emit(operation_detail(artifact_root, output_root, robot, operation, _discovery_id()))
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+@operations_app.command("batch-inspect")
+def operations_batch_inspect(
+    operations: Annotated[list[str], typer.Argument()],
+    robot: Annotated[str, typer.Option("--robot")],
+) -> None:
+    """Inspect up to eight operation contracts in one bounded response."""
+    if not operations or len(operations) > MAX_BATCH_INSPECT:
+        raise typer.BadParameter(f"batch-inspect accepts 1 to {MAX_BATCH_INSPECT} operations")
+    artifact_root, output_root = _settings()
+    try:
+        details = [
+            operation_detail(artifact_root, output_root, robot, operation, _discovery_id())
+            for operation in operations
+        ]
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    payload = {"robot_id": robot, "operations": details, "returned_count": len(details)}
+    if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > MAX_QUERY_RESPONSE_BYTES:
+        raise typer.BadParameter("query response exceeds 16 KiB; inspect fewer operations")
+    emit(payload)
 
 
 @candidates_app.command("inspect")

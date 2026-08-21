@@ -53,7 +53,7 @@ from rolo.stages.adapt.software_relevance import (
 )
 from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
 from rolo.stages.adapt.wiki_insights import WikiInsightBundle
-from rolo.stages.adapt.workset import AdaptOperationWorkset
+from rolo.stages.adapt.workset import AdaptOperationWorkset, TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
@@ -100,6 +100,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DirectDependencyReport,
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
+    TargetOperationSlice,
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
     WikiInsightBundle,
