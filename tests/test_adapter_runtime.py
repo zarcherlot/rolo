@@ -10,32 +10,74 @@ from rolo.adapter_runtime import activate_release, invoke_adapter, publish_relea
 from rolo.cli import app
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
-from rolo.core.models import DiscoveryReport, DiscoveryStatus, ToolDescriptor
+from rolo.core.models import (
+    DiscoveryReport,
+    DiscoveryStatus,
+    OperationCandidate,
+    ProbeResult,
+    RouteEvidence,
+    ToolDescriptor,
+)
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 
 def _target_report() -> DiscoveryReport:
+    route = RouteEvidence(
+        resource_id="ros_topic:/camera/image_raw",
+        kind="ros_topic",
+        endpoint="/camera/image_raw",
+        interface_type="sensor_msgs/msg/Image",
+        evidence_origin="OBSERVED_RUNTIME",
+        source="runtime_probe:ros",
+    )
     return DiscoveryReport(
         discovery_id="disc-1",
         robot_id="demo",
         status=DiscoveryStatus.SUCCEEDED,
         platform={},
         capability_manifest={},
-        probes={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [route.model_dump(mode="json")],
+                    "runtime_environment": {},
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.snapshot",
+                evidence=["/camera/image_raw"],
+                route_evidence=[route],
+            )
+        ],
+    )
+
+
+@pytest.fixture(autouse=True)
+def _latest_target_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.load_latest_report", lambda *_: _target_report()
     )
 
 
 def _publish_demo_release(
-    tmp_path: Path, *, target_report: DiscoveryReport | None = None
+    tmp_path: Path,
+    *,
+    target_report: DiscoveryReport | None = None,
+    release_id: str = "release-1",
+    activate: bool = True,
 ) -> Path:
     definition = next(
         item
         for item in canonical_operation_registry().operations
         if item.operation == "app.camera.snapshot"
     )
-    source = tmp_path / "source"
+    source = tmp_path / f"source-{release_id}"
     source.mkdir()
     helper = source / "demo_support.py"
     helper.write_text(
@@ -146,16 +188,30 @@ def _publish_demo_release(
         encoding="utf-8",
     )
     gate = source / "gate-report.json"
-    gate.write_text('{"status":"PASSED"}', encoding="utf-8")
+    gate.write_text(
+        json.dumps(
+            {
+                "schema_version": "robot-adapt-gate/v1",
+                "run_id": release_id,
+                "robot_id": "demo",
+                "discovery_id": "disc-1",
+                "status": "PASSED",
+                "checks": [],
+            }
+        ),
+        encoding="utf-8",
+    )
     output = tmp_path / "output"
+    report = target_report or _target_report()
     publish_release(
         output_root=output,
         robot_id="demo",
-        release_id="release-1",
+        release_id=release_id,
         discovery_id="disc-1",
-        target_fingerprint_sha256=(
-            target_fingerprint_sha256(target_report) if target_report is not None else None
+        target_fingerprint_sha256=target_fingerprint_sha256(
+            report, operations=["app.camera.snapshot"]
         ),
+        runtime_environment={},
         bundle_manifest_path=bundle_path,
         adapter_package_path=package,
         adapter_files=[
@@ -167,7 +223,8 @@ def _publish_demo_release(
         conformance_path=conformance,
         gate_report_path=gate,
     )
-    activate_release(output, "demo", "release-1")
+    if activate:
+        activate_release(output, "demo", release_id, artifact_root=tmp_path)
     return output
 
 
@@ -196,6 +253,7 @@ def test_runtime_invokes_only_the_entrypoint_bound_in_active_catalog(tmp_path: P
         "demo",
         "app.camera.snapshot",
         {"camera": "front_camera"},
+        artifact_root=tmp_path,
         policy_path=policy,
         audit_path=audit,
     )
@@ -216,6 +274,7 @@ def test_runtime_denies_sensitive_operation_without_protected_policy(tmp_path: P
             "demo",
             "app.camera.snapshot",
             {"camera": "front_camera"},
+            artifact_root=tmp_path,
             audit_path=audit,
         )
 
@@ -234,6 +293,7 @@ def test_runtime_denies_sensitive_operation_for_unlisted_os_identity(tmp_path: P
             "demo",
             "app.camera.snapshot",
             {"camera": "front_camera"},
+            artifact_root=tmp_path,
             policy_path=policy,
             audit_path=audit,
         )
@@ -248,7 +308,13 @@ def test_runtime_rejects_a_tampered_adapter_package(tmp_path: Path) -> None:
     package.write_text("tampered", encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash mismatch"):
-        invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": "front"})
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front"},
+            artifact_root=tmp_path,
+        )
 
 
 def test_runtime_rejects_a_tampered_adapter_support_file(tmp_path: Path) -> None:
@@ -257,7 +323,54 @@ def test_runtime_rejects_a_tampered_adapter_support_file(tmp_path: Path) -> None
     support.write_text("tampered", encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash mismatch"):
-        invoke_adapter(output, "demo", "app.camera.snapshot", {"camera": "front"})
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front"},
+            artifact_root=tmp_path,
+        )
+
+
+def test_activation_rejects_tampered_candidate_and_preserves_current(
+    tmp_path: Path,
+) -> None:
+    output = _publish_demo_release(tmp_path, release_id="release-1")
+    _publish_demo_release(tmp_path, release_id="release-2", activate=False)
+    candidate_support = (
+        output / "robots/demo/releases/release-2/adapter/demo_support.py"
+    )
+    candidate_support.write_text("tampered", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        activate_release(output, "demo", "release-2", artifact_root=tmp_path)
+
+    current = json.loads((output / "robots/demo/current.json").read_text(encoding="utf-8"))
+    assert current["release_id"] == "release-1"
+
+
+def test_runtime_rejects_legacy_release_without_mandatory_freshness(
+    tmp_path: Path,
+) -> None:
+    output = _publish_demo_release(tmp_path)
+    release_manifest = output / "robots/demo/releases/release-1/manifest.json"
+    release = json.loads(release_manifest.read_text(encoding="utf-8"))
+    release["schema_version"] = "robot-adapter-release/v1"
+    release["target_fingerprint_sha256"] = None
+    release_manifest.write_text(json.dumps(release), encoding="utf-8")
+    current_path = output / "robots/demo/current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["manifest_sha256"] = sha256_file(release_manifest)
+    current_path.write_text(json.dumps(current), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy adapter releases cannot be loaded"):
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front"},
+            artifact_root=tmp_path,
+        )
 
 
 def test_runtime_rejects_release_when_latest_target_fingerprint_changes(
@@ -274,7 +387,7 @@ def test_runtime_rejects_release_when_latest_target_fingerprint_changes(
             "demo",
             "app.camera.snapshot",
             {"camera": "front"},
-            discovery_artifact_root=tmp_path / "artifacts",
+            artifact_root=tmp_path,
         )
 
 
@@ -296,7 +409,7 @@ def test_runtime_keeps_release_for_equivalent_rediscovery(
         {"camera": "front"},
         policy_path=policy,
         audit_path=audit,
-        discovery_artifact_root=tmp_path / "artifacts",
+        artifact_root=tmp_path,
     )["status"] == "SUCCEEDED"
 
 
@@ -304,7 +417,13 @@ def test_runtime_rejects_operation_missing_from_active_catalog(tmp_path: Path) -
     output = _publish_demo_release(tmp_path)
 
     with pytest.raises(ValueError, match="not in the active Tool Catalog"):
-        invoke_adapter(output, "demo", "app.navigation.start", {})
+        invoke_adapter(
+            output,
+            "demo",
+            "app.navigation.start",
+            {},
+            artifact_root=tmp_path,
+        )
 
 
 def test_runtime_enforces_registered_input_field_types(tmp_path: Path) -> None:
@@ -317,6 +436,7 @@ def test_runtime_enforces_registered_input_field_types(tmp_path: Path) -> None:
             "demo",
             "app.camera.snapshot",
             {"camera": 7},
+            artifact_root=tmp_path,
             policy_path=policy,
             audit_path=audit,
         )

@@ -32,6 +32,7 @@ from rolo.invocation_policy import (
     R3AuthorizationCapability,
     R3AuthorizationRequest,
 )
+from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.baseline import AdaptBaselineSnapshot
 from rolo.stages.adapt.hardware_provider import (
@@ -87,6 +88,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DiscoveryLatestIndex,
     RouteEvidence,
     OperationCandidate,
+    AdapterRuntimeContext,
     CanonicalOperationRegistry,
     AdaptBaselineSnapshot,
     OperationDispositionLedger,

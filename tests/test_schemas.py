@@ -4,8 +4,12 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from rolo.cli import app
+from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.adapt.models import ToolCatalog
-from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.operation_registry import (
+    CanonicalOperationDefinition,
+    canonical_operation_registry,
+)
 
 
 def test_tracked_schemas_match_canonical_export(tmp_path: Path) -> None:
@@ -33,6 +37,21 @@ def test_exported_tool_catalog_schema_covers_the_complete_artifact() -> None:
         "tools",
     }
     assert schema["properties"]["tools"]["items"]["$ref"].endswith("/ToolDescriptor")
+
+
+def test_runtime_context_schema_is_explicit_and_secret_closed() -> None:
+    schema = AdapterRuntimeContext.model_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert "ROS_DOMAIN_ID" in schema["properties"]
+    assert "AMENT_PREFIX_PATH" in schema["properties"]
+    assert "OPENAI_API_KEY" not in schema["properties"]
+
+
+def test_canonical_operation_definition_has_no_implicit_contract_fields() -> None:
+    schema = CanonicalOperationDefinition.model_json_schema()
+
+    assert set(schema["required"]) == set(schema["properties"])
 
 
 def test_four_layer_operation_document_covers_the_product_registry() -> None:

@@ -1,0 +1,200 @@
+{
+  "additionalProperties": false,
+  "description": "Bounded, non-secret host context admitted to generated adapters.",
+  "properties": {
+    "CYCLONEDDS_URI": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cyclonedds Uri"
+    },
+    "ROS_AUTOMATIC_DISCOVERY_RANGE": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Automatic Discovery Range"
+    },
+    "ROS_DISCOVERY_SERVER": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Discovery Server"
+    },
+    "ROS_DISTRO": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Distro"
+    },
+    "ROS_DOMAIN_ID": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Domain Id"
+    },
+    "ROS_LOCALHOST_ONLY": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Localhost Only"
+    },
+    "ROS_STATIC_PEERS": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Static Peers"
+    },
+    "ROS_VERSION": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Version"
+    },
+    "RMW_IMPLEMENTATION": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rmw Implementation"
+    },
+    "FASTRTPS_DEFAULT_PROFILES_FILE": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fastrtps Default Profiles File"
+    },
+    "AMENT_PREFIX_PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ament Prefix Path"
+    },
+    "CMAKE_PREFIX_PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cmake Prefix Path"
+    },
+    "COLCON_PREFIX_PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Colcon Prefix Path"
+    },
+    "DYLD_LIBRARY_PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dyld Library Path"
+    },
+    "LD_LIBRARY_PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ld Library Path"
+    },
+    "PYTHONPATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pythonpath"
+    }
+  },
+  "title": "AdapterRuntimeContext",
+  "type": "object"
+}

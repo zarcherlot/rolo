@@ -7,9 +7,12 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+from rolo.runtime_context import admitted_runtime_environment
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,7 @@ class AdapterRunner(Protocol):
         timeout_s: float,
         max_stdout_bytes: int = 1_000_000,
         max_stderr_bytes: int = 1_000_000,
+        runtime_environment: Mapping[str, str] | None = None,
     ) -> AdapterProcessResult: ...
 
 
@@ -46,8 +50,10 @@ _INHERITED_ENVIRONMENT = {
     "WINDIR",
 }
 
-
-def sanitized_adapter_environment(private_home: Path) -> dict[str, str]:
+def sanitized_adapter_environment(
+    private_home: Path,
+    runtime_environment: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return the minimal non-secret environment visible to generated code."""
     environment = {
         name: value
@@ -65,6 +71,7 @@ def sanitized_adapter_environment(private_home: Path) -> dict[str, str]:
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
+    environment.update(admitted_runtime_environment(runtime_environment or {}))
     return environment
 
 
@@ -80,6 +87,7 @@ class BoundedAdapterRunner:
         timeout_s: float,
         max_stdout_bytes: int = 1_000_000,
         max_stderr_bytes: int = 1_000_000,
+        runtime_environment: Mapping[str, str] | None = None,
     ) -> AdapterProcessResult:
         if not command or not all(isinstance(item, str) and item for item in command):
             raise ValueError("adapter runner command must be a non-empty argv list")
@@ -98,7 +106,9 @@ class BoundedAdapterRunner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=root,
-                env=sanitized_adapter_environment(Path(temporary_home)),
+                env=sanitized_adapter_environment(
+                    Path(temporary_home), runtime_environment
+                ),
                 **self._platform_process_options(timeout_s),
             )
             assert process.stdin is not None

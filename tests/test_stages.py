@@ -128,6 +128,7 @@ def test_stage_cli_exposes_only_canonical_lifecycle_entries(
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "cli-demo"\n', encoding="utf-8")
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
+    monkeypatch.setenv("WIKI_INSIGHTS_AGENT_ENABLED", "false")
     get_settings.cache_clear()
     runner = CliRunner()
 
@@ -450,6 +451,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
         "demo_diff",
         "app.localization.status",
         {},
+        artifact_root=artifact_root,
     ) == {"status": "SUCCEEDED"}
 
     newer_discovery_id = discover_demo(artifact_root, workspace)

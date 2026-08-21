@@ -229,6 +229,8 @@ class OperationCandidate(BaseModel):
     semantic_bindings: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     route_evidence: list[RouteEvidence] = Field(default_factory=list)
+    executable_ids: list[str] = Field(default_factory=list)
+    hardware_resource_ids: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     status: Literal["DISCOVERED_UNVERIFIED"] = "DISCOVERED_UNVERIFIED"
 

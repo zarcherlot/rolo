@@ -5,11 +5,11 @@
 
 ## 1. 部署与环境
 
-- 部署 `refine-wiki` 的固定 commit，记录 commit SHA；不要直接部署未提交工作区。
+- 部署 `main` 的固定 commit，记录 commit SHA；不要直接部署未提交工作区。
 - 使用机器人应用实际运行用户，并 source 正常使用的 ROS setup 和 workspace overlay。
 - 确认 `ROS_DISTRO`、`RMW_IMPLEMENTATION`、`ROS_DOMAIN_ID` 是否显式配置；未配置也要记录。
 - `ROLO_ARTIFACT_DIR` 和 `ROLO_OUTPUT_DIR` 放在源码目录之外。
-- 若验证启发式 skill，先完成 `codex login`，并设置：
+- 启发式 skill 默认开启；验证前先完成 `codex login`，并可显式设置：
 
 ```bash
 export WIKI_INSIGHTS_AGENT_ENABLED=true
@@ -68,6 +68,7 @@ uv run robotctl adapt discover review --robot "$ROBOT_ID"
 - 静态接口与在线图不一致时仍保留“静态未验证”，没有自动提升为已验证；
 - `wiki_diff.json` 以第一次 discovery 为基线，主要变化集中在 ROS 在线图；
 - `wiki_insights.json` 中 Agent 结论均为 `ADAPT_AGENT_SKILL`、LOW/MEDIUM，并包含依据和验证方式；
+- Agent 对 Unknown 的检视必须出现在 `unknown_assessments`，逐字引用现有 Unknown，给出证据分类和下一步；它不得删除 Unknown、修改 probe 状态或让 operation 通过门禁；
 - Agent 不可用或输出无效时 discovery 仍成功，`wiki_generation.json` 记录回退原因。
 
 ## 4. 设备归并检查

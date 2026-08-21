@@ -1,5 +1,19 @@
 # Adapt 跨 OS/Middleware 能力与上下文治理开发计划
 
+## 0. 实施状态（2026-08-21）
+
+P0、P1、P2 已在 `codex/adapt-capability-integration` 完成集成：
+
+- P0 的 294 Operation 治理台账已纳入基线校验；
+- P1 的 Target Operation Slice、分页 workset/Wiki 检索和有界 Agent 启动上下文已实现；
+- P2 的平台无关 Capability、Provider Manifest/SPI、Resolver 与 shadow 解析结果已实现；
+- 上述 shadow 能力不改变当前 Linux/ROS eligibility、conformance、Tool Catalog 或 release；
+- 主干的 Adapter Runtime Context、目标指纹与 release 新鲜度规则已保留并与 P0/P1/P2 集成；
+- 确定性全量测试和 opt-in 真实 Codex 合成验收均已通过。
+
+仍不在本阶段范围内：具体 Windows/FreeRTOS/CyberRT Provider、双 Catalog 切换以及真实设备
+上的 hands-on 验证。下文保留原开发设计和验收边界，作为后续平台 Provider 演进依据。
+
 ## 1. 总体原则
 
 当前只建设跨 OS/Middleware 的抽象能力和扩展接口，不开发 Windows、FreeRTOS、

@@ -83,6 +83,13 @@ immutable `active_discovery_report.json` referenced by that report.
 `none` performs no executable or ROS-runtime active probe. `help` may invoke only executables
 explicitly supplied with `--executable`, using a sanitized environment, no shell, a five-second
 timeout, and bounded output. `runtime-readonly` additionally inspects an already-running ROS graph.
+ROS graph queries use `--no-daemon` and first use the inherited target environment. If the ROS CLI
+itself exits with an error, discovery retries once against the base ROS setup with Python
+virtual-environment variables removed. Both attempts retain bounded argv, exit-code and stderr
+diagnostics. When `CODEX_SANDBOX_NETWORK_DISABLED=1`, failed queries are classified as
+`EXECUTION_SANDBOX_RESTRICTED`, the ineffective setup retry is skipped, and direct target-terminal
+collection is required. A failed query is `UNAVAILABLE`; it is never interpreted as an observed
+empty graph.
 
 Python launch files are parsed with Python AST and XML launch files with an XML parser. The parser
 ignores Python comments and associates package, executable, node name, launch configurations,
@@ -124,6 +131,11 @@ Each executable record includes:
 - direct dependency candidate IDs; and
 - safety classification, side effects and unresolved evidence.
 
+Explicit executables rank first, followed by artifacts matching declared launch/source entrypoints,
+installed artifacts, and build artifacts. CMake compiler probes, `CMakeFiles`, environment hooks,
+shared/static libraries and conventional setup scripts are excluded from executable records. This
+ordering is applied before the 200-record limit so build noise cannot hide deployed entrypoints.
+
 ## Direct dependency resolution
 
 Only direct dependencies explicitly declared by supplied source or static launch evidence are
@@ -149,7 +161,10 @@ candidates are queried through `importlib.metadata` in the Python interpreter ru
 
 ROS dependencies come from `package.xml` and static launch package references. Resolution reads
 package resources and manifests under bounded `AMENT_PREFIX_PATH` prefixes. If no readable ament
-prefix exists, ROS candidates are `UNKNOWN`, not `MISSING`.
+prefix exists, ROS candidates are `UNKNOWN`, not `MISSING`. A `package.xml` dependency absent from
+the ament index is also `UNKNOWN`, because the declaration may be a rosdep key backed by an OS
+package rather than an ament package. Only a package named directly by launch evidence is classified
+`MISSING` when readable ament indexes prove it absent.
 
 Each candidate has one status:
 
@@ -234,12 +249,6 @@ coverage counts, and a read-only query launcher pinned to the selected discovery
 contracts, candidates, entrypoints, launch evidence, dependencies, Wiki sections, and bounded source
 snippets only for a concrete adapter gap.
 
-Wiki retrieval has independent response budgets: section reads return at most 8,000 characters and
-120 lines, searches return at most 20 matches and 6,000 characters, and both expose a continuation
-cursor when truncated. The document title returns a bounded heading outline. The main inspection
-JSON contains only the Wiki section index and hashes; compressed content is kept in a separate
-launcher data file to prevent accidental whole-snapshot reads from injecting the Wiki text.
-
 ```text
 robotctl adapt operations summary|list|inspect
 robotctl adapt candidates inspect
@@ -276,15 +285,18 @@ sensor semantics. Large joint and inertial tables are collapsed, and floating-po
 rounded for human reading. These declarations describe the input model; they are not presented as
 proof that the corresponding hardware was observed at runtime.
 
-Optional Wiki insights use the `robot-wiki-insights/v1` contract. A deterministic rule or future
-Adapt Agent skill may emit only a bounded finding with a category, `LOW`/`MEDIUM` confidence,
-evidence basis, verification method, and source. An insight bundle must match the robot and discovery
-IDs and can never promote a heuristic to verified machine evidence.
+Optional Wiki evidence review uses the `robot-wiki-insights/v1` contract. Deterministic rules and the
+read-only Adapt Agent skill may emit bounded findings with a category, `LOW`/`MEDIUM` confidence,
+evidence basis, verification method, and source. The Agent also reviews exact machine-reported
+unknowns and classifies the next evidence path as collected-evidence review, target probe, external
+input, or insufficient evidence. These assessments remain advisory: they cannot delete an unknown,
+change probe status, or make an operation gateable. The bundle must match the robot and discovery IDs.
 
 When a Wiki model and credentials are configured, a deterministic, relevance-ordered summary of at
 most 20,000 characters receives a structured narrative polish. The complete Wiki and its tables are
-not model input. The model cannot replace the machine-rendered evidence
-sections. Missing credentials, model failure, timeout, or invalid output automatically falls back
+not model input. The model cannot replace the machine-rendered evidence sections. This narrative
+polish is separate from the evidence/unknown review Agent. Missing credentials, model failure,
+timeout, or invalid output automatically falls back
 to the deterministic draft without blocking discovery. `wiki_generation.json` records the path
 used:
 

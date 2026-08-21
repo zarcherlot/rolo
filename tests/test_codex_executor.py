@@ -609,6 +609,39 @@ def test_codex_executor_removes_unrelated_host_credentials(
     assert "UNRELATED_SESSION_TOKEN" not in environment
 
 
+def test_codex_executor_restores_windows_home_from_codex_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace)
+    profile = tmp_path / "profile"
+    executable = profile / ".codex" / "packages" / "bin" / "codex.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"")
+    for name in (
+        "HOME",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "CODEX_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    executor = CodexAdaptExecutor(ArtifactStore(artifact_root), executable=str(executable))
+    agent_tool = executor._install_agent_tool_launcher(workspace, plan)
+
+    environment = executor._child_environment(agent_tool, plan)
+
+    assert environment["HOME"] == str(profile.resolve())
+    if sys.platform == "win32":
+        assert environment["USERPROFILE"] == str(profile.resolve())
+    assert environment["CODEX_HOME"] == str((profile / ".codex").resolve())
+
+
 def test_codex_executor_rechecks_machine_manifest_before_execution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

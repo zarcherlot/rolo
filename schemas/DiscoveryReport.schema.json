@@ -39,6 +39,20 @@
           "title": "Route Evidence",
           "type": "array"
         },
+        "executable_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Executable Ids",
+          "type": "array"
+        },
+        "hardware_resource_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hardware Resource Ids",
+          "type": "array"
+        },
         "limitations": {
           "items": {
             "type": "string"

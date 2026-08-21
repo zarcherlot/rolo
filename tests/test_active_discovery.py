@@ -552,6 +552,38 @@ def test_build_root_is_usable_primary_artifact_evidence(tmp_path: Path) -> None:
     assert report.executables[0].artifact_analysis.build_roots == [str(build.resolve())]
 
 
+def test_build_scanner_excludes_cmake_probe_binaries_and_prefers_install_artifacts(
+    tmp_path: Path,
+) -> None:
+    build = tmp_path / "build"
+    install = tmp_path / "install"
+    (build / "CMakeFiles" / "CompilerIdCXX").mkdir(parents=True)
+    (build / "bin").mkdir()
+    (install / "bin").mkdir(parents=True)
+    (build / "CMakeFiles" / "CompilerIdCXX" / "CMakeCXXCompilerId.exe").write_bytes(
+        b"MZ" + b"\0" * 62
+    )
+    for index in range(205):
+        (build / "bin" / f"build-{index:03}.exe").write_bytes(b"MZ" + b"\0" * 62)
+    for name in ("deployed-controller.exe", "deployed-camera.exe"):
+        (install / "bin" / name).write_bytes(b"MZ" + b"\0" * 62)
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(build_roots=[build], install_roots=[install]),
+            projects=[],
+            run_root=tmp_path / "run",
+        )
+    )
+    names = {item.name for item in report.executables}
+
+    assert "CMakeCXXCompilerId.exe" not in names
+    assert {"deployed-controller.exe", "deployed-camera.exe"} <= names
+    assert len(report.executables) == 200
+    assert any("executable report limit reached" in warning for warning in report.warnings)
+    assert all(item.origin == "DISCOVERED_ARTIFACT" for item in report.executables[:2])
+
+
 def test_artifact_documents_and_configs_are_isolated_per_executable(tmp_path: Path) -> None:
     install = tmp_path / "install"
     docs = tmp_path / "docs"
@@ -659,6 +691,35 @@ def test_help_probe_enforces_output_limit(tmp_path: Path, monkeypatch: pytest.Mo
     assert len(output.read_bytes()) == 32
 
 
+def test_executable_id_is_stable_when_unrelated_executable_is_added(tmp_path: Path) -> None:
+    target = tmp_path / "z-target.exe"
+    unrelated = tmp_path / "a-unrelated.exe"
+    target.write_bytes(b"MZ-target")
+    unrelated.write_bytes(b"MZ-unrelated")
+    before = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                executables=[target], active_probe=ActiveProbeMode.NONE
+            ),
+            projects=[],
+            run_root=tmp_path / "run-before",
+        )
+    )
+    after = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(
+                executables=[unrelated, target], active_probe=ActiveProbeMode.NONE
+            ),
+            projects=[],
+            run_root=tmp_path / "run-after",
+        )
+    )
+
+    before_id = next(item.executable_id for item in before.executables if item.name == target.name)
+    after_id = next(item.executable_id for item in after.executables if item.name == target.name)
+    assert before_id == after_id
+
+
 def test_help_probe_timeout_does_not_wait_for_blocked_output_reader(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -729,7 +790,7 @@ def test_help_probe_count_limit_is_reported_without_running_remaining_binaries(
     assert report.executables[1].safety["possible_side_effects"] == []
 
 
-def test_ros_runtime_evidence_is_attributed_only_when_requested(tmp_path: Path) -> None:
+def test_ros_runtime_evidence_stays_global_when_requested(tmp_path: Path) -> None:
     install = tmp_path / "install"
     install.mkdir()
     (install / "driver.exe").write_bytes(b"MZ" + b"\0" * 62)
@@ -762,8 +823,11 @@ def test_ros_runtime_evidence_is_attributed_only_when_requested(tmp_path: Path) 
     assert static_report.coverage["ros_runtime"].status == "NOT_PROBED"
     assert static_report.executables[0].communication.ros["nodes"] == []
     assert runtime_report.coverage["ros_runtime"].status == "OBSERVED"
-    assert runtime_report.executables[0].communication.ros["nodes"] == ["/driver"]
-    assert runtime_report.executables[0].evidence["ros_runtime"] == ["live_ros_graph"]
+    assert runtime_report.coverage["ros_runtime"].records == 3
+    assert runtime_report.executables[0].communication.ros["nodes"] == []
+    assert runtime_report.executables[0].communication.ros["services"] == []
+    assert "runtime_topics" not in runtime_report.executables[0].communication.ros
+    assert "ros_runtime" not in runtime_report.executables[0].evidence
 
 
 def test_empty_source_root_is_rejected_instead_of_claiming_a_discovery_mode(

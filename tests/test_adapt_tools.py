@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
+from rolo.adapter_runtime import StaleAdapterReleaseError
 from rolo.agent_tool import adapt_app
 from rolo.agent_tool import app as agent_tool_app
 from rolo.cli import app
@@ -108,6 +110,44 @@ def test_workset_surfaces_a_corrupt_current_release(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         build_operation_workset(artifact_root, output_root, "demo_diff", discovery_id)
+
+
+def test_workset_reports_hash_valid_stale_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source_root = tmp_path / "source"
+    discovery_id = _discover(artifact_root, source_root)
+    operation = "app.teleop.velocity"
+    release = SimpleNamespace(
+        release_id="release-old",
+        discovery_id=discovery_id,
+        target_fingerprint_sha256="0" * 64,
+    )
+    bundle = SimpleNamespace(operations=[SimpleNamespace(operation=operation)])
+    catalog = SimpleNamespace(
+        tools=[SimpleNamespace(operation=operation, availability="VERIFIED")]
+    )
+
+    def stale_release(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise StaleAdapterReleaseError(
+            "stale fixture",
+            release_root=tmp_path / "output/release-old",
+            release=release,
+            bundle=bundle,
+            catalog=catalog,
+        )
+
+    monkeypatch.setattr("rolo.stages.adapt.workset.load_current_release", stale_release)
+
+    workset = build_operation_workset(
+        artifact_root, tmp_path / "output", "demo_diff", discovery_id
+    )
+    velocity = next(item for item in workset.operations if item.operation == operation)
+
+    assert workset.release_id == "release-old"
+    assert velocity.registration == "STALE"
+    assert velocity.implementation == "UNBOUND"
 
 
 def test_candidate_and_bounded_evidence_queries_are_focused(tmp_path: Path) -> None:

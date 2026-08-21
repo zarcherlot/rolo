@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Literal
@@ -7,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from rolo.adapter_runner import BoundedAdapterRunner
+from rolo.runtime_context import admitted_runtime_environment
 
 
 class HardwareEvidenceComponent(BaseModel):
@@ -62,6 +64,7 @@ def collect_hardware_provider_evidence(
         timeout_s=timeout_s,
         max_stdout_bytes=1_000_000,
         max_stderr_bytes=200_000,
+        runtime_environment=admitted_runtime_environment(os.environ),
     )
     if completed.timed_out:
         raise ValueError("hardware evidence provider timed out")

@@ -23,6 +23,25 @@ class WikiHeuristicFinding(BaseModel):
     source: Literal["DETERMINISTIC_RULE", "ADAPT_AGENT_SKILL"] = "DETERMINISTIC_RULE"
 
 
+class WikiUnknownAssessment(BaseModel):
+    """Advisory review of one exact machine-reported unknown."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unknown: str = Field(min_length=1, max_length=500)
+    classification: Literal[
+        "COLLECTED_EVIDENCE_REVIEW",
+        "TARGET_PROBE_REQUIRED",
+        "EXTERNAL_INPUT_REQUIRED",
+        "INSUFFICIENT_EVIDENCE",
+    ]
+    assessment: str = Field(min_length=1, max_length=500)
+    confidence: Literal["LOW", "MEDIUM"]
+    basis: list[str] = Field(min_length=1, max_length=8)
+    next_step: str = Field(min_length=1, max_length=500)
+    source: Literal["DETERMINISTIC_RULE", "ADAPT_AGENT_SKILL"] = "DETERMINISTIC_RULE"
+
+
 class WikiInsightBundle(BaseModel):
     """Skill-shaped output contract for optional, non-authoritative Wiki enrichment."""
 
@@ -32,6 +51,10 @@ class WikiInsightBundle(BaseModel):
     robot_id: str
     discovery_id: str
     findings: list[WikiHeuristicFinding] = Field(default_factory=list, max_length=40)
+    unknown_assessments: list[WikiUnknownAssessment] = Field(
+        default_factory=list,
+        max_length=100,
+    )
 
 
 class WikiInsightProvider(Protocol):
@@ -185,10 +208,29 @@ def merge_wiki_insights(
         return builtin
     if external.robot_id != report.robot_id or external.discovery_id != report.discovery_id:
         raise ValueError("Wiki insight bundle does not match the discovery")
+    reported_unknowns = set(active.unknowns)
+    invalid_unknowns = [
+        item.unknown
+        for item in external.unknown_assessments
+        if item.unknown not in reported_unknowns
+    ]
+    if invalid_unknowns:
+        raise ValueError(
+            "Wiki insight bundle references unknowns not present in active discovery: "
+            + ", ".join(invalid_unknowns[:3])
+        )
     unique: dict[tuple[str, str], WikiHeuristicFinding] = {}
     for finding in [*builtin.findings, *external.findings]:
         unique[(finding.category, finding.statement)] = finding
-    return builtin.model_copy(update={"findings": list(unique.values())[:40]})
+    unknown_assessments = {
+        item.unknown: item for item in external.unknown_assessments
+    }
+    return builtin.model_copy(
+        update={
+            "findings": list(unique.values())[:40],
+            "unknown_assessments": list(unknown_assessments.values())[:100],
+        }
+    )
 
 
 def collect_wiki_insights(

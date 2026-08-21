@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,17 @@ from rolo.invocation_policy import (
     validate_content_result,
     validate_digest_pinned_mutation_input,
 )
+from rolo.runtime_context import AdapterRuntimeContext
 from rolo.schema_subset import validate_object
 from rolo.stages.adapt.models import (
     AdapterBundleManifest,
+    AdapterConformanceReport,
     AdapterReleaseIndex,
     AdapterReleaseManifest,
+    AdaptGateReport,
+    AdaptGateStatus,
     PublishedAdapterFile,
+    StateGraphBaseline,
     ToolCatalog,
 )
 
@@ -49,6 +55,16 @@ def _relative_file(root: Path, relative: str) -> Path:
     return resolved
 
 
+def _load_release_manifest(path: Path) -> AdapterReleaseManifest:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("adapter release manifest is not valid JSON") from exc
+    if not isinstance(raw, dict) or raw.get("schema_version") != "robot-adapter-release/v2":
+        raise ValueError("legacy adapter releases cannot be loaded for runtime use")
+    return AdapterReleaseManifest.model_validate(raw)
+
+
 @dataclass(frozen=True)
 class AdapterOutputLayout:
     root: Path
@@ -63,23 +79,43 @@ class AdapterOutputLayout:
         return self.robot_root(robot_id) / "current.json"
 
 
-def load_current_release(
-    output_root: Path,
+class StaleAdapterReleaseError(ValueError):
+    """A hash-valid current release that no longer matches target evidence."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        release_root: Path,
+        release: AdapterReleaseManifest,
+        bundle: AdapterBundleManifest,
+        catalog: ToolCatalog,
+    ) -> None:
+        super().__init__(message)
+        self.release_root = release_root
+        self.release = release
+        self.bundle = bundle
+        self.catalog = catalog
+
+
+def _load_verified_release(
+    layout: AdapterOutputLayout,
     robot_id: str,
+    release_id: str,
     *,
-    artifact_root: Path | None = None,
+    manifest_relative: str = "manifest.json",
+    expected_manifest_sha256: str | None = None,
 ) -> tuple[Path, AdapterReleaseManifest, AdapterBundleManifest, ToolCatalog]:
-    layout = AdapterOutputLayout(output_root)
-    index_path = layout.current(robot_id)
-    index = AdapterReleaseIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
-    if index.robot_id != robot_id:
-        raise ValueError("adapter release index robot identity mismatch")
-    release_root = layout.release(robot_id, index.release_id)
-    manifest_path = _relative_file(release_root, index.manifest)
-    if sha256_file(manifest_path) != index.manifest_sha256:
+    """Load one published release through the complete immutable-artifact checks."""
+    release_root = layout.release(robot_id, release_id)
+    manifest_path = _relative_file(release_root, manifest_relative)
+    if (
+        expected_manifest_sha256 is not None
+        and sha256_file(manifest_path) != expected_manifest_sha256
+    ):
         raise ValueError("adapter release manifest hash mismatch")
-    release = AdapterReleaseManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-    if release.robot_id != robot_id or release.release_id != index.release_id:
+    release = _load_release_manifest(manifest_path)
+    if release.robot_id != robot_id or release.release_id != release_id:
         raise ValueError("adapter release identity mismatch")
     checks = (
         (release.bundle_manifest, release.bundle_manifest_sha256),
@@ -101,10 +137,30 @@ def load_current_release(
     catalog = ToolCatalog.model_validate_json(
         _relative_file(release_root, release.tool_catalog).read_text(encoding="utf-8")
     )
+    state_graph = StateGraphBaseline.model_validate_json(
+        _relative_file(release_root, release.state_graph).read_text(encoding="utf-8")
+    )
+    conformance = AdapterConformanceReport.model_validate_json(
+        _relative_file(release_root, release.conformance_report).read_text(encoding="utf-8")
+    )
+    gate = AdaptGateReport.model_validate_json(
+        _relative_file(release_root, release.gate_report).read_text(encoding="utf-8")
+    )
     if bundle.robot_id != robot_id or bundle.discovery_id != release.discovery_id:
         raise ValueError("adapter bundle identity mismatch")
     if catalog.robot_id != robot_id or catalog.discovery_id != release.discovery_id:
         raise ValueError("active Tool Catalog identity mismatch")
+    if state_graph.robot_id != robot_id or state_graph.discovery_id != release.discovery_id:
+        raise ValueError("adapter State Graph identity mismatch")
+    if conformance.robot_id != robot_id or conformance.discovery_id != release.discovery_id:
+        raise ValueError("adapter conformance identity mismatch")
+    if (
+        gate.robot_id != robot_id
+        or gate.discovery_id != release.discovery_id
+        or gate.run_id != release_id
+        or gate.status != AdaptGateStatus.PASSED
+    ):
+        raise ValueError("adapter release lacks a matching passed gate report")
     if bundle.package_sha256 != release.adapter_package_sha256:
         raise ValueError("adapter bundle and release package hashes differ")
     published_files = {
@@ -131,18 +187,85 @@ def load_current_release(
             or descriptor.contract_sha256 != entry.contract_sha256
         ):
             raise ValueError(f"adapter contract binding mismatch: {entry.operation}")
-    if artifact_root is not None:
-        from rolo.stages.adapt.discovery import load_latest_report
-        from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
-
-        latest = load_latest_report(artifact_root, robot_id)
-        if release.target_fingerprint_sha256 is None:
-            raise ValueError("active adapter release predates target freshness validation")
-        if (
-            target_fingerprint_sha256(latest, artifact_root)
-            != release.target_fingerprint_sha256
+        if descriptor.availability != "VERIFIED" or descriptor.adapter != (
+            f"bundle:{bundle.bundle_id}#{entry.entrypoint}"
         ):
-            raise ValueError("active adapter release is stale for the latest target evidence")
+            raise ValueError(f"adapter catalog binding mismatch: {entry.operation}")
+    bundled_operations = {entry.operation for entry in bundle.operations}
+    unexpected_verified = sorted(
+        descriptor.operation
+        for descriptor in catalog.tools
+        if descriptor.availability == "VERIFIED"
+        and descriptor.operation not in bundled_operations
+    )
+    if unexpected_verified:
+        raise ValueError(
+            f"Tool Catalog verifies operations absent from adapter bundle: {unexpected_verified}"
+        )
+    return release_root, release, bundle, catalog
+
+
+def _verify_release_freshness(
+    release_root: Path,
+    release: AdapterReleaseManifest,
+    bundle: AdapterBundleManifest,
+    catalog: ToolCatalog,
+    *,
+    artifact_root: Path,
+) -> None:
+    from rolo.stages.adapt.discovery import load_latest_report
+    from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+
+    latest = load_latest_report(artifact_root, release.robot_id)
+    try:
+        current_fingerprint = target_fingerprint_sha256(
+            latest,
+            artifact_root,
+            operations=[entry.operation for entry in bundle.operations],
+        )
+    except ValueError as exc:
+        raise StaleAdapterReleaseError(
+            f"adapter release cannot match latest target evidence: {exc}",
+            release_root=release_root,
+            release=release,
+            bundle=bundle,
+            catalog=catalog,
+        ) from exc
+    if current_fingerprint != release.target_fingerprint_sha256:
+        raise StaleAdapterReleaseError(
+            "adapter release is stale for the latest target evidence",
+            release_root=release_root,
+            release=release,
+            bundle=bundle,
+            catalog=catalog,
+        )
+
+
+def load_current_release(
+    output_root: Path,
+    robot_id: str,
+    *,
+    artifact_root: Path,
+) -> tuple[Path, AdapterReleaseManifest, AdapterBundleManifest, ToolCatalog]:
+    layout = AdapterOutputLayout(output_root)
+    index_path = layout.current(robot_id)
+    index = AdapterReleaseIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
+    if index.robot_id != robot_id:
+        raise ValueError("adapter release index robot identity mismatch")
+    release_root, release, bundle, catalog = _load_verified_release(
+        layout,
+        robot_id,
+        index.release_id,
+        manifest_relative=index.manifest,
+        expected_manifest_sha256=index.manifest_sha256,
+    )
+    _verify_release_freshness(
+        release_root,
+        release,
+        bundle,
+        catalog,
+        artifact_root=artifact_root,
+    )
     return release_root, release, bundle, catalog
 
 
@@ -152,18 +275,17 @@ def invoke_adapter(
     operation: str,
     payload: dict[str, Any],
     *,
+    artifact_root: Path,
     timeout_s: float = 30.0,
     policy_path: Path | None = None,
     audit_path: Path | None = None,
     r3_authorizer_path: Path | None = None,
     quiescence_provider_path: Path | None = None,
-    artifact_root: Path | None = None,
-    discovery_artifact_root: Path | None = None,
     runner: AdapterRunner | None = None,
 ) -> dict[str, Any]:
     """Invoke one catalogued operation through the immutable adapter RPC bundle."""
     release_root, release, bundle, catalog = load_current_release(
-        output_root, robot_id, artifact_root=discovery_artifact_root
+        output_root, robot_id, artifact_root=artifact_root
     )
     descriptor = next((tool for tool in catalog.tools if tool.operation == operation), None)
     if descriptor is None:
@@ -209,6 +331,7 @@ def invoke_adapter(
         stdin=json.dumps(payload, ensure_ascii=False),
         cwd=release_root,
         timeout_s=min(timeout_s, descriptor.max_duration_s),
+        runtime_environment=release.runtime_environment.as_environment(),
     )
     if completed.timed_out:
         raise RuntimeError("adapter invocation timed out")
@@ -248,6 +371,7 @@ def probe_adapter_package(
     *,
     timeout_s: float = 10.0,
     runner: AdapterRunner | None = None,
+    runtime_environment: Mapping[str, str] | None = None,
 ) -> None:
     """Require the generated package to self-describe exactly the declared entrypoints."""
     completed = (runner or BoundedAdapterRunner()).run(
@@ -256,6 +380,7 @@ def probe_adapter_package(
         timeout_s=timeout_s,
         max_stdout_bytes=200_000,
         max_stderr_bytes=200_000,
+        runtime_environment=runtime_environment,
     )
     if completed.timed_out:
         raise ValueError("adapter package describe timed out")
@@ -281,7 +406,8 @@ def publish_release(
     robot_id: str,
     release_id: str,
     discovery_id: str,
-    target_fingerprint_sha256: str | None = None,
+    target_fingerprint_sha256: str,
+    runtime_environment: Mapping[str, str],
     bundle_manifest_path: Path,
     adapter_package_path: Path,
     adapter_files: list[tuple[str, Path, str]] | None = None,
@@ -332,15 +458,12 @@ def publish_release(
         ]
         entry = next(item for item in published_adapter_files if item.role == "ENTRYPOINT")
         release = AdapterReleaseManifest(
-            schema_version=(
-                "robot-adapter-release/v2"
-                if target_fingerprint_sha256 is not None
-                else "robot-adapter-release/v1"
-            ),
+            schema_version="robot-adapter-release/v2",
             release_id=release_id,
             robot_id=robot_id,
             discovery_id=discovery_id,
             target_fingerprint_sha256=target_fingerprint_sha256,
+            runtime_environment=AdapterRuntimeContext.capture(runtime_environment),
             bundle_manifest="adapter/adapter-manifest.json",
             bundle_manifest_sha256=sha256_file(staging / "adapter/adapter-manifest.json"),
             adapter_package=entry.path,
@@ -356,7 +479,9 @@ def publish_release(
             gate_report_sha256=sha256_file(staging / "gate-report.json"),
         )
         manifest_path = staging / "manifest.json"
-        manifest_path.write_text(release.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        manifest_path.write_text(
+            release.model_dump_json(indent=2, by_alias=True) + "\n", encoding="utf-8"
+        )
         release_root.parent.mkdir(parents=True, exist_ok=True)
         staging.replace(release_root)
         manifest_path = release_root / "manifest.json"
@@ -367,14 +492,26 @@ def publish_release(
         raise
 
 
-def activate_release(output_root: Path, robot_id: str, release_id: str) -> Path:
+def activate_release(
+    output_root: Path,
+    robot_id: str,
+    release_id: str,
+    *,
+    artifact_root: Path,
+) -> Path:
     """Atomically make an already-published, fully validated release current."""
     layout = AdapterOutputLayout(output_root)
-    release_root = layout.release(robot_id, release_id)
+    release_root, release, bundle, catalog = _load_verified_release(
+        layout, robot_id, release_id
+    )
+    _verify_release_freshness(
+        release_root,
+        release,
+        bundle,
+        catalog,
+        artifact_root=artifact_root,
+    )
     manifest_path = _relative_file(release_root, "manifest.json")
-    release = AdapterReleaseManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-    if release.robot_id != robot_id or release.release_id != release_id:
-        raise ValueError("adapter release identity mismatch before activation")
     index = AdapterReleaseIndex(
         robot_id=robot_id,
         release_id=release_id,

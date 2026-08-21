@@ -181,7 +181,7 @@ def test_python_version_conflict_is_reported_and_flows_to_build_evidence(
     ]
 
 
-def test_ros_dependencies_use_static_ament_index_and_distinguish_missing(
+def test_ros_dependencies_use_static_ament_index_without_misclassifying_rosdep_keys(
     tmp_path: Path,
 ) -> None:
     prefix = tmp_path / "install"
@@ -228,8 +228,9 @@ def test_ros_dependencies_use_static_ament_index_and_distinguish_missing(
     by_name = {candidate.name: candidate for candidate in resolution.candidates}
     assert by_name["demo_msgs"].status == CandidateResolutionStatus.INSTALLED
     assert by_name["demo_msgs"].installed_version == "1.2.3"
-    assert by_name["missing_msgs"].status == CandidateResolutionStatus.MISSING
-    assert resolution.status == "SUCCEEDED"
+    assert by_name["missing_msgs"].status == CandidateResolutionStatus.UNKNOWN
+    assert "may be a rosdep key" in str(by_name["missing_msgs"].reason)
+    assert resolution.status == "PARTIAL"
 
 
 def test_ros_dependency_version_constraint_is_compared_from_static_manifest(

@@ -48,9 +48,6 @@ stage packages.
    context is a compact Operation Workset summary, not the complete Registry, Wiki, or executable
    inventory. A read-only launcher pinned to that discovery lets the Agent retrieve one contract,
    candidate, executable, launch record, dependency view, Wiki section, or evidence snippet at a time.
-   The workspace snapshot stores only a Wiki heading/hash index; compressed Wiki data is opened by
-   the launcher and every section/search response is character-bounded and cursor-paginated. A
-   document-title query returns an outline rather than the whole Wiki.
 5. The product-owned Canonical Operation Registry defines the complete operation vocabulary,
    while independently versioned YAML contracts define canonical CLI, schemas, errors, semantics,
    risk and access policy. Each adapter entry and Tool Catalog descriptor binds the exact contract
@@ -94,11 +91,18 @@ stage packages.
    Active Tool Catalog, State Graph, conformance and gate report by hash, writes the audit handoff, and only
    then transactionally updates both current indexes with compensation rollback. A failed publication
    restores both prior indexes and removes the incomplete release. The release also binds a stable
-   target fingerprint. Runtime access rejects a release after route, platform, or hardware facts
-   change, while an equivalent rediscovery does not force needless regeneration.
+   operation-scoped target fingerprint. Runtime access rejects a release after relevant route,
+   executable, hardware, platform, or admitted ROS runtime-context facts change. Newly discovered
+   facts unrelated to the bundle do not force needless regeneration. Scoped executable and hardware
+   evidence is selected only through exact `executable_id` and `hardware_resource_id` references;
+   names and substrings are never used as release bindings. Before the atomic current pointer moves,
+   the candidate passes the same manifest, complete file-set, identity, contract, catalog, State
+   Graph, conformance, passed-gate, and freshness checks used by runtime loading. A rejected
+   candidate cannot replace the existing current release.
 9. The Adapter Agent queries a bounded workspace-local snapshot and exact artifact Schemas. Its
-   deterministic handoff pack validates hashes and `describe`, returns only final file payloads in a
-   structured result, and removes Agent-created workspace files. Rolo reconstructs and gates the
+   deterministic handoff pack validates paths and hashes without executing generated code, returns
+   only final file payloads in a structured result, and removes Agent-created workspace files. Rolo
+   reconstructs and gates the
    snapshot without trusting Agent filesystem access.
 10. Diagnose validates the full adapt handoff; Verify validates a structured diagnosis handoff.
    Merely creating a file at a handoff path never opens the next gate.
@@ -112,6 +116,15 @@ provider processes share one argv-only runner with a sanitized environment, priv
 bounded stdout/stderr, timeout, process-tree termination, and POSIX resource limits. Production
 deployments should additionally isolate the Rolo service account/container because this portable
 runner is not a kernel network/filesystem sandbox.
+
+Discovery records only the explicit `AdapterRuntimeContext` contract: allowlisted, non-secret ROS
+and middleware fields such as ROS domain, RMW implementation, profile file and existing overlay
+paths. Unknown fields are forbidden in a release, while missing optional fields remain absent. The
+gate binds its canonical form into release v2 and
+the target fingerprint; `describe` and invocation receive that same context through the bounded
+runner. Credentials and unrelated host environment variables are never admitted. Runtime catalog,
+schema, State Graph and invoke access always revalidates the release against latest discovery; this
+freshness check has no optional bypass.
 
 The retained Adapt artifacts are deliberately small and centralized:
 

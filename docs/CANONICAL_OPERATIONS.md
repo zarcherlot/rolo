@@ -7,9 +7,9 @@
 Registry Operation、契约生命周期、升级/降级规则、R0-R3、数据分级和调用方法见
 [REGISTRY_OPERATION_GUIDE.md](REGISTRY_OPERATION_GUIDE.md)。
 
-清单表示稳定的产品词汇，不表示 294 项都已经具有可发布契约。每个 operation 必须显式
-定义输入/输出 Schema、错误契约、读写属性、风险、幂等性和取消语义，才能通过 Adapt
-门禁成为 `VERIFIED`；契约处于 `DRAFT` 的条目保持 `UNAVAILABLE`。已编写的正式契约见
+清单表示稳定的产品词汇；当前 294 项均具有明确契约，其中 62 项为 `RELEASED`、232 项为
+`GATEABLE`、0 项为 `DRAFT`。目标机器仍必须提供匹配 candidate、adapter 和 probe 证据，
+operation 才能通过 Adapt 门禁成为 `VERIFIED`。正式契约见
 [OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)，可通过 `robotctl tool contract validate`
 编译校验。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
 [OPERATION_CONTRACT_STANDARDIZATION.md](OPERATION_CONTRACT_STANDARDIZATION.md)。

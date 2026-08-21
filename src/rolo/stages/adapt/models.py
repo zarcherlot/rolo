@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.models import ToolDescriptor, utc_now
+from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.contracts import AgentRequirement
 
 
@@ -189,15 +190,12 @@ class AdapterReleaseManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-release/v1", "robot-adapter-release/v2"] = (
-        "robot-adapter-release/v2"
-    )
+    schema_version: Literal["robot-adapter-release/v2"] = "robot-adapter-release/v2"
     release_id: str
     robot_id: str
     discovery_id: str
-    target_fingerprint_sha256: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
+    target_fingerprint_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    runtime_environment: AdapterRuntimeContext = Field(default_factory=AdapterRuntimeContext)
     bundle_manifest: str
     bundle_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     adapter_package: str
@@ -212,16 +210,6 @@ class AdapterReleaseManifest(BaseModel):
     gate_report: str
     gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     published_at: datetime = Field(default_factory=utc_now)
-
-    @model_validator(mode="after")
-    def require_v2_target_fingerprint(self) -> AdapterReleaseManifest:
-        if (
-            self.schema_version == "robot-adapter-release/v2"
-            and self.target_fingerprint_sha256 is None
-        ):
-            raise ValueError("adapter release v2 requires a target fingerprint")
-        return self
-
 
 class AdapterReleaseIndex(BaseModel):
     """Atomic pointer to the only adapter release eligible for runtime use."""
