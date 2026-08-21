@@ -13,7 +13,9 @@ from rolo.core.config import get_settings
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.workset import (
+    OperationExecutionClass,
     build_operation_workset,
+    build_target_operation_slice,
     candidate_detail,
     evidence_snippet,
     resolve_evidence_path,
@@ -54,6 +56,45 @@ def test_workset_joins_registry_candidates_and_registration(tmp_path: Path) -> N
     assert velocity.applicability == "OBSERVED"
     assert velocity.implementation == "UNBOUND"
     assert velocity.registration == "NOT_REGISTERED"
+
+
+def test_target_operation_slice_builds_deterministic_shadow_dependency_closure(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source_root = tmp_path / "source"
+    discovery_id = _discover(artifact_root, source_root)
+    classifier = {
+        "app.navigation.start": OperationExecutionClass.AGENT_NATIVE,
+        "app.navigation.cancel": OperationExecutionClass.PRODUCT_BUILTIN,
+    }
+
+    first = build_target_operation_slice(
+        artifact_root,
+        tmp_path / "output",
+        "demo_diff",
+        discovery_id,
+        eligible_operations=["app.navigation.start"],
+        deferred_operations={"app.task.start": "NO_ROUTE", "app.test.start": "NO_ROUTE"},
+        classifier=classifier,
+    )
+    second = build_target_operation_slice(
+        artifact_root,
+        tmp_path / "output",
+        "demo_diff",
+        discovery_id,
+        eligible_operations=["app.navigation.start"],
+        deferred_operations={"app.test.start": "NO_ROUTE", "app.task.start": "NO_ROUTE"},
+        classifier=classifier,
+    )
+
+    assert first.slice_sha256 == second.slice_sha256
+    assert "app.navigation.start" in first.primary_operations
+    assert "app.navigation.cancel" in first.dependency_operations
+    assert "app.navigation.start" in first.agent_native_operations
+    assert "app.navigation.cancel" in first.builtin_operations
+    assert first.deferred_summary == {"NO_ROUTE": 2}
+    assert first.registry_sha256
 
 
 def test_workset_surfaces_a_corrupt_current_release(tmp_path: Path) -> None:
@@ -131,6 +172,31 @@ def test_adapt_operation_cli_uses_compact_workset(tmp_path: Path, monkeypatch) -
     assert result.exit_code == 0, result.output
     assert '"registry_operation_count": 294' in result.output
     assert '"operations"' not in result.output
+
+    paged = CliRunner().invoke(
+        app,
+        [
+            "adapt",
+            "operations",
+            "list",
+            "--robot",
+            "demo_diff",
+            "--scope",
+            "all",
+            "--limit",
+            "2",
+        ],
+    )
+    assert paged.exit_code == 0, paged.output
+    assert '"returned_count": 2' in paged.output
+    assert '"truncated": true' in paged.output
+
+    searched = CliRunner().invoke(
+        app,
+        ["adapt", "operations", "search", "--robot", "demo_diff", "teleop"],
+    )
+    assert searched.exit_code == 0, searched.output
+    assert "app.teleop.velocity" in searched.output
 
 
 def test_agent_tool_exposes_queries_but_not_discovery_run_or_runtime_invoke() -> None:

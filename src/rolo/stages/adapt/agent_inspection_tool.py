@@ -15,6 +15,10 @@ from typing import Any
 from rolo_agent_wiki import wiki_search_page, wiki_section_page
 
 MAX_WIKI_CONTENT_BYTES = 2_000_000
+MAX_OPERATION_LIST_LIMIT = 50
+DEFAULT_OPERATION_LIST_LIMIT = 20
+MAX_BATCH_INSPECT = 8
+MAX_QUERY_RESPONSE_BYTES = 16 * 1024
 
 
 def _take_option(arguments: list[str], name: str) -> str | None:
@@ -34,6 +38,42 @@ def _required_argument(arguments: list[str]) -> str:
     if not positional:
         raise ValueError("missing query argument")
     return positional[-1]
+
+
+def _take_flag(arguments: list[str], name: str) -> bool:
+    if name not in arguments:
+        return False
+    arguments.remove(name)
+    return True
+
+
+def _operation_items(snapshot: dict[str, Any], scope: str) -> list[dict[str, Any]]:
+    items = snapshot["operation_index"]
+    if scope == "all":
+        return items
+    if scope == "current-task":
+        allowed = set(snapshot["current_task_operations"])
+    elif scope == "target":
+        allowed = set(snapshot["target_operations"])
+    else:
+        raise ValueError("operation scope must be current-task, target, or all")
+    return [item for item in items if item["operation"] in allowed]
+
+
+def _page(items: list[dict[str, Any]], *, cursor: int, limit: int) -> dict[str, Any]:
+    if cursor < 0:
+        raise ValueError("cursor must be non-negative")
+    if limit < 1 or limit > MAX_OPERATION_LIST_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_OPERATION_LIST_LIMIT}")
+    selected = items[cursor : cursor + limit]
+    next_cursor = cursor + len(selected)
+    return {
+        "operations": selected,
+        "returned_count": len(selected),
+        "truncated": next_cursor < len(items),
+        "next_cursor": str(next_cursor) if next_cursor < len(items) else None,
+        "total_count": len(items),
+    }
 
 
 def _workspace_file(relative: str) -> Path:
@@ -183,28 +223,81 @@ def _query(snapshot: dict[str, Any], arguments: list[str]) -> Any:
     if group == "operations" and action == "summary":
         return snapshot["workset_summary"]
     if group == "operations" and action == "list":
+        all_requested = _take_flag(rest, "--all")
+        scope = _take_option(rest, "--scope") or ("all" if all_requested else "all")
+        limit_value = _take_option(rest, "--limit")
+        cursor = int(_take_option(rest, "--cursor") or "0")
         filters = {
             key: _take_option(rest, f"--{key}")
             for key in ("applicability", "implementation", "registration", "layer")
         }
-        items = snapshot["workset_operations"]
+        items = _operation_items(snapshot, scope)
+        filtered = [
+            item
+            for item in items
+            if all(value is None or item.get(key) == value for key, value in filters.items())
+        ]
+        # No paging options preserves the legacy full-list behavior.
+        if limit_value is None and not any(
+            value is not None for value in filters.values()
+        ) and scope == "all":
+            page = {
+                "operations": filtered,
+                "returned_count": len(filtered),
+                "truncated": False,
+                "next_cursor": None,
+                "total_count": len(filtered),
+            }
+        else:
+            page = _page(
+                filtered,
+                cursor=cursor,
+                limit=int(limit_value or DEFAULT_OPERATION_LIST_LIMIT),
+            )
         return {
             "robot_id": snapshot["robot_id"],
             "discovery_id": snapshot["discovery_id"],
-            "operations": [
-                item
-                for item in items
-                if all(value is None or item.get(key) == value for key, value in filters.items())
-            ],
+            "scope": scope,
+            **page,
+        }
+    if group == "operations" and action == "search":
+        scope = _take_option(rest, "--scope") or "target"
+        limit = int(_take_option(rest, "--limit") or "10")
+        cursor = int(_take_option(rest, "--cursor") or "0")
+        query = _required_argument(rest).casefold()
+        matches = [
+            item
+            for item in _operation_items(snapshot, scope)
+            if query in item["operation"].casefold() or query in item["layer"].casefold()
+        ]
+        return {
+            "robot_id": snapshot["robot_id"],
+            "discovery_id": snapshot["discovery_id"],
+            "query": query,
+            "scope": scope,
+            **_page(matches, cursor=cursor, limit=limit),
         }
     if group == "operations" and action == "inspect":
         operation = _required_argument(rest)
         try:
             return snapshot["operation_details"][operation]
         except KeyError as exc:
-            raise ValueError(
-                f"operation is outside the prepared Agent workset: {operation}"
-            ) from exc
+            raise ValueError(f"NOT_IN_CURRENT_SLICE: {operation}") from exc
+    if group == "operations" and action == "batch-inspect":
+        operations = [value for value in rest if not value.startswith("--")]
+        if not operations:
+            raise ValueError("batch-inspect requires at least one operation")
+        if len(operations) > MAX_BATCH_INSPECT:
+            raise ValueError(f"batch-inspect accepts at most {MAX_BATCH_INSPECT} operations")
+        outside = [item for item in operations if item not in snapshot["operation_details"]]
+        if outside:
+            raise ValueError(f"NOT_IN_CURRENT_SLICE: {', '.join(outside)}")
+        return {
+            "robot_id": snapshot["robot_id"],
+            "discovery_id": snapshot["discovery_id"],
+            "operations": [snapshot["operation_details"][item] for item in operations],
+            "returned_count": len(operations),
+        }
     if group == "candidates" and action == "inspect":
         operation = _required_argument(rest)
         try:
@@ -308,11 +401,44 @@ def main() -> int:
     snapshot_path = Path(__file__).with_name("rolo-agent-inspection.json")
     try:
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        result = _query(snapshot, sys.argv[1:])
+        original_arguments = sys.argv[1:]
+        arguments = list(original_arguments)
+        result = _query(snapshot, arguments)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    rendered = json.dumps(result, ensure_ascii=False, indent=2)
+    response_bytes = len(rendered.encode("utf-8"))
+    legacy_full_list = (
+        "operations" in original_arguments
+        and "list" in original_arguments
+        and "--limit" not in original_arguments
+        and "--scope" not in original_arguments
+    )
+    if response_bytes > MAX_QUERY_RESPONSE_BYTES and not legacy_full_list:
+        print(
+            json.dumps(
+                {"error": "query response exceeds 16 KiB; narrow the scope or use pagination"},
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    metrics_path = Path(__file__).with_name("rolo-agent-query-metrics.json")
+    try:
+        metrics = (
+            json.loads(metrics_path.read_text(encoding="utf-8"))
+            if metrics_path.is_file()
+            else {}
+        )
+        metrics["query_count"] = int(metrics.get("query_count", 0)) + 1
+        if "inspect" in original_arguments or "batch-inspect" in original_arguments:
+            metrics["inspect_count"] = int(metrics.get("inspect_count", 0)) + 1
+        metrics["response_bytes"] = int(metrics.get("response_bytes", 0)) + response_bytes
+        metrics_path.write_text(json.dumps(metrics, sort_keys=True), encoding="utf-8")
+    except (OSError, ValueError, TypeError):
+        pass
+    print(rendered)
     return 0
 
 
