@@ -6,6 +6,12 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from rolo import __version__
+from rolo.adapt_observability_read_models import (
+    AdaptBaselineStatus,
+    SliceRunDetail,
+    build_adapt_baseline_status,
+    build_slice_run_detail,
+)
 from rolo.adapt_read_models import (
     ADAPT_API_FEATURES,
     OperationGovernanceCollection,
@@ -128,6 +134,17 @@ async def list_operation_governance(
     )
 
 
+@app.get("/v1/adapt/baseline", response_model=AdaptBaselineStatus)
+def get_adapt_baseline_status() -> AdaptBaselineStatus:
+    try:
+        return build_adapt_baseline_status()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt protected baseline failed integrity validation",
+        ) from exc
+
+
 @app.get(
     "/v1/robots/{robot_id}/adapt/operation-slice",
     response_model=TargetOperationSlice,
@@ -185,6 +202,38 @@ def get_robot_slice_stability(
         raise HTTPException(
             status_code=409,
             detail="Adapt Slice stability evidence failed integrity validation",
+        ) from exc
+
+
+@app.get(
+    "/v1/robots/{robot_id}/adapt/slice-runs/{run_id}",
+    response_model=SliceRunDetail,
+)
+def get_robot_slice_run_detail(
+    robot_id: str,
+    run_id: str,
+    request: Request,
+) -> SliceRunDetail:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_slice_run_detail(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            run_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Adapt Slice run decision is unavailable",
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt Slice run decision failed integrity validation",
         ) from exc
 
 
