@@ -6,7 +6,8 @@ from typing import Annotated
 import typer
 
 from rolo.commands.common import emit
-from rolo.core.config import get_settings
+from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import Settings, get_settings
 from rolo.core.models import DiscoveryStatus
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
@@ -17,6 +18,41 @@ from rolo.stages.artifact_paths import resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
 discover_app = typer.Typer(help="Discover hardware, Linux, ROS and application capabilities.")
+
+
+def configured_discovery_service(
+    settings: Settings,
+    artifacts: ArtifactStore,
+) -> DiscoveryService:
+    """Build discovery with the configured optional Wiki agents."""
+    wiki_model = settings.wiki_polish_model or settings.openai_model
+    wiki_polisher = (
+        OpenAIWikiNarrativePolisher(
+            api_key=settings.openai_api_key or "",
+            model=wiki_model or "",
+            timeout_s=settings.wiki_polish_timeout_s,
+        )
+        if settings.wiki_polish_enabled and settings.openai_api_key and wiki_model
+        else None
+    )
+    wiki_insight_provider = (
+        CodexWikiInsightProvider(
+            skill_path=settings.wiki_insights_skill_path,
+            executable=settings.coding_agent_executable,
+            model=settings.coding_agent_model,
+            provider=settings.coding_agent_provider,
+            base_url=settings.coding_agent_base_url,
+            api_key=settings.coding_agent_api_key,
+            timeout_s=settings.wiki_insights_agent_timeout_s,
+        )
+        if settings.wiki_insights_agent_enabled
+        else None
+    )
+    return DiscoveryService(
+        artifacts,
+        wiki_polisher=wiki_polisher,
+        wiki_insight_provider=wiki_insight_provider,
+    )
 
 
 @discover_app.command("run")
@@ -80,35 +116,9 @@ def discovery_run(
             launch_roots=launch_root or [],
             active_probe=active_probe,
         )
-        wiki_model = runtime.settings.wiki_polish_model or runtime.settings.openai_model
-        wiki_polisher = (
-            OpenAIWikiNarrativePolisher(
-                api_key=runtime.settings.openai_api_key or "",
-                model=wiki_model or "",
-                timeout_s=runtime.settings.wiki_polish_timeout_s,
-            )
-            if runtime.settings.wiki_polish_enabled
-            and runtime.settings.openai_api_key
-            and wiki_model
-            else None
-        )
-        wiki_insight_provider = (
-            CodexWikiInsightProvider(
-                skill_path=runtime.settings.wiki_insights_skill_path,
-                executable=runtime.settings.coding_agent_executable,
-                model=runtime.settings.coding_agent_model,
-                provider=runtime.settings.coding_agent_provider,
-                base_url=runtime.settings.coding_agent_base_url,
-                api_key=runtime.settings.coding_agent_api_key,
-                timeout_s=runtime.settings.wiki_insights_agent_timeout_s,
-            )
-            if runtime.settings.wiki_insights_agent_enabled
-            else None
-        )
-        report, artifact = DiscoveryService(
+        report, artifact = configured_discovery_service(
+            runtime.settings,
             runtime.artifacts,
-            wiki_polisher=wiki_polisher,
-            wiki_insight_provider=wiki_insight_provider,
         ).run(
             robot=capability,
             urdf_path=urdf,

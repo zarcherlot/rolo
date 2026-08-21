@@ -40,6 +40,7 @@ from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderResult,
 )
 from rolo.stages.adapt.inputs import AdaptInputs
+from rolo.stages.adapt.journey import AdaptJourneyResult
 from rolo.stages.adapt.models import (
     AdapterAgentDependencyReport,
     AdapterAgentResult,
@@ -101,6 +102,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     CapabilityResolutionShadow,
     ToolDescriptor,
     AdaptInputs,
+    AdaptJourneyResult,
     AdaptPlan,
     AdapterAgentDependencyReport,
     AdapterAgentResult,

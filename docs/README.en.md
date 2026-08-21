@@ -106,8 +106,18 @@ git clone https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
-uv run robotctl init --robot-id your_robot_id
+uv run robotctl adapt start \
+  --robot-id your_robot_id \
+  --project-root /path/to/robot-workspace \
+  --urdf /path/to/robot.urdf  # optional
 ```
+
+`adapt start` is the shortest safe product path. It enrolls the identity, runs readiness checks,
+finds conventional build/install/document/launch evidence, performs read-only runtime discovery,
+generates the editable Wiki, and—when target-observed routes exist—continues through the Adapter
+Agent, independent gate, State Graph, Tool Catalog, handoff, and release. Use `--discover-only` when
+only the Wiki and discovery evidence are needed. See
+[`ADAPT_SHORT_JOURNEY.md`](ADAPT_SHORT_JOURNEY.md) for boundaries and fallback commands.
 
 ### Access the management API
 
@@ -149,7 +159,17 @@ missing, which capabilities are only inferred, and which interfaces are safe to 
 Agent. New team members, algorithm engineers, embedded developers, operations, and test engineers
 all see the same system-wide picture.
 
-The flow is “discover and generate the Wiki → Adapter Agent retrieves evidence → perform adapt”:
+The normal product flow is one command:
+
+```bash
+uv run robotctl adapt start \
+  --robot-id "$ROBOT_ID" \
+  --project-root /path/to/robot-application \
+  --urdf /path/to/your_robot.urdf
+```
+
+For Rolo development and step-by-step troubleshooting, the same underlying services remain
+available as granular commands:
 
 ```bash
 # --urdf is optional; missing hardware semantics remain unresolved

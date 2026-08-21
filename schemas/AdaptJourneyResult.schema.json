@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "ProjectEvidence": {
+      "properties": {
+        "project_root": {
+          "format": "path",
+          "title": "Project Root",
+          "type": "string"
+        },
+        "source_roots": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Source Roots",
+          "type": "array"
+        },
+        "build_roots": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Build Roots",
+          "type": "array"
+        },
+        "install_roots": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Install Roots",
+          "type": "array"
+        },
+        "document_roots": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Document Roots",
+          "type": "array"
+        },
+        "launch_roots": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Launch Roots",
+          "type": "array"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project_root"
+      ],
+      "title": "ProjectEvidence",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-journey/v1",
+      "default": "robot-adapt-journey/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "COMPLETE",
+        "DISCOVERY_COMPLETE",
+        "BLOCKED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "enrollment": {
+      "title": "Enrollment",
+      "type": "string"
+    },
+    "doctor_status": {
+      "title": "Doctor Status",
+      "type": "string"
+    },
+    "discovery_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Discovery Id"
+    },
+    "discovery_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Discovery Status"
+    },
+    "adapt_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Adapt Status"
+    },
+    "evidence": {
+      "$ref": "#/$defs/ProjectEvidence"
+    },
+    "wiki": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Wiki"
+    },
+    "discovery_artifact": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Discovery Artifact"
+    },
+    "adapt_artifact": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Adapt Artifact"
+    },
+    "release_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Id"
+    },
+    "gate": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gate"
+    },
+    "handoff": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Handoff"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "next_steps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Next Steps",
+      "type": "array"
+    },
+    "workbench_url": {
+      "title": "Workbench Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "robot_id",
+    "enrollment",
+    "doctor_status",
+    "evidence",
+    "workbench_url"
+  ],
+  "title": "AdaptJourneyResult",
+  "type": "object"
+}
