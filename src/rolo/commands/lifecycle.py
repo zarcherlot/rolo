@@ -52,6 +52,16 @@ def adapt_stage_run(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show the derived plan without starting the Agent")
     ] = False,
+    slice_canary: Annotated[
+        bool,
+        typer.Option(
+            "--slice-canary",
+            help=(
+                "Canary the bounded Slice for this run's Agent context only; "
+                "Bundle/release authority remains unchanged"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Plan, execute, freeze outputs, independently gate, and publish one Adapt run."""
     settings = get_settings()
@@ -64,6 +74,7 @@ def adapt_stage_run(
             robot_id=robot,
             scratch_root=scratch_root,
             timeout_s=timeout or settings.coding_agent_timeout_s,
+            slice_canary=slice_canary,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

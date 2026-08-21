@@ -17,6 +17,7 @@ from rolo.stages.adapt.executor import CodexAdaptExecutor, build_codex_command
 from rolo.stages.adapt.models import AdapterAgentConfig, AdapterAgentResult, AdaptPlan
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.service import AdaptStageService
+from rolo.stages.adapt.workset import TargetOperationSlice
 
 
 def test_adapter_agent_output_schema_is_strict_for_every_object() -> None:
@@ -149,6 +150,59 @@ def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
     assert "authoritative bundle operation set" in prompt
 
 
+def test_explicit_canary_narrows_compact_focus_but_not_current_task_authority(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, evidence)
+    focused = plan.eligible_operations[0]
+    target_slice = TargetOperationSlice(
+        robot_id=plan.robot_id,
+        discovery_id=plan.source_discovery_id,
+        registry_sha256="1" * 64,
+        slice_sha256="2" * 64,
+        primary_operations=[focused],
+        target_adapter_operations=[focused],
+    )
+    executor = CodexAdaptExecutor(
+        ArtifactStore(artifact_root),
+        slice_activation_mode="canary",
+        slice_activation_robot_ids=[plan.robot_id],
+    )
+
+    with patch(
+        "rolo.stages.adapt.executor.build_target_operation_slice",
+        return_value=target_slice,
+    ):
+        prompt = executor._build_prompt(plan)
+        executor._install_agent_tool_launcher(workspace, plan)
+
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
+        "\n\nDISCOVERY CONTEXT:\n", 1
+    )[0]
+    compact_plan = json.loads(serialized)
+    snapshot = json.loads(
+        (workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8")
+    )
+
+    assert compact_plan["slice_activation_outcome"] == "ACTIVATED"
+    assert compact_plan["target_adapter_operations"] == [focused]
+    assert compact_plan["release_authority_operation_count"] == len(
+        plan.eligible_operations
+    )
+    assert snapshot["current_task_operations"] == sorted(plan.eligible_operations)
+    assert snapshot["slice_activation_decision"]["effective_context_operations"] == [
+        focused
+    ]
+    assert snapshot["slice_activation_decision"]["release_authority_operations"] == sorted(
+        plan.eligible_operations
+    )
+
+
 def test_robot_wiki_is_retrievable_but_not_embedded_in_agent_context(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
@@ -221,10 +275,17 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     capability_shadow = json.loads(
         (run_path.parent / "capability-resolution-shadow.json").read_text(encoding="utf-8")
     )
+    activation = json.loads(
+        (run_path.parent / "slice-activation-decision.json").read_text(encoding="utf-8")
+    )
     assert (run_path.parent / "platform-profile.json").is_file()
     assert slice_shadow["influences_release"] is False
     assert capability_shadow["influences_release"] is False
+    assert activation["mode"] == "SHADOW"
+    assert activation["outcome"] == "SHADOW_ONLY"
+    assert activation["influences_release"] is False
     assert context_metrics["shadow_influences_release"] is False
+    assert context_metrics["slice_activation_affects_agent_context"] is False
     assert set(context_metrics["capability_resolution_counts"]) == {
         "RESOLVED",
         "UNAVAILABLE",

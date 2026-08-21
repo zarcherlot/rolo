@@ -71,7 +71,11 @@ Schema，以及 service-less、filesystem-less、RTOS-like、channel-only、冲�
 - 建立误裁剪、依赖缺失和预算超限告警；
 - 提供即时回退到当前 eligibility 的机制。
 
-是否正式激活必须基于 Shadow 数据单独决策，不属于当前首批实现。
+状态：已完成首版。默认仍为 Shadow；支持 Robot allowlist、精确 Run selector 和一次性
+`--slice-canary`。Canary 只改变 Compact Plan 的 Agent 编码焦点，current-task、Bundle 和
+release 继续由原 eligibility 决定。权限扩张、空 Slice 或预算超限会自动回退。
+
+是否扩大灰度或修改默认模式必须基于 Shadow/Canary 数据单独决策。
 
 ## 当前基线影响
 

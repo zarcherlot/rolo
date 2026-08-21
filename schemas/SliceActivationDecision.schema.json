@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "SliceActivationAlert": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/SliceActivationSeverity"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "title": "SliceActivationAlert",
+      "type": "object"
+    },
+    "SliceActivationMode": {
+      "enum": [
+        "SHADOW",
+        "CANARY"
+      ],
+      "title": "SliceActivationMode",
+      "type": "string"
+    },
+    "SliceActivationOutcome": {
+      "enum": [
+        "SHADOW_ONLY",
+        "NOT_SELECTED",
+        "ACTIVATED",
+        "FALLBACK"
+      ],
+      "title": "SliceActivationOutcome",
+      "type": "string"
+    },
+    "SliceActivationSeverity": {
+      "enum": [
+        "WARNING",
+        "BLOCKING"
+      ],
+      "title": "SliceActivationSeverity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Canary decision for Agent context only; release authority never changes here.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-operation-slice-activation/v1",
+      "default": "robot-target-operation-slice-activation/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "slice_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Slice Sha256",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/SliceActivationMode"
+    },
+    "selected": {
+      "title": "Selected",
+      "type": "boolean"
+    },
+    "selected_by": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Selected By",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/SliceActivationOutcome"
+    },
+    "authoritative_eligible_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Authoritative Eligible Operations",
+      "type": "array"
+    },
+    "requested_context_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Requested Context Operations",
+      "type": "array"
+    },
+    "effective_context_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Effective Context Operations",
+      "type": "array"
+    },
+    "release_authority_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Release Authority Operations",
+      "type": "array"
+    },
+    "max_context_operations": {
+      "exclusiveMinimum": 0,
+      "title": "Max Context Operations",
+      "type": "integer"
+    },
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/SliceActivationAlert"
+      },
+      "title": "Alerts",
+      "type": "array"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Reason"
+    },
+    "affects_agent_context": {
+      "default": false,
+      "title": "Affects Agent Context",
+      "type": "boolean"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "slice_sha256",
+    "mode",
+    "selected",
+    "outcome",
+    "max_context_operations"
+  ],
+  "title": "SliceActivationDecision",
+  "type": "object"
+}

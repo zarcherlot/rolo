@@ -78,6 +78,7 @@ class AdaptExecutionService:
         workspace: Path,
         timeout_s: int,
         plan: AdaptPlan,
+        slice_canary: bool = False,
     ) -> tuple[AdapterAgentDependencyReport, AdapterAgentRun | None, Path | None]:
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
             raise ValueError(f"Adapt plan for {robot_id} is {plan.status.value}")
@@ -92,12 +93,19 @@ class AdaptExecutionService:
             executable=dependency.executable or self.settings.coding_agent_executable,
             api_key=self.settings.coding_agent_api_key,
             output_root=self.settings.rolo_output_dir,
+            slice_activation_mode=self.settings.adapt_operation_slice_mode,
+            slice_activation_robot_ids=self.settings.adapt_operation_slice_robot_ids,
+            slice_activation_run_ids=self.settings.adapt_operation_slice_run_ids,
+            slice_activation_max_operations=(
+                self.settings.adapt_operation_slice_max_operations
+            ),
         )
         run, artifact = executor.execute(
             robot_id=robot_id,
             workspace=workspace,
             timeout_s=timeout_s,
             plan=plan,
+            slice_canary=slice_canary,
         )
         return dependency, run, artifact
 
@@ -122,6 +130,7 @@ class AdaptRunService:
         robot_id: str,
         scratch_root: Path | None,
         timeout_s: int,
+        slice_canary: bool = False,
     ) -> tuple[AdaptRunSummary, Path]:
         plan = self.dry_run(robot_id)
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
@@ -156,6 +165,7 @@ class AdaptRunService:
                 workspace=workspace,
                 timeout_s=timeout_s,
                 plan=plan,
+                slice_canary=slice_canary,
             )
             if agent_run is None or agent_run_path is None:
                 raise ValueError(
