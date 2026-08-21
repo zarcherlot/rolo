@@ -15,11 +15,13 @@ from rolo.stages.adapt.discovery import (
     DiscoveryService,
     HardwareProbe,
     _hardware_reconciliation,
+    _semantic_bindings,
     detect_compute_platform,
     load_latest_report,
 )
 from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.operation_registry import materialize_active_catalog
+from rolo.stages.discovery_manifest import DiscoveryRunManifest
 
 
 def test_linux_hardware_probe_degrades_when_bus_enumeration_is_unavailable(
@@ -150,6 +152,25 @@ def test_supported_ubuntu_versions_have_ros_discovery_defaults() -> None:
     }
 
 
+def test_legacy_discovery_manifest_does_not_claim_the_current_runtime_version() -> None:
+    manifest = DiscoveryRunManifest.model_validate(
+        {
+            "robot_id": "legacy-robot",
+            "discovery_id": "disc-legacy",
+            "files": [
+                {
+                    "path": "report.json",
+                    "sha256": "0" * 64,
+                    "size_bytes": 1,
+                }
+            ],
+        }
+    )
+
+    assert manifest.producer.name == "rolo"
+    assert manifest.producer.version == "unknown"
+
+
 def test_application_probe_discovers_build_and_ros_surface(tmp_path: Path) -> None:
     make_application_project(tmp_path)
 
@@ -213,6 +234,38 @@ dependencies = [
     assert declarations[("ros", "demo_msgs")]["specifier"] == "<2.0,>=1.2"
 
 
+def test_unresolved_ros_name_template_is_retained_as_source_evidence_but_not_routable() -> None:
+    bindings = _semantic_bindings(
+        {
+            "ros": ProbeResult(
+                layer="ros",
+                status="UNAVAILABLE",
+                data={"topics": [], "ros_distro": "humble", "rmw": None},
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status="SUCCEEDED",
+                data={
+                    "projects": [
+                        {
+                            "root": "/workspace",
+                            "ros_names": {
+                                "topics": [
+                                    "/%s/camera_publisher/rgb0/image",
+                                    "/controller/cmd_vel",
+                                ]
+                            },
+                        }
+                    ]
+                },
+            ),
+        }
+    )
+
+    assert "semantic://actuator/base/velocity_command" in bindings
+    assert "semantic://sensor/front_camera/image" not in bindings
+
+
 def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Path) -> None:
     project = tmp_path / "application"
     make_application_project(project)
@@ -261,6 +314,8 @@ def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Pa
     assert "packages" not in report.capability_manifest["observed"]["software_stack"]
     wiki_path = run_path.parent / "robot_wiki.md"
     manifest = json.loads((run_path.parent / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["producer"]["name"] == "rolo"
+    assert manifest["producer"]["version"]
     assert wiki_path.is_file()
     wiki = wiki_path.read_text(encoding="utf-8")
     assert "## 应用程序与启动拓扑" in wiki

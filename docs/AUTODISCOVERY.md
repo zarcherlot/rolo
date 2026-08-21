@@ -100,6 +100,10 @@ artifacts/discovery/<robot_id>/
 
 `robot_wiki.md` is the editable system view passed to downstream work. Adapt requires that it can be
 loaded, while `manifest.json` covers machine evidence only so Wiki edits do not invalidate discovery.
+The manifest also records the Rolo package version and optional `ROLO_BUILD_REVISION`, allowing a
+target artifact set to be tied to the producer build without invoking Git on the target. Legacy
+manifests without producer metadata load as `version: unknown`; the reader never attributes them to
+the currently installed runtime.
 Untrusted operation candidates are stored once in `report.json` rather than copied to a second file.
 The Wiki renders only the candidates discovered for this robot, not the entire product operation
 Registry. It also filters build-only artifacts from the application section, deduplicates and bounds
@@ -124,6 +128,9 @@ Semantic bindings inferred from source or a live ROS graph are emitted as operat
 matches them only to product-defined operations and builds the Active Tool Catalog after bundle and
 conformance checks. This prevents documentation or naming heuristics from becoming an operation
 definition or actuator command.
+Unresolved graph-name templates such as `/%s/camera/image`, `$(var name)` or `{namespace}` remain
+available in the application source evidence but are not routable semantic bindings and therefore
+cannot create operation candidates.
 
 Every candidate route is normalized as `robot-route-evidence/v2`. It has a stable `resource_id`,
 route kind and endpoint, observed-versus-declared origin, source, limitations, and optional interface

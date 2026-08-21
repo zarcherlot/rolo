@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from rolo.stages.adapt.wiki_agent import CodexWikiInsightProvider
+from rolo.stages.adapt.wiki_agent import (
+    MAX_AGENT_CONTEXT_CHARS,
+    CodexWikiInsightProvider,
+    _selected_context,
+)
 from tests.test_wiki import _review_inputs
 
 
@@ -66,3 +70,25 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+
+
+def test_wiki_agent_context_compacts_large_executable_reports() -> None:
+    report, active = _review_inputs()
+    template = active.executables[-1]
+    expanded = active.model_copy(
+        update={
+            "executables": [
+                template.model_copy(
+                    update={"executable_id": f"exe-{index}", "name": f"driver-{index}"}
+                )
+                for index in range(200)
+            ]
+        }
+    )
+
+    context = _selected_context(report, expanded)
+    encoded = json.dumps(context, ensure_ascii=False, indent=2)
+
+    assert len(encoded) < MAX_AGENT_CONTEXT_CHARS
+    assert context["active_discovery"]["reported_executable_count"] == 200
+    assert context["active_discovery"]["context_executable_count"] == 40

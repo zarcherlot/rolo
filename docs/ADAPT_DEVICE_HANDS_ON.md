@@ -46,6 +46,11 @@ Expected: discovery is `SUCCEEDED` or `PARTIAL`, and at least one candidate inte
 has an observed ROS topic/service/action, device, or CLI route. `PARTIAL` is acceptable when the
 missing facts are unrelated to that operation.
 
+If a manual `ros2 node list` succeeds but discovery reports the ROS probe unavailable, retain the
+new run's `ros.json`. Its `command_diagnostics` distinguishes the inherited-shell attempt from the
+clean base-setup retry and includes bounded exit-code/stderr evidence; do not interpret this state as
+an empty ROS graph.
+
 Review the bounded evidence without loading the whole source tree into the Agent:
 
 ```bash

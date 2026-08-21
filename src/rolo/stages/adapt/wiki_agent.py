@@ -22,7 +22,7 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _bounded(values: Any, limit: int = 100) -> Any:
+def _bounded(values: Any, limit: int = 50) -> Any:
     return values[:limit] if isinstance(values, list) else values
 
 
@@ -85,15 +85,51 @@ def _selected_context(
         probes[name] = {"status": probe.status.value, "data": selected}
 
     executables = []
-    for item in active.executables[:100]:
+    for item in active.executables[:40]:
+        ros = item.communication.ros
+        network = item.communication.network
         executables.append(
             {
                 "name": item.name,
                 "origin": item.origin,
-                "launch_analysis": item.launch_analysis.model_dump(mode="json"),
-                "communication": item.communication.model_dump(mode="json"),
-                "safety": item.safety,
-                "dependencies": item.dependencies,
+                "launch_analysis": {
+                    "packages": _bounded(item.launch_analysis.packages, 20),
+                    "nodes": _bounded(item.launch_analysis.nodes, 20),
+                    "arguments": _bounded(item.launch_analysis.arguments, 20),
+                    "remappings": _bounded(item.launch_analysis.remappings, 20),
+                    "conditions": _bounded(item.launch_analysis.conditions, 20),
+                },
+                "communication": {
+                    "ros": {
+                        key: _bounded(ros.get(key, []), 20)
+                        for key in (
+                            "publishers",
+                            "subscribers",
+                            "services",
+                            "clients",
+                            "nodes",
+                            "remappings",
+                        )
+                    },
+                    "network": {
+                        "protocols": _bounded(network.get("protocols", []), 20),
+                        "listen_endpoints": _bounded(
+                            network.get("listen_endpoints", []), 20
+                        ),
+                        "remote_endpoints": _bounded(
+                            network.get("remote_endpoints", []), 20
+                        ),
+                    },
+                },
+                "safety": {
+                    key: item.safety.get(key)
+                    for key in ("read_only", "privilege_required", "motion_possible")
+                    if key in item.safety
+                },
+                "dependencies": {
+                    key: _bounded(value, 20)
+                    for key, value in item.dependencies.items()
+                },
             }
         )
     return {
@@ -110,8 +146,10 @@ def _selected_context(
         "active_discovery": {
             "mode": active.discovery_mode.model_dump(mode="json"),
             "executables": executables,
-            "unknowns": active.unknowns[:100],
-            "warnings": active.warnings[:100],
+            "reported_executable_count": len(active.executables),
+            "context_executable_count": len(executables),
+            "unknowns": active.unknowns[:50],
+            "warnings": active.warnings[:50],
         },
     }
 

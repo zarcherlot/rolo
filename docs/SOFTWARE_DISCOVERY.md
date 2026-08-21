@@ -83,6 +83,13 @@ immutable `active_discovery_report.json` referenced by that report.
 `none` performs no executable or ROS-runtime active probe. `help` may invoke only executables
 explicitly supplied with `--executable`, using a sanitized environment, no shell, a five-second
 timeout, and bounded output. `runtime-readonly` additionally inspects an already-running ROS graph.
+ROS graph queries use `--no-daemon` and first use the inherited target environment. If the ROS CLI
+itself exits with an error, discovery retries once against the base ROS setup with Python
+virtual-environment variables removed. Both attempts retain bounded argv, exit-code and stderr
+diagnostics. When `CODEX_SANDBOX_NETWORK_DISABLED=1`, failed queries are classified as
+`EXECUTION_SANDBOX_RESTRICTED`, the ineffective setup retry is skipped, and direct target-terminal
+collection is required. A failed query is `UNAVAILABLE`; it is never interpreted as an observed
+empty graph.
 
 Python launch files are parsed with Python AST and XML launch files with an XML parser. The parser
 ignores Python comments and associates package, executable, node name, launch configurations,
@@ -124,6 +131,11 @@ Each executable record includes:
 - direct dependency candidate IDs; and
 - safety classification, side effects and unresolved evidence.
 
+Explicit executables rank first, followed by artifacts matching declared launch/source entrypoints,
+installed artifacts, and build artifacts. CMake compiler probes, `CMakeFiles`, environment hooks,
+shared/static libraries and conventional setup scripts are excluded from executable records. This
+ordering is applied before the 200-record limit so build noise cannot hide deployed entrypoints.
+
 ## Direct dependency resolution
 
 Only direct dependencies explicitly declared by supplied source or static launch evidence are
@@ -149,7 +161,10 @@ candidates are queried through `importlib.metadata` in the Python interpreter ru
 
 ROS dependencies come from `package.xml` and static launch package references. Resolution reads
 package resources and manifests under bounded `AMENT_PREFIX_PATH` prefixes. If no readable ament
-prefix exists, ROS candidates are `UNKNOWN`, not `MISSING`.
+prefix exists, ROS candidates are `UNKNOWN`, not `MISSING`. A `package.xml` dependency absent from
+the ament index is also `UNKNOWN`, because the declaration may be a rosdep key backed by an OS
+package rather than an ament package. Only a package named directly by launch evidence is classified
+`MISSING` when readable ament indexes prove it absent.
 
 Each candidate has one status:
 

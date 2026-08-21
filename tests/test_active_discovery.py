@@ -552,6 +552,38 @@ def test_build_root_is_usable_primary_artifact_evidence(tmp_path: Path) -> None:
     assert report.executables[0].artifact_analysis.build_roots == [str(build.resolve())]
 
 
+def test_build_scanner_excludes_cmake_probe_binaries_and_prefers_install_artifacts(
+    tmp_path: Path,
+) -> None:
+    build = tmp_path / "build"
+    install = tmp_path / "install"
+    (build / "CMakeFiles" / "CompilerIdCXX").mkdir(parents=True)
+    (build / "bin").mkdir()
+    (install / "bin").mkdir(parents=True)
+    (build / "CMakeFiles" / "CompilerIdCXX" / "CMakeCXXCompilerId.exe").write_bytes(
+        b"MZ" + b"\0" * 62
+    )
+    for index in range(205):
+        (build / "bin" / f"build-{index:03}.exe").write_bytes(b"MZ" + b"\0" * 62)
+    for name in ("deployed-controller.exe", "deployed-camera.exe"):
+        (install / "bin" / name).write_bytes(b"MZ" + b"\0" * 62)
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(build_roots=[build], install_roots=[install]),
+            projects=[],
+            run_root=tmp_path / "run",
+        )
+    )
+    names = {item.name for item in report.executables}
+
+    assert "CMakeCXXCompilerId.exe" not in names
+    assert {"deployed-controller.exe", "deployed-camera.exe"} <= names
+    assert len(report.executables) == 200
+    assert any("executable report limit reached" in warning for warning in report.warnings)
+    assert all(item.origin == "DISCOVERED_ARTIFACT" for item in report.executables[:2])
+
+
 def test_artifact_documents_and_configs_are_isolated_per_executable(tmp_path: Path) -> None:
     install = tmp_path / "install"
     docs = tmp_path / "docs"

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Literal
 
@@ -19,12 +21,35 @@ class ManifestEntry(BaseModel):
     size_bytes: int = Field(ge=0)
 
 
+class DiscoveryProducer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Literal["rolo"] = "rolo"
+    version: str
+    build_revision: str | None = None
+
+
+def _discovery_producer() -> DiscoveryProducer:
+    try:
+        version = importlib_metadata.version("rolo")
+    except importlib_metadata.PackageNotFoundError:
+        version = "0+unknown"
+    revision = os.environ.get("ROLO_BUILD_REVISION", "").strip() or None
+    return DiscoveryProducer(version=version, build_revision=revision)
+
+
+def _unknown_discovery_producer() -> DiscoveryProducer:
+    """Do not attribute legacy manifests to the runtime that happens to read them."""
+    return DiscoveryProducer(version="unknown")
+
+
 class DiscoveryRunManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["robot-discovery-run-manifest/v1"] = "robot-discovery-run-manifest/v1"
     robot_id: str
     discovery_id: str
+    producer: DiscoveryProducer = Field(default_factory=_unknown_discovery_producer)
     files: list[ManifestEntry] = Field(min_length=1)
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -42,7 +67,12 @@ def create_discovery_manifest(
                     size_bytes=path.stat().st_size,
                 )
             )
-    return DiscoveryRunManifest(robot_id=robot_id, discovery_id=discovery_id, files=entries)
+    return DiscoveryRunManifest(
+        robot_id=robot_id,
+        discovery_id=discovery_id,
+        producer=_discovery_producer(),
+        files=entries,
+    )
 
 
 def load_and_verify_discovery_manifest(
