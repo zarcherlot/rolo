@@ -215,6 +215,21 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     context_metrics = json.loads(
         (run_path.parent / "context_metrics.json").read_text(encoding="utf-8")
     )
+    slice_shadow = json.loads(
+        (run_path.parent / "target-operation-slice-shadow.json").read_text(encoding="utf-8")
+    )
+    capability_shadow = json.loads(
+        (run_path.parent / "capability-resolution-shadow.json").read_text(encoding="utf-8")
+    )
+    assert (run_path.parent / "platform-profile.json").is_file()
+    assert slice_shadow["influences_release"] is False
+    assert capability_shadow["influences_release"] is False
+    assert context_metrics["shadow_influences_release"] is False
+    assert set(context_metrics["capability_resolution_counts"]) == {
+        "RESOLVED",
+        "UNAVAILABLE",
+        "AMBIGUOUS",
+    }
     assert context_metrics["wiki_boot_injected_chars"] == 0
     assert context_metrics["wiki_total_chars"] > 0
     assert context_metrics["prompt_chars"] < 50_000

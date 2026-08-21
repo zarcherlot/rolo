@@ -29,8 +29,14 @@ from rolo.stages.adapt.models import (
 )
 from rolo.stages.adapt.operation_governance import load_operation_dispositions
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.shadow_observation import (
+    build_capability_shadow,
+    build_slice_shadow_report,
+    resolution_status_counts,
+)
 from rolo.stages.adapt.wiki_retrieval import build_wiki_index
 from rolo.stages.adapt.workset import (
+    TargetOperationSlice,
     build_operation_workset,
     build_target_operation_slice,
     candidate_detail,
@@ -208,6 +214,30 @@ class CodexAdaptExecutor:
         snapshot_path = workspace / "rolo-agent-inspection.json"
         wiki_data_path = workspace / "rolo-agent-wiki.zlib"
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        target_slice = TargetOperationSlice.model_validate(snapshot["target_operation_slice"])
+        report = load_report(
+            self.artifacts.root,
+            plan.robot_id,
+            plan.source_discovery_id,
+        )
+        platform_profile, capability_shadow = build_capability_shadow(report, target_slice)
+        slice_shadow = build_slice_shadow_report(target_slice, plan.eligible_operations)
+        self.artifacts.write_json(
+            f"{relative_run_root}/target-operation-slice.json",
+            target_slice.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/target-operation-slice-shadow.json",
+            slice_shadow.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/platform-profile.json",
+            platform_profile.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/capability-resolution-shadow.json",
+            capability_shadow.model_dump(mode="json"),
+        )
         boot_context = compact_agent_boot_context(
             self.artifacts.root,
             self.output_root,
@@ -249,11 +279,17 @@ class CodexAdaptExecutor:
                 "agent_query_count": 0,
                 "agent_inspect_count": 0,
                 "agent_query_response_bytes": 0,
+                "shadow_eligible_not_in_target_adapter_count": len(
+                    slice_shadow.eligible_not_in_shadow
+                ),
+                "shadow_target_adapter_not_in_eligible_count": len(
+                    slice_shadow.shadow_not_in_eligible
+                ),
+                "capability_resolution_counts": resolution_status_counts(
+                    capability_shadow
+                ),
+                "shadow_influences_release": False,
             },
-        )
-        self.artifacts.write_json(
-            f"{relative_run_root}/target-operation-slice.json",
-            snapshot["target_operation_slice"],
         )
         schema_path.write_text(
             json.dumps(AdapterAgentResult.model_json_schema(), ensure_ascii=False, indent=2) + "\n",

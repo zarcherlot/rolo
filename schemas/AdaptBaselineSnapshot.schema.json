@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Release-neutral fingerprint for the protected Adapt operation baseline.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-adapt-baseline-snapshot/v1",
+      "default": "robot-adapt-baseline-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "operation_count": {
+      "minimum": 1,
+      "title": "Operation Count",
+      "type": "integer"
+    },
+    "disposition_count": {
+      "minimum": 1,
+      "title": "Disposition Count",
+      "type": "integer"
+    },
+    "contract_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Contract Catalog Sha256",
+      "type": "string"
+    },
+    "registry_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Sha256",
+      "type": "string"
+    },
+    "operation_identity_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Operation Identity Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_count",
+    "disposition_count",
+    "contract_catalog_sha256",
+    "registry_sha256",
+    "operation_identity_sha256"
+  ],
+  "title": "AdaptBaselineSnapshot",
+  "type": "object"
+}

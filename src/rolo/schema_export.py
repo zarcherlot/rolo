@@ -30,6 +30,7 @@ from rolo.invocation_policy import (
     R3AuthorizationRequest,
 )
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.baseline import AdaptBaselineSnapshot
 from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
@@ -54,6 +55,7 @@ from rolo.stages.adapt.models import (
 )
 from rolo.stages.adapt.operation_governance import OperationDispositionLedger
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
+from rolo.stages.adapt.shadow_observation import TargetOperationSliceShadowReport
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
@@ -81,6 +83,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     RouteEvidence,
     OperationCandidate,
     CanonicalOperationRegistry,
+    AdaptBaselineSnapshot,
     OperationDispositionLedger,
     CapabilityDescriptor,
     ProviderManifest,
@@ -113,6 +116,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
     TargetOperationSlice,
+    TargetOperationSliceShadowReport,
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
     WikiInsightBundle,
