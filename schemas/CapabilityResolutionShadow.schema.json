@@ -137,6 +137,6 @@
     "profile_id",
     "profile_sha256"
   ],
-  "title": "ShadowResolutionArtifact",
+  "title": "CapabilityResolutionShadow",
   "type": "object"
 }

@@ -9,6 +9,7 @@ from rolo.capabilities.models import (
     CapabilityAvailability,
     CapabilityDescriptor,
     CapabilityResolution,
+    CapabilityResolutionShadow,
     InspectRequest,
     InspectResult,
     InvokeRequest,
@@ -23,7 +24,6 @@ from rolo.capabilities.models import (
     ProviderStatus,
     ResolutionStatus,
     SemanticLayer,
-    ShadowResolutionArtifact,
     TransportDescriptor,
 )
 from rolo.capabilities.provider import CapabilityProvider
@@ -37,6 +37,7 @@ __all__ = [
     "CapabilityDescriptor",
     "CapabilityProvider",
     "CapabilityResolution",
+    "CapabilityResolutionShadow",
     "CapabilityResolver",
     "InspectRequest",
     "InspectResult",
@@ -52,6 +53,5 @@ __all__ = [
     "ProviderStatus",
     "ResolutionStatus",
     "SemanticLayer",
-    "ShadowResolutionArtifact",
     "TransportDescriptor",
 ]

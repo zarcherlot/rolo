@@ -246,7 +246,7 @@ class InvokeResult(StrictModel):
         return self
 
 
-class ShadowResolutionArtifact(StrictModel):
+class CapabilityResolutionShadow(StrictModel):
     schema_version: Literal["robot-capability-resolution-shadow/v1"] = (
         "robot-capability-resolution-shadow/v1"
     )
@@ -258,7 +258,7 @@ class ShadowResolutionArtifact(StrictModel):
     influences_release: Literal[False] = False
 
     @model_validator(mode="after")
-    def require_deterministic_order(self) -> ShadowResolutionArtifact:
+    def require_deterministic_order(self) -> CapabilityResolutionShadow:
         keys = [(item.operation, item.capability_id) for item in self.resolutions]
         if keys != sorted(keys):
             raise ValueError("shadow resolutions must use deterministic operation order")

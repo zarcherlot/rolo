@@ -27,6 +27,7 @@ from rolo.stages.adapt.models import (
     AdaptPlanStatus,
     StateGraphBaseline,
 )
+from rolo.stages.adapt.operation_governance import load_operation_dispositions
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.wiki_retrieval import build_wiki_index
 from rolo.stages.adapt.workset import (
@@ -52,6 +53,14 @@ def _decode_process_output(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _shadow_operation_classifier() -> dict[str, str]:
+    """Return governance ownership without changing current Adapt eligibility."""
+    return {
+        operation: disposition.execution_class.value
+        for operation, disposition in load_operation_dispositions().by_operation().items()
+    }
 
 
 def validate_adapt_plan(artifacts: ArtifactStore, plan: AdaptPlan) -> AdaptPlan:
@@ -234,7 +243,7 @@ class CodexAdaptExecutor:
                 ),
                 "injected_target_adapter_operation_count": min(
                     20,
-                    len(snapshot["target_operation_slice"]["target_adapter_operations"]),
+                    len(snapshot["current_task_operations"]),
                 ),
                 "prepared_operation_detail_count": len(snapshot["operation_details"]),
                 "agent_query_count": 0,
@@ -397,6 +406,7 @@ class CodexAdaptExecutor:
             eligible_operations=plan.eligible_operations,
             deferred_operations=plan.deferred_operations,
             task_operations=task_operations,
+            classifier=_shadow_operation_classifier(),
         )
         prepared_operations = sorted(
             set(target_slice.primary_operations) | set(target_slice.dependency_operations)
@@ -427,8 +437,10 @@ class CodexAdaptExecutor:
         definitions = {
             item.operation: item for item in canonical_operation_registry().operations
         }
+        # The governance classification remains shadow-only in this release. The
+        # executable task set stays pinned to the already-approved eligible list.
         current_task_operations = sorted(
-            set(target_slice.target_adapter_operations) & set(task_operations)
+            set(plan.eligible_operations) & set(task_operations)
         )
         snapshot = {
             "schema_version": "robot-adapter-agent-inspection/v2",
@@ -526,6 +538,7 @@ class CodexAdaptExecutor:
             eligible_operations=plan.eligible_operations,
             deferred_operations=plan.deferred_operations,
             task_operations=[operation for task in plan.tasks for operation in task.operations],
+            classifier=_shadow_operation_classifier(),
         )
         context["operation_slice"] = {
             "slice_sha256": target_slice.slice_sha256,
@@ -560,14 +573,17 @@ class CodexAdaptExecutor:
                 "--state-graph GRAPH --conformance-report REPORT",
             ],
         }
+        current_task_operations = sorted(plan.eligible_operations)
+        current_task_operation_set = set(current_task_operations)
         compact_plan = {
             "schema_version": plan.schema_version,
             "robot_id": plan.robot_id,
             "source_discovery_id": plan.source_discovery_id,
             "status": plan.status.value,
             "slice_sha256": target_slice.slice_sha256,
-            "target_adapter_operations": target_slice.target_adapter_operations[:20],
-            "target_adapter_operations_truncated": len(target_slice.target_adapter_operations) > 20,
+            "target_adapter_operations": current_task_operations[:20],
+            "target_adapter_operation_count": len(current_task_operations),
+            "target_adapter_operations_truncated": len(current_task_operations) > 20,
             "deferred_summary": target_slice.deferred_summary,
             "tasks": [
                 {
@@ -576,8 +592,15 @@ class CodexAdaptExecutor:
                     "operations": [
                         operation
                         for operation in task.operations
-                        if operation in target_slice.target_adapter_operations
+                        if operation in current_task_operation_set
                     ][:20],
+                    "operation_count": len(
+                        [
+                            operation
+                            for operation in task.operations
+                            if operation in current_task_operation_set
+                        ]
+                    ),
                 }
                 for task in plan.tasks
             ],
@@ -609,8 +632,10 @@ class CodexAdaptExecutor:
             "per-operation local-static report. Rolo rebuilds the final evidence-bound State "
             "Graph baseline independently. The product registry and final "
             "Active Tool Catalog are owned and generated only by rolo; do not create a catalog. "
-            "Include only compact_plan.target_adapter_operations in the bundle; deferred "
-            "operations remain "
+            "compact_plan.target_adapter_operations is a bounded preview. Retrieve every page "
+            "of `adapt operations list --scope current-task --limit 20` and treat that complete "
+            "result as the authoritative bundle operation set. Include only those operations in "
+            "the bundle; deferred operations remain "
             "unregistered and must not block otherwise eligible operations. For every bundle "
             "operation, copy contract_version and contract_sha256 exactly from "
             "the operation contract returned by the read-only inspection tool. "

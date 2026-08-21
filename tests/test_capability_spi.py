@@ -11,6 +11,7 @@ from rolo.capabilities import (
     CapabilityAvailability,
     CapabilityDescriptor,
     CapabilityProvider,
+    CapabilityResolutionShadow,
     CapabilityResolver,
     InspectRequest,
     InspectResult,
@@ -26,7 +27,6 @@ from rolo.capabilities import (
     ProviderStatus,
     ResolutionStatus,
     SemanticLayer,
-    ShadowResolutionArtifact,
     TransportDescriptor,
 )
 from rolo.capabilities.semantics import semantic_layer_for_legacy
@@ -35,7 +35,7 @@ SCHEMA_MODELS = {
     "CapabilityDescriptor.schema.json": CapabilityDescriptor,
     "ProviderManifest.schema.json": ProviderManifest,
     "PlatformProfile.schema.json": PlatformProfile,
-    "CapabilityResolutionShadow.schema.json": ShadowResolutionArtifact,
+    "CapabilityResolutionShadow.schema.json": CapabilityResolutionShadow,
 }
 
 
