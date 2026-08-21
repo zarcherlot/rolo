@@ -59,7 +59,9 @@ Shadow Artifact 必须满足：
 - Provider 冲突、超时、未知扩展和 policy 拒绝测试；
 - Provider 开发与版本兼容指南。
 
-状态：待开发。
+状态：已完成首版。包含安全的结构化 Conformance Runner、Fake Provider 模板、严格报告
+Schema，以及 service-less、filesystem-less、RTOS-like、channel-only、冲突、超时、未知
+扩展和写策略 fail-closed 测试。Conformance 结果不影响 release。
 
 ## P3.4 Slice 灰度激活准备
 

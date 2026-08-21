@@ -200,6 +200,16 @@ class ProviderHost:
         with self._lock:
             return [self._providers[key].manifest for key in sorted(self._providers)]
 
+    def descriptors(self, provider_id: str) -> list[CapabilityDescriptor]:
+        """Return a deterministic copy of the registered provider contract surface."""
+        registered = self._registered(provider_id)
+        if registered is None:
+            return []
+        return [
+            registered.descriptors[key].model_copy(deep=True)
+            for key in sorted(registered.descriptors)
+        ]
+
     def snapshot(self) -> ProviderHostSnapshot:
         with self._lock:
             registrations = [
