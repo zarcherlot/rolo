@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "CapabilityAccess": {
+      "enum": [
+        "read",
+        "write"
+      ],
+      "title": "CapabilityAccess",
+      "type": "string"
+    },
+    "SemanticLayer": {
+      "enum": [
+        "hardware",
+        "os",
+        "middleware",
+        "application"
+      ],
+      "title": "SemanticLayer",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-capability-descriptor/v1",
+      "default": "robot-capability-descriptor/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "capability_id": {
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_.-]*$",
+      "title": "Capability Id",
+      "type": "string"
+    },
+    "semantic_layer": {
+      "$ref": "#/$defs/SemanticLayer"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "access": {
+      "$ref": "#/$defs/CapabilityAccess"
+    },
+    "risk": {
+      "enum": [
+        "R0",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "title": "Risk",
+      "type": "string"
+    },
+    "input_schema": {
+      "additionalProperties": true,
+      "title": "Input Schema",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": true,
+      "title": "Output Schema",
+      "type": "object"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "title": "Extensions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "capability_id",
+    "semantic_layer",
+    "version",
+    "access",
+    "risk"
+  ],
+  "title": "CapabilityDescriptor",
+  "type": "object"
+}

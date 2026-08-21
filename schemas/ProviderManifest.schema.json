@@ -1,0 +1,184 @@
+{
+  "$defs": {
+    "CapabilityAvailability": {
+      "enum": [
+        "AVAILABLE",
+        "UNAVAILABLE"
+      ],
+      "title": "CapabilityAvailability",
+      "type": "string"
+    },
+    "ProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "capability_version": {
+          "minLength": 1,
+          "title": "Capability Version",
+          "type": "string"
+        },
+        "availability": {
+          "$ref": "#/$defs/CapabilityAvailability",
+          "default": "AVAILABLE"
+        },
+        "route_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Ref"
+        },
+        "priority": {
+          "default": 0,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "required_features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Features",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "capability_id",
+        "capability_version"
+      ],
+      "title": "ProviderCapability",
+      "type": "object"
+    },
+    "ProviderStatus": {
+      "enum": [
+        "AVAILABLE",
+        "UNAVAILABLE"
+      ],
+      "title": "ProviderStatus",
+      "type": "string"
+    },
+    "SemanticLayer": {
+      "enum": [
+        "hardware",
+        "os",
+        "middleware",
+        "application"
+      ],
+      "title": "SemanticLayer",
+      "type": "string"
+    },
+    "TransportDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": true,
+          "title": "Properties"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "TransportDescriptor",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-provider-manifest/v1",
+      "default": "robot-provider-manifest/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "provider_id": {
+      "minLength": 1,
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "provider_kind": {
+      "minLength": 1,
+      "title": "Provider Kind",
+      "type": "string"
+    },
+    "provider_version": {
+      "minLength": 1,
+      "title": "Provider Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ProviderStatus",
+      "default": "AVAILABLE"
+    },
+    "semantic_layers": {
+      "items": {
+        "$ref": "#/$defs/SemanticLayer"
+      },
+      "minItems": 1,
+      "title": "Semantic Layers",
+      "type": "array"
+    },
+    "capabilities": {
+      "items": {
+        "$ref": "#/$defs/ProviderCapability"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "transport": {
+      "$ref": "#/$defs/TransportDescriptor"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "title": "Extensions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "provider_id",
+    "provider_kind",
+    "provider_version",
+    "semantic_layers",
+    "transport"
+  ],
+  "title": "ProviderManifest",
+  "type": "object"
+}
