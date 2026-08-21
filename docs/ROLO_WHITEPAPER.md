@@ -233,13 +233,35 @@ Workset 是面向一次 Adapt 的查询视图。它把产品 Registry、当前 d
 
 Workset 不是 Tool Catalog，也没有发布权限。
 
-### 5.6 Adapter 与 Adapter Agent
+### 5.6 Operation 治理台账与 Target Operation Slice
+
+Operation 治理台账为完整产品词汇记录未来责任边界：哪些能力适合由 Agent 原生检查、ROLO builtin、目标 Adapter 或平台 Provider 承担。台账不改变当前 Operation ID、Contract、Registry、Catalog 或 runtime route；词汇变化必须同时给出显式治理决定。
+
+Target Operation Slice 从完整 Workset 中提取一次 Adapt 真正需要关注的目标操作集合，以减少 Agent 启动上下文。Slice 首先以 shadow 方式运行：记录与权威 eligibility 的差异，但不影响 Bundle、独立 gate、Catalog 或 release。开发分支中的 canary 机制也只允许收缩 Agent 编码焦点；权限扩张、空 Slice 或预算超限必须自动回退。
+
+Slice 是否可以扩大灰度，应由真实运行样本、Agent/gate 失败、上下文预算、误裁剪与回退数据进入人工评审决定，不能由一次成功运行自动提升为默认行为。
+
+### 5.7 Capability 与 Provider 扩展模型
+
+ROLO 的远端集成分支已经建立平台无关的 Capability、Provider Manifest、Platform Profile、Provider SPI、Resolver、Provider Host 和首版 Conformance Kit，用于表达 Windows、RTOS、CyberRT、DDS 或其他 OS/Middleware 环境，而不把具体平台概念直接写入 Core Contract。这些能力尚未进入 `main`，也没有接入生产发布权威。
+
+该模型当前保持 release-neutral：
+
+- Provider capability 不自动进入 Active Tool Catalog；
+- Provider Host 不拥有 write 授权，缺少 runtime policy bridge 时必须失败关闭；
+- Provider 缺失、未知或不可用是正常可观察状态；
+- Provider conformance 只证明结构、版本、Manifest、Descriptor、超时隔离和安全边界，不证明真实设备行为；
+- Shadow、Canary 和稳定性报告不能自行修改 Registry、Bundle、Catalog、release 或灰度配置。
+
+具体 Windows、FreeRTOS、CyberRT、Linux 或 ROS Provider、动态插件加载、进程级隔离、签名分发和生产 Catalog 接入仍属于后续产品化工作。
+
+### 5.8 Adapter 与 Adapter Agent
 
 Adapter 把稳定的 Canonical Operation 映射到目标机器人的 ROS、CLI、device 或其他具体接口。Adapter Agent 可以读取有界的、固定 discovery 快照，为缺失能力生成独立实现和绑定说明。
 
 Adapter Agent 只提交候选实现和本地静态检查结果。它不拥有产品 Registry、契约、安全策略、Tool Catalog、State Graph 或发布索引，也不能通过修改自己的输出宣布通过门禁。
 
-### 5.7 Independent Gate
+### 5.9 Independent Gate
 
 独立门禁至少验证：
 
@@ -249,19 +271,19 @@ Adapter Agent 只提交候选实现和本地静态检查结果。它不拥有产
 
 门禁不会把静态声明、模拟、文档或 Agent 自评当成生产目标运行时证据。Route Evidence v2 可以表达 ROS topic/service/action、device 和 CLI 路由，并绑定接口类型、Schema 摘要、provider、runtime revision 和观察时间。
 
-### 5.8 Active Tool Catalog
+### 5.10 Active Tool Catalog
 
 Active Tool Catalog 是某台机器人当前可见控制面的门禁结果。它包含完整产品词汇，但只有通过条件的 operation 标记为可用；不适用、未观察或未注册能力保持 `UNAVAILABLE` 并携带原因。
 
 调用方必须始终从 Active Tool Catalog 和绑定契约理解能力，不能从源代码中猜测可调用接口。
 
-### 5.9 State Graph
+### 5.11 State Graph
 
 State Graph 表达当前机器人状态、能力、资源和路由之间的关系。发布版本由 ROLO 根据门禁后的 bundle 和 discovery 证据确定性构建，而不是采用 Agent 自报图作为权威。
 
 State Graph 用于回答“当前处于什么状态、允许哪些转换、哪个 operation 依赖哪个 route”，但不能替代机器人本体实时控制器的内部状态机。
 
-### 5.10 Handoff 与 Release
+### 5.12 Handoff 与 Release
 
 每个阶段通过结构化 handoff 向下一阶段交付经过验证的引用和摘要。仅在约定路径创建一个文件不能打开下一阶段；读取方必须重新验证身份、Schema、引用和 SHA-256。
 
@@ -430,7 +452,7 @@ ROLO 控制面拥有 Registry、Contract、门禁、Catalog、State Graph、策�
 
 ## 11. 当前实现成熟度
 
-截至本白皮书日期，参考实现处于 `0.1.0` 开发阶段。
+截至本白皮书日期，参考实现处于 `0.1.0` 开发阶段。本节把 `main` 已有能力与远端集成分支能力明确区分；远端集成完成不等于进入 `main`、形成 release 或对外发布。尚在其他开发分支的能力只列为“验证中”。
 
 ### 已形成闭环
 
@@ -444,8 +466,18 @@ ROLO 控制面拥有 Registry、Contract、门禁、Catalog、State Graph、策�
 - SENSITIVE、R2、R3、quiescence 和无 payload 审计边界；
 - `robot_use` v1 的基础语义监督接口。
 
+### 远端集成分支已形成、尚未进入 `main`
+
+- 完整 Operation 治理台账、Target Operation Slice shadow 和有界 Agent 上下文；
+- 平台无关 Capability、Provider Manifest/SPI、Platform Profile 与 shadow resolution；
+- Provider Host、Provider-neutral conformance kit、release-neutral shadow artifact；
+- 默认关闭且可自动回退的 Slice canary，以及只读稳定性观察和人工评审门槛。
+
+这些能力保持当前 294 Operation、Contract、Linux/ROS、Bundle、Catalog 和 release 行为不变。Provider 默认不进入生产 Catalog，Slice 不扩大执行权限，稳定性报告不能自动改变灰度配置。
+
 ### 正在演进
 
+- 面向 Web 工作台的 Robot Wiki、拓扑、Capability、Lifecycle、Blocker 和 Discovery history 只读模型及 API 已与 P3 远端集成基线完成分支汇合，尚未进入 `main` 或当前发布基线；
 - 真机、跨厂商和非 ROS Adapter 的规模化验证；
 - Diagnose 的完整事务、调参和自动回归闭环；
 - 多源 Observation Bundle、有限补充观察和 Episode 模型；
