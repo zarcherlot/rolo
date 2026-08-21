@@ -1,0 +1,310 @@
+{
+  "$defs": {
+    "SliceActivationOutcome": {
+      "enum": [
+        "SHADOW_ONLY",
+        "NOT_SELECTED",
+        "ACTIVATED",
+        "FALLBACK"
+      ],
+      "title": "SliceActivationOutcome",
+      "type": "string"
+    },
+    "SliceRunObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "decision_ref": {
+          "title": "Decision Ref",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/SliceActivationOutcome"
+        },
+        "selected": {
+          "title": "Selected",
+          "type": "boolean"
+        },
+        "affects_agent_context": {
+          "title": "Affects Agent Context",
+          "type": "boolean"
+        },
+        "agent_run_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Run Status"
+        },
+        "gate_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gate Status"
+        },
+        "authoritative_operation_count": {
+          "minimum": 0,
+          "title": "Authoritative Operation Count",
+          "type": "integer"
+        },
+        "requested_operation_count": {
+          "minimum": 0,
+          "title": "Requested Operation Count",
+          "type": "integer"
+        },
+        "effective_operation_count": {
+          "minimum": 0,
+          "title": "Effective Operation Count",
+          "type": "integer"
+        },
+        "potential_context_reduction_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Potential Context Reduction Ratio",
+          "type": "number"
+        },
+        "effective_context_reduction_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Effective Context Reduction Ratio",
+          "type": "number"
+        },
+        "prompt_token_estimate": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Token Estimate"
+        },
+        "boot_context_token_estimate": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boot Context Token Estimate"
+        },
+        "boot_context_budget_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boot Context Budget Tokens"
+        },
+        "context_budget_exceeded": {
+          "default": false,
+          "title": "Context Budget Exceeded",
+          "type": "boolean"
+        },
+        "alert_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Alert Codes",
+          "type": "array"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fallback Reason"
+        }
+      },
+      "required": [
+        "run_id",
+        "decision_ref",
+        "mode",
+        "outcome",
+        "selected",
+        "affects_agent_context",
+        "authoritative_operation_count",
+        "requested_operation_count",
+        "effective_operation_count",
+        "potential_context_reduction_ratio",
+        "effective_context_reduction_ratio"
+      ],
+      "title": "SliceRunObservation",
+      "type": "object"
+    },
+    "SliceStabilityRecommendation": {
+      "enum": [
+        "INSUFFICIENT_DATA",
+        "HOLD",
+        "READY_FOR_REVIEW"
+      ],
+      "title": "SliceStabilityRecommendation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-operation-slice-stability/v1",
+      "default": "robot-target-operation-slice-stability/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "max_runs": {
+      "exclusiveMinimum": 0,
+      "title": "Max Runs",
+      "type": "integer"
+    },
+    "min_successful_canary_runs": {
+      "exclusiveMinimum": 0,
+      "title": "Min Successful Canary Runs",
+      "type": "integer"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "selected_canary_count": {
+      "minimum": 0,
+      "title": "Selected Canary Count",
+      "type": "integer"
+    },
+    "activated_count": {
+      "minimum": 0,
+      "title": "Activated Count",
+      "type": "integer"
+    },
+    "fallback_count": {
+      "minimum": 0,
+      "title": "Fallback Count",
+      "type": "integer"
+    },
+    "successful_canary_count": {
+      "minimum": 0,
+      "title": "Successful Canary Count",
+      "type": "integer"
+    },
+    "agent_failed_count": {
+      "minimum": 0,
+      "title": "Agent Failed Count",
+      "type": "integer"
+    },
+    "gate_failed_count": {
+      "minimum": 0,
+      "title": "Gate Failed Count",
+      "type": "integer"
+    },
+    "context_budget_exceeded_count": {
+      "minimum": 0,
+      "title": "Context Budget Exceeded Count",
+      "type": "integer"
+    },
+    "average_potential_context_reduction_ratio": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Average Potential Context Reduction Ratio",
+      "type": "number"
+    },
+    "average_effective_context_reduction_ratio": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Average Effective Context Reduction Ratio",
+      "type": "number"
+    },
+    "outcome_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Outcome Counts",
+      "type": "object"
+    },
+    "alert_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Alert Counts",
+      "type": "object"
+    },
+    "recommendation": {
+      "$ref": "#/$defs/SliceStabilityRecommendation"
+    },
+    "recommendation_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendation Reasons",
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/SliceRunObservation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "max_runs",
+    "min_successful_canary_runs",
+    "observation_count",
+    "selected_canary_count",
+    "activated_count",
+    "fallback_count",
+    "successful_canary_count",
+    "agent_failed_count",
+    "gate_failed_count",
+    "context_budget_exceeded_count",
+    "average_potential_context_reduction_ratio",
+    "average_effective_context_reduction_ratio",
+    "recommendation"
+  ],
+  "title": "SliceStabilityReport",
+  "type": "object"
+}

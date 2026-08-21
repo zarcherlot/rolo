@@ -176,6 +176,29 @@ def _command_failure_summary(result: Mapping[str, Any]) -> str:
     return f"exit {result.get('returncode', 'unknown')}: {detail}"
 
 
+def _ros_failure_class(result: Mapping[str, Any], *, codex_network_sandboxed: bool) -> str:
+    detail = "\n".join(
+        str(result.get(key) or "") for key in ("error", "stderr", "stdout")
+    ).casefold()
+    if result.get("returncode") == 2 and any(
+        marker in detail
+        for marker in ("unrecognized arguments", "invalid choice", "usage:")
+    ):
+        return "CLI_ARGUMENT_UNSUPPORTED"
+    if not result.get("available"):
+        return "ROS_CLI_UNAVAILABLE"
+    sandbox_markers = (
+        "sandbox",
+        "permissionerror",
+        "operation not permitted",
+        "localhost socket",
+        "network is unreachable",
+    )
+    if codex_network_sandboxed and any(marker in detail for marker in sandbox_markers):
+        return "EXECUTION_SANDBOX_RESTRICTED"
+    return "ROS_CLI_FAILED"
+
+
 def _parse_os_release() -> dict[str, str]:
     text = _read_text(Path("/etc/os-release"))
     if text is None:
@@ -573,27 +596,25 @@ class RosProbe:
             warnings.append(
                 "RMW implementation is not selected; installed candidates are not runtime proof"
             )
-        if codex_network_sandboxed:
-            warnings.append(
-                "Codex network sandbox is active; ROS daemon/DDS graph access may be blocked. "
-                "Collect runtime ROS evidence from a target terminal outside the coding sandbox."
-            )
         command_map = {
             "nodes": ["node", "list", "--no-daemon"],
             "topics": ["topic", "list", "-t", "--no-daemon"],
             "services": ["service", "list", "-t", "--no-daemon"],
-            "actions": ["action", "list", "-t", "--no-daemon"],
+            # Humble's action verb does not accept --no-daemon.
+            "actions": ["action", "list", "-t"],
         }
         successes = 0
+        sandbox_failures = 0
         for field, args in command_map.items():
             result = self._run_ros(args)
             diagnostic = _command_diagnostic(result)
             if result.get("returncode") != 0:
-                diagnostic["failure_class"] = (
-                    "EXECUTION_SANDBOX_RESTRICTED"
-                    if codex_network_sandboxed
-                    else "ROS_CLI_FAILED"
+                failure_class = _ros_failure_class(
+                    result,
+                    codex_network_sandboxed=codex_network_sandboxed,
                 )
+                diagnostic["failure_class"] = failure_class
+                sandbox_failures += failure_class == "EXECUTION_SANDBOX_RESTRICTED"
             data["command_diagnostics"][field] = diagnostic
             if result.get("returncode") == 0:
                 data[field] = result["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
@@ -602,6 +623,11 @@ class RosProbe:
                 warnings.append(
                     f"ros2 {' '.join(args)} unavailable: {_command_failure_summary(result)}"
                 )
+        if sandbox_failures:
+            warnings.append(
+                "Codex network sandbox blocked one or more ROS graph queries; collect runtime "
+                "ROS evidence from a target terminal outside the coding sandbox."
+            )
 
         if successes:
             status = (

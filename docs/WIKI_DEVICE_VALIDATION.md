@@ -68,6 +68,7 @@ uv run robotctl adapt discover review --robot "$ROBOT_ID"
 - 静态接口与在线图不一致时仍保留“静态未验证”，没有自动提升为已验证；
 - `wiki_diff.json` 以第一次 discovery 为基线，主要变化集中在 ROS 在线图；
 - `wiki_insights.json` 中 Agent 结论均为 `ADAPT_AGENT_SKILL`、LOW/MEDIUM，并包含依据和验证方式；
+- Agent 对 Unknown 的检视必须出现在 `unknown_assessments`，逐字引用现有 Unknown，给出证据分类和下一步；它不得删除 Unknown、修改 probe 状态或让 operation 通过门禁；
 - Agent 不可用或输出无效时 discovery 仍成功，`wiki_generation.json` 记录回退原因。
 
 ## 4. 设备归并检查

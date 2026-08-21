@@ -296,6 +296,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
 
     def fake_execute(self: object, **kwargs: object) -> tuple[object, Path]:
         del self
+        assert kwargs["slice_canary"] is True
         plan = kwargs["plan"]
         agent_workspace = Path(kwargs["workspace"])
         agent_workspaces.append(agent_workspace)
@@ -429,7 +430,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
 
     result = CliRunner().invoke(
         app,
-        ["adapt", "run", "--robot", "demo_diff"],
+        ["adapt", "run", "--robot", "demo_diff", "--slice-canary"],
     )
 
     get_settings.cache_clear()

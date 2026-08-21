@@ -1,0 +1,2648 @@
+schema_version: robot-operation-disposition/v1
+entries:
+  - current_operation: tool.catalog
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.tool.catalog
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: tool.schema
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.tool.schema
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: runtime.health
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.runtime.health
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: runtime.version
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.runtime.version
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: state.graph.snapshot
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.state.graph.snapshot
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: state.graph.query
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.state.graph.query
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: evidence.resolve
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.evidence.resolve
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: episode.list
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.episode.list
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: episode.inspect
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.episode.inspect
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: episode.export
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.episode.export
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: checkpoint.list
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.checkpoint.list
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: checkpoint.create
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.checkpoint.create
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: checkpoint.restore
+    current_layer: control
+    semantic_layer: product_control
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: product_control.checkpoint.restore
+    migration_status: PLANNED
+    migration_reason: Product control-plane behavior remains owned and implemented by Rolo.
+    current_registry_action: KEEP
+  - current_operation: hw.inventory.scan
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.inventory.scan
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.compute.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.compute.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.compute.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.compute.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.compute.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.compute.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.clock.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.clock.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.thermal.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.thermal.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.storage.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.storage.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.read
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.read
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.calibrate
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.calibrate
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.sensor.reset
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.sensor.reset
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.command
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.command
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.stop
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.stop
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.enable
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.enable
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.disable
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.disable
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.calibrate
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.calibrate
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.actuator.reset
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.actuator.reset
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.scan
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.scan
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.statistics
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.statistics
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.bus.reset
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.bus.reset
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.firmware.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.firmware.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.firmware.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.firmware.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.firmware.verify
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.firmware.verify
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.firmware.update
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.firmware.update
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.firmware.rollback
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.firmware.rollback
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.battery.status
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.battery.status
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.rail.list
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.rail.list
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.rail.inspect
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.rail.inspect
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.rail.enable
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.rail.enable
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.rail.disable
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.rail.disable
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: hw.power.cycle
+    current_layer: hw
+    semantic_layer: hardware
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: hardware.power.cycle
+    migration_status: RETAINED
+    migration_reason: Hardware semantics require target-specific binding and safety validation.
+    current_registry_action: KEEP
+  - current_operation: linux.host.inventory
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.host.inventory
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.host.status
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.host.status
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.host.uptime
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.host.uptime
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.host.reboot
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.host.reboot
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.host.shutdown
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.host.shutdown
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.process.list
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.workload.list
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.process.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.workload.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.process.start
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.workload.start
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.process.stop
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.workload.stop
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.process.restart
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.workload.restart
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.process.signal
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.workload.signal
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.process.logs
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.workload.logs
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.process.resources
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.workload.resources
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.service.list
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.service.list
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.service.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.service.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.service.start
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.service.start
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.service.stop
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.service.stop
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.service.restart
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.service.restart
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.service.enable
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.service.enable
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.service.disable
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.service.disable
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.service.logs
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.service.logs
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.container.list
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.container.list
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.container.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.container.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.container.start
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.container.start
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.container.stop
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.container.stop
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.container.restart
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.container.restart
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.container.logs
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.container.logs
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.container.stats
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.container.stats
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.schedule.list
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.schedule.list
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.schedule.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.schedule.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.schedule.enable
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.schedule.enable
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.schedule.disable
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.schedule.disable
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.schedule.run
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.schedule.run
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.binary.describe
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.binary.describe
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.binary.verify
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.binary.verify
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.cli.probe
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.cli.probe
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.package.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.package.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.package.verify
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.package.verify
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.config.locate
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.config.locate
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.config.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.config.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.config.validate
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.config.validate
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.config.diff
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.config.diff
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.config.apply
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.config.apply
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.config.rollback
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.config.rollback
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: linux.file.inspect
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.file.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.file.read
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.file.read
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.file.hash
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.file.hash
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.file.list
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.file.list
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.interfaces
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.interfaces
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.listeners
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.listeners
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.routes
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.routes
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.connections
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.connections
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.statistics
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.statistics
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.network.dns
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.network.dns
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.resource.snapshot
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.resource.snapshot
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.resource.cpu
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.resource.cpu
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.resource.memory
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.resource.memory
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.resource.disk
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.resource.disk
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.resource.gpu
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.resource.gpu
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.log.query
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.log.query
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.log.follow
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.log.follow
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.time.status
+    current_layer: linux
+    semantic_layer: os
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: os.time.status
+    migration_status: PLANNED
+    migration_reason: Read-only host evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: linux.time.synchronize
+    current_layer: linux
+    semantic_layer: os
+    execution_class: PRODUCT_BUILTIN
+    portable_semantics: true
+    future_capability: os.time.synchronize
+    migration_status: PLANNED
+    migration_reason: Mutating OS behavior requires product policy, authorization, and audit controls.
+    current_registry_action: KEEP
+  - current_operation: middleware.inspect
+    current_layer: middleware
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only middleware evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: middleware.status
+    current_layer: middleware
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.status
+    migration_status: PLANNED
+    migration_reason: Read-only middleware evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: middleware.graph.snapshot
+    current_layer: middleware
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.graph.snapshot
+    migration_status: PLANNED
+    migration_reason: Read-only middleware evidence can be collected through an authorized agent tool surface.
+    current_registry_action: KEEP
+  - current_operation: ros.graph.snapshot
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.graph.snapshot
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.node.list
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.endpoint.list
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.node.status
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.endpoint.status
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.node.inspect
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.endpoint.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.node.lifecycle
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.lifecycle
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.node.activate
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.endpoint.activate
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.node.deactivate
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.endpoint.deactivate
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.list
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.channel.list
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.describe
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.channel.describe
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.sample
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.channel.sample
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.rate
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.channel.rate
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.bandwidth
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.channel.bandwidth
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.topic.publish
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.channel.publish
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.service.list
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.service.list
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.service.describe
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.service.describe
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.service.call
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.service.call
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.action.list
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.action.list
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.action.describe
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.action.describe
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.action.send
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.ros.action.send
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.action.status
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.action.status
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.action.cancel
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.ros.action.cancel
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.tf.tree
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.tf.tree
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.tf.snapshot
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.tf.snapshot
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.tf.lookup
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.tf.lookup
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.tf.monitor
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: false
+    future_capability: middleware.ros.tf.monitor
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.list
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.parameter.list
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.get
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.parameter.get
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.describe
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.parameter.describe
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.set
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.parameter.set
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.dump
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.parameter.dump
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.load
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.parameter.load
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.parameter.rollback
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.parameter.rollback
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.diagnostics.snapshot
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.diagnostics.snapshot
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.diagnostics.watch
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.diagnostics.watch
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.clock.status
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.clock.status
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.bag.inspect
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: AGENT_NATIVE
+    portable_semantics: true
+    future_capability: middleware.record.inspect
+    migration_status: PLANNED
+    migration_reason: Read-only ROS evidence is agent-accessible while its future capability stays provider-neutral where possible.
+    current_registry_action: KEEP
+  - current_operation: ros.bag.record
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.record.start
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: ros.bag.play
+    current_layer: ros
+    semantic_layer: middleware
+    execution_class: PLATFORM_SPECIFIC
+    portable_semantics: false
+    future_capability: middleware.record.play
+    migration_status: DEFERRED
+    migration_reason: Mutating ROS behavior is provider-specific and deferred until productization.
+    current_registry_action: KEEP
+  - current_operation: app.robot.discover
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.robot.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.robot.start
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.robot.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.robot.restart
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.robot.health
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.snapshot
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.stream.start
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.stream.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.camera.calibration.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.lidar.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.lidar.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.lidar.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.lidar.snapshot
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.lidar.calibration.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.imu.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.imu.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.imu.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.imu.sample
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.imu.calibration.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gnss.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gnss.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gnss.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gnss.sample
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.odometry.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.odometry.sample
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.odometry.reset
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.teleop.velocity
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.teleop.pose
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.teleop.joint
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.teleop.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.velocity
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.move_distance
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.rotate
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.base.recover
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.plan
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.execute
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.manipulation.home
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gripper.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gripper.open
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gripper.close
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gripper.set
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.gripper.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.pose
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.initialize
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.reset
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.relocalize
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.localization.quality
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.create
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.save
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.load
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.clear
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.export
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.map.import
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.plan
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.start
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.pause
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.resume
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.recover
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.costmap.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.navigation.path.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.run
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.validate
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.apply
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.calibration.rollback
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.limits.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.zones.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.interlocks.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.approval.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.emergency_stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.protective_stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.safety.stop.clear
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.describe
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.start
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.pause
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.resume
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.stop
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.task.result
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.describe
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.plan
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.run
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.result
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.test.evidence
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.regression.plan
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.regression.run
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.regression.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.regression.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.regression.result
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.snapshot
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.run
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.cancel
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.result
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.diagnosis.evidence
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.get
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.set
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.validate
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.parameter.rollback
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.baseline.create
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.candidate.create
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.candidate.evaluate
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.status
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.commit
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.tuning.rollback
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.state.snapshot
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.state.watch
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.event.list
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.event.inspect
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.telemetry.snapshot
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.telemetry.watch
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP
+  - current_operation: app.telemetry.export
+    current_layer: app
+    semantic_layer: application
+    execution_class: TARGET_ADAPTER
+    portable_semantics: true
+    future_capability: null
+    migration_status: RETAINED
+    migration_reason: Application semantics remain stable and require a target robot adapter binding.
+    current_registry_action: KEEP

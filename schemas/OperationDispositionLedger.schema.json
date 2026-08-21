@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "CurrentRegistryAction": {
+      "enum": [
+        "KEEP"
+      ],
+      "title": "CurrentRegistryAction",
+      "type": "string"
+    },
+    "ExecutionClass": {
+      "enum": [
+        "AGENT_NATIVE",
+        "PRODUCT_BUILTIN",
+        "TARGET_ADAPTER",
+        "PLATFORM_SPECIFIC"
+      ],
+      "title": "ExecutionClass",
+      "type": "string"
+    },
+    "MigrationStatus": {
+      "enum": [
+        "PLANNED",
+        "RETAINED",
+        "DEFERRED"
+      ],
+      "title": "MigrationStatus",
+      "type": "string"
+    },
+    "OperationDisposition": {
+      "additionalProperties": false,
+      "description": "Governance metadata kept deliberately outside the canonical registry.",
+      "properties": {
+        "current_operation": {
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+          "title": "Current Operation",
+          "type": "string"
+        },
+        "current_layer": {
+          "enum": [
+            "control",
+            "hw",
+            "linux",
+            "middleware",
+            "ros",
+            "app"
+          ],
+          "title": "Current Layer",
+          "type": "string"
+        },
+        "semantic_layer": {
+          "$ref": "#/$defs/SemanticLayer"
+        },
+        "execution_class": {
+          "$ref": "#/$defs/ExecutionClass"
+        },
+        "portable_semantics": {
+          "title": "Portable Semantics",
+          "type": "boolean"
+        },
+        "future_capability": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Future Capability"
+        },
+        "migration_status": {
+          "$ref": "#/$defs/MigrationStatus"
+        },
+        "migration_reason": {
+          "minLength": 12,
+          "title": "Migration Reason",
+          "type": "string"
+        },
+        "current_registry_action": {
+          "$ref": "#/$defs/CurrentRegistryAction"
+        }
+      },
+      "required": [
+        "current_operation",
+        "current_layer",
+        "semantic_layer",
+        "execution_class",
+        "portable_semantics",
+        "future_capability",
+        "migration_status",
+        "migration_reason",
+        "current_registry_action"
+      ],
+      "title": "OperationDisposition",
+      "type": "object"
+    },
+    "SemanticLayer": {
+      "enum": [
+        "product_control",
+        "hardware",
+        "os",
+        "middleware",
+        "application"
+      ],
+      "title": "SemanticLayer",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-operation-disposition/v1",
+      "default": "robot-operation-disposition/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/OperationDisposition"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries"
+  ],
+  "title": "OperationDispositionLedger",
+  "type": "object"
+}

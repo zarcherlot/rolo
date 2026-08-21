@@ -12,6 +12,7 @@
     "StageAssessment": {
       "properties": {
         "schema_version": {
+          "const": "robot-stage-assessment/v1",
           "default": "robot-stage-assessment/v1",
           "title": "Schema Version",
           "type": "string"
@@ -98,6 +99,7 @@
   },
   "properties": {
     "schema_version": {
+      "const": "robot-three-stage-pipeline/v1",
       "default": "robot-three-stage-pipeline/v1",
       "title": "Schema Version",
       "type": "string"

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -15,15 +16,131 @@ from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.wiki_insights import WikiInsightBundle
 
-MAX_AGENT_CONTEXT_CHARS = 120_000
+MAX_AGENT_CONTEXT_CHARS = 40_000
+MAX_AGENT_STRING_CHARS = 1_000
+MAX_CONTEXT_EXECUTABLES = 24
 
 
 def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _bounded(values: Any, limit: int = 50) -> Any:
+def _bounded(values: Any, limit: int = 100) -> Any:
     return values[:limit] if isinstance(values, list) else values
+
+
+def _bounded_context(value: dict[str, Any]) -> dict[str, Any]:
+    """Fit selected evidence to a real budget while preserving unknown review inputs."""
+    result = deepcopy(value)
+
+    def truncate_strings(item: Any) -> None:
+        if isinstance(item, dict):
+            for key, child in list(item.items()):
+                if isinstance(child, str) and len(child) > MAX_AGENT_STRING_CHARS:
+                    item[key] = child[:MAX_AGENT_STRING_CHARS] + "…"
+                else:
+                    truncate_strings(child)
+        elif isinstance(item, list):
+            for index, child in enumerate(item):
+                if isinstance(child, str) and len(child) > MAX_AGENT_STRING_CHARS:
+                    item[index] = child[:MAX_AGENT_STRING_CHARS] + "…"
+                else:
+                    truncate_strings(child)
+
+    def encoded_chars(item: Any) -> int:
+        return len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+
+    def nested(path: tuple[str, ...]) -> Any:
+        current: Any = result
+        for key in path:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+        return current
+
+    original_chars = encoded_chars(result)
+    truncate_strings(result)
+    target_chars = MAX_AGENT_CONTEXT_CHARS - 500
+    required_executables = int(
+        result.get("active_discovery", {}).get("required_context_executable_count", 0)
+    )
+    trim_paths = (
+        (("active_discovery", "executables"), required_executables),
+        (("probes", "application", "data", "projects"), 0),
+        (("probes", "hw", "data", "devices"), 0),
+        (("probes", "hw", "data", "components"), 0),
+        (("probes", "ros", "data", "services"), 0),
+        (("probes", "ros", "data", "topics"), 0),
+        (("probes", "ros", "data", "nodes"), 0),
+        (("probes", "ros", "data", "actions"), 0),
+        (("active_discovery", "warnings"), 0),
+        (("executables",), 0),
+    )
+    while encoded_chars(result) > target_chars:
+        candidates = [
+            item
+            for path, minimum in trim_paths
+            if isinstance((item := nested(path)), list) and len(item) > minimum
+        ]
+        if not candidates:
+            break
+        largest = max(candidates, key=encoded_chars)
+        largest.pop()
+    active_discovery = result.get("active_discovery")
+    if isinstance(active_discovery, dict) and isinstance(
+        active_discovery.get("executables"), list
+    ):
+        active_discovery["context_executable_count"] = len(
+            active_discovery["executables"]
+        )
+    result["context_budget"] = {
+        "max_chars": MAX_AGENT_CONTEXT_CHARS,
+        "original_chars": original_chars,
+        "truncated": original_chars > MAX_AGENT_CONTEXT_CHARS,
+    }
+    if encoded_chars(result) > MAX_AGENT_CONTEXT_CHARS:
+        active = result.get("active_discovery", {})
+        probes = result.get("probes", {})
+        result = {
+            key: result.get(key)
+            for key in (
+                "robot_id",
+                "discovery_id",
+                "status",
+                "platform",
+                "operation_candidates",
+            )
+            if key in result
+        } | {
+            "probe_statuses": {
+                name: item.get("status")
+                for name, item in probes.items()
+                if isinstance(item, dict)
+            },
+            "active_discovery": {
+                "unknowns": active.get("unknowns", [])[:100],
+                "warnings": active.get("warnings", [])[:20],
+            },
+            "context_budget": {
+                "max_chars": MAX_AGENT_CONTEXT_CHARS,
+                "original_chars": original_chars,
+                "truncated": True,
+                "fallback": "core-evidence-and-unknowns-only",
+            }
+        }
+        while encoded_chars(result) > MAX_AGENT_CONTEXT_CHARS:
+            candidates = result.get("operation_candidates", [])
+            unknowns = result["active_discovery"]["unknowns"]
+            warnings = result["active_discovery"]["warnings"]
+            if candidates:
+                candidates.pop()
+            elif warnings:
+                warnings.pop()
+            elif unknowns:
+                unknowns.pop()
+            else:
+                break
+    return result
 
 
 def _selected_context(
@@ -42,8 +159,8 @@ def _selected_context(
                 "architecture": data.get("architecture"),
                 "compute_platform": data.get("compute_platform"),
                 "device_tree_model": data.get("device_tree_model"),
-                "devices": _bounded(data.get("devices", [])),
-                "components": _bounded(data.get("components", [])),
+                "devices": _bounded(data.get("devices", []), 20),
+                "components": _bounded(data.get("components", []), 20),
                 "buses": data.get("buses", {}),
             }
         elif name == "linux":
@@ -74,61 +191,88 @@ def _selected_context(
                 "projects": [
                     {
                         "packages": _bounded(item.get("packages", []), 30),
-                        "entrypoints": _bounded(item.get("entrypoints", []), 50),
-                        "launch_files": _bounded(item.get("launch_files", []), 50),
-                        "ros_interfaces": _bounded(item.get("ros_interfaces", []), 100),
+                        "entrypoints": _bounded(item.get("entrypoints", []), 20),
+                        "launch_files": _bounded(item.get("launch_files", []), 20),
+                        "ros_interfaces": _bounded(item.get("ros_interfaces", []), 30),
                     }
-                    for item in _bounded(data.get("projects", []), 20)
+                    for item in _bounded(data.get("projects", []), 12)
                     if isinstance(item, dict)
                 ]
             }
         probes[name] = {"status": probe.status.value, "data": selected}
 
+    operation_executable_ids = {
+        executable_id
+        for candidate in report.operation_candidates
+        for executable_id in getattr(candidate, "executable_ids", [])
+    }
+    candidate_endpoints = {
+        value
+        for candidate in report.operation_candidates
+        for value in [
+            *candidate.evidence,
+            *candidate.semantic_bindings,
+            *[route.endpoint for route in candidate.route_evidence],
+        ]
+        if value
+    }
+    unknown_text = "\n".join(active.unknowns)
+
+    def matches_candidate_endpoint(item: Any) -> bool:
+        for role in ("publishers", "subscribers", "services", "clients", "actions"):
+            for interface in item.communication.ros.get(role, []):
+                name = interface.get("name") if isinstance(interface, dict) else interface
+                if name in candidate_endpoints:
+                    return True
+        return False
+
+    relevant = [
+        item
+        for item in active.executables
+        if item.executable_id in operation_executable_ids
+        or item.executable_id in unknown_text
+        or matches_candidate_endpoint(item)
+    ]
+    selected_ids = {item.executable_id for item in relevant}
+    selected_executables = [
+        *relevant,
+        *[item for item in active.executables if item.executable_id not in selected_ids],
+    ][:MAX_CONTEXT_EXECUTABLES]
     executables = []
-    for item in active.executables[:40]:
+    for item in selected_executables:
         ros = item.communication.ros
-        network = item.communication.network
         executables.append(
             {
+                "executable_id": item.executable_id,
                 "name": item.name,
                 "origin": item.origin,
                 "launch_analysis": {
-                    "packages": _bounded(item.launch_analysis.packages, 20),
-                    "nodes": _bounded(item.launch_analysis.nodes, 20),
-                    "arguments": _bounded(item.launch_analysis.arguments, 20),
-                    "remappings": _bounded(item.launch_analysis.remappings, 20),
-                    "conditions": _bounded(item.launch_analysis.conditions, 20),
+                    "packages": _bounded(item.launch_analysis.packages, 12),
+                    "nodes": _bounded(item.launch_analysis.nodes, 12),
+                    "arguments": _bounded(item.launch_analysis.arguments, 12),
+                    "remappings": _bounded(item.launch_analysis.remappings, 12),
                 },
                 "communication": {
                     "ros": {
-                        key: _bounded(ros.get(key, []), 20)
-                        for key in (
+                        role: _bounded(ros.get(role, []), 15)
+                        for role in (
                             "publishers",
                             "subscribers",
                             "services",
                             "clients",
+                            "actions",
                             "nodes",
                             "remappings",
                         )
                     },
                     "network": {
-                        "protocols": _bounded(network.get("protocols", []), 20),
-                        "listen_endpoints": _bounded(
-                            network.get("listen_endpoints", []), 20
-                        ),
-                        "remote_endpoints": _bounded(
-                            network.get("remote_endpoints", []), 20
-                        ),
+                        key: _bounded(item.communication.network.get(key, []), 12)
+                        for key in ("protocols", "listen_endpoints", "remote_endpoints")
                     },
                 },
-                "safety": {
-                    key: item.safety.get(key)
-                    for key in ("read_only", "privilege_required", "motion_possible")
-                    if key in item.safety
-                },
+                "safety": item.safety,
                 "dependencies": {
-                    key: _bounded(value, 20)
-                    for key, value in item.dependencies.items()
+                    key: _bounded(value, 15) for key, value in item.dependencies.items()
                 },
             }
         )
@@ -148,8 +292,9 @@ def _selected_context(
             "executables": executables,
             "reported_executable_count": len(active.executables),
             "context_executable_count": len(executables),
-            "unknowns": active.unknowns[:50],
-            "warnings": active.warnings[:50],
+            "required_context_executable_count": len(relevant),
+            "unknowns": active.unknowns[:100],
+            "warnings": active.warnings[:100],
         },
     }
 
@@ -258,7 +403,8 @@ class CodexWikiInsightProvider:
         if shutil.which(self.executable) is None:
             raise FileNotFoundError(f"Codex CLI executable not found: {self.executable}")
         skill = self.skill_path.read_text(encoding="utf-8")
-        context = json.dumps(_selected_context(report, active), ensure_ascii=False, indent=2)
+        selected = _bounded_context(_selected_context(report, active))
+        context = json.dumps(selected, ensure_ascii=False, separators=(",", ":"))
         if len(context) > MAX_AGENT_CONTEXT_CHARS:
             raise ValueError("Wiki insight Agent context exceeded the bounded size limit")
         prompt = (
@@ -299,7 +445,15 @@ class CodexWikiInsightProvider:
         if bundle.robot_id != report.robot_id or bundle.discovery_id != report.discovery_id:
             raise ValueError("Wiki insight Agent output identity does not match discovery")
         findings = [
-            item.model_copy(update={"source": "ADAPT_AGENT_SKILL"})
-            for item in bundle.findings
+            item.model_copy(update={"source": "ADAPT_AGENT_SKILL"}) for item in bundle.findings
         ]
-        return bundle.model_copy(update={"findings": findings})
+        unknown_assessments = [
+            item.model_copy(update={"source": "ADAPT_AGENT_SKILL"})
+            for item in bundle.unknown_assessments
+        ]
+        return bundle.model_copy(
+            update={
+                "findings": findings,
+                "unknown_assessments": unknown_assessments,
+            }
+        )

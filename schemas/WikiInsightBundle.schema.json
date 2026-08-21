@@ -63,6 +63,76 @@
       ],
       "title": "WikiHeuristicFinding",
       "type": "object"
+    },
+    "WikiUnknownAssessment": {
+      "additionalProperties": false,
+      "description": "Advisory review of one exact machine-reported unknown.",
+      "properties": {
+        "unknown": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Unknown",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "COLLECTED_EVIDENCE_REVIEW",
+            "TARGET_PROBE_REQUIRED",
+            "EXTERNAL_INPUT_REQUIRED",
+            "INSUFFICIENT_EVIDENCE"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "assessment": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Assessment",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Basis",
+          "type": "array"
+        },
+        "next_step": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Next Step",
+          "type": "string"
+        },
+        "source": {
+          "default": "DETERMINISTIC_RULE",
+          "enum": [
+            "DETERMINISTIC_RULE",
+            "ADAPT_AGENT_SKILL"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unknown",
+        "classification",
+        "assessment",
+        "confidence",
+        "basis",
+        "next_step"
+      ],
+      "title": "WikiUnknownAssessment",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -88,6 +158,14 @@
       },
       "maxItems": 40,
       "title": "Findings",
+      "type": "array"
+    },
+    "unknown_assessments": {
+      "items": {
+        "$ref": "#/$defs/WikiUnknownAssessment"
+      },
+      "maxItems": 100,
+      "title": "Unknown Assessments",
       "type": "array"
     }
   },

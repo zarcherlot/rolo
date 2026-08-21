@@ -8,6 +8,9 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 MAX_WIKI_NARRATIVE_CHARS = 8_000
+MAX_WIKI_NARRATIVE_INPUT_CHARS = 20_000
+MAX_WIKI_NARRATIVE_SECTION_LINES = 12
+MAX_WIKI_NARRATIVE_LINE_CHARS = 600
 
 
 class WikiNarrative(BaseModel):
@@ -70,7 +73,7 @@ class OpenAIWikiNarrativePolisher:
                                 "interfaces, owners, commands, or validation results. Clearly "
                                 "preserve uncertainty. Machine-rendered tables remain "
                                 "authoritative.\n\n"
-                                f"DETERMINISTIC WIKI DRAFT:\n{draft}"
+                                f"BOUNDED DETERMINISTIC WIKI SUMMARY:\n{draft}"
                             ),
                         }
                     ],
@@ -90,6 +93,70 @@ class OpenAIWikiNarrativePolisher:
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def build_wiki_narrative_input(draft: str) -> str:
+    """Select bounded prose and evidence rows; deterministic tables stay outside the model."""
+    blocks: list[tuple[str, list[str]]] = []
+    heading = "# Wiki 摘要输入"
+    body: list[str] = []
+    for raw_line in draft.splitlines():
+        line = raw_line.strip()
+        if line.startswith("#"):
+            if body or heading != "# Wiki 摘要输入":
+                blocks.append((heading, body))
+            heading = line[:MAX_WIKI_NARRATIVE_LINE_CHARS]
+            body = []
+        elif line and line not in {"```", "```mermaid"}:
+            body.append(line[:MAX_WIKI_NARRATIVE_LINE_CHARS])
+    blocks.append((heading, body))
+
+    priority_terms = (
+        "安全",
+        "风险",
+        "未知",
+        "未获取",
+        "未验证",
+        "冲突",
+        "告警",
+        "兼容",
+        "unknown",
+        "warning",
+        "risk",
+        "unverified",
+    )
+    selected_blocks = sorted(
+        enumerate(blocks),
+        key=lambda item: (
+            0 if any(term in item[1][0].casefold() for term in priority_terms) else 1,
+            item[0],
+        ),
+    )
+    output = [
+        "# 有界 Wiki 叙事输入",
+        "",
+        f"- 原始字符数：{len(draft)}",
+        f"- 原始 SHA-256：{_sha256_text(draft)}",
+        "- 说明：以下仅为确定性选取的摘要；未包含的表格仍由原 Wiki 保持权威。",
+        "",
+    ]
+    for _, (block_heading, block_body) in selected_blocks:
+        candidates = sorted(
+            enumerate(block_body),
+            key=lambda item: (
+                0 if any(term in item[1].casefold() for term in priority_terms) else 1,
+                item[0],
+            ),
+        )[:MAX_WIKI_NARRATIVE_SECTION_LINES]
+        addition = [block_heading, ""]
+        addition.extend(line for _, line in candidates)
+        addition.append("")
+        candidate = "\n".join(output + addition)
+        if len(candidate) > MAX_WIKI_NARRATIVE_INPUT_CHARS:
+            break
+        output.extend(addition)
+    result = "\n".join(output).rstrip() + "\n"
+    return result[:MAX_WIKI_NARRATIVE_INPUT_CHARS]
 
 
 def _safe_text(value: str) -> str:
@@ -130,7 +197,7 @@ def generate_robot_wiki(
             fallback_reason="model polishing is not configured",
         )
     try:
-        narrative = polisher.polish(draft)
+        narrative = polisher.polish(build_wiki_narrative_input(draft))
         rendered = _render_narrative(narrative)
         if len(rendered) > MAX_WIKI_NARRATIVE_CHARS:
             raise ValueError("model-polished Wiki narrative exceeded the size limit")

@@ -285,14 +285,18 @@ sensor semantics. Large joint and inertial tables are collapsed, and floating-po
 rounded for human reading. These declarations describe the input model; they are not presented as
 proof that the corresponding hardware was observed at runtime.
 
-Optional Wiki insights use the `robot-wiki-insights/v1` contract. A deterministic rule or future
-Adapt Agent skill may emit only a bounded finding with a category, `LOW`/`MEDIUM` confidence,
-evidence basis, verification method, and source. An insight bundle must match the robot and discovery
-IDs and can never promote a heuristic to verified machine evidence.
+Optional Wiki evidence review uses the `robot-wiki-insights/v1` contract. Deterministic rules and the
+read-only Adapt Agent skill may emit bounded findings with a category, `LOW`/`MEDIUM` confidence,
+evidence basis, verification method, and source. The Agent also reviews exact machine-reported
+unknowns and classifies the next evidence path as collected-evidence review, target probe, external
+input, or insufficient evidence. These assessments remain advisory: they cannot delete an unknown,
+change probe status, or make an operation gateable. The bundle must match the robot and discovery IDs.
 
-When a Wiki model and credentials are configured, the deterministic probe-derived draft receives a
-bounded structured narrative polish. The model cannot replace the machine-rendered evidence
-sections. Missing credentials, model failure, timeout, or invalid output automatically falls back
+When a Wiki model and credentials are configured, a deterministic, relevance-ordered summary of at
+most 20,000 characters receives a structured narrative polish. The complete Wiki and its tables are
+not model input. The model cannot replace the machine-rendered evidence sections. This narrative
+polish is separate from the evidence/unknown review Agent. Missing credentials, model failure,
+timeout, or invalid output automatically falls back
 to the deterministic draft without blocking discovery. `wiki_generation.json` records the path
 used:
 

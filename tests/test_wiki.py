@@ -5,12 +5,24 @@ import pytest
 from rolo.core.models import DiscoveryReport, DiscoveryStatus, OperationCandidate, ProbeResult
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.review import render_discovery_review_markdown
-from rolo.stages.adapt.wiki import WikiNarrative, generate_robot_wiki
+from rolo.stages.adapt.wiki import (
+    MAX_WIKI_NARRATIVE_INPUT_CHARS,
+    WikiNarrative,
+    generate_robot_wiki,
+)
 from rolo.stages.adapt.wiki_diff import build_wiki_discovery_diff
 from rolo.stages.adapt.wiki_insights import (
     WikiHeuristicFinding,
     WikiInsightBundle,
+    WikiUnknownAssessment,
     collect_wiki_insights,
+)
+from rolo.stages.adapt.wiki_retrieval import (
+    WIKI_SEARCH_MAX_CHARS,
+    WIKI_SEARCH_MAX_MATCHES,
+    WIKI_SECTION_MAX_CHARS,
+    wiki_search_page,
+    wiki_section_page,
 )
 
 
@@ -35,6 +47,22 @@ class FailingPolisher:
         raise RuntimeError("model unavailable")
 
 
+class CapturingPolisher:
+    provider = "fake"
+    model = "capturing-model"
+
+    def __init__(self) -> None:
+        self.input = ""
+
+    def polish(self, draft: str) -> WikiNarrative:
+        self.input = draft
+        return WikiNarrative(
+            overview="有界输入。",
+            evidence_limits=[],
+            maintenance_priorities=[],
+        )
+
+
 def test_model_polishing_adds_only_bounded_narrative() -> None:
     draft = "# 机器人 Wiki：demo\n\n## 全栈摘要\n\n- 事实：unknown\n"
 
@@ -55,6 +83,45 @@ def test_model_failure_falls_back_without_blocking_discovery() -> None:
     assert wiki == draft
     assert metadata.status == "DETERMINISTIC_FALLBACK"
     assert metadata.fallback_reason == "model unavailable"
+
+
+def test_large_wiki_polishing_uses_a_fixed_size_summary() -> None:
+    draft = "# 机器人 Wiki：large\n\n## 全栈摘要\n\n" + ("- 普通证据：设备状态待核对。\n" * 80_000)
+    polisher = CapturingPolisher()
+
+    wiki, metadata = generate_robot_wiki(draft, polisher)
+
+    assert metadata.status == "MODEL_POLISHED"
+    assert len(polisher.input) <= MAX_WIKI_NARRATIVE_INPUT_CHARS
+    assert len(polisher.input) < len(draft) // 10
+    assert "## 全栈摘要" in polisher.input
+    assert len(wiki) > len(draft)
+
+
+def test_wiki_retrieval_is_paginated_and_top_level_returns_only_an_outline() -> None:
+    content = (
+        "# Robot Wiki\n\n"
+        "private overview that must not be returned by the title query\n\n"
+        "## Long Section\n\n"
+        + ("bounded detail line\n" * 1_000)
+        + "\n## Search Section\n"
+        + ("needle " + ("x" * 2_000) + "\n") * 40
+    )
+
+    outline = wiki_section_page(content, "Robot Wiki")
+    first = wiki_section_page(content, "Long Section")
+    second = wiki_section_page(content, "Long Section", cursor=first["next_cursor"])
+    search = wiki_search_page(content, "needle")
+
+    assert outline["is_outline"] is True
+    assert "private overview" not in outline["content"]
+    assert outline["outline"][0]["heading"] == "## Long Section"
+    assert len(first["content"]) <= WIKI_SECTION_MAX_CHARS
+    assert first["truncated"] is True
+    assert second["start_cursor"] == first["next_cursor"]
+    assert len(search["matches"]) <= WIKI_SEARCH_MAX_MATCHES
+    assert sum(len(item["text"]) + 32 for item in search["matches"]) <= WIKI_SEARCH_MAX_CHARS
+    assert search["truncated"] is True
 
 
 def _review_inputs() -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
@@ -215,6 +282,65 @@ def test_external_wiki_insights_are_bounded_to_the_same_discovery() -> None:
 
     with pytest.raises(ValueError, match="does not match"):
         render_discovery_review_markdown(report, active, insight_bundle=mismatched)
+
+
+def test_unknown_assessment_is_advisory_and_keeps_original_unknown() -> None:
+    report, active = _review_inputs()
+    unknown = active.unknowns[0]
+    insights = WikiInsightBundle(
+        robot_id=report.robot_id,
+        discovery_id=report.discovery_id,
+        unknown_assessments=[
+            WikiUnknownAssessment(
+                unknown=unknown,
+                classification="COLLECTED_EVIDENCE_REVIEW",
+                assessment="构建元数据可能包含可复核的依赖声明。",
+                confidence="LOW",
+                basis=["active_discovery.executables[exe-hook].dependencies"],
+                next_step="只读核对构建元数据，不执行程序。",
+                source="ADAPT_AGENT_SKILL",
+            )
+        ],
+    )
+
+    wiki = render_discovery_review_markdown(report, active, insight_bundle=insights)
+
+    assert "### 启发式 Unknown 检视" in wiki
+    assert unknown in wiki
+    assert "原 Unknown 仍保留" in wiki
+
+
+def test_unknown_assessment_must_reference_an_exact_reported_unknown() -> None:
+    report, active = _review_inputs()
+
+    class InvalidUnknownProvider:
+        provider = "adapt-agent-skill"
+
+        def infer(self, _report, _active) -> WikiInsightBundle:
+            return WikiInsightBundle(
+                robot_id=report.robot_id,
+                discovery_id=report.discovery_id,
+                unknown_assessments=[
+                    WikiUnknownAssessment(
+                        unknown="invented unknown",
+                        classification="INSUFFICIENT_EVIDENCE",
+                        assessment="无法判断。",
+                        confidence="LOW",
+                        basis=["agent guess"],
+                        next_step="保留未知。",
+                        source="ADAPT_AGENT_SKILL",
+                    )
+                ],
+            )
+
+    bundle, fallback_reason = collect_wiki_insights(
+        report,
+        active,
+        InvalidUnknownProvider(),
+    )
+
+    assert "not present in active discovery" in (fallback_reason or "")
+    assert bundle.unknown_assessments == []
 
 
 def test_optional_insight_provider_failure_falls_back_to_builtin_rules() -> None:

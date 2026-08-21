@@ -5,6 +5,15 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from rolo.capabilities import (
+    CapabilityDescriptor,
+    CapabilityResolutionShadow,
+    PlatformProfile,
+    ProviderConformanceReport,
+    ProviderHostSnapshot,
+    ProviderManifest,
+    ProviderRegistration,
+)
 from rolo.contract_catalog import OperationContract, OperationContractCatalog
 from rolo.core.models import (
     DiscoveryLatestIndex,
@@ -25,11 +34,13 @@ from rolo.invocation_policy import (
 )
 from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.baseline import AdaptBaselineSnapshot
 from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
 )
 from rolo.stages.adapt.inputs import AdaptInputs
+from rolo.stages.adapt.journey import AdaptJourneyResult
 from rolo.stages.adapt.models import (
     AdapterAgentDependencyReport,
     AdapterAgentResult,
@@ -47,14 +58,18 @@ from rolo.stages.adapt.models import (
     StateGraphBaseline,
     ToolCatalog,
 )
+from rolo.stages.adapt.operation_governance import OperationDispositionLedger
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
+from rolo.stages.adapt.shadow_observation import TargetOperationSliceShadowReport
+from rolo.stages.adapt.slice_activation import SliceActivationDecision
+from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
 )
 from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
 from rolo.stages.adapt.wiki_insights import WikiInsightBundle
-from rolo.stages.adapt.workset import AdaptOperationWorkset
+from rolo.stages.adapt.workset import AdaptOperationWorkset, TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
@@ -76,8 +91,18 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationCandidate,
     AdapterRuntimeContext,
     CanonicalOperationRegistry,
+    AdaptBaselineSnapshot,
+    OperationDispositionLedger,
+    CapabilityDescriptor,
+    ProviderManifest,
+    ProviderRegistration,
+    ProviderHostSnapshot,
+    ProviderConformanceReport,
+    PlatformProfile,
+    CapabilityResolutionShadow,
     ToolDescriptor,
     AdaptInputs,
+    AdaptJourneyResult,
     AdaptPlan,
     AdapterAgentDependencyReport,
     AdapterAgentResult,
@@ -102,6 +127,10 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DirectDependencyReport,
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
+    TargetOperationSlice,
+    TargetOperationSliceShadowReport,
+    SliceActivationDecision,
+    SliceStabilityReport,
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
     WikiInsightBundle,

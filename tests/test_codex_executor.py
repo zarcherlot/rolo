@@ -15,7 +15,9 @@ from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProb
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.executor import CodexAdaptExecutor, build_codex_command
 from rolo.stages.adapt.models import AdapterAgentConfig, AdapterAgentResult, AdaptPlan
+from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.service import AdaptStageService
+from rolo.stages.adapt.workset import TargetOperationSlice
 
 
 def test_adapter_agent_output_schema_is_strict_for_every_object() -> None:
@@ -93,6 +95,114 @@ def test_build_prompt_is_pinned_to_plan_discovery_snapshot(tmp_path: Path) -> No
     assert '"registry_operations": 294' in prompt
 
 
+def test_boot_prompt_does_not_scale_with_unrelated_registry_operations(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace)
+    executor = CodexAdaptExecutor(ArtifactStore(artifact_root))
+    baseline = executor._build_prompt(plan)
+    registry = canonical_operation_registry()
+    template = registry.operations[-1]
+    unrelated = [
+        template.model_copy(
+            update={
+                "operation": f"app.unrelated.{index:04d}",
+                "paired_operation": None,
+                "replacement_operation": None,
+                "compensation_operation": None,
+            }
+        )
+        for index in range(1000)
+    ]
+    expanded = registry.model_copy(update={"operations": [*registry.operations, *unrelated]})
+
+    with patch(
+        "rolo.stages.adapt.workset.canonical_operation_registry", return_value=expanded
+    ):
+        scaled = executor._build_prompt(plan)
+
+    assert len(scaled) - len(baseline) < 100
+    assert "app.unrelated.0000" not in scaled
+
+
+def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace).model_copy(deep=True)
+    deferred = plan.eligible_operations.pop(0)
+    plan.deferred_operations[deferred] = "SHADOW_CLASSIFICATION_ONLY"
+
+    prompt = CodexAdaptExecutor(ArtifactStore(artifact_root))._build_prompt(plan)
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
+        "\n\nDISCOVERY CONTEXT:\n", 1
+    )[0]
+    compact_plan = json.loads(serialized)
+
+    assert deferred not in compact_plan["target_adapter_operations"]
+    assert compact_plan["target_adapter_operation_count"] == len(plan.eligible_operations)
+    assert all(
+        deferred not in task["operations"] for task in compact_plan["tasks"]
+    )
+    assert "authoritative bundle operation set" in prompt
+
+
+def test_explicit_canary_narrows_compact_focus_but_not_current_task_authority(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, evidence)
+    focused = plan.eligible_operations[0]
+    target_slice = TargetOperationSlice(
+        robot_id=plan.robot_id,
+        discovery_id=plan.source_discovery_id,
+        registry_sha256="1" * 64,
+        slice_sha256="2" * 64,
+        primary_operations=[focused],
+        target_adapter_operations=[focused],
+    )
+    executor = CodexAdaptExecutor(
+        ArtifactStore(artifact_root),
+        slice_activation_mode="canary",
+        slice_activation_robot_ids=[plan.robot_id],
+    )
+
+    with patch(
+        "rolo.stages.adapt.executor.build_target_operation_slice",
+        return_value=target_slice,
+    ):
+        prompt = executor._build_prompt(plan)
+        executor._install_agent_tool_launcher(workspace, plan)
+
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
+        "\n\nDISCOVERY CONTEXT:\n", 1
+    )[0]
+    compact_plan = json.loads(serialized)
+    snapshot = json.loads(
+        (workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8")
+    )
+
+    assert compact_plan["slice_activation_outcome"] == "ACTIVATED"
+    assert compact_plan["target_adapter_operations"] == [focused]
+    assert compact_plan["release_authority_operation_count"] == len(
+        plan.eligible_operations
+    )
+    assert snapshot["current_task_operations"] == sorted(plan.eligible_operations)
+    assert snapshot["slice_activation_decision"]["effective_context_operations"] == [
+        focused
+    ]
+    assert snapshot["slice_activation_decision"]["release_authority_operations"] == sorted(
+        plan.eligible_operations
+    )
+
+
 def test_robot_wiki_is_retrievable_but_not_embedded_in_agent_context(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
@@ -156,6 +266,39 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert run.event_count == 2
     assert run.result_ref is not None
     assert run_path.is_file()
+    context_metrics = json.loads(
+        (run_path.parent / "context_metrics.json").read_text(encoding="utf-8")
+    )
+    slice_shadow = json.loads(
+        (run_path.parent / "target-operation-slice-shadow.json").read_text(encoding="utf-8")
+    )
+    capability_shadow = json.loads(
+        (run_path.parent / "capability-resolution-shadow.json").read_text(encoding="utf-8")
+    )
+    activation = json.loads(
+        (run_path.parent / "slice-activation-decision.json").read_text(encoding="utf-8")
+    )
+    assert (run_path.parent / "platform-profile.json").is_file()
+    assert slice_shadow["influences_release"] is False
+    assert capability_shadow["influences_release"] is False
+    assert activation["mode"] == "SHADOW"
+    assert activation["outcome"] == "SHADOW_ONLY"
+    assert activation["influences_release"] is False
+    assert context_metrics["shadow_influences_release"] is False
+    assert context_metrics["slice_activation_affects_agent_context"] is False
+    assert set(context_metrics["capability_resolution_counts"]) == {
+        "RESOLVED",
+        "UNAVAILABLE",
+        "AMBIGUOUS",
+    }
+    assert context_metrics["wiki_boot_injected_chars"] == 0
+    assert context_metrics["wiki_total_chars"] > 0
+    assert context_metrics["prompt_chars"] < 50_000
+    assert (
+        context_metrics["boot_context_token_estimate"]
+        <= context_metrics["boot_context_budget_tokens"]
+    )
+    assert context_metrics["injected_target_adapter_operation_count"] <= 20
     command = captured["command"]
     assert isinstance(command, list)
     assert command[:2] == ["codex", "exec"]
@@ -212,6 +355,125 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
     assert detail["contract"]["contract_sha256"]
     assert tool.parent == workspace.resolve()
     assert "import rolo" not in script.read_text(encoding="utf-8")
+    snapshot_text = (workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8")
+    snapshot = json.loads(snapshot_text)
+    assert "workset_operations" not in snapshot
+    assert len(snapshot["operation_index"]) == 294
+    assert set(snapshot["operation_index"][0]) == {
+        "operation",
+        "layer",
+        "contract_sha256",
+    }
+    assert snapshot["target_operation_slice"]["slice_sha256"]
+    assert '"content_file": "rolo-agent-wiki.zlib"' in snapshot_text
+    assert '"content": "# 机器人 Wiki' not in snapshot_text
+    assert (workspace / "rolo-agent-wiki.zlib").is_file()
+    assert (workspace / "rolo_agent_wiki.py").is_file()
+
+    paged = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "operations",
+            "list",
+            "--robot",
+            "demo_diff",
+            "--scope",
+            "target",
+            "--limit",
+            "1",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert paged.returncode == 0, paged.stderr
+    assert json.loads(paged.stdout)["returned_count"] == 1
+
+    searched = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "operations",
+            "search",
+            "--robot",
+            "demo_diff",
+            "teleop",
+            "--scope",
+            "target",
+            "--limit",
+            "10",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert searched.returncode == 0, searched.stderr
+    assert any(
+        item["operation"] == "app.teleop.velocity"
+        for item in json.loads(searched.stdout)["operations"]
+    )
+
+    batched = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "operations",
+            "batch-inspect",
+            "--robot",
+            "demo_diff",
+            "app.teleop.velocity",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert batched.returncode == 0, batched.stderr
+    assert json.loads(batched.stdout)["returned_count"] == 1
+
+    outside = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "operations",
+            "inspect",
+            "--robot",
+            "demo_diff",
+            "linux.host.reboot",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert outside.returncode == 2
+    assert "NOT_IN_CURRENT_SLICE" in outside.stderr
+
+    wiki_outline = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "wiki",
+            "section",
+            "--robot",
+            "demo_diff",
+            "机器人 Wiki",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert wiki_outline.returncode == 0, wiki_outline.stderr
+    assert json.loads(wiki_outline.stdout)["is_outline"] is True
 
     (workspace / "adapter.py").write_text(
         "import json, sys\n"
@@ -266,16 +528,14 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
     assert entrypoint["sha256"] == adapter_sha
 
     (workspace / "adapter.py").write_text(
-        "from pathlib import Path\n"
-        "Path('agent-preflight-executed').write_text('unsafe', encoding='utf-8')\n",
-        encoding="utf-8",
+        "import json\nprint(json.dumps({'operations': []}))\n", encoding="utf-8"
     )
     bad_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
     manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
     manifest["package_sha256"] = bad_sha
     manifest["files"][0]["sha256"] = bad_sha
     (workspace / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    statically_packed = subprocess.run(
+    rejected = subprocess.run(
         pack_command,
         capture_output=True,
         check=False,
@@ -283,8 +543,8 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
         encoding="utf-8",
     )
 
-    assert statically_packed.returncode == 0, statically_packed.stderr
-    assert not (workspace / "agent-preflight-executed").exists()
+    assert rejected.returncode == 2
+    assert "describe preflight does not match" in rejected.stderr
 
 
 def test_codex_executor_passes_key_only_in_child_environment(
@@ -347,6 +607,39 @@ def test_codex_executor_removes_unrelated_host_credentials(
 
     assert "AWS_SECRET_ACCESS_KEY" not in environment
     assert "UNRELATED_SESSION_TOKEN" not in environment
+
+
+def test_codex_executor_restores_windows_home_from_codex_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace)
+    profile = tmp_path / "profile"
+    executable = profile / ".codex" / "packages" / "bin" / "codex.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"")
+    for name in (
+        "HOME",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "CODEX_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    executor = CodexAdaptExecutor(ArtifactStore(artifact_root), executable=str(executable))
+    agent_tool = executor._install_agent_tool_launcher(workspace, plan)
+
+    environment = executor._child_environment(agent_tool, plan)
+
+    assert environment["HOME"] == str(profile.resolve())
+    if sys.platform == "win32":
+        assert environment["USERPROFILE"] == str(profile.resolve())
+    assert environment["CODEX_HOME"] == str((profile / ".codex").resolve())
 
 
 def test_codex_executor_rechecks_machine_manifest_before_execution(
