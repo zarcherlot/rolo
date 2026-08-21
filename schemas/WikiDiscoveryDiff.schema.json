@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "WikiDiscoveryChange": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "PLATFORM",
+            "ROS",
+            "APPLICATION",
+            "HARDWARE",
+            "OPERATION",
+            "UNKNOWN"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "added": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40,
+          "title": "Added",
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40,
+          "title": "Removed",
+          "type": "array"
+        },
+        "changed": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Changed",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category"
+      ],
+      "title": "WikiDiscoveryChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-wiki-discovery-diff/v1",
+      "default": "robot-wiki-discovery-diff/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "baseline_discovery_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Discovery Id"
+    },
+    "status": {
+      "enum": [
+        "NO_BASELINE",
+        "UNCHANGED",
+        "CHANGED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/WikiDiscoveryChange"
+      },
+      "maxItems": 12,
+      "title": "Changes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "status"
+  ],
+  "title": "WikiDiscoveryDiff",
+  "type": "object"
+}

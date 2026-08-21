@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "HardwareEvidenceComponent": {
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "const": "hardware_provider",
+          "default": "hardware_provider",
+          "title": "Source",
+          "type": "string"
+        },
+        "provider_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "provider_id"
+      ],
+      "title": "HardwareEvidenceComponent",
+      "type": "object"
+    },
+    "HardwareEvidenceDevice": {
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "HardwareEvidenceDevice",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-hardware-evidence/v1",
+      "default": "robot-hardware-evidence/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "$ref": "#/$defs/HardwareEvidenceComponent"
+      },
+      "maxItems": 1024,
+      "title": "Components",
+      "type": "array"
+    },
+    "devices": {
+      "items": {
+        "$ref": "#/$defs/HardwareEvidenceDevice"
+      },
+      "maxItems": 1024,
+      "title": "Devices",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id"
+  ],
+  "title": "HardwareEvidenceProviderResult",
+  "type": "object"
+}

@@ -266,11 +266,12 @@ def evidence_read_snippet(
 def robot_wiki_section(
     heading: Annotated[str, typer.Argument()],
     robot: Annotated[str, typer.Option("--robot")],
+    cursor: Annotated[int, typer.Option("--cursor", min=0)] = 0,
 ) -> None:
     """Read one heading-bounded section from the editable high-authority Wiki."""
     artifact_root, _ = _settings()
     try:
-        emit(wiki_section(artifact_root, robot, heading, _discovery_id()))
+        emit(wiki_section(artifact_root, robot, heading, _discovery_id(), cursor))
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -279,10 +280,11 @@ def robot_wiki_section(
 def robot_wiki_search(
     query: Annotated[str, typer.Argument()],
     robot: Annotated[str, typer.Option("--robot")],
+    cursor: Annotated[int, typer.Option("--cursor", min=0)] = 0,
 ) -> None:
     """Search Wiki lines without injecting the whole document into the Agent prompt."""
     artifact_root, _ = _settings()
     try:
-        emit(wiki_search(artifact_root, robot, query, _discovery_id()))
+        emit(wiki_search(artifact_root, robot, query, _discovery_id(), cursor))
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

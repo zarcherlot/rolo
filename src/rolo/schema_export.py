@@ -24,6 +24,10 @@ from rolo.invocation_policy import (
     R3AuthorizationRequest,
 )
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.hardware_provider import (
+    HardwareEvidenceProviderRequest,
+    HardwareEvidenceProviderResult,
+)
 from rolo.stages.adapt.inputs import AdaptInputs
 from rolo.stages.adapt.models import (
     AdapterAgentDependencyReport,
@@ -47,6 +51,8 @@ from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
 )
+from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
+from rolo.stages.adapt.wiki_insights import WikiInsightBundle
 from rolo.stages.adapt.workset import AdaptOperationWorkset
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
@@ -94,6 +100,10 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     DirectDependencyReport,
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
+    HardwareEvidenceProviderRequest,
+    HardwareEvidenceProviderResult,
+    WikiInsightBundle,
+    WikiDiscoveryDiff,
 )
 
 

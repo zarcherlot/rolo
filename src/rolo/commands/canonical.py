@@ -487,7 +487,11 @@ def tool_catalog(
     """List the Active Tool Catalog from the latest gated adapter release."""
     settings = get_settings()
     try:
-        _, _, _, catalog = load_current_release(settings.rolo_output_dir, robot)
+        _, _, _, catalog = load_current_release(
+            settings.rolo_output_dir,
+            robot,
+            artifact_root=settings.rolo_artifact_dir,
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     tools = catalog.tools
@@ -511,7 +515,11 @@ def tool_schema(
     """Show a schema from the latest gated Active Tool Catalog."""
     settings = get_settings()
     try:
-        _, _, _, catalog = load_current_release(settings.rolo_output_dir, robot)
+        _, _, _, catalog = load_current_release(
+            settings.rolo_output_dir,
+            robot,
+            artifact_root=settings.rolo_artifact_dir,
+        )
         descriptor = next(tool for tool in catalog.tools if tool.operation == operation)
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -552,6 +560,7 @@ def tool_invoke(
                 r3_authorizer_path=settings.rolo_r3_authorizer,
                 quiescence_provider_path=settings.rolo_quiescence_provider,
                 artifact_root=settings.rolo_artifact_dir,
+                discovery_artifact_root=settings.rolo_artifact_dir,
             )
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -679,7 +688,11 @@ def ros_bag_inspect(path: Annotated[Path, typer.Argument()]) -> None:
 
 def _active_state_graph(robot: str) -> StateGraphBaseline:
     settings = get_settings()
-    release_root, release, _, _ = load_current_release(settings.rolo_output_dir, robot)
+    release_root, release, _, _ = load_current_release(
+        settings.rolo_output_dir,
+        robot,
+        artifact_root=settings.rolo_artifact_dir,
+    )
     return StateGraphBaseline.model_validate_json(
         (release_root / release.state_graph).read_text(encoding="utf-8")
     )

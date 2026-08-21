@@ -75,12 +75,25 @@ class AdapterOutputRefs(BaseModel):
     conformance_report: str
 
 
+class AdapterAgentFile(BaseModel):
+    """Bounded file payload returned through Codex's structured final message."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    encoding: Literal["base64"]
+    content: str = Field(max_length=24_000_000)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class AdapterAgentResult(BaseModel):
     """Structured final message produced by the Stage 1 Adapter Agent."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-agent-result/v1"]
+    schema_version: Literal[
+        "robot-adapter-agent-result/v1", "robot-adapter-agent-result/v2"
+    ]
     summary: str
     completed_tasks: list[str]
     changed_files: list[str]
@@ -88,6 +101,14 @@ class AdapterAgentResult(BaseModel):
     blockers: list[str]
     handoff_ready: bool
     outputs: AdapterOutputRefs | None
+    files: list[AdapterAgentFile]
+
+    @model_validator(mode="after")
+    def require_structured_files_for_v2_handoff(self) -> AdapterAgentResult:
+        if self.schema_version == "robot-adapter-agent-result/v2" and self.handoff_ready:
+            if self.outputs is None or not self.files:
+                raise ValueError("Adapter Agent result v2 handoff requires outputs and files")
+        return self
 
 
 class AdapterBundleOperation(BaseModel):
@@ -101,12 +122,22 @@ class AdapterBundleOperation(BaseModel):
     contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class AdapterBundleFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    role: Literal["ENTRYPOINT", "SUPPORT"] = "SUPPORT"
+
+
 class AdapterBundleManifest(BaseModel):
     """Immutable contract between a generated adapter and the rolo runtime."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-bundle/v1"] = "robot-adapter-bundle/v1"
+    schema_version: Literal["robot-adapter-bundle/v1", "robot-adapter-bundle/v2"] = (
+        "robot-adapter-bundle/v2"
+    )
     bundle_id: str
     bundle_version: str
     robot_id: str
@@ -114,7 +145,43 @@ class AdapterBundleManifest(BaseModel):
     runtime_protocol: Literal["robot-adapter-rpc/v1"] = "robot-adapter-rpc/v1"
     package_file: str
     package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    files: list[AdapterBundleFile] = Field(default_factory=list)
     operations: list[AdapterBundleOperation] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_file_manifest(self) -> AdapterBundleManifest:
+        if not self.files:
+            if self.schema_version == "robot-adapter-bundle/v2":
+                raise ValueError("adapter bundle v2 requires a file manifest")
+            return self
+        paths = [item.path for item in self.files]
+        if len(paths) != len(set(paths)):
+            raise ValueError("adapter bundle file manifest contains duplicate paths")
+        entrypoints = [item for item in self.files if item.role == "ENTRYPOINT"]
+        if len(entrypoints) != 1 or entrypoints[0].path != self.package_file:
+            raise ValueError("adapter bundle must declare exactly one matching entrypoint file")
+        if entrypoints[0].sha256 != self.package_sha256:
+            raise ValueError("adapter bundle entrypoint digest mismatch")
+        return self
+
+    def declared_files(self) -> list[AdapterBundleFile]:
+        if self.files:
+            return self.files
+        return [
+            AdapterBundleFile(
+                path=self.package_file,
+                sha256=self.package_sha256,
+                role="ENTRYPOINT",
+            )
+        ]
+
+
+class PublishedAdapterFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    role: Literal["ENTRYPOINT", "SUPPORT"] = "SUPPORT"
 
 
 class AdapterReleaseManifest(BaseModel):
@@ -122,14 +189,20 @@ class AdapterReleaseManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapter-release/v1"] = "robot-adapter-release/v1"
+    schema_version: Literal["robot-adapter-release/v1", "robot-adapter-release/v2"] = (
+        "robot-adapter-release/v2"
+    )
     release_id: str
     robot_id: str
     discovery_id: str
+    target_fingerprint_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     bundle_manifest: str
     bundle_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     adapter_package: str
     adapter_package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_files: list[PublishedAdapterFile] = Field(default_factory=list)
     tool_catalog: str
     tool_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     state_graph: str
@@ -139,6 +212,15 @@ class AdapterReleaseManifest(BaseModel):
     gate_report: str
     gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     published_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def require_v2_target_fingerprint(self) -> AdapterReleaseManifest:
+        if (
+            self.schema_version == "robot-adapter-release/v2"
+            and self.target_fingerprint_sha256 is None
+        ):
+            raise ValueError("adapter release v2 requires a target fingerprint")
+        return self
 
 
 class AdapterReleaseIndex(BaseModel):
@@ -218,9 +300,12 @@ class AdapterConformanceReport(BaseModel):
 class StateGraphBaseline(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    schema_version: Literal["robot-state-graph/v1"] = "robot-state-graph/v1"
+    schema_version: Literal["robot-state-graph/v1", "robot-state-graph/v2"] = (
+        "robot-state-graph/v2"
+    )
     robot_id: str
     discovery_id: str
+    owner: Literal["ADAPTER_AGENT", "ROLO_GATE"] = "ADAPTER_AGENT"
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
 
@@ -270,6 +355,7 @@ class AdapterOutputSnapshot(BaseModel):
     adapter_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     adapter_package_ref: str
     adapter_package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adapter_files: list[PublishedAdapterFile] = Field(default_factory=list)
     state_graph_ref: str
     state_graph_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     conformance_report_ref: str
@@ -364,12 +450,16 @@ class AdaptTask(BaseModel):
 
 
 class AdaptPlan(BaseModel):
-    schema_version: Literal["robot-adapt-plan/v2"] = "robot-adapt-plan/v2"
+    schema_version: Literal["robot-adapt-plan/v2", "robot-adapt-plan/v3"] = (
+        "robot-adapt-plan/v3"
+    )
     stage: str = "adapt"
     robot_id: str
     source_discovery_id: str
     status: AdaptPlanStatus
     tasks: list[AdaptTask]
+    eligible_operations: list[str] = Field(default_factory=list)
+    deferred_operations: dict[str, str] = Field(default_factory=dict)
     adapter_agent: AdapterAgentConfig = Field(default_factory=AdapterAgentConfig)
     semantic_context_ref: str = ""
     robot_wiki_ref: str = ""

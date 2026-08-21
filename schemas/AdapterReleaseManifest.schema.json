@@ -1,10 +1,44 @@
 {
+  "$defs": {
+    "PublishedAdapterFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "role": {
+          "default": "SUPPORT",
+          "enum": [
+            "ENTRYPOINT",
+            "SUPPORT"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "PublishedAdapterFile",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
   "description": "Files published together after the independent Adapt gate passes.",
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-release/v1",
-      "default": "robot-adapter-release/v1",
+      "default": "robot-adapter-release/v2",
+      "enum": [
+        "robot-adapter-release/v1",
+        "robot-adapter-release/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -19,6 +53,19 @@
     "discovery_id": {
       "title": "Discovery Id",
       "type": "string"
+    },
+    "target_fingerprint_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Fingerprint Sha256"
     },
     "bundle_manifest": {
       "title": "Bundle Manifest",
@@ -37,6 +84,13 @@
       "pattern": "^[0-9a-f]{64}$",
       "title": "Adapter Package Sha256",
       "type": "string"
+    },
+    "adapter_files": {
+      "items": {
+        "$ref": "#/$defs/PublishedAdapterFile"
+      },
+      "title": "Adapter Files",
+      "type": "array"
     },
     "tool_catalog": {
       "title": "Tool Catalog",

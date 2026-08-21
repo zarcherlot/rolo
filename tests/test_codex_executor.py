@@ -1,11 +1,17 @@
+import base64
+import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.models import ProbeResult
 from rolo.core.registry import RobotRegistry
+from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.executor import CodexAdaptExecutor, build_codex_command
 from rolo.stages.adapt.models import AdapterAgentConfig, AdapterAgentResult, AdaptPlan
@@ -34,13 +40,34 @@ def prepare_plan(artifact_root: Path, source_root: Path) -> AdaptPlan:
         '[project]\nname = "executor-demo"\n\n[project.scripts]\nexecutor-demo = "demo:main"\n',
         encoding="utf-8",
     )
+    (source_root / "driver.py").write_text(
+        'node.create_publisher(Twist, "/cmd_vel", 10)\n', encoding="utf-8"
+    )
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
-    report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
-        robot=registry.get("demo_diff"),
-        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
-        source_roots=[source_root],
+    ros_probe = ProbeResult(
+        layer="ros",
+        status="SUCCEEDED",
+        data={
+            "ros_distro": "test",
+            "installed_distros": ["test"],
+            "domain_id": "0",
+            "rmw": "test",
+            "nodes": [],
+            "topics": ["/cmd_vel [geometry_msgs/msg/Twist]"],
+            "services": [],
+            "actions": [],
+        },
     )
+    with patch("rolo.stages.adapt.discovery.RosProbe.run", return_value=ros_probe):
+        DiscoveryService(ArtifactStore(artifact_root)).run(
+            robot=registry.get("demo_diff"),
+            urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
+            active_inputs=ActiveDiscoveryInputs(
+                source_roots=[source_root],
+                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+            ),
+        )
     return AdaptStageService(ArtifactStore(artifact_root)).derive_plan("demo_diff")
 
 
@@ -112,6 +139,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
                 blockers=[],
                 handoff_ready=False,
                 outputs=None,
+                files=[],
             ).model_dump_json(),
             encoding="utf-8",
         )
@@ -128,19 +156,163 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert run.event_count == 2
     assert run.result_ref is not None
     assert run_path.is_file()
+    context_metrics = json.loads(
+        (run_path.parent / "context_metrics.json").read_text(encoding="utf-8")
+    )
+    assert context_metrics["wiki_boot_injected_chars"] == 0
+    assert context_metrics["wiki_total_chars"] > 0
+    assert context_metrics["prompt_chars"] < 50_000
     command = captured["command"]
     assert isinstance(command, list)
     assert command[:2] == ["codex", "exec"]
     assert "workspace-write" in command
     assert "--ephemeral" in command
+    assert "--skip-git-repo-check" in command
     assert command[-1] == "-"
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert "CODEX_API_KEY" not in environment
     assert environment["ROLO_AGENT_DISCOVERY_ID"] == plan.source_discovery_id
     assert Path(environment["ROLO_AGENT_TOOL"]).is_file()
-    assert "rolo.agent_tool" in Path(environment["ROLO_AGENT_TOOL"]).read_text(encoding="utf-8")
-    assert environment["ROLO_ARTIFACT_DIR"] == str(artifact_root.resolve())
+    assert "rolo_agent_inspection_tool.py" in Path(environment["ROLO_AGENT_TOOL"]).read_text(
+        encoding="utf-8"
+    )
+    assert "ROLO_ARTIFACT_DIR" not in environment
+    assert "ROLO_OUTPUT_DIR" not in environment
+
+
+def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    plan = prepare_plan(artifact_root, evidence)
+    tool = CodexAdaptExecutor(ArtifactStore(artifact_root))._install_agent_tool_launcher(
+        workspace, plan
+    )
+
+    script = workspace / "rolo_agent_inspection_tool.py"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "operations",
+            "inspect",
+            "--robot",
+            "demo_diff",
+            "app.teleop.velocity",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    detail = json.loads(completed.stdout)
+    assert detail["contract"]["operation"] == "app.teleop.velocity"
+    assert detail["contract"]["contract_sha256"]
+    assert tool.parent == workspace.resolve()
+    assert "import rolo" not in script.read_text(encoding="utf-8")
+    snapshot_text = (workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8")
+    assert '"content_file": "rolo-agent-wiki.zlib"' in snapshot_text
+    assert '"content": "# 机器人 Wiki' not in snapshot_text
+    assert (workspace / "rolo-agent-wiki.zlib").is_file()
+    assert (workspace / "rolo_agent_wiki.py").is_file()
+
+    wiki_outline = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "adapt",
+            "wiki",
+            "section",
+            "--robot",
+            "demo_diff",
+            "机器人 Wiki",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    assert wiki_outline.returncode == 0, wiki_outline.stderr
+    assert json.loads(wiki_outline.stdout)["is_outline"] is True
+
+    (workspace / "adapter.py").write_text(
+        "import json, sys\n"
+        "if sys.argv[1] == 'describe':\n"
+        "    print(json.dumps({'operations': {'app.demo': 'adapter.py'}}))\n",
+        encoding="utf-8",
+    )
+    adapter_payload = (workspace / "adapter.py").read_bytes()
+    adapter_sha = hashlib.sha256(adapter_payload).hexdigest()
+    (workspace / "manifest.json").write_text(
+        json.dumps(
+            {
+                "package_file": "adapter.py",
+                "package_sha256": adapter_sha,
+                "files": [{"path": "adapter.py", "sha256": adapter_sha}],
+                "operations": [{"operation": "app.demo", "entrypoint": "adapter.py"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (workspace / "graph.json").write_text("{}", encoding="utf-8")
+    (workspace / "conformance.json").write_text("{}", encoding="utf-8")
+    pack_command = [
+        sys.executable,
+        str(script),
+        "adapt",
+        "handoff",
+        "pack",
+        "--robot",
+        "demo_diff",
+        "--adapter-manifest",
+        "manifest.json",
+        "--adapter-package",
+        "adapter.py",
+        "--state-graph",
+        "graph.json",
+        "--conformance-report",
+        "conformance.json",
+    ]
+    packed = subprocess.run(
+        pack_command,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert packed.returncode == 0, packed.stderr
+    handoff = json.loads(packed.stdout)
+    entrypoint = next(item for item in handoff["files"] if item["path"] == "adapter.py")
+    assert base64.b64decode(entrypoint["content"]) == adapter_payload
+    assert entrypoint["sha256"] == adapter_sha
+
+    (workspace / "adapter.py").write_text(
+        "import json\nprint(json.dumps({'operations': []}))\n", encoding="utf-8"
+    )
+    bad_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
+    manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
+    manifest["package_sha256"] = bad_sha
+    manifest["files"][0]["sha256"] = bad_sha
+    (workspace / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    rejected = subprocess.run(
+        pack_command,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert rejected.returncode == 2
+    assert "describe preflight does not match" in rejected.stderr
 
 
 def test_codex_executor_passes_key_only_in_child_environment(
@@ -167,6 +339,7 @@ def test_codex_executor_passes_key_only_in_child_environment(
                 blockers=[],
                 handoff_ready=False,
                 outputs=None,
+                files=[],
             ).model_dump_json(),
             encoding="utf-8",
         )
@@ -184,6 +357,24 @@ def test_codex_executor_passes_key_only_in_child_environment(
     for path in artifact_root.rglob("*"):
         if path.is_file():
             assert secret not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+def test_codex_executor_removes_unrelated_host_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace)
+    executor = CodexAdaptExecutor(ArtifactStore(artifact_root))
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "must-not-reach-codex")
+    monkeypatch.setenv("UNRELATED_SESSION_TOKEN", "must-not-reach-codex")
+    agent_tool = executor._install_agent_tool_launcher(workspace, plan)
+
+    environment = executor._child_environment(agent_tool, plan)
+
+    assert "AWS_SECRET_ACCESS_KEY" not in environment
+    assert "UNRELATED_SESSION_TOKEN" not in environment
 
 
 def test_codex_executor_rechecks_machine_manifest_before_execution(

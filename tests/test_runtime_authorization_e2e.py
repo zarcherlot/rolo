@@ -97,6 +97,13 @@ def _publish_runtime_matrix(tmp_path: Path) -> Path:
         discovery_id="d",
         package_file=package.name,
         package_sha256=sha256_file(package),
+        files=[
+            {
+                "path": package.name,
+                "sha256": sha256_file(package),
+                "role": "ENTRYPOINT",
+            }
+        ],
         operations=[
             {
                 "operation": operation,

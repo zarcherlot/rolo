@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "AdapterAgentFile": {
+      "additionalProperties": false,
+      "description": "Bounded file payload returned through Codex's structured final message.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "encoding": {
+          "const": "base64",
+          "title": "Encoding",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 24000000,
+          "title": "Content",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "encoding",
+        "content",
+        "sha256"
+      ],
+      "title": "AdapterAgentFile",
+      "type": "object"
+    },
     "AdapterOutputRefs": {
       "additionalProperties": false,
       "description": "Workspace-relative outputs proposed for independent promotion.",
@@ -35,7 +68,10 @@
   "description": "Structured final message produced by the Stage 1 Adapter Agent.",
   "properties": {
     "schema_version": {
-      "const": "robot-adapter-agent-result/v1",
+      "enum": [
+        "robot-adapter-agent-result/v1",
+        "robot-adapter-agent-result/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -84,6 +120,13 @@
           "type": "null"
         }
       ]
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/AdapterAgentFile"
+      },
+      "title": "Files",
+      "type": "array"
     }
   },
   "required": [
@@ -94,7 +137,8 @@
     "validation",
     "blockers",
     "handoff_ready",
-    "outputs"
+    "outputs",
+    "files"
   ],
   "title": "AdapterAgentResult",
   "type": "object"

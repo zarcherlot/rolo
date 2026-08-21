@@ -131,27 +131,14 @@ resolved.
 
 ### Binary linked-library introspection
 
-Binary linked-library introspection is intentionally not part of the current dependency resolver.
-The current report identifies executable format, architecture and content hash, while Python and
-ROS dependency resolution remains declaration-driven. Consequently, artifact-only and binary-only
-runs may report dependency declarations as unknown even when the executable contains ELF, PE or
-Mach-O linkage metadata.
+Each executable is inspected with bounded static parsing for ELF `DT_NEEDED`, PE import tables, and
+Mach-O dylib load commands. The target is never loaded and `ldd` or equivalent loader-based commands
+are never executed. The executable record exposes format, imported library names, parse status, and
+explicit limitations.
 
-This capability is useful, but it is not required for the initial evidence-led adaptation pass. It
-should be added when artifact-only deployment becomes an acceptance path or conformance failures need
-to distinguish a missing shared library from an adapter defect. The recommended scope is bounded,
-static metadata parsing only:
-
-- read ELF `DT_NEEDED`, PE import tables and Mach-O load commands without loading the binary;
-- record library names, binary architecture/ABI evidence and bounded resolution attempts separately
-  from Python and ROS declared dependencies;
-- report unresolved or conflicting libraries without installing packages or guessing a distribution
-  package name; and
-- do not run `ldd` or an equivalent loader-based command on untrusted binaries, because that crosses
-  the static-evidence boundary and can execute target-controlled loader behavior.
-
-Until that work is implemented, binary linkage is an explicit coverage gap rather than evidence that
-the binary has no external dependencies.
+This evidence remains separate from Python and ROS declared-dependency resolution. Library names are
+not guessed into distribution packages; unsupported or truncated binaries produce `PARTIAL`; and an
+empty import list is not proof that no runtime dependency exists.
 
 ### Python
 
@@ -247,6 +234,12 @@ coverage counts, and a read-only query launcher pinned to the selected discovery
 contracts, candidates, entrypoints, launch evidence, dependencies, Wiki sections, and bounded source
 snippets only for a concrete adapter gap.
 
+Wiki retrieval has independent response budgets: section reads return at most 8,000 characters and
+120 lines, searches return at most 20 matches and 6,000 characters, and both expose a continuation
+cursor when truncated. The document title returns a bounded heading outline. The main inspection
+JSON contains only the Wiki section index and hashes; compressed content is kept in a separate
+launcher data file to prevent accidental whole-snapshot reads from injecting the Wiki text.
+
 ```text
 robotctl adapt operations summary|list|inspect
 robotctl adapt candidates inspect
@@ -263,14 +256,34 @@ the current gated release. Only the independent gate can publish the Active Tool
 
 ## Editable robot Wiki
 
-Every run produces `robot_wiki.md`, which renders the node/communication graph, hardware and host
-summary, dependencies, unknowns, warnings, and maintenance guidance. The application inventory and
-static launch topology share one section so executable identity, launch arguments, remappings, and
-evidence are not repeated. When a URDF is supplied, the Wiki also records its declared links,
-joints, limits, and explicitly declared sensor semantics. These declarations describe the input
-model; they are not presented as proof that the corresponding hardware was observed at runtime. When a
-Wiki model and credentials are configured, the deterministic probe-derived draft receives a
-bounded structured narrative polish. The model cannot replace the machine-rendered evidence
+Every run produces `robot_wiki.md`, an engineer-facing view for takeover, startup, safety review,
+and diagnosis. The deterministic renderer separates confirmed observations, static declarations,
+heuristic findings, and unresolved gaps. It degrades an apparent compatibility `MATCH` when key
+ROS, drive-model, or motion-limit evidence is missing. Build hooks, CMake probes, ROSIDL generated
+libraries, and other support artifacts are counted rather than rendered as applications. Repeated
+interfaces are deduplicated, the static graph is bounded, and suspicious interface aggregation or
+motion-related false negatives are called out for verification.
+
+Only discovered canonical operation candidates appear in the Wiki; the full product Registry stays
+in the operation inspection tools and machine data. Candidates remain explicitly unverified and do
+not imply that an adapter exists or that an operation is callable. Unknowns are grouped by the next
+acquisition method: deterministic rescan, runtime observation, heuristic inference with review, or
+manual/external input. Exhaustive paths, hashes, raw device nodes, interface candidates, and
+dependency IDs remain in the machine reports.
+
+When a URDF is supplied, the Wiki records its declared links, joints, limits, and explicitly declared
+sensor semantics. Large joint and inertial tables are collapsed, and floating-point values are
+rounded for human reading. These declarations describe the input model; they are not presented as
+proof that the corresponding hardware was observed at runtime.
+
+Optional Wiki insights use the `robot-wiki-insights/v1` contract. A deterministic rule or future
+Adapt Agent skill may emit only a bounded finding with a category, `LOW`/`MEDIUM` confidence,
+evidence basis, verification method, and source. An insight bundle must match the robot and discovery
+IDs and can never promote a heuristic to verified machine evidence.
+
+When a Wiki model and credentials are configured, a deterministic, relevance-ordered summary of at
+most 20,000 characters receives a structured narrative polish. The complete Wiki and its tables are
+not model input. The model cannot replace the machine-rendered evidence
 sections. Missing credentials, model failure, timeout, or invalid output automatically falls back
 to the deterministic draft without blocking discovery. `wiki_generation.json` records the path
 used:

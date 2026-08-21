@@ -16,6 +16,7 @@ from rolo.contract_catalog import (
 from rolo.core.models import DiscoveryReport, OperationCandidate, ToolDescriptor
 from rolo.schema_subset import validate_schema_definition
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
+from rolo.stages.adapt.routes import candidate_route_observed
 
 
 class CanonicalOperationDefinition(BaseModel):
@@ -646,18 +647,31 @@ def builtin_operations() -> set[str]:
 
 def required_adapter_agent_conformance_operations(report: DiscoveryReport) -> set[str]:
     """Operations owned by the generated bundle and therefore reported by its Agent."""
+    eligible, _ = adapter_operation_eligibility(report)
+    return eligible
+
+
+def adapter_operation_eligibility(
+    report: DiscoveryReport,
+) -> tuple[set[str], dict[str, str]]:
+    """Split candidates into independently gateable and evidence-only operations."""
     definitions = {item.operation: item for item in canonical_operation_registry().operations}
-    incomplete = sorted(
-        candidate.operation
-        for candidate in report.operation_candidates
-        if definitions[candidate.operation].contract_lifecycle
-        not in {ContractLifecycle.GATEABLE, ContractLifecycle.RELEASED}
-    )
-    if incomplete:
-        raise ValueError(
-            "discovered operations lack complete product contracts: " + ", ".join(incomplete)
-        )
-    return {item.operation for item in report.operation_candidates}
+    eligible: set[str] = set()
+    deferred: dict[str, str] = {}
+    for candidate in report.operation_candidates:
+        definition = definitions[candidate.operation]
+        if definition.contract_lifecycle not in {
+            ContractLifecycle.GATEABLE,
+            ContractLifecycle.RELEASED,
+        }:
+            deferred[candidate.operation] = "PRODUCT_CONTRACT_NOT_GATEABLE"
+        elif not candidate.route_evidence:
+            deferred[candidate.operation] = "TARGET_ROUTE_NOT_DECLARED"
+        elif not candidate_route_observed(candidate, report.probes):
+            deferred[candidate.operation] = "TARGET_ROUTE_NOT_OBSERVED"
+        else:
+            eligible.add(candidate.operation)
+    return eligible, deferred
 
 
 def required_builtin_conformance_operations() -> set[str]:
@@ -786,6 +800,7 @@ def materialize_active_catalog(
     bundle_entries = (
         {item.operation: item for item in bundle.operations} if bundle else {}
     )
+    _, deferred = adapter_operation_eligibility(report)
     tools: list[ToolDescriptor] = []
     for definition in registry.operations:
         candidate = candidates.get(definition.operation)
@@ -808,12 +823,17 @@ def materialize_active_catalog(
             }:
                 availability = "UNAVAILABLE"
         elif candidate is not None:
-            availability = (
-                "VERIFIED" if definition.operation in bundle_entries else candidate.status
-            )
+            if definition.operation in bundle_entries:
+                availability = "VERIFIED"
+            elif bundle is not None:
+                availability = "UNAVAILABLE"
+            else:
+                availability = candidate.status
             adapter = (
                 f"bundle:{bundle.bundle_id}#{bundle_entries[definition.operation].entrypoint}"
                 if definition.operation in bundle_entries and bundle is not None
+                else "unbound"
+                if bundle is not None
                 else "generated.binding_candidate"
             )
         else:
@@ -872,6 +892,11 @@ def materialize_active_catalog(
                         ]
                         if definition.contract_lifecycle
                         not in {ContractLifecycle.GATEABLE, ContractLifecycle.RELEASED}
+                        else []
+                    ),
+                    *(
+                        [f"Deferred from this release: {deferred[definition.operation]}"]
+                        if bundle is not None and definition.operation in deferred
                         else []
                     ),
                 ],

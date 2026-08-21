@@ -69,13 +69,35 @@ uv run robotctl adapt run \
 ```
 
 The executor uses the `workspace-write` sandbox. Dependency reports, commands, and run artifacts do
-not contain API keys or cached authentication contents.
+not contain API keys or cached authentication contents. Before launching Codex, Rolo removes host
+environment variables whose names indicate keys, secrets, tokens, passwords, or credentials; only an
+explicitly configured provider key is restored as `CODEX_API_KEY`.
 
-The isolated workspace also receives `ROLO_AGENT_TOOL`, a temporary read-only launcher for Rolo's
-discovery queries. `ROLO_AGENT_DISCOVERY_ID` pins every query to the plan snapshot. The initial prompt
-contains only a compact workset/coverage summary; Codex uses the launcher to retrieve one operation,
-candidate, executable, launch record, dependency view, Wiki section, or bounded evidence snippet as
-needed. The launcher disappears with the temporary workspace and is never published as adapter code.
+The isolated workspace also receives `ROLO_AGENT_TOOL`, a standard-library-only query launcher and a
+bounded inspection snapshot. `ROLO_AGENT_DISCOVERY_ID` pins every query to the plan snapshot. Neither
+the Rolo checkout, the original artifact directory, nor the formal adapter output directory is
+mounted into the Agent workspace. The initial prompt contains only a compact workset/coverage
+summary; Codex uses the launcher to retrieve one operation, candidate, executable, launch record,
+dependency view, Wiki section, or exact product-owned artifact Schema as needed.
+Wiki section and search responses are hard-bounded and cursor-paginated; the main JSON snapshot
+contains only a section/hash index, not plaintext Wiki content. Each Adapt Agent run writes
+`context_metrics.json` with prompt size, Wiki size, compressed data size, and boot-injected Wiki
+characters for regression monitoring.
+
+Before handoff, `adapt handoff pack` validates bundle hashes and the adapter's read-only `describe`
+surface, then deterministically produces base64 file payloads and SHA-256 values. Codex returns those
+payloads through `robot-adapter-agent-result/v2` and removes every file it created. Rolo reconstructs
+the frozen snapshot in its own permission domain and independently gates it. This avoids trusting
+Agent filesystem paths, handles Windows sandbox ACL isolation without weakening the sandbox, and
+leaves no coding project or intermediate output in the Rolo checkout. The three temporary query
+helper files disappear when the workspace is removed and are never published as adapter code.
+
+Codex is an external model service. Running Adapt sends the bounded plan and whatever focused
+evidence Codex retrieves through this launcher to the configured provider. Obtain the deployment's
+data-transfer authorization before running it against private robot evidence. The opt-in synthetic
+acceptance command and real-device procedure are documented in
+[`P0_ADAPT_ACCEPTANCE.md`](P0_ADAPT_ACCEPTANCE.md) and
+[`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md).
 
 ## Files written for the current user
 

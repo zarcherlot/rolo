@@ -22,7 +22,11 @@ from rolo.stages.adapt.models import (
     AdaptRunSummary,
     AdaptTask,
 )
-from rolo.stages.adapt.operation_registry import required_adapter_agent_conformance_operations
+from rolo.stages.adapt.operation_registry import (
+    adapter_operation_eligibility,
+    required_adapter_agent_conformance_operations,
+)
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
 
@@ -200,14 +204,14 @@ class AdaptStageService:
         wiki_path = resolve_artifact_ref(self.artifacts.root, inputs.robot_wiki_ref)
         if not wiki_path.is_file():
             raise FileNotFoundError(f"Robot Wiki is missing for {robot_id}: {wiki_path}")
-        candidates = sorted(candidate.operation for candidate in report.operation_candidates)
+        eligible, deferred = adapter_operation_eligibility(report)
         conformance_operations = sorted(required_adapter_agent_conformance_operations(report))
-        blocked = report.status == DiscoveryStatus.FAILED
+        blocked = report.status == DiscoveryStatus.FAILED or not eligible
         tasks = [
             AdaptTask(
                 id="canonical-adapters",
                 description="Implement canonical adapters for discovered semantic bindings",
-                operations=candidates,
+                operations=sorted(eligible),
             ),
             AdaptTask(
                 id="cli-conformance",
@@ -234,6 +238,8 @@ class AdaptStageService:
             source_discovery_id=report.discovery_id,
             status=(AdaptPlanStatus.BLOCKED if blocked else AdaptPlanStatus.REQUIRES_CODING),
             tasks=tasks,
+            eligible_operations=sorted(eligible),
+            deferred_operations=deferred,
             adapter_agent=self.coding_agent,
             semantic_context_ref=inputs.semantic_context_ref,
             robot_wiki_ref=inputs.robot_wiki_ref,
@@ -290,9 +296,11 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             handoff = validate_adapter_handoff(artifact_root, robot_id)
             _, release, _, _ = load_current_release(get_settings().rolo_output_dir, robot_id)
             handoff_valid = (
-                handoff.source_discovery_id == report.discovery_id
-                and release.discovery_id == report.discovery_id
+                handoff.source_discovery_id == release.discovery_id
                 and release.release_id == handoff.source_agent_run_id
+                and release.target_fingerprint_sha256 is not None
+                and release.target_fingerprint_sha256
+                == target_fingerprint_sha256(report, artifact_root)
             )
             if not handoff_valid:
                 handoff_error = "The gated adapter release is stale for the latest discovery"

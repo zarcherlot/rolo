@@ -16,6 +16,8 @@ from rolo.stages.adapt.operation_registry import (
     builtin_operations,
     canonical_operation_registry,
 )
+from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+from rolo.stages.adapt.wiki_retrieval import wiki_search_page, wiki_section_page
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 
 
@@ -100,7 +102,11 @@ def build_operation_workset(
         release_id = release.release_id
         release_discovery_id = release.discovery_id
         active_by_operation = {tool.operation: tool for tool in catalog.tools}
-    release_matches = release_discovery_id == report.discovery_id
+    release_matches = bool(
+        release_id is not None
+        and release.target_fingerprint_sha256 is not None
+        and release.target_fingerprint_sha256 == target_fingerprint_sha256(report, artifact_root)
+    )
     bundle_operations = {item.operation for item in bundle.operations} if bundle else set()
 
     items: list[OperationWorkItem] = []
@@ -397,30 +403,14 @@ def wiki_section(
     robot_id: str,
     heading: str,
     discovery_id: str | None = None,
+    cursor: int = 0,
 ) -> dict[str, Any]:
     report = _load_selected_report(artifact_root, robot_id, discovery_id)
     path = resolve_artifact_ref(artifact_root, report.review_ref)
-    lines = path.read_text(encoding="utf-8").splitlines()
-    wanted = heading.strip().lstrip("#").strip().casefold()
-    start: int | None = None
-    level = 0
-    end = len(lines)
-    for index, line in enumerate(lines):
-        if line.startswith("#"):
-            title = line.lstrip("#").strip().casefold()
-            if start is None and wanted in title:
-                start = index
-                level = len(line) - len(line.lstrip("#"))
-                continue
-            if start is not None and len(line) - len(line.lstrip("#")) <= level:
-                end = index
-                break
-    if start is None:
-        raise ValueError(f"Wiki section not found: {heading}")
+    result = wiki_section_page(path.read_text(encoding="utf-8"), heading, cursor=cursor)
     return {
         "wiki_ref": report.review_ref,
-        "heading": lines[start],
-        "content": "\n".join(lines[start:end]),
+        **result,
     }
 
 
@@ -429,15 +419,14 @@ def wiki_search(
     robot_id: str,
     query: str,
     discovery_id: str | None = None,
+    cursor: int = 0,
 ) -> dict[str, Any]:
     report = _load_selected_report(artifact_root, robot_id, discovery_id)
     path = resolve_artifact_ref(artifact_root, report.review_ref)
-    matches = [
-        {"line": index, "text": line}
-        for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if query.casefold() in line.casefold()
-    ][:100]
-    return {"wiki_ref": report.review_ref, "query": query, "matches": matches}
+    return {
+        "wiki_ref": report.review_ref,
+        **wiki_search_page(path.read_text(encoding="utf-8"), query, cursor=cursor),
+    }
 
 
 def compact_agent_boot_context(

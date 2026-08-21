@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
 from rolo.core.models import DiscoveryStatus, ProbeResult
+from rolo.stages.adapt.binary_dependencies import inspect_binary_dependencies
 from rolo.stages.adapt.discovery_status import derive_discovery_status
 from rolo.stages.adapt.evidence import (
     BASE_SKIP_DIRECTORIES,
@@ -32,6 +33,7 @@ from rolo.stages.adapt.evidence import (
 
 MAX_ACTIVE_FILES = 10_000
 MAX_REPORT_EXECUTABLES = 200
+MAX_UNATTRIBUTED_INTERFACES = 100
 MAX_EVIDENCE_REFS = 100
 MAX_TEXT_EVIDENCE_FILES = 500
 MAX_TEXT_BYTES = 2_000_000
@@ -219,6 +221,8 @@ class LaunchAnalysis(BaseModel):
     declared_executable: str | None = None
     nodes: list[str] = Field(default_factory=list)
     arguments: list[str] = Field(default_factory=list)
+    argument_defaults: dict[str, str | None] = Field(default_factory=dict)
+    included_launch_files: list[str] = Field(default_factory=list)
     remappings: list[dict[str, str]] = Field(default_factory=list)
     conditions: list[str] = Field(default_factory=list)
     urdf_references: list[str] = Field(default_factory=list)
@@ -266,6 +270,7 @@ class ExecutableDiscovery(BaseModel):
     sha256: str | None = None
     file_format: str | None = None
     architecture: str | None = None
+    binary_dependencies: dict[str, Any] = Field(default_factory=dict)
     version: dict[str, Any] = Field(default_factory=dict)
     source_analysis: SourceAnalysis = Field(default_factory=SourceAnalysis)
     artifact_analysis: ArtifactAnalysis = Field(default_factory=ArtifactAnalysis)
@@ -311,6 +316,7 @@ class ActiveDiscoveryReport(BaseModel):
     inputs: dict[str, Any]
     coverage: dict[str, CoverageRecord]
     executables: list[ExecutableDiscovery] = Field(default_factory=list)
+    unattributed_source_interfaces: list[dict[str, Any]] = Field(default_factory=list)
     dependency_summary: dict[str, Any] = Field(default_factory=dict)
     global_conflicts: list[str] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
@@ -639,6 +645,56 @@ def _python_urdf_references(node: ast.AST | None) -> set[str]:
     }
 
 
+def _python_launch_file_references(node: ast.AST | None) -> set[str]:
+    if node is None:
+        return set()
+    references: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            if child.value.lower().endswith((".launch.py", ".launch.xml")):
+                references.add(child.value)
+        if not isinstance(child, ast.Call) or _ast_call_name(child.func) != "join":
+            continue
+        package: str | None = None
+        parts: list[str] = []
+        for argument in child.args:
+            if (
+                isinstance(argument, ast.Call)
+                and _ast_call_name(argument.func) == "get_package_share_directory"
+                and argument.args
+            ):
+                package = _ast_string(argument.args[0])
+                continue
+            if value := _ast_string(argument):
+                parts.append(value)
+        if package and parts and parts[-1].lower().endswith((".launch.py", ".launch.xml")):
+            references.add(f"package://{package}/{'/'.join(parts)}")
+    package_names = {
+        Path(reference).name for reference in references if reference.startswith("package://")
+    }
+    return {
+        reference
+        for reference in references
+        if reference.startswith("package://") or Path(reference).name not in package_names
+    }
+
+
+def _python_launch_metadata(tree: ast.AST) -> tuple[dict[str, str | None], set[str]]:
+    defaults: dict[str, str | None] = {}
+    includes: set[str] = set()
+    for child in ast.walk(tree):
+        if not isinstance(child, ast.Call):
+            continue
+        kind = _ast_call_name(child.func)
+        if kind == "DeclareLaunchArgument" and child.args:
+            name = _ast_string(child.args[0])
+            if name:
+                defaults[name] = _ast_string(_ast_keyword(child, "default_value"))
+        elif kind == "IncludeLaunchDescription":
+            includes.update(_python_launch_file_references(child))
+    return defaults, includes
+
+
 def _record_launch_declaration(
     evidence: dict[str, dict[str, Any]],
     *,
@@ -650,6 +706,8 @@ def _record_launch_declaration(
     remappings: set[tuple[str, str]],
     conditions: set[str],
     urdf_references: set[str],
+    argument_defaults: dict[str, str | None] | None = None,
+    included_launch_files: set[str] | None = None,
 ) -> None:
     record = evidence.setdefault(
         executable,
@@ -661,6 +719,8 @@ def _record_launch_declaration(
             "remappings": set(),
             "conditions": set(),
             "urdf_references": set(),
+            "argument_defaults": {},
+            "included_launch_files": set(),
         },
     )
     record["references"].add(str(path))
@@ -672,6 +732,8 @@ def _record_launch_declaration(
     record["remappings"].update(remappings)
     record["conditions"].update(conditions)
     record["urdf_references"].update(urdf_references)
+    record["argument_defaults"].update(argument_defaults or {})
+    record["included_launch_files"].update(included_launch_files or set())
 
 
 def _extract_python_launch_evidence(
@@ -683,6 +745,7 @@ def _extract_python_launch_evidence(
         tree = ast.parse(text, filename=str(path))
     except SyntaxError:
         return
+    argument_defaults, included_launch_files = _python_launch_metadata(tree)
     for child in ast.walk(tree):
         if not isinstance(child, ast.Call) or _ast_call_name(child.func) not in {
             "Node",
@@ -708,6 +771,8 @@ def _extract_python_launch_evidence(
             remappings=_python_remappings(_ast_keyword(child, "remappings")),
             conditions=_python_conditions(condition_node),
             urdf_references=_python_urdf_references(arguments_node),
+            argument_defaults=argument_defaults,
+            included_launch_files=included_launch_files,
         )
 
 
@@ -722,6 +787,16 @@ def _extract_xml_launch_evidence(
         return
     if root.tag.rsplit("}", 1)[-1] != "launch":
         return
+    argument_defaults = {
+        node.attrib["name"]: node.attrib.get("default")
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "arg" and node.attrib.get("name")
+    }
+    included_launch_files = {
+        node.attrib["file"]
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "include" and node.attrib.get("file")
+    }
     for node in root.iter():
         if node.tag.rsplit("}", 1)[-1] != "node":
             continue
@@ -746,6 +821,8 @@ def _extract_xml_launch_evidence(
             conditions={f"if:{node.attrib['if']}" for _ in [0] if node.attrib.get("if")}
             | {f"unless:{node.attrib['unless']}" for _ in [0] if node.attrib.get("unless")},
             urdf_references=set(),
+            argument_defaults=argument_defaults,
+            included_launch_files=included_launch_files,
         )
 
 
@@ -954,15 +1031,85 @@ def _projects_for_executable(
     return []
 
 
+def _interface_source_matches(source: str, candidates: set[str]) -> bool:
+    normalized = source.replace("\\", "/").casefold()
+    source_path = Path(normalized)
+    source_keys = _name_keys(source_path.name) | _name_keys(source_path.stem)
+    normalized_candidates = {
+        candidate.replace("\\", "/").casefold().lstrip("./")
+        for candidate in candidates
+        if candidate
+    }
+    if any(
+        "/" in candidate and normalized.endswith(candidate) for candidate in normalized_candidates
+    ):
+        return True
+    simple_candidates = {candidate for candidate in normalized_candidates if "/" not in candidate}
+    return bool(
+        source_keys & {key for candidate in simple_candidates for key in _name_keys(candidate)}
+    )
+
+
+def _project_interfaces_for_executable(
+    name: str,
+    project: dict[str, Any],
+) -> tuple[list[dict[str, Any]], int]:
+    interfaces = list(project.get("ros_interfaces", []))
+    if not interfaces:
+        return [], 0
+    requested_keys = _name_keys(name)
+    matching_entrypoints = [
+        entrypoint
+        for entrypoint in project.get("entrypoints", [])
+        if requested_keys & _name_keys(str(entrypoint.get("name", "")))
+        or requested_keys & _name_keys(str(entrypoint.get("target", "")))
+    ]
+    source_candidates: set[str] = set()
+    for entrypoint in matching_entrypoints:
+        source_candidates.update(str(item) for item in entrypoint.get("source_files", []))
+        target = str(entrypoint.get("target", "")).split(":", 1)[0].strip()
+        if target and entrypoint.get("source") != "cmake":
+            module_path = target.replace(".", "/")
+            source_candidates.update({f"{module_path}.py", f"{module_path}/__init__.py"})
+            if len(project.get("entrypoints", [])) == 1:
+                source_candidates.add(f"{module_path.rsplit('/', 1)[-1]}.py")
+    source_candidates.add(name)
+    matched = [
+        {**interface, "attribution": "SOURCE_FILE_MATCH"}
+        for interface in interfaces
+        if _interface_source_matches(str(interface.get("source", "")), source_candidates)
+    ]
+    if matched:
+        return matched, len(interfaces) - len(matched)
+    executable_names = _project_executable_names(project)
+    if len(executable_names) == 1:
+        return [
+            {**interface, "attribution": "SINGLE_ENTRYPOINT_FALLBACK"} for interface in interfaces
+        ], 0
+    return [], len(interfaces)
+
+
+def _source_interface_key(interface: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(interface.get("role", "")),
+        str(interface.get("name", "")),
+        str(interface.get("type", "")),
+        str(interface.get("source", "")),
+    )
+
+
 def _ros_communication(
+    executable_name: str,
     projects: list[dict[str, Any]],
     ros_probe: ProbeResult,
     *,
     include_runtime: bool,
 ) -> dict[str, Any]:
-    source_interfaces = [
-        interface for project in projects for interface in project.get("ros_interfaces", [])
+    selected = [
+        _project_interfaces_for_executable(executable_name, project) for project in projects
     ]
+    source_interfaces = [interface for interfaces, _ in selected for interface in interfaces]
+    unattributed_count = sum(count for _, count in selected)
     runtime = ros_probe.data if include_runtime else {}
     return {
         "nodes": runtime.get("nodes", []),
@@ -978,6 +1125,7 @@ def _ros_communication(
         "parameters": [],
         "tf_frames": [],
         "remappings": [],
+        "unattributed_source_interfaces": unattributed_count,
     }
 
 
@@ -1124,6 +1272,8 @@ class ActiveDiscoveryAnalyzer:
                 declared_executable=declared_name,
                 nodes=sorted(record["nodes"]),
                 arguments=sorted(record["arguments"]),
+                argument_defaults=dict(sorted(record["argument_defaults"].items())),
+                included_launch_files=sorted(record["included_launch_files"]),
                 remappings=[
                     {"from": source, "to": target}
                     for source, target in sorted(record["remappings"])
@@ -1146,6 +1296,7 @@ class ActiveDiscoveryAnalyzer:
             )
             source_analysis = _source_analysis(executable_projects)
             ros_communication = _ros_communication(
+                path.name,
                 executable_projects,
                 self.ros_probe,
                 include_runtime=runtime_observed,
@@ -1274,6 +1425,7 @@ class ActiveDiscoveryAnalyzer:
                     sha256=sha256,
                     file_format=file_format,
                     architecture=architecture,
+                    binary_dependencies=inspect_binary_dependencies(path),
                     version={"value": None, "source": None, "confidence": "LOW"},
                     source_analysis=source_analysis,
                     artifact_analysis=ArtifactAnalysis(
@@ -1383,6 +1535,7 @@ class ActiveDiscoveryAnalyzer:
             )
             source_analysis = _source_analysis(executable_projects)
             ros_communication = _ros_communication(
+                name,
                 executable_projects,
                 self.ros_probe,
                 include_runtime=runtime_observed,
@@ -1603,6 +1756,23 @@ class ActiveDiscoveryAnalyzer:
             all_discovered_paths,
             probe_observed=probe_observed,
         )
+        all_source_interfaces = {
+            _source_interface_key(interface): interface
+            for project in usable_projects
+            for interface in project.get("ros_interfaces", [])
+            if isinstance(interface, dict)
+        }
+        attributed_interface_keys = {
+            _source_interface_key(interface)
+            for executable in executables
+            for role in ("publishers", "subscribers", "services", "clients")
+            for interface in executable.communication.ros.get(role, [])
+            if isinstance(interface, dict) and interface.get("source")
+        }
+        unattributed_source_interfaces = [
+            all_source_interfaces[key]
+            for key in sorted(all_source_interfaces.keys() - attributed_interface_keys)
+        ]
         warnings = [
             *build_warnings,
             *install_warnings,
@@ -1625,6 +1795,11 @@ class ActiveDiscoveryAnalyzer:
             warnings.append(
                 f"executable report limit reached: {MAX_REPORT_EXECUTABLES}; "
                 "artifact coverage is partial"
+            )
+        if len(unattributed_source_interfaces) > MAX_UNATTRIBUTED_INTERFACES:
+            warnings.append(
+                f"unattributed source interface limit reached: "
+                f"{MAX_UNATTRIBUTED_INTERFACES} of {len(unattributed_source_interfaces)} retained"
             )
         if len(explicit_paths) > MAX_HELP_PROBES and self.inputs.active_probe in {
             ActiveProbeMode.HELP,
@@ -1659,6 +1834,9 @@ class ActiveDiscoveryAnalyzer:
             inputs=self.inputs.model_dump(mode="json"),
             coverage=coverage,
             executables=executables,
+            unattributed_source_interfaces=unattributed_source_interfaces[
+                :MAX_UNATTRIBUTED_INTERFACES
+            ],
             dependency_summary={
                 "report_ref": None,
                 "candidates": [],
@@ -1774,6 +1952,11 @@ def render_active_discovery_markdown(report: ActiveDiscoveryReport) -> str:
 
     lines.extend(
         [
+            "## Unattributed source interfaces",
+            "",
+            f"- Count: {len(report.unattributed_source_interfaces)}",
+            f"- Candidates: {summarize(report.unattributed_source_interfaces, limit=100)}",
+            "",
             "## Dependency summary",
             "",
             f"- Required: {summarize(dependency_names('required'), limit=100)}",

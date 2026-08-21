@@ -182,6 +182,158 @@ def configure(node):
     ]
 
 
+def test_multiple_executables_in_one_project_keep_interfaces_source_scoped(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "multi-app"
+    (source / "alpha").mkdir(parents=True)
+    (source / "beta").mkdir()
+    (source / "pyproject.toml").write_text(
+        '''[project]
+name = "multi-app"
+
+[project.scripts]
+alpha = "alpha.main:main"
+beta = "beta.main:main"
+''',
+        encoding="utf-8",
+    )
+    (source / "README.md").write_text("Multi-node ROS application.", encoding="utf-8")
+    (source / "alpha" / "main.py").write_text(
+        'node.create_publisher(Twist, "/alpha_cmd", 10)',
+        encoding="utf-8",
+    )
+    (source / "beta" / "main.py").write_text(
+        'node.create_publisher(Twist, "/beta_cmd", 10)',
+        encoding="utf-8",
+    )
+    scan = ApplicationProbe().scan([source])
+
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=[source]),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+            evidence_text=scan.evidence_text,
+        )
+    )
+    executables = {item.name: item for item in report.executables}
+
+    assert [
+        item["name"] for item in executables["alpha"].communication.ros["publishers"]
+    ] == ["/alpha_cmd"]
+    assert [
+        item["name"] for item in executables["beta"].communication.ros["publishers"]
+    ] == ["/beta_cmd"]
+    assert all(
+        publisher["attribution"] == "SOURCE_FILE_MATCH"
+        for executable in executables.values()
+        for publisher in executable.communication.ros["publishers"]
+    )
+
+
+def test_setuptools_and_cmake_program_entrypoints_keep_python_interfaces_scoped(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "setuptools-app"
+    (source / "demo").mkdir(parents=True)
+    (source / "scripts").mkdir()
+    (source / "setup.py").write_text(
+        """from setuptools import setup
+setup(entry_points={"console_scripts": ["alpha = demo.alpha:main"]})
+""",
+        encoding="utf-8",
+    )
+    (source / "setup.cfg").write_text(
+        """[options.entry_points]
+console_scripts =
+    beta = demo.beta:main
+""",
+        encoding="utf-8",
+    )
+    (source / "CMakeLists.txt").write_text(
+        """# install(PROGRAMS scripts/ignored.py DESTINATION lib/demo)
+install(PROGRAMS scripts/diagnostic.py DESTINATION lib/demo)
+""",
+        encoding="utf-8",
+    )
+    (source / "README.md").write_text("Setuptools application.", encoding="utf-8")
+    (source / "demo" / "alpha.py").write_text(
+        'node.create_publisher(Twist, "/alpha", 10)',
+        encoding="utf-8",
+    )
+    (source / "demo" / "beta.py").write_text(
+        'node.create_subscription(Twist, "/beta", callback, 10)',
+        encoding="utf-8",
+    )
+    (source / "scripts" / "diagnostic.py").write_text(
+        'node.create_publisher(String, "/diagnostic", 10)',
+        encoding="utf-8",
+    )
+    (source / "scripts" / "ignored.py").write_text(
+        'node.create_publisher(String, "/ignored", 10)',
+        encoding="utf-8",
+    )
+
+    scan = ApplicationProbe().scan([source])
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=[source]),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+        )
+    )
+    executables = {item.name: item for item in report.executables}
+
+    assert {"alpha", "beta", "diagnostic"} <= set(executables)
+    assert "ignored" not in executables
+    assert [item["name"] for item in executables["alpha"].communication.ros["publishers"]] == [
+        "/alpha"
+    ]
+    assert [item["name"] for item in executables["beta"].communication.ros["subscribers"]] == [
+        "/beta"
+    ]
+    assert [
+        item["name"] for item in executables["diagnostic"].communication.ros["publishers"]
+    ] == ["/diagnostic"]
+    assert [item["name"] for item in report.unattributed_source_interfaces] == ["/ignored"]
+
+
+def test_cpp_ros_interfaces_support_literals_symbols_and_ignore_comments(tmp_path: Path) -> None:
+    source = tmp_path / "cpp-app"
+    (source / "src").mkdir(parents=True)
+    (source / "CMakeLists.txt").write_text(
+        "add_executable(driver src/driver.cpp)",
+        encoding="utf-8",
+    )
+    (source / "README.md").write_text("C++ ROS application.", encoding="utf-8")
+    (source / "src" / "driver.cpp").write_text(
+        """// create_publisher<Bad>("/commented", 10);
+/* create_subscription<Bad>("/also_commented", 10, callback); */
+auto odom = create_publisher<nav_msgs::msg::Odometry>("/odom", 10);
+auto cmd = this->create_subscription<geometry_msgs::msg::Twist>(
+    cmd_topic_, 10, callback);
+""",
+        encoding="utf-8",
+    )
+
+    scan = ApplicationProbe().scan([source])
+    report = build_report(
+        make_analyzer(
+            inputs=ActiveDiscoveryInputs(source_roots=[source]),
+            projects=scan.probe.data["projects"],
+            run_root=tmp_path / "run",
+        )
+    )
+    ros = report.executables[0].communication.ros
+
+    assert [item["name"] for item in ros["publishers"]] == ["/odom"]
+    assert [item["name"] for item in ros["subscribers"]] == ["<symbol:cmd_topic_>"]
+    assert ros["subscribers"][0]["name_source"] == "SYMBOLIC_EXPRESSION"
+    assert "/commented" not in str(ros)
+    assert report.unattributed_source_interfaces == []
+
+
 def test_active_analysis_reuses_source_evidence_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -242,6 +394,11 @@ def test_artifact_doc_mode_statically_extracts_launch_without_execution(
     )
     (launch / "driver.launch.py").write_text(
         """DeclareLaunchArgument("robot_ns", default_value="robot")
+IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(os.path.join(
+        get_package_share_directory("vendor_bringup"), "launch", "sensors.launch.py"
+    ))
+)
 Node(package="vendor_pkg", executable="vendor-driver.exe", name="driver",
      namespace=LaunchConfiguration("robot_ns"),
      remappings=[("/cmd", "/robot/cmd")])
@@ -273,6 +430,10 @@ Node(package="vendor_pkg", executable="vendor-driver.exe", name="driver",
     assert executable.launch_analysis.packages == ["vendor_pkg"]
     assert executable.launch_analysis.nodes == ["driver"]
     assert executable.launch_analysis.arguments == ["robot_ns"]
+    assert executable.launch_analysis.argument_defaults == {"robot_ns": "robot"}
+    assert executable.launch_analysis.included_launch_files == [
+        "package://vendor_bringup/launch/sensors.launch.py"
+    ]
     assert executable.communication.ros["remappings"] == [{"from": "/cmd", "to": "/robot/cmd"}]
     assert all(item.name != "commented-out" for item in report.executables)
     assert executable.communication.network["protocols"] == ["tcp"]

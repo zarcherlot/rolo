@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import configparser
 import io
 import math
 import os
@@ -12,7 +14,7 @@ import shutil
 import subprocess
 import tokenize
 import xml.etree.ElementTree as ET
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import (
     DiscoveryLatestIndex,
@@ -40,6 +43,7 @@ from rolo.core.models import (
 from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryAnalyzer,
     ActiveDiscoveryInputs,
+    ActiveDiscoveryReport,
     ActiveProbeMode,
     CoverageStatus,
     render_active_discovery_markdown,
@@ -55,6 +59,7 @@ from rolo.stages.adapt.evidence import (
     read_text,
     walk_files,
 )
+from rolo.stages.adapt.hardware_provider import collect_hardware_provider_evidence
 from rolo.stages.adapt.inputs import (
     AdaptInputs,
     SemanticCandidate,
@@ -73,7 +78,9 @@ from rolo.stages.adapt.software_relevance import (
     enrich_active_report,
 )
 from rolo.stages.adapt.wiki import WikiNarrativePolisher, generate_robot_wiki
-from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.stages.adapt.wiki_diff import build_wiki_discovery_diff
+from rolo.stages.adapt.wiki_insights import WikiInsightProvider, collect_wiki_insights
+from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.discovery_manifest import (
     create_discovery_manifest,
     load_and_verify_discovery_manifest,
@@ -191,8 +198,48 @@ def detect_compute_platform(device_tree_model: str | None) -> str:
     return "unknown"
 
 
+def _merge_hardware_provider(
+    data: dict[str, Any],
+    warnings: list[str],
+    *,
+    robot_id: str,
+    provider_path: Path | None,
+) -> None:
+    provider = provider_path or get_settings().rolo_hardware_evidence_provider
+    if provider is None:
+        return
+    try:
+        evidence = collect_hardware_provider_evidence(provider, robot_id=robot_id)
+    except ValueError as exc:
+        warnings.append(str(exc))
+        data["hardware_provider"] = {
+            "path": str(provider.expanduser().resolve()),
+            "status": "FAILED",
+            "error": str(exc),
+        }
+        return
+    merged = {
+        (str(item.get("kind")), str(item.get("name"))): item
+        for item in data["components"]
+    }
+    for component in evidence.components:
+        merged[(component.kind, component.name)] = component.model_dump(mode="json")
+    data["components"] = list(merged.values())
+    data["devices"].extend(item.model_dump(mode="json") for item in evidence.devices)
+    warnings.extend(evidence.warnings)
+    data["hardware_provider"] = {
+        "path": str(provider.expanduser().resolve()),
+        "status": "SUCCEEDED",
+    }
+
+
 class HardwareProbe:
-    def run(self) -> ProbeResult:
+    def run(
+        self,
+        *,
+        robot_id: str = "unregistered",
+        provider_path: Path | None = None,
+    ) -> ProbeResult:
         device_tree_model = _device_tree_model()
         data: dict[str, Any] = {
             "architecture": platform.machine().lower(),
@@ -207,6 +254,12 @@ class HardwareProbe:
         warnings: list[str] = []
         if platform.system() != "Linux":
             warnings.append("Linux /sys and /dev hardware enumeration is unavailable on this host")
+            _merge_hardware_provider(
+                data,
+                warnings,
+                robot_id=robot_id,
+                provider_path=provider_path,
+            )
             return ProbeResult(
                 layer="hw", status=DiscoveryStatus.PARTIAL, data=data, warnings=warnings
             )
@@ -299,6 +352,12 @@ class HardwareProbe:
                     continue
                 data["thermal_zones"].append({"name": zone_type.strip(), "temperature_c": value_c})
 
+        _merge_hardware_provider(
+            data,
+            warnings,
+            robot_id=robot_id,
+            provider_path=provider_path,
+        )
         return ProbeResult(
             layer="hw",
             status=DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED,
@@ -357,17 +416,38 @@ class LinuxProbe:
 
 
 class RosProbe:
+    def __init__(
+        self,
+        *,
+        ros_root: Path = Path("/opt/ros"),
+        environment: Mapping[str, str] | None = None,
+    ) -> None:
+        self.ros_root = ros_root
+        self.environment = dict(os.environ if environment is None else environment)
+
     def _resolve_setup(self) -> Path | None:
-        ros_root = Path("/opt/ros")
         os_version = _parse_os_release().get("VERSION_ID")
-        preferred = [os.environ.get("ROS_DISTRO"), UBUNTU_ROS_DEFAULTS.get(os_version)]
-        if ros_root.is_dir():
-            preferred.extend(sorted(path.name for path in ros_root.iterdir() if path.is_dir()))
+        preferred = [self.environment.get("ROS_DISTRO"), UBUNTU_ROS_DEFAULTS.get(os_version)]
+        if self.ros_root.is_dir():
+            preferred.extend(
+                sorted(path.name for path in self.ros_root.iterdir() if path.is_dir())
+            )
         for distro in dict.fromkeys(item for item in preferred if item):
-            setup = ros_root / distro / "setup.bash"
+            setup = self.ros_root / distro / "setup.bash"
             if setup.is_file():
                 return setup
         return None
+
+    @staticmethod
+    def _rmw_candidates(setup: Path | None) -> list[str]:
+        if setup is None:
+            return []
+        candidates: set[str] = set()
+        for path in (setup.parent / "lib").glob("librmw_*.so*"):
+            match = re.match(r"lib(rmw_[A-Za-z0-9_]+)\.so", path.name)
+            if match:
+                candidates.add(match.group(1))
+        return sorted(candidates)
 
     def _run_ros(self, args: Sequence[str]) -> dict[str, Any]:
         if shutil.which("ros2"):
@@ -380,21 +460,43 @@ class RosProbe:
 
     def run(self) -> ProbeResult:
         installed_distros: list[str] = []
-        ros_root = Path("/opt/ros")
-        if ros_root.is_dir():
-            installed_distros = sorted(path.name for path in ros_root.iterdir() if path.is_dir())
+        if self.ros_root.is_dir():
+            installed_distros = sorted(
+                path.name for path in self.ros_root.iterdir() if path.is_dir()
+            )
         setup = self._resolve_setup()
+        configured_distro = self.environment.get("ROS_DISTRO")
+        configured_rmw = self.environment.get("RMW_IMPLEMENTATION")
+        configured_domain = self.environment.get("ROS_DOMAIN_ID")
         data: dict[str, Any] = {
-            "ros_distro": os.environ.get("ROS_DISTRO") or (setup.parent.name if setup else None),
+            "ros_distro": configured_distro or (setup.parent.name if setup else None),
+            "ros_distro_source": (
+                "ENVIRONMENT"
+                if configured_distro
+                else "SETUP_PATH"
+                if setup
+                else "NOT_FOUND"
+            ),
             "installed_distros": installed_distros,
-            "domain_id": os.environ.get("ROS_DOMAIN_ID", "0"),
-            "rmw": os.environ.get("RMW_IMPLEMENTATION"),
+            "domain_id": configured_domain or "0",
+            "domain_id_source": "ENVIRONMENT" if configured_domain else "ROS_DEFAULT",
+            "rmw": configured_rmw,
+            "rmw_source": "ENVIRONMENT" if configured_rmw else "NOT_SELECTED",
+            "rmw_candidates": self._rmw_candidates(setup),
             "nodes": [],
             "topics": [],
             "services": [],
             "actions": [],
         }
         warnings: list[str] = []
+        if not configured_distro and len(installed_distros) > 1:
+            warnings.append(
+                "multiple ROS distributions are installed; setup-path selection is inferred"
+            )
+        if not configured_rmw and data["rmw_candidates"]:
+            warnings.append(
+                "RMW implementation is not selected; installed candidates are not runtime proof"
+            )
         command_map = {
             "nodes": ["node", "list"],
             "topics": ["topic", "list", "-t"],
@@ -423,34 +525,247 @@ class RosProbe:
         return ProbeResult(layer="ros", status=status, data=data, warnings=warnings)
 
 
-def _extract_ros_names(text: str) -> dict[str, list[str]]:
-    patterns = {
-        "topics": r"create_(?:publisher|subscription)\([^,]+,\s*['\"]([^'\"]+)",
-        "services": r"create_(?:service|client)\([^,]+,\s*['\"]([^'\"]+)",
-        "actions": r"(?:ActionServer|ActionClient)\([^,]+,\s*[^,]+,\s*['\"]([^'\"]+)",
-    }
-    return {key: sorted(set(re.findall(pattern, text))) for key, pattern in patterns.items()}
+def _without_c_cpp_comments(text: str) -> str:
+    """Remove C/C++ comments while preserving quoted strings and line structure."""
+    output: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    line_comment = False
+    block_comment = False
+    while index < len(text):
+        current = text[index]
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if line_comment:
+            if current == "\n":
+                line_comment = False
+                output.append(current)
+            else:
+                output.append(" ")
+            index += 1
+            continue
+        if block_comment:
+            if current == "*" and following == "/":
+                output.extend((" ", " "))
+                block_comment = False
+                index += 2
+            else:
+                output.append("\n" if current == "\n" else " ")
+                index += 1
+            continue
+        if quote:
+            output.append(current)
+            if escaped:
+                escaped = False
+            elif current == "\\":
+                escaped = True
+            elif current == quote:
+                quote = None
+            index += 1
+            continue
+        if current in {'"', "'"}:
+            quote = current
+            output.append(current)
+            index += 1
+            continue
+        if current == "/" and following == "/":
+            output.extend((" ", " "))
+            line_comment = True
+            index += 2
+            continue
+        if current == "/" and following == "*":
+            output.extend((" ", " "))
+            block_comment = True
+            index += 2
+            continue
+        output.append(current)
+        index += 1
+    return "".join(output)
+
+
+def _interface_name(expression: str) -> tuple[str, str]:
+    expression = " ".join(expression.strip().split())
+    literal = re.fullmatch(r"(?:u8|u|U|L)?(['\"])(.*?)\1", expression)
+    if literal:
+        return literal.group(2), "STRING_LITERAL"
+    return f"<symbol:{expression[:120]}>", "SYMBOLIC_EXPRESSION"
 
 
 def _extract_ros_interfaces(text: str, source_path: Path) -> list[dict[str, str]]:
-    patterns = {
+    python_patterns = {
         "publisher": r"create_publisher\(\s*([^,]+),\s*['\"]([^'\"]+)",
         "subscriber": r"create_subscription\(\s*([^,]+),\s*['\"]([^'\"]+)",
         "service": r"create_service\(\s*([^,]+),\s*['\"]([^'\"]+)",
         "client": r"create_client\(\s*([^,]+),\s*['\"]([^'\"]+)",
     }
     interfaces: list[dict[str, str]] = []
-    for role, pattern in patterns.items():
-        for message_type, name in re.findall(pattern, text):
+    suffix = source_path.suffix.casefold()
+    c_cpp_suffixes = {".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"}
+    scanned_text = _without_c_cpp_comments(text) if suffix in c_cpp_suffixes else text
+    for role, pattern in python_patterns.items():
+        for message_type, name in re.findall(pattern, scanned_text):
             interfaces.append(
                 {
                     "role": role,
                     "name": name,
                     "type": message_type.strip(),
                     "source": str(source_path),
+                    "name_source": "STRING_LITERAL",
                 }
             )
+    cpp_pattern = re.compile(
+        r"create_(publisher|subscription|service|client)\s*<\s*([^>]+?)\s*>\s*"
+        r"\(\s*([^,\r\n]+)",
+        re.MULTILINE,
+    )
+    role_names = {
+        "publisher": "publisher",
+        "subscription": "subscriber",
+        "service": "service",
+        "client": "client",
+    }
+    for kind, message_type, expression in cpp_pattern.findall(scanned_text):
+        name, name_source = _interface_name(expression)
+        interfaces.append(
+            {
+                "role": role_names[kind],
+                "name": name,
+                "type": message_type.strip(),
+                "source": str(source_path),
+                "name_source": name_source,
+            }
+        )
     return interfaces
+
+
+def _entrypoint_source_files(root: Path, manifest: Path, target: str) -> list[str]:
+    module = target.split(":", 1)[0].strip().replace(".", "/")
+    candidates = [
+        manifest.parent / f"{module}.py",
+        manifest.parent / module / "__init__.py",
+        root / f"{module}.py",
+        root / module / "__init__.py",
+    ]
+    existing = [path for path in candidates if path.is_file()]
+    selected = existing or candidates[:2]
+    return sorted(
+        {
+            path.resolve().relative_to(root).as_posix()
+            for path in selected
+            if path.resolve().is_relative_to(root)
+        }
+    )
+
+
+def _parse_console_script(value: str) -> tuple[str, str] | None:
+    if "=" not in value:
+        return None
+    name, target = (part.strip() for part in value.split("=", 1))
+    if not name or not target or not re.fullmatch(r"[A-Za-z0-9_.+-]+", name):
+        return None
+    return name, target
+
+
+def _setup_py_entrypoints(path: Path, root: Path) -> list[dict[str, Any]]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return []
+    results: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function_name = (
+            node.func.id
+            if isinstance(node.func, ast.Name)
+            else getattr(node.func, "attr", None)
+        )
+        if function_name != "setup":
+            continue
+        entry_points = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "entry_points"),
+            None,
+        )
+        if entry_points is None:
+            continue
+        try:
+            declared = ast.literal_eval(entry_points)
+        except (ValueError, TypeError):
+            continue
+        scripts = declared.get("console_scripts", []) if isinstance(declared, dict) else []
+        for raw in scripts:
+            parsed = _parse_console_script(str(raw))
+            if parsed is None:
+                continue
+            name, target = parsed
+            results.append(
+                {
+                    "name": name,
+                    "target": target,
+                    "source": "setup.py",
+                    "source_files": _entrypoint_source_files(root, path, target),
+                }
+            )
+    return results
+
+
+def _setup_cfg_entrypoints(path: Path, root: Path) -> list[dict[str, Any]]:
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read(path, encoding="utf-8")
+    except (configparser.Error, OSError, UnicodeDecodeError):
+        return []
+    if not parser.has_option("options.entry_points", "console_scripts"):
+        return []
+    results: list[dict[str, Any]] = []
+    for raw in parser.get("options.entry_points", "console_scripts").splitlines():
+        parsed = _parse_console_script(raw.strip())
+        if parsed is None:
+            continue
+        name, target = parsed
+        results.append(
+            {
+                "name": name,
+                "target": target,
+                "source": "setup.cfg",
+                "source_files": _entrypoint_source_files(root, path, target),
+            }
+        )
+    return results
+
+
+def _cmake_without_comments(text: str) -> str:
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
+def _cmake_source_file(root: Path, cmake_path: Path, token: str) -> str:
+    candidate = (cmake_path.parent / token.strip('"\'')).resolve()
+    try:
+        return candidate.relative_to(root).as_posix()
+    except ValueError:
+        return token.strip('"\'')
+
+
+def _cmake_program_entrypoints(text: str, path: Path, root: Path) -> list[dict[str, Any]]:
+    cleaned = _cmake_without_comments(text)
+    results: list[dict[str, Any]] = []
+    for body in re.findall(
+        r"(?ims)\binstall\s*\(\s*PROGRAMS\s+(.+?)\s+DESTINATION\b",
+        cleaned,
+    ):
+        for token in re.split(r"\s+", body.strip()):
+            source = _cmake_source_file(root, path, token)
+            if not source.casefold().endswith(".py"):
+                continue
+            results.append(
+                {
+                    "name": Path(source).stem,
+                    "target": source,
+                    "source": "cmake_install_program",
+                    "source_files": [source],
+                }
+            )
+    return results
 
 
 def _extract_semantic_candidates(
@@ -589,7 +904,7 @@ class ApplicationProbe:
                     )
                 except (OSError, tomllib.TOMLDecodeError, TypeError) as exc:
                     warnings.append(f"cannot parse {pyproject_path}: {exc}")
-            if "setup.py" in relative_names or "setup.cfg" in relative_names:
+            if any(Path(name).name in {"setup.py", "setup.cfg"} for name in relative_names):
                 project["build_systems"].append("python/setuptools")
             if "CMakeLists.txt" in relative_names:
                 project["build_systems"].append("cmake")
@@ -651,6 +966,10 @@ class ApplicationProbe:
                                 )
                     except (OSError, ET.ParseError) as exc:
                         warnings.append(f"cannot parse {path}: {exc}")
+                if path.name == "setup.py":
+                    project["entrypoints"].extend(_setup_py_entrypoints(path, root))
+                elif path.name == "setup.cfg":
+                    project["entrypoints"].extend(_setup_cfg_entrypoints(path, root))
                 is_launch_file = path.name.endswith((".launch.py", ".launch.xml"))
                 if is_launch_file:
                     project["launch_files"].append(relative)
@@ -699,20 +1018,52 @@ class ApplicationProbe:
                         }.get(path.suffix.lower())
                         if language:
                             project["languages"].append(language)
-                        extracted = _extract_ros_names(text)
-                        for kind, values in extracted.items():
-                            ros_names[kind].update(values)
-                        project["ros_interfaces"].extend(_extract_ros_interfaces(text, path))
+                        interfaces = _extract_ros_interfaces(text, path)
+                        project["ros_interfaces"].extend(interfaces)
+                        for interface in interfaces:
+                            if interface.get("name_source") != "STRING_LITERAL":
+                                continue
+                            role = interface.get("role")
+                            collection = (
+                                "topics"
+                                if role in {"publisher", "subscriber"}
+                                else "services"
+                                if role in {"service", "client"}
+                                else None
+                            )
+                            if collection:
+                                ros_names[collection].add(str(interface["name"]))
                         project["protocols"].extend(extract_protocols(text))
                 if path.name == "CMakeLists.txt" and path.stat().st_size <= 2_000_000:
                     cmake_text = _cached_read_text(path, loaded_text, 2_000_000) or ""
-                    targets = re.findall(
-                        r"(?im)^\s*add_(?:executable|library)\s*\(\s*([A-Za-z0-9_.+-]+)",
-                        cmake_text,
+                    cleaned_cmake = _cmake_without_comments(cmake_text)
+                    target_matches = re.findall(
+                        r"(?ims)^\s*add_(?:executable|library)\s*\(\s*"
+                        r"([A-Za-z0-9_.+-]+)\s+([^\)]*)\)",
+                        cleaned_cmake,
                     )
+                    targets = [target for target, _ in target_matches]
                     project["build_targets"].extend(targets)
+                    cmake_entrypoints = [
+                        {
+                            "name": target,
+                            "target": target,
+                            "source": "cmake",
+                            "source_files": sorted(
+                                {
+                                    _cmake_source_file(root, path, token)
+                                    for token in re.split(r"\s+", body)
+                                    if token.lower().endswith(
+                                        (".c", ".cc", ".cpp", ".cxx")
+                                    )
+                                }
+                            ),
+                        }
+                        for target, body in target_matches
+                    ]
+                    project["entrypoints"].extend(cmake_entrypoints)
                     project["entrypoints"].extend(
-                        {"name": target, "target": target, "source": "cmake"} for target in targets
+                        _cmake_program_entrypoints(cmake_text, path, root)
                     )
                 if (is_readme or is_launch_file) and path.stat().st_size <= 2_000_000:
                     if (text := _cached_read_text(path, loaded_text, 2_000_000)) is not None:
@@ -734,6 +1085,15 @@ class ApplicationProbe:
                 ),
             )
             project["protocols"] = sorted(set(project["protocols"]))
+            unique_entrypoints: dict[tuple[str, str, str], dict[str, Any]] = {}
+            for entrypoint in project["entrypoints"]:
+                key = (
+                    str(entrypoint.get("name", "")),
+                    str(entrypoint.get("target", "")),
+                    str(entrypoint.get("source", "")),
+                )
+                unique_entrypoints[key] = entrypoint
+            project["entrypoints"] = list(unique_entrypoints.values())[:MAX_DISCOVERED_ITEMS]
             project["ros_interfaces"] = sorted(
                 project["ros_interfaces"],
                 key=lambda item: (item["role"], item["name"], item["type"], item["source"]),
@@ -1257,10 +1617,12 @@ class DiscoveryService:
         artifacts: ArtifactStore,
         software_policy: SoftwareDiscoveryPolicy | None = None,
         wiki_polisher: WikiNarrativePolisher | None = None,
+        wiki_insight_provider: WikiInsightProvider | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.software_policy = software_policy or SoftwareDiscoveryPolicy()
         self.wiki_polisher = wiki_polisher
+        self.wiki_insight_provider = wiki_insight_provider
 
     def run(
         self,
@@ -1279,6 +1641,20 @@ class DiscoveryService:
             )
         active_inputs = active_inputs.resolved()
         robot = _read_discovery_urdf(robot, urdf_path)
+        previous_report: DiscoveryReport | None = None
+        previous_active: ActiveDiscoveryReport | None = None
+        try:
+            previous_report = load_latest_report(self.artifacts.root, robot.robot_id)
+            previous_active_path = resolve_artifact_ref(
+                self.artifacts.root,
+                previous_report.active_discovery_report_ref,
+            )
+            previous_active = ActiveDiscoveryReport.model_validate_json(
+                previous_active_path.read_text(encoding="utf-8")
+            )
+        except (FileNotFoundError, OSError, ValueError):
+            previous_report = None
+            previous_active = None
         now = datetime.now(timezone.utc)
         discovery_id = f"disc-{now.strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:8]}"
         layout = ArtifactLayout(self.artifacts.root)
@@ -1302,7 +1678,7 @@ class DiscoveryService:
         )
         application_scan = ApplicationProbe().scan(active_inputs.source_roots)
         probes = {
-            "hw": HardwareProbe().run(),
+            "hw": HardwareProbe().run(robot_id=robot.robot_id),
             "linux": LinuxProbe().run(),
             "ros": ros_probe,
             "application": application_scan.probe,
@@ -1393,14 +1769,45 @@ class DiscoveryService:
             f"{run_location}/active_discovery_report.md",
             render_active_discovery_markdown(active_report),
         )
-        wiki_draft = render_discovery_review_markdown(report, active_report)
+        wiki_insights, insight_fallback_reason = collect_wiki_insights(
+            report,
+            active_report,
+            self.wiki_insight_provider,
+        )
+        wiki_draft = render_discovery_review_markdown(
+            report,
+            active_report,
+            insight_bundle=wiki_insights,
+            previous_report=previous_report,
+            previous_active=previous_active,
+        )
         robot_wiki, wiki_generation = generate_robot_wiki(
             wiki_draft,
             self.wiki_polisher,
         )
+        wiki_generation = wiki_generation.model_copy(
+            update={
+                "insight_provider": getattr(self.wiki_insight_provider, "provider", None),
+                "insight_count": len(wiki_insights.findings),
+                "insight_fallback_reason": insight_fallback_reason,
+            }
+        )
         self.artifacts.write_text(
             f"{run_location}/robot_wiki.md",
             robot_wiki,
+        )
+        self.artifacts.write_json(
+            f"{run_location}/wiki_insights.json",
+            wiki_insights.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{run_location}/wiki_diff.json",
+            build_wiki_discovery_diff(
+                report,
+                active_report,
+                previous_report,
+                previous_active,
+            ).model_dump(mode="json"),
         )
         self.artifacts.write_json(
             f"{run_location}/wiki_generation.json",

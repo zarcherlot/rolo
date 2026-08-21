@@ -12,6 +12,7 @@ from rolo.runtime import create_runtime
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_latest_report
 from rolo.stages.adapt.wiki import OpenAIWikiNarrativePolisher
+from rolo.stages.adapt.wiki_agent import CodexWikiInsightProvider
 from rolo.stages.artifact_paths import resolve_artifact_ref
 from rolo.stages.discovery_manifest import load_and_verify_discovery_manifest
 
@@ -91,9 +92,23 @@ def discovery_run(
             and wiki_model
             else None
         )
+        wiki_insight_provider = (
+            CodexWikiInsightProvider(
+                skill_path=runtime.settings.wiki_insights_skill_path,
+                executable=runtime.settings.coding_agent_executable,
+                model=runtime.settings.coding_agent_model,
+                provider=runtime.settings.coding_agent_provider,
+                base_url=runtime.settings.coding_agent_base_url,
+                api_key=runtime.settings.coding_agent_api_key,
+                timeout_s=runtime.settings.wiki_insights_agent_timeout_s,
+            )
+            if runtime.settings.wiki_insights_agent_enabled
+            else None
+        )
         report, artifact = DiscoveryService(
             runtime.artifacts,
             wiki_polisher=wiki_polisher,
+            wiki_insight_provider=wiki_insight_provider,
         ).run(
             robot=capability,
             urdf_path=urdf,
