@@ -77,6 +77,17 @@ release 继续由原 eligibility 决定。权限扩张、空 Slice 或预算超�
 
 是否扩大灰度或修改默认模式必须基于 Shadow/Canary 数据单独决策。
 
+## P3.5 稳定观察与人工评审门槛
+
+- 只读聚合 Shadow/Canary Run Artifact；
+- 统计激活、回退、Agent 失败、独立 gate 失败和上下文预算；
+- 统计潜在与实际上下文缩减比例；
+- 提供 `INSUFFICIENT_DATA / HOLD / READY_FOR_REVIEW` 建议；
+- 达到样本门槛只允许进入人工评审，不自动修改灰度配置；
+- 旧版无 Slice 决策 Artifact 的 Run 不进入样本。
+
+状态：已完成首版。提供 `adapt slice-observability` 只读命令和严格稳定性报告 Schema。
+
 ## 当前基线影响
 
 | 项目 | P3 首批影响 |

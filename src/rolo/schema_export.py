@@ -60,6 +60,7 @@ from rolo.stages.adapt.operation_governance import OperationDispositionLedger
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
 from rolo.stages.adapt.shadow_observation import TargetOperationSliceShadowReport
 from rolo.stages.adapt.slice_activation import SliceActivationDecision
+from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
@@ -125,6 +126,7 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     TargetOperationSlice,
     TargetOperationSliceShadowReport,
     SliceActivationDecision,
+    SliceStabilityReport,
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
     WikiInsightBundle,

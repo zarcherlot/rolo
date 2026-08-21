@@ -13,6 +13,7 @@ from rolo.stages.adapt.service import (
     AdaptRunService,
     coding_agent_config,
 )
+from rolo.stages.adapt.slice_observability import build_slice_stability_report
 from rolo.stages.contracts import StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
@@ -85,6 +86,29 @@ def adapt_stage_run(
 def adapt_agent_config() -> None:
     """Show the effective secret-free Adapter Agent provider and model selection."""
     emit(coding_agent_config(get_settings()))
+
+
+@adapt_stage_app.command("slice-observability")
+def adapt_slice_observability(
+    robot: Annotated[str, typer.Option("--robot")],
+    max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
+    min_successful_canary_runs: Annotated[
+        int,
+        typer.Option("--min-successful-canary-runs", min=1, max=500),
+    ] = 10,
+) -> None:
+    """Read Shadow/Canary stability metrics without changing activation settings."""
+    settings = get_settings()
+    try:
+        report = build_slice_stability_report(
+            settings.rolo_artifact_dir,
+            robot,
+            max_runs=max_runs,
+            min_successful_canary_runs=min_successful_canary_runs,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(report)
 
 
 @diagnose_stage_app.command("status")
