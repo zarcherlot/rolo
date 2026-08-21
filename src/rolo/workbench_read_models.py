@@ -85,7 +85,16 @@ class EvidenceRecord(BaseModel):
     title: str
     summary: str
     authority: EvidenceAuthority
-    source_kind: Literal["robot_manifest", "gated_artifact", "pipeline_artifact"]
+    source_kind: Literal[
+        "robot_manifest",
+        "gated_artifact",
+        "pipeline_artifact",
+        "lifecycle_run",
+        "lifecycle_gate",
+        "lifecycle_handoff",
+        "wiki_insight",
+        "wiki_diff",
+    ]
     integrity_status: Literal["validated", "verified"]
     classification: Literal["INTERNAL"] = "INTERNAL"
     observed_at: datetime
@@ -229,6 +238,63 @@ def _add_evidence(
     )
 
 
+def _add_lifecycle_evidence(
+    records: dict[str, EvidenceRecord],
+    artifact_root: Path,
+    output_root: Path,
+    robot_id: str,
+) -> None:
+    from rolo.lifecycle_read_models import lifecycle_evidence_specs
+
+    for spec in lifecycle_evidence_specs(artifact_root, output_root, robot_id).values():
+        _add_evidence(
+            records,
+            EvidenceRecord(
+                evidence_id=spec.evidence_id,
+                robot_id=robot_id,
+                title=spec.title,
+                summary=spec.summary,
+                authority=EvidenceAuthority(spec.authority),
+                source_kind=spec.source_kind,
+                integrity_status=spec.integrity_status,
+                observed_at=spec.observed_at,
+                freshness="unknown",
+                confidence=spec.confidence,
+                reference_hint=_reference_hint(spec.reference),
+                reference_digest=_digest(spec.reference),
+                limitations=spec.limitations,
+            ),
+        )
+
+
+def _add_wiki_evidence(
+    records: dict[str, EvidenceRecord],
+    artifact_root: Path,
+    robot_id: str,
+) -> None:
+    from rolo.wiki_read_models import wiki_evidence_specs
+
+    for spec in wiki_evidence_specs(artifact_root, robot_id).values():
+        _add_evidence(
+            records,
+            EvidenceRecord(
+                evidence_id=spec.evidence_id,
+                robot_id=robot_id,
+                title=spec.title,
+                summary=spec.summary,
+                authority=EvidenceAuthority.OBSERVED,
+                source_kind=spec.source_kind,
+                integrity_status="verified",
+                observed_at=spec.observed_at,
+                freshness="unknown",
+                confidence=0.6 if spec.source_kind == "wiki_insight" else 1.0,
+                reference_hint=_reference_hint(spec.reference),
+                reference_digest=_digest(spec.reference),
+                limitations=spec.limitations,
+            ),
+        )
+
+
 def _node_layer(kind: str, raw: dict[str, object]) -> TopologyLayer:
     if kind == "robot":
         return TopologyLayer.HARDWARE
@@ -289,8 +355,11 @@ def build_robot_topology(
     robot: RobotCapability,
     output_root: Path,
     *,
-    artifact_root: Path,
+    artifact_root: Path | None = None,
     observed_at: datetime | None = None,
+    gated_graph: dict[str, object] | None = None,
+    load_active_graph: bool = True,
+    snapshot_id: str | None = None,
 ) -> tuple[RobotTopology, dict[str, EvidenceRecord]]:
     observed_at = observed_at or utc_now()
     records: dict[str, EvidenceRecord] = {}
@@ -405,10 +474,14 @@ def build_robot_topology(
         "Only registry declarations are available; runtime presence is not asserted."
     ]
     confidence = 0.7
-    graph = _load_gated_graph(
-        output_root,
-        robot.robot_id,
-        artifact_root=artifact_root,
+    graph = (
+        _load_gated_graph(
+            output_root,
+            robot.robot_id,
+            artifact_root=artifact_root,
+        )
+        if load_active_graph and artifact_root is not None
+        else gated_graph
     )
     if graph is not None:
         raw_nodes = [item for item in graph["nodes"] if isinstance(item, dict)]
@@ -492,7 +565,8 @@ def build_robot_topology(
 
     topology = RobotTopology(
         robot_id=robot.robot_id,
-        snapshot_id=_stable_id(
+        snapshot_id=snapshot_id
+        or _stable_id(
             "topology",
             f"{robot.robot_id}\0{coverage}\0{'|'.join(sorted(nodes))}\0{'|'.join(sorted(edges))}",
         ),
@@ -513,7 +587,7 @@ def build_evidence_collection(
     robot: RobotCapability,
     output_root: Path,
     *,
-    artifact_root: Path,
+    artifact_root: Path | None = None,
     limit: int = 50,
     offset: int = 0,
     authority: EvidenceAuthority | None = None,
@@ -539,6 +613,9 @@ def build_evidence_collection(
                         stage.observed_at,
                     ),
                 )
+    if artifact_root is not None:
+        _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
+        _add_wiki_evidence(records, artifact_root, robot.robot_id)
     items = sorted(records.values(), key=lambda item: (item.title, item.evidence_id))
     if authority is not None:
         items = [item for item in items if item.authority is authority]
@@ -560,8 +637,8 @@ def find_evidence(
     output_root: Path,
     evidence_id: str,
     *,
-    artifact_root: Path,
     pipelines: dict[str, PipelineAssessment] | None = None,
+    artifact_root: Path | None = None,
 ) -> EvidenceRecord | None:
     for robot in robots:
         _, records = build_robot_topology(
@@ -583,6 +660,9 @@ def find_evidence(
                             stage.observed_at,
                         ),
                     )
+        if artifact_root is not None:
+            _add_lifecycle_evidence(records, artifact_root, output_root, robot.robot_id)
+            _add_wiki_evidence(records, artifact_root, robot.robot_id)
         if record := records.get(evidence_id):
             return record
     return None
