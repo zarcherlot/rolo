@@ -45,7 +45,9 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["status"] == "HEALTHY"
     assert health.json()["robots"] == 2
     assert health.json()["api_features"] == [
+        "adapt.baseline-status/v1",
         "adapt.operation-governance/v1",
+        "adapt.slice-run-detail/v1",
         "adapt.slice-stability/v1",
         "adapt.target-operation-slice/v1",
     ]
@@ -147,6 +149,9 @@ def test_unknown_robot_is_404() -> None:
         slice_stability = client.get(
             "/v1/robots/not-a-robot/adapt/slice-stability"
         )
+        slice_run = client.get(
+            "/v1/robots/not-a-robot/adapt/slice-runs/run-1"
+        )
 
     assert response.status_code == 404
     assert overview.status_code == 404
@@ -158,6 +163,7 @@ def test_unknown_robot_is_404() -> None:
     assert evidence_detail.status_code == 404
     assert operation_slice.status_code == 404
     assert slice_stability.status_code == 404
+    assert slice_run.status_code == 404
 
 
 def test_operation_governance_is_bounded_external_metadata() -> None:
@@ -277,6 +283,22 @@ def test_slice_stability_route_is_bounded_and_runs_off_the_async_event_loop() ->
 
     assert too_many_runs.status_code == 422
     assert invalid_threshold.status_code == 422
+
+
+def test_adapt_baseline_and_missing_slice_run_are_explicit() -> None:
+    with TestClient(app) as client:
+        baseline = client.get("/v1/adapt/baseline")
+        missing_run = client.get(
+            "/v1/robots/demo_diff/adapt/slice-runs/not-observed"
+        )
+
+    assert baseline.status_code == 200
+    assert baseline.json()["schema_version"] == "rolo-adapt-baseline-status/v1"
+    assert baseline.json()["status"] == "MATCHED"
+    assert baseline.json()["changed_fields"] == []
+    assert baseline.json()["influences_release"] is False
+    assert missing_run.status_code == 404
+    assert missing_run.json()["detail"] == "Adapt Slice run decision is unavailable"
 
 
 def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
@@ -496,6 +518,16 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         stability_schema["properties"]["schema_version"]["const"]
         == "robot-target-operation-slice-stability/v1"
+    )
+    baseline_schema = openapi["components"]["schemas"]["AdaptBaselineStatus"]
+    assert (
+        baseline_schema["properties"]["schema_version"]["const"]
+        == "rolo-adapt-baseline-status/v1"
+    )
+    slice_run_schema = openapi["components"]["schemas"]["SliceRunDetail"]
+    assert (
+        slice_run_schema["properties"]["schema_version"]["const"]
+        == "rolo-adapt-slice-run-detail/v1"
     )
 
 

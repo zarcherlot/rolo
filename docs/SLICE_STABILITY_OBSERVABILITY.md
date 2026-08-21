@@ -79,6 +79,26 @@ robotctl adapt slice-observability \
 5. 机器人类型和 Discovery 证据是否具有代表性；
 6. 回退到 `shadow` 的操作是否已验证。
 
+## Web 只读模型
+
+Workbench 可以按健康响应中的可选能力标识加载以下只读模型：
+
+- `adapt.slice-stability/v1`：聚合稳定性窗口；
+- `adapt.slice-run-detail/v1`：按不可变 Run 读取 activation、Shadow 差异和有界指标；
+- `adapt.baseline-status/v1`：比较产品 Registry、治理台账和 Contract Catalog 的固定指纹。
+
+对应端点为：
+
+```text
+GET /v1/robots/{robot_id}/adapt/slice-stability
+GET /v1/robots/{robot_id}/adapt/slice-runs/{run_id}
+GET /v1/adapt/baseline
+```
+
+Baseline 状态是产品级完整性事实，不是机器人运行健康。Run 详情只解释 Agent context 的
+选择与回退；`release_authority_operations` 始终保持权威 eligibility，所有返回模型均固定
+`influences_release=false`。
+
 ## 当前边界
 
 - 不自动变更 `ADAPT_OPERATION_SLICE_MODE`；
