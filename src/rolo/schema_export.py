@@ -9,7 +9,10 @@ from rolo.capabilities import (
     CapabilityDescriptor,
     CapabilityResolutionShadow,
     PlatformProfile,
+    ProviderConformanceReport,
+    ProviderHostSnapshot,
     ProviderManifest,
+    ProviderRegistration,
 )
 from rolo.contract_catalog import OperationContract, OperationContractCatalog
 from rolo.core.models import (
@@ -31,6 +34,7 @@ from rolo.invocation_policy import (
 )
 from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.baseline import AdaptBaselineSnapshot
 from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
@@ -55,6 +59,9 @@ from rolo.stages.adapt.models import (
 )
 from rolo.stages.adapt.operation_governance import OperationDispositionLedger
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
+from rolo.stages.adapt.shadow_observation import TargetOperationSliceShadowReport
+from rolo.stages.adapt.slice_activation import SliceActivationDecision
+from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyReport,
     SoftwareSummary,
@@ -83,9 +90,13 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationCandidate,
     AdapterRuntimeContext,
     CanonicalOperationRegistry,
+    AdaptBaselineSnapshot,
     OperationDispositionLedger,
     CapabilityDescriptor,
     ProviderManifest,
+    ProviderRegistration,
+    ProviderHostSnapshot,
+    ProviderConformanceReport,
     PlatformProfile,
     CapabilityResolutionShadow,
     ToolDescriptor,
@@ -115,6 +126,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     ActiveDiscoveryReport,
     AdaptOperationWorkset,
     TargetOperationSlice,
+    TargetOperationSliceShadowReport,
+    SliceActivationDecision,
+    SliceStabilityReport,
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
     WikiInsightBundle,

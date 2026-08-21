@@ -33,3 +33,30 @@ def test_base_runtime_does_not_require_optional_robot_use_backend() -> None:
     assert len(runtime.registry) == 2
     with pytest.raises(ValueError, match="Unsupported ROBOT_USE_BACKEND"):
         create_robot_use_runtime(settings)
+
+
+def test_slice_activation_defaults_off_and_accepts_explicit_canary_selectors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "ADAPT_OPERATION_SLICE_MODE",
+        "ADAPT_OPERATION_SLICE_ROBOT_IDS",
+        "ADAPT_OPERATION_SLICE_RUN_IDS",
+        "ADAPT_OPERATION_SLICE_MAX_OPERATIONS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    defaults = Settings(_env_file=None)
+    canary = Settings(
+        _env_file=None,
+        adapt_operation_slice_mode="canary",
+        adapt_operation_slice_robot_ids="robot-b,robot-a",
+        adapt_operation_slice_run_ids="run-1",
+        adapt_operation_slice_max_operations=12,
+    )
+
+    assert defaults.adapt_operation_slice_mode == "shadow"
+    assert defaults.adapt_operation_slice_robot_ids == ""
+    assert defaults.adapt_operation_slice_run_ids == ""
+    assert defaults.adapt_operation_slice_max_operations == 20
+    assert canary.adapt_operation_slice_mode == "canary"
+    assert canary.adapt_operation_slice_max_operations == 12

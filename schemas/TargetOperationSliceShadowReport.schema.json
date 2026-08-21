@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "description": "Comparison only: it must never replace current eligibility or release inputs.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-operation-slice-shadow/v1",
+      "default": "robot-target-operation-slice-shadow/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "slice_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Slice Sha256",
+      "type": "string"
+    },
+    "authoritative_eligible_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Authoritative Eligible Operations",
+      "type": "array"
+    },
+    "shadow_target_adapter_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Shadow Target Adapter Operations",
+      "type": "array"
+    },
+    "eligible_not_in_shadow": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Eligible Not In Shadow",
+      "type": "array"
+    },
+    "shadow_not_in_eligible": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Shadow Not In Eligible",
+      "type": "array"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "slice_sha256"
+  ],
+  "title": "TargetOperationSliceShadowReport",
+  "type": "object"
+}

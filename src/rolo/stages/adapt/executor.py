@@ -29,8 +29,20 @@ from rolo.stages.adapt.models import (
 )
 from rolo.stages.adapt.operation_governance import load_operation_dispositions
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.shadow_observation import (
+    build_capability_shadow,
+    build_slice_shadow_report,
+    resolution_status_counts,
+)
+from rolo.stages.adapt.slice_activation import (
+    SliceActivationDecision,
+    SliceActivationMode,
+    decide_slice_activation,
+    parse_slice_selectors,
+)
 from rolo.stages.adapt.wiki_retrieval import build_wiki_index
 from rolo.stages.adapt.workset import (
+    TargetOperationSlice,
     build_operation_workset,
     build_target_operation_slice,
     candidate_detail,
@@ -185,11 +197,27 @@ class CodexAdaptExecutor:
         executable: str = "codex",
         api_key: str | None = None,
         output_root: Path | None = None,
+        slice_activation_mode: SliceActivationMode | str = SliceActivationMode.SHADOW,
+        slice_activation_robot_ids: str | list[str] = "",
+        slice_activation_run_ids: str | list[str] = "",
+        slice_activation_max_operations: int = 20,
     ) -> None:
         self.artifacts = artifacts
         self.executable = executable
         self.api_key = api_key
         self.output_root = (output_root or Path(".rolo/output")).expanduser().resolve()
+        self.slice_activation_mode = SliceActivationMode(
+            slice_activation_mode.upper()
+            if isinstance(slice_activation_mode, str)
+            else slice_activation_mode
+        )
+        self.slice_activation_robot_ids = parse_slice_selectors(
+            slice_activation_robot_ids
+        )
+        self.slice_activation_run_ids = parse_slice_selectors(slice_activation_run_ids)
+        if not 1 <= slice_activation_max_operations <= 50:
+            raise ValueError("Slice activation operation budget must be between 1 and 50")
+        self.slice_activation_max_operations = slice_activation_max_operations
 
     def execute(
         self,
@@ -198,6 +226,7 @@ class CodexAdaptExecutor:
         workspace: Path,
         timeout_s: int = 1800,
         plan: AdaptPlan,
+        slice_canary: bool = False,
     ) -> tuple[AdapterAgentRun, Path]:
         workspace = workspace.resolve()
         if not workspace.is_dir():
@@ -225,12 +254,53 @@ class CodexAdaptExecutor:
         final_message_path = run_root / "final-message.json"
         result_path = run_root / "result.json"
 
-        agent_tool = self._install_agent_tool_launcher(workspace, plan)
-        prompt = self._build_prompt(plan, agent_tool=agent_tool)
+        agent_tool = self._install_agent_tool_launcher(
+            workspace,
+            plan,
+            run_id=run_id,
+            slice_canary=slice_canary,
+        )
+        prompt = self._build_prompt(
+            plan,
+            agent_tool=agent_tool,
+            run_id=run_id,
+            slice_canary=slice_canary,
+        )
         prompt_path.write_text(prompt, encoding="utf-8")
         snapshot_path = workspace / "rolo-agent-inspection.json"
         wiki_data_path = workspace / "rolo-agent-wiki.zlib"
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        target_slice = TargetOperationSlice.model_validate(snapshot["target_operation_slice"])
+        activation = SliceActivationDecision.model_validate(
+            snapshot["slice_activation_decision"]
+        )
+        report = load_report(
+            self.artifacts.root,
+            plan.robot_id,
+            plan.source_discovery_id,
+        )
+        platform_profile, capability_shadow = build_capability_shadow(report, target_slice)
+        slice_shadow = build_slice_shadow_report(target_slice, plan.eligible_operations)
+        self.artifacts.write_json(
+            f"{relative_run_root}/target-operation-slice.json",
+            target_slice.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/target-operation-slice-shadow.json",
+            slice_shadow.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/slice-activation-decision.json",
+            activation.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/platform-profile.json",
+            platform_profile.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{relative_run_root}/capability-resolution-shadow.json",
+            capability_shadow.model_dump(mode="json"),
+        )
         boot_context = compact_agent_boot_context(
             self.artifacts.root,
             self.output_root,
@@ -266,17 +336,31 @@ class CodexAdaptExecutor:
                 ),
                 "injected_target_adapter_operation_count": min(
                     20,
-                    len(snapshot["current_task_operations"]),
+                    len(activation.effective_context_operations),
                 ),
                 "prepared_operation_detail_count": len(snapshot["operation_details"]),
                 "agent_query_count": 0,
                 "agent_inspect_count": 0,
                 "agent_query_response_bytes": 0,
+                "shadow_eligible_not_in_target_adapter_count": len(
+                    slice_shadow.eligible_not_in_shadow
+                ),
+                "shadow_target_adapter_not_in_eligible_count": len(
+                    slice_shadow.shadow_not_in_eligible
+                ),
+                "capability_resolution_counts": resolution_status_counts(
+                    capability_shadow
+                ),
+                "shadow_influences_release": False,
+                "slice_activation_mode": activation.mode.value,
+                "slice_activation_outcome": activation.outcome.value,
+                "slice_activation_selected": activation.selected,
+                "slice_activation_affects_agent_context": (
+                    activation.affects_agent_context
+                ),
+                "slice_activation_alert_count": len(activation.alerts),
+                "slice_activation_fallback_reason": activation.fallback_reason,
             },
-        )
-        self.artifacts.write_json(
-            f"{relative_run_root}/target-operation-slice.json",
-            snapshot["target_operation_slice"],
         )
         schema_path.write_text(
             json.dumps(AdapterAgentResult.model_json_schema(), ensure_ascii=False, indent=2) + "\n",
@@ -415,7 +499,14 @@ class CodexAdaptExecutor:
         environment["ROLO_AGENT_DISCOVERY_ID"] = plan.source_discovery_id
         return environment
 
-    def _install_agent_tool_launcher(self, workspace: Path, plan: AdaptPlan) -> Path:
+    def _install_agent_tool_launcher(
+        self,
+        workspace: Path,
+        plan: AdaptPlan,
+        *,
+        run_id: str | None = None,
+        slice_canary: bool = False,
+    ) -> Path:
         """Install a sandbox-local query snapshot; it never imports rolo at runtime."""
         python = Path(sys.executable).resolve()
         report = load_report(self.artifacts.root, plan.robot_id, plan.source_discovery_id)
@@ -438,6 +529,12 @@ class CodexAdaptExecutor:
             deferred_operations=plan.deferred_operations,
             task_operations=task_operations,
             classifier=_shadow_operation_classifier(),
+        )
+        activation = self._slice_activation_decision(
+            target_slice,
+            plan,
+            run_id=run_id,
+            slice_canary=slice_canary,
         )
         prepared_operations = sorted(
             set(target_slice.primary_operations) | set(target_slice.dependency_operations)
@@ -490,6 +587,7 @@ class CodexAdaptExecutor:
             "current_task_operations": current_task_operations,
             "target_operations": prepared_operations,
             "target_operation_slice": target_slice.model_dump(mode="json"),
+            "slice_activation_decision": activation.model_dump(mode="json"),
             "operation_details": operation_details,
             "candidate_details": candidate_details,
             "executables": {
@@ -543,7 +641,41 @@ class CodexAdaptExecutor:
             launcher.chmod(0o700)
         return launcher.resolve()
 
-    def _build_prompt(self, plan: AdaptPlan, *, agent_tool: Path | None = None) -> str:
+    def _slice_activation_decision(
+        self,
+        target_slice: TargetOperationSlice,
+        plan: AdaptPlan,
+        *,
+        run_id: str | None,
+        slice_canary: bool = False,
+    ) -> SliceActivationDecision:
+        robot_selectors = self.slice_activation_robot_ids
+        run_selectors = self.slice_activation_run_ids
+        mode = self.slice_activation_mode
+        if slice_canary:
+            mode = SliceActivationMode.CANARY
+            if run_id is not None:
+                run_selectors = (*run_selectors, run_id)
+            else:
+                robot_selectors = (*robot_selectors, target_slice.robot_id)
+        return decide_slice_activation(
+            target_slice,
+            plan.eligible_operations,
+            mode=mode,
+            run_id=run_id,
+            robot_selectors=robot_selectors,
+            run_selectors=run_selectors,
+            max_context_operations=self.slice_activation_max_operations,
+        )
+
+    def _build_prompt(
+        self,
+        plan: AdaptPlan,
+        *,
+        agent_tool: Path | None = None,
+        run_id: str | None = None,
+        slice_canary: bool = False,
+    ) -> str:
         load_report(
             self.artifacts.root,
             plan.robot_id,
@@ -571,12 +703,22 @@ class CodexAdaptExecutor:
             task_operations=[operation for task in plan.tasks for operation in task.operations],
             classifier=_shadow_operation_classifier(),
         )
+        activation = self._slice_activation_decision(
+            target_slice,
+            plan,
+            run_id=run_id,
+            slice_canary=slice_canary,
+        )
         context["operation_slice"] = {
             "slice_sha256": target_slice.slice_sha256,
             "primary_count": len(target_slice.primary_operations),
             "dependency_count": len(target_slice.dependency_operations),
             "target_adapter_count": len(target_slice.target_adapter_operations),
             "agent_native_count": len(target_slice.agent_native_operations),
+            "activation_mode": activation.mode.value,
+            "activation_outcome": activation.outcome.value,
+            "affects_agent_context": activation.affects_agent_context,
+            "alert_codes": [item.code for item in activation.alerts],
         }
         tool = str(agent_tool or Path("robotctl"))
         tool_prefix = f'& "{tool}"' if os.name == "nt" else f'"{tool}"'
@@ -604,7 +746,7 @@ class CodexAdaptExecutor:
                 "--state-graph GRAPH --conformance-report REPORT",
             ],
         }
-        current_task_operations = sorted(plan.eligible_operations)
+        current_task_operations = activation.effective_context_operations
         current_task_operation_set = set(current_task_operations)
         compact_plan = {
             "schema_version": plan.schema_version,
@@ -612,6 +754,12 @@ class CodexAdaptExecutor:
             "source_discovery_id": plan.source_discovery_id,
             "status": plan.status.value,
             "slice_sha256": target_slice.slice_sha256,
+            "slice_activation_mode": activation.mode.value,
+            "slice_activation_outcome": activation.outcome.value,
+            "slice_affects_agent_context": activation.affects_agent_context,
+            "release_authority_operation_count": len(
+                activation.release_authority_operations
+            ),
             "target_adapter_operations": current_task_operations[:20],
             "target_adapter_operation_count": len(current_task_operations),
             "target_adapter_operations_truncated": len(current_task_operations) > 20,
