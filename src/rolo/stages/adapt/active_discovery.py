@@ -1101,27 +1101,21 @@ def _source_interface_key(interface: dict[str, Any]) -> tuple[str, str, str, str
 def _ros_communication(
     executable_name: str,
     projects: list[dict[str, Any]],
-    ros_probe: ProbeResult,
-    *,
-    include_runtime: bool,
 ) -> dict[str, Any]:
     selected = [
         _project_interfaces_for_executable(executable_name, project) for project in projects
     ]
     source_interfaces = [interface for interfaces, _ in selected for interface in interfaces]
     unattributed_count = sum(count for _, count in selected)
-    runtime = ros_probe.data if include_runtime else {}
     return {
-        "nodes": runtime.get("nodes", []),
+        # The live ROS graph is robot-global evidence.  It must not be copied onto
+        # every executable unless a future probe can prove process/node ownership.
+        "nodes": [],
         "publishers": [item for item in source_interfaces if item.get("role") == "publisher"],
         "subscribers": [item for item in source_interfaces if item.get("role") == "subscriber"],
-        "services": [
-            *[item for item in source_interfaces if item.get("role") == "service"],
-            *runtime.get("services", []),
-        ],
+        "services": [item for item in source_interfaces if item.get("role") == "service"],
         "clients": [item for item in source_interfaces if item.get("role") == "client"],
-        "actions": runtime.get("actions", []),
-        "runtime_topics": runtime.get("topics", []),
+        "actions": [],
         "parameters": [],
         "tf_frames": [],
         "remappings": [],
@@ -1298,8 +1292,6 @@ class ActiveDiscoveryAnalyzer:
             ros_communication = _ros_communication(
                 path.name,
                 executable_projects,
-                self.ros_probe,
-                include_runtime=runtime_observed,
             )
             source_protocols = {
                 protocol
@@ -1473,7 +1465,6 @@ class ActiveDiscoveryAnalyzer:
                             Confidence.MEDIUM
                             if executable_docs
                             or launch_analysis.available
-                            or runtime_observed
                             or help_result.status == HelpProbeStatus.SUCCEEDED
                             else Confidence.LOW
                         ),
@@ -1509,7 +1500,6 @@ class ActiveDiscoveryAnalyzer:
                         "artifacts": [str(path)],
                         "documentation": [str(item) for item in executable_docs[:100]],
                         "help": [help_result.output_ref] if help_result.output_ref else [],
-                        "ros_runtime": (["live_ros_graph"] if runtime_observed else []),
                         "source_support": source_analysis.evidence_refs,
                         "conflicts": [],
                         "unresolved": hash_unresolved,
@@ -1537,8 +1527,6 @@ class ActiveDiscoveryAnalyzer:
             ros_communication = _ros_communication(
                 name,
                 executable_projects,
-                self.ros_probe,
-                include_runtime=runtime_observed,
             )
             source_protocols = {
                 protocol
@@ -1600,7 +1588,7 @@ class ActiveDiscoveryAnalyzer:
                         network={"protocols": protocols},
                         confidence=(
                             Confidence.MEDIUM
-                            if executable_docs or launch_analysis.available or runtime_observed
+                            if executable_docs or launch_analysis.available
                             else Confidence.LOW
                         ),
                     ),
@@ -1624,7 +1612,6 @@ class ActiveDiscoveryAnalyzer:
                         "artifacts": [],
                         "documentation": [str(item) for item in executable_docs[:100]],
                         "help": [],
-                        "ros_runtime": (["live_ros_graph"] if runtime_observed else []),
                         "source_support": source_analysis.evidence_refs,
                         "conflicts": [],
                         "unresolved": ["compiled executable path was not supplied or found"],

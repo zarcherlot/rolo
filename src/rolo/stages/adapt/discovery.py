@@ -233,6 +233,53 @@ def _merge_hardware_provider(
     }
 
 
+def _command_diagnostic(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain bounded command evidence without treating process launch as success."""
+    diagnostic: dict[str, Any] = {
+        "argv": [str(item) for item in result.get("argv", [])],
+        "installed": bool(result.get("available")),
+        "succeeded": result.get("returncode") == 0,
+        "returncode": result.get("returncode"),
+        "error": str(result.get("error") or "")[:1_000] or None,
+        "stderr_excerpt": str(result.get("stderr") or "")[:4_000] or None,
+    }
+    attempts = result.get("attempts")
+    if isinstance(attempts, list):
+        diagnostic["attempts"] = attempts
+    return diagnostic
+
+
+def _command_failure_summary(result: Mapping[str, Any]) -> str:
+    if result.get("error"):
+        return str(result["error"]).splitlines()[0][:300]
+    stderr_lines = str(result.get("stderr") or "").splitlines()
+    detail = stderr_lines[0][:300] if stderr_lines else "no diagnostic output"
+    return f"exit {result.get('returncode', 'unknown')}: {detail}"
+
+
+def _ros_failure_class(result: Mapping[str, Any], *, codex_network_sandboxed: bool) -> str:
+    detail = "\n".join(
+        str(result.get(key) or "") for key in ("error", "stderr", "stdout")
+    ).casefold()
+    if result.get("returncode") == 2 and any(
+        marker in detail
+        for marker in ("unrecognized arguments", "invalid choice", "usage:")
+    ):
+        return "CLI_ARGUMENT_UNSUPPORTED"
+    if not result.get("available"):
+        return "ROS_CLI_UNAVAILABLE"
+    sandbox_markers = (
+        "sandbox",
+        "permissionerror",
+        "operation not permitted",
+        "localhost socket",
+        "network is unreachable",
+    )
+    if codex_network_sandboxed and any(marker in detail for marker in sandbox_markers):
+        return "EXECUTION_SANDBOX_RESTRICTED"
+    return "ROS_CLI_FAILED"
+
+
 class HardwareProbe:
     def run(
         self,
@@ -451,11 +498,29 @@ class RosProbe:
 
     def _run_ros(self, args: Sequence[str]) -> dict[str, Any]:
         if shutil.which("ros2"):
-            return _run(["ros2", *args], timeout_s=10)
+            direct = _run(["ros2", *args], timeout_s=10)
+            if direct.get("returncode") == 0:
+                return direct
+            if self.environment.get("CODEX_SANDBOX_NETWORK_DISABLED") == "1":
+                return direct
+        else:
+            direct = None
         setup = self._resolve_setup()
         if setup is not None and shutil.which("bash"):
-            command = f"source {shlex.quote(str(setup))} && ros2 {shlex.join(args)}"
-            return _run(["bash", "-lc", command], timeout_s=10)
+            command = (
+                "unset PYTHONHOME PYTHONPATH VIRTUAL_ENV; "
+                f"source {shlex.quote(str(setup))} && ros2 {shlex.join(args)}"
+            )
+            fallback = _run(["bash", "--noprofile", "--norc", "-c", command], timeout_s=10)
+            fallback["execution_context"] = "clean_ros_base_setup"
+            if direct is not None:
+                fallback["attempts"] = [
+                    {"context": "inherited_environment", **_command_diagnostic(direct)},
+                    {"context": "clean_ros_base_setup", **_command_diagnostic(fallback)},
+                ]
+            return fallback
+        if direct is not None:
+            return direct
         return {"available": False, "error": "ROS 2 environment not found"}
 
     def run(self) -> ProbeResult:
@@ -468,6 +533,7 @@ class RosProbe:
         configured_distro = self.environment.get("ROS_DISTRO")
         configured_rmw = self.environment.get("RMW_IMPLEMENTATION")
         configured_domain = self.environment.get("ROS_DOMAIN_ID")
+        codex_network_sandboxed = self.environment.get("CODEX_SANDBOX_NETWORK_DISABLED") == "1"
         data: dict[str, Any] = {
             "ros_distro": configured_distro or (setup.parent.name if setup else None),
             "ros_distro_source": (
@@ -483,10 +549,14 @@ class RosProbe:
             "rmw": configured_rmw,
             "rmw_source": "ENVIRONMENT" if configured_rmw else "NOT_SELECTED",
             "rmw_candidates": self._rmw_candidates(setup),
+            "execution_environment": {
+                "codex_sandbox_network_disabled": codex_network_sandboxed,
+            },
             "nodes": [],
             "topics": [],
             "services": [],
             "actions": [],
+            "command_diagnostics": {},
         }
         warnings: list[str] = []
         if not configured_distro and len(installed_distros) > 1:
@@ -498,21 +568,37 @@ class RosProbe:
                 "RMW implementation is not selected; installed candidates are not runtime proof"
             )
         command_map = {
-            "nodes": ["node", "list"],
-            "topics": ["topic", "list", "-t"],
-            "services": ["service", "list", "-t"],
+            "nodes": ["node", "list", "--no-daemon"],
+            "topics": ["topic", "list", "-t", "--no-daemon"],
+            "services": ["service", "list", "-t", "--no-daemon"],
+            # Humble's action verb does not accept --no-daemon.
             "actions": ["action", "list", "-t"],
         }
         successes = 0
+        sandbox_failures = 0
         for field, args in command_map.items():
             result = self._run_ros(args)
+            diagnostic = _command_diagnostic(result)
+            if result.get("returncode") != 0:
+                failure_class = _ros_failure_class(
+                    result,
+                    codex_network_sandboxed=codex_network_sandboxed,
+                )
+                diagnostic["failure_class"] = failure_class
+                sandbox_failures += failure_class == "EXECUTION_SANDBOX_RESTRICTED"
+            data["command_diagnostics"][field] = diagnostic
             if result.get("returncode") == 0:
                 data[field] = result["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
                 successes += 1
             else:
                 warnings.append(
-                    f"ros2 {' '.join(args)} unavailable: {result.get('error', 'failed')}"
+                    f"ros2 {' '.join(args)} unavailable: {_command_failure_summary(result)}"
                 )
+        if sandbox_failures:
+            warnings.append(
+                "Codex network sandbox blocked one or more ROS graph queries; collect runtime "
+                "ROS evidence from a target terminal outside the coding sandbox."
+            )
 
         if successes:
             status = (

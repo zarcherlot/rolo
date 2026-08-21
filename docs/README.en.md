@@ -181,6 +181,7 @@ robot_wiki.md
 ├── Full-stack summary
 │   ├── Discovery status, mode, and confidence
 │   └── Hardware/software compatibility, unknowns, and warnings
+│       └── Heuristic review of evidence paths for existing unknowns; it cannot clear them or alter gates
 ├── Hardware and robot specifications
 │   ├── Compute platform, CPU architecture, and drive model
 │   ├── Key specifications such as velocity limits

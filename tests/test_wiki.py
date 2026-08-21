@@ -14,6 +14,7 @@ from rolo.stages.adapt.wiki_diff import build_wiki_discovery_diff
 from rolo.stages.adapt.wiki_insights import (
     WikiHeuristicFinding,
     WikiInsightBundle,
+    WikiUnknownAssessment,
     collect_wiki_insights,
 )
 from rolo.stages.adapt.wiki_retrieval import (
@@ -281,6 +282,65 @@ def test_external_wiki_insights_are_bounded_to_the_same_discovery() -> None:
 
     with pytest.raises(ValueError, match="does not match"):
         render_discovery_review_markdown(report, active, insight_bundle=mismatched)
+
+
+def test_unknown_assessment_is_advisory_and_keeps_original_unknown() -> None:
+    report, active = _review_inputs()
+    unknown = active.unknowns[0]
+    insights = WikiInsightBundle(
+        robot_id=report.robot_id,
+        discovery_id=report.discovery_id,
+        unknown_assessments=[
+            WikiUnknownAssessment(
+                unknown=unknown,
+                classification="COLLECTED_EVIDENCE_REVIEW",
+                assessment="构建元数据可能包含可复核的依赖声明。",
+                confidence="LOW",
+                basis=["active_discovery.executables[exe-hook].dependencies"],
+                next_step="只读核对构建元数据，不执行程序。",
+                source="ADAPT_AGENT_SKILL",
+            )
+        ],
+    )
+
+    wiki = render_discovery_review_markdown(report, active, insight_bundle=insights)
+
+    assert "### 启发式 Unknown 检视" in wiki
+    assert unknown in wiki
+    assert "原 Unknown 仍保留" in wiki
+
+
+def test_unknown_assessment_must_reference_an_exact_reported_unknown() -> None:
+    report, active = _review_inputs()
+
+    class InvalidUnknownProvider:
+        provider = "adapt-agent-skill"
+
+        def infer(self, _report, _active) -> WikiInsightBundle:
+            return WikiInsightBundle(
+                robot_id=report.robot_id,
+                discovery_id=report.discovery_id,
+                unknown_assessments=[
+                    WikiUnknownAssessment(
+                        unknown="invented unknown",
+                        classification="INSUFFICIENT_EVIDENCE",
+                        assessment="无法判断。",
+                        confidence="LOW",
+                        basis=["agent guess"],
+                        next_step="保留未知。",
+                        source="ADAPT_AGENT_SKILL",
+                    )
+                ],
+            )
+
+    bundle, fallback_reason = collect_wiki_insights(
+        report,
+        active,
+        InvalidUnknownProvider(),
+    )
+
+    assert "not present in active discovery" in (fallback_reason or "")
+    assert bundle.unknown_assessments == []
 
 
 def test_optional_insight_provider_failure_falls_back_to_builtin_rules() -> None:

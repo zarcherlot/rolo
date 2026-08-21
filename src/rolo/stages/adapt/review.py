@@ -822,6 +822,25 @@ def render_discovery_review_markdown(
             "",
         ]
     )
+    if insights.unknown_assessments:
+        lines.extend(
+            [
+                "### 启发式 Unknown 检视",
+                "",
+                "> Agent 仅给出证据复核路径；原 Unknown 仍保留，且不会因此提升探测或门禁状态。",
+                "",
+                "| Unknown | 初步分类 | Agent 判断 | 置信度/来源 | 下一步 |",
+                "|---|---|---|---:|---|",
+            ]
+        )
+        for assessment in insights.unknown_assessments:
+            lines.append(
+                f"| {_text(assessment.unknown)} | {_text(assessment.classification)} | "
+                f"{_text(assessment.assessment)}（依据：{_items(assessment.basis, limit=3)}） | "
+                f"{_text(assessment.confidence)}/{_text(assessment.source)} | "
+                f"{_text(assessment.next_step)} |"
+            )
+        lines.append("")
     if active.warnings:
         lines.extend(["### 警告", ""])
         lines.extend(f"- {_text(_summarize_warning(warning))}" for warning in active.warnings[:20])

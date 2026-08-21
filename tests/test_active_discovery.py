@@ -729,7 +729,7 @@ def test_help_probe_count_limit_is_reported_without_running_remaining_binaries(
     assert report.executables[1].safety["possible_side_effects"] == []
 
 
-def test_ros_runtime_evidence_is_attributed_only_when_requested(tmp_path: Path) -> None:
+def test_ros_runtime_evidence_stays_global_when_requested(tmp_path: Path) -> None:
     install = tmp_path / "install"
     install.mkdir()
     (install / "driver.exe").write_bytes(b"MZ" + b"\0" * 62)
@@ -762,8 +762,11 @@ def test_ros_runtime_evidence_is_attributed_only_when_requested(tmp_path: Path) 
     assert static_report.coverage["ros_runtime"].status == "NOT_PROBED"
     assert static_report.executables[0].communication.ros["nodes"] == []
     assert runtime_report.coverage["ros_runtime"].status == "OBSERVED"
-    assert runtime_report.executables[0].communication.ros["nodes"] == ["/driver"]
-    assert runtime_report.executables[0].evidence["ros_runtime"] == ["live_ros_graph"]
+    assert runtime_report.coverage["ros_runtime"].records == 3
+    assert runtime_report.executables[0].communication.ros["nodes"] == []
+    assert runtime_report.executables[0].communication.ros["services"] == []
+    assert "runtime_topics" not in runtime_report.executables[0].communication.ros
+    assert "ros_runtime" not in runtime_report.executables[0].evidence
 
 
 def test_empty_source_root_is_rejected_instead_of_claiming_a_discovery_mode(

@@ -8,6 +8,7 @@ from rolo.stages.adapt.wiki_agent import (
     MAX_AGENT_CONTEXT_CHARS,
     CodexWikiInsightProvider,
     _bounded_context,
+    _selected_context,
 )
 from tests.test_wiki import _review_inputs
 
@@ -42,6 +43,16 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                             "verification": "只读核对部署清单。",
                         }
                     ],
+                    "unknown_assessments": [
+                        {
+                            "unknown": "dependency declarations unavailable: exe-hook",
+                            "classification": "COLLECTED_EVIDENCE_REVIEW",
+                            "assessment": "现有构建清单可能包含依赖声明。",
+                            "confidence": "LOW",
+                            "basis": ["active_discovery.unknowns[0]"],
+                            "next_step": "只读检查构建清单。"
+                        }
+                    ],
                 },
                 ensure_ascii=False,
             ),
@@ -66,6 +77,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
+    assert bundle.unknown_assessments[0].source == "ADAPT_AGENT_SKILL"
     assert "UNTRUSTED DISCOVERY EVIDENCE" in str(captured["input"])
     environment = captured["environment"]
     assert isinstance(environment, dict)
@@ -85,3 +97,41 @@ def test_wiki_insight_context_uses_a_serialized_character_budget() -> None:
     assert len(encoded) <= MAX_AGENT_CONTEXT_CHARS
     assert bounded["context_budget"]["truncated"] is True
     assert bounded["context_budget"]["original_chars"] > MAX_AGENT_CONTEXT_CHARS
+
+
+def test_wiki_insight_context_preserves_unknowns_while_trimming_executables() -> None:
+    unknown = "geometry.drive_model unavailable"
+    context = {
+        "robot_id": "demo",
+        "discovery_id": "disc-large",
+        "status": "PARTIAL",
+        "active_discovery": {
+            "unknowns": [unknown],
+            "warnings": [],
+            "executables": [
+                {"name": f"exe-{index}", "evidence": "x" * 10_000}
+                for index in range(100)
+            ],
+        },
+    }
+
+    bounded = _bounded_context(context)
+
+    assert bounded["active_discovery"]["unknowns"] == [unknown]
+    assert len(json.dumps(bounded, ensure_ascii=False, separators=(",", ":"))) <= (
+        MAX_AGENT_CONTEXT_CHARS
+    )
+
+
+def test_selected_context_prioritizes_candidate_and_unknown_executables() -> None:
+    report, active = _review_inputs()
+
+    selected = _selected_context(report, active)
+    executable_ids = {
+        item["executable_id"] for item in selected["active_discovery"]["executables"]
+    }
+
+    assert "exe-hook" in executable_ids
+    assert "exe-voice" in executable_ids
+    assert selected["active_discovery"]["required_context_executable_count"] == 2
+    assert selected["active_discovery"]["unknowns"] == active.unknowns

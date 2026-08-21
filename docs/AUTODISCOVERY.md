@@ -107,6 +107,11 @@ static communication edges, groups unknowns by acquisition strategy, and labels 
 finding with its basis and required verification. Full-fidelity observations remain in the JSON and
 active-discovery reports.
 
+Runtime ROS graph lists are robot-global observations. They are not copied to every executable;
+executable-level ROS interfaces require source-file attribution or launch evidence. The optional
+read-only heuristic Agent reviews both engineering findings and the exact reported unknowns, but its
+advisory assessment cannot remove an unknown or promote any operation state.
+
 The source scanner recognizes `pyproject.toml`, setuptools, CMake, Cargo, ROS `package.xml`, launch
 files, configuration files, Python console scripts and statically visible ROS publisher,
 subscription, service and action names. It records manifest hashes and the Git revision when
