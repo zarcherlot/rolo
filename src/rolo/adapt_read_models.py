@@ -14,10 +14,15 @@ from rolo.stages.adapt.operation_governance import (
     load_operation_dispositions,
 )
 from rolo.stages.adapt.service import AdaptStageService
+from rolo.stages.adapt.slice_observability import (
+    SliceStabilityReport,
+    build_slice_stability_report,
+)
 from rolo.stages.adapt.workset import TargetOperationSlice, build_target_operation_slice
 
 ADAPT_API_FEATURES = (
     "adapt.operation-governance/v1",
+    "adapt.slice-stability/v1",
     "adapt.target-operation-slice/v1",
 )
 
@@ -115,4 +120,21 @@ def build_robot_target_operation_slice(
         deferred_operations=plan.deferred_operations,
         task_operations=task_operations,
         classifier=classifier,
+    )
+
+
+def build_robot_slice_stability(
+    artifact_root: Path,
+    robot_id: str,
+    *,
+    max_runs: int = 50,
+    min_successful_canary_runs: int = 10,
+) -> SliceStabilityReport:
+    """Project saved Slice decisions into a bounded, read-only stability report."""
+
+    return build_slice_stability_report(
+        artifact_root,
+        robot_id,
+        max_runs=max_runs,
+        min_successful_canary_runs=min_successful_canary_runs,
     )
