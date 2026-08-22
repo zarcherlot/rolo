@@ -13,7 +13,11 @@ from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.discovery import load_latest_report
 from rolo.stages.adapt.wiki import WikiGenerationMetadata
 from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
-from rolo.stages.adapt.wiki_insights import WikiInsightBundle
+from rolo.stages.adapt.wiki_insights import (
+    RoloWikiInsightBundle,
+    WikiInsightBundle,
+    parse_wiki_insight_bundle_json,
+)
 from rolo.stages.artifact_paths import ArtifactLayout
 
 _MAX_WIKI_BYTES = 128_000
@@ -258,7 +262,7 @@ def _load_snapshot_models(
 ) -> tuple[
     DiscoveryReport,
     ActiveDiscoveryReport,
-    WikiInsightBundle,
+    WikiInsightBundle | RoloWikiInsightBundle,
     WikiDiscoveryDiff,
     WikiGenerationMetadata,
     Path,
@@ -268,7 +272,7 @@ def _load_snapshot_models(
     active = ActiveDiscoveryReport.model_validate_json(
         (run_root / "active_discovery_report.json").read_text(encoding="utf-8")
     )
-    insights = WikiInsightBundle.model_validate_json(
+    insights = parse_wiki_insight_bundle_json(
         (run_root / "wiki_insights.json").read_text(encoding="utf-8")
     )
     diff = WikiDiscoveryDiff.model_validate_json(

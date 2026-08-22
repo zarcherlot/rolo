@@ -34,6 +34,12 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                 {
                     "robot_id": "demo",
                     "discovery_id": "disc-test",
+                    "provenance": {
+                        "skill_name": "rolo-wiki-authoring",
+                        "skill_version": "1.0.0",
+                        "model_id": "fixture-model",
+                        "input_artifact_sha256": {"discovery": "a" * 64},
+                    },
                     "findings": [
                         {
                             "category": "MAINTENANCE",
@@ -41,6 +47,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                             "confidence": "LOW",
                             "basis": ["active_discovery.executables"],
                             "verification": "只读核对部署清单。",
+                            "author_skill_version": "1.0.0",
                         }
                     ],
                     "unknown_assessments": [
@@ -50,7 +57,8 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                             "assessment": "现有构建清单可能包含依赖声明。",
                             "confidence": "LOW",
                             "basis": ["active_discovery.unknowns[0]"],
-                            "next_step": "只读检查构建清单。"
+                            "next_step": "只读检查构建清单。",
+                            "author_skill_version": "1.0.0"
                         }
                     ],
                 },

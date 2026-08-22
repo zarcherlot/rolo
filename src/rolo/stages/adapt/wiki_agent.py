@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
-from rolo.stages.adapt.wiki_insights import WikiInsightBundle
+from rolo.stages.adapt.wiki_insights import RoloWikiInsightBundle, WikiInsightBundle
 
 MAX_AGENT_CONTEXT_CHARS = 40_000
 MAX_AGENT_STRING_CHARS = 1_000
@@ -302,7 +302,7 @@ def _selected_context(
 class CodexWikiInsightProvider:
     """Apply the bundled heuristic skill without granting write or execution authority."""
 
-    provider = "adapt-agent-skill:robot-wiki-heuristics"
+    provider = "adapt-agent-skill:rolo-wiki-authoring"
 
     def __init__(
         self,
@@ -418,7 +418,7 @@ class CodexWikiInsightProvider:
             schema = workspace / "wiki-insights.schema.json"
             output = workspace / "final-message.json"
             schema.write_text(
-                json.dumps(WikiInsightBundle.model_json_schema(), ensure_ascii=False, indent=2),
+                json.dumps(RoloWikiInsightBundle.model_json_schema(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
             completed = subprocess.run(
@@ -441,7 +441,9 @@ class CodexWikiInsightProvider:
                 )
             if not output.is_file():
                 raise RuntimeError("Wiki insight Agent did not produce a final message")
-            bundle = WikiInsightBundle.model_validate_json(output.read_text(encoding="utf-8"))
+            bundle = RoloWikiInsightBundle.model_validate_json(
+                output.read_text(encoding="utf-8")
+            )
         if bundle.robot_id != report.robot_id or bundle.discovery_id != report.discovery_id:
             raise ValueError("Wiki insight Agent output identity does not match discovery")
         findings = [
