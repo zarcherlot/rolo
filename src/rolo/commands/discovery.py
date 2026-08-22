@@ -18,6 +18,7 @@ from rolo.stages.adapt.heuristic_discovery import (
     HeuristicDiscoveryOrchestrator,
 )
 from rolo.stages.adapt.proposal_orchestration import CodexOperationMappingProvider
+from rolo.stages.adapt.skill_resources import resolve_skill_path
 from rolo.stages.adapt.wiki import OpenAIWikiNarrativePolisher
 from rolo.stages.adapt.wiki_agent import CodexWikiInsightProvider
 from rolo.stages.artifact_paths import resolve_artifact_ref
@@ -43,7 +44,9 @@ def configured_discovery_service(
     )
     wiki_insight_provider = (
         CodexWikiInsightProvider(
-            skill_path=settings.wiki_insights_skill_path,
+            skill_path=resolve_skill_path(
+                settings.wiki_insights_skill_path, "rolo-wiki-authoring"
+            ),
             executable=settings.coding_agent_executable,
             model=settings.coding_agent_model,
             provider=settings.coding_agent_provider,
@@ -67,7 +70,9 @@ def configured_discovery_service(
         }
         planning_provider = (
             CodexDiscoveryPlanningProvider(
-                skill_path=settings.adapt_discovery_skill_path,
+                skill_path=resolve_skill_path(
+                    settings.adapt_discovery_skill_path, "rolo-adapt-discovery"
+                ),
                 **common,
             )
             if settings.adapt_heuristic_agent_provider_enabled
@@ -75,8 +80,12 @@ def configured_discovery_service(
         )
         mapping_provider = (
             CodexOperationMappingProvider(
-                discovery_skill_path=settings.adapt_discovery_skill_path,
-                mapping_skill_path=settings.adapt_mapping_skill_path,
+                discovery_skill_path=resolve_skill_path(
+                    settings.adapt_discovery_skill_path, "rolo-adapt-discovery"
+                ),
+                mapping_skill_path=resolve_skill_path(
+                    settings.adapt_mapping_skill_path, "rolo-operation-mapping"
+                ),
                 **common,
             )
             if settings.adapt_heuristic_agent_provider_enabled
@@ -141,6 +150,13 @@ def discovery_run(
         ActiveProbeMode,
         typer.Option("--active-probe", help="none, help, or runtime-readonly"),
     ] = ActiveProbeMode.NONE,
+    target_evidence_bundle: Annotated[
+        Path | None,
+        typer.Option(
+            "--target-evidence-bundle",
+            help="Verified local/remote target evidence bundle; never attributes this host",
+        ),
+    ] = None,
     full: Annotated[bool, typer.Option("--full", help="Print the complete report")] = False,
 ) -> None:
     """Run all safe discovery probes and persist a versioned report."""
@@ -159,6 +175,18 @@ def discovery_run(
             launch_roots=launch_root or [],
             active_probe=active_probe,
         )
+        target_probes = None
+        if target_evidence_bundle is not None:
+            from rolo.commands.target_evidence import load_verified_probes
+
+            target_probes = load_verified_probes(
+                robot_id=robot,
+                bundle_path=target_evidence_bundle,
+            )
+            if active_probe != ActiveProbeMode.RUNTIME_READONLY:
+                raise ValueError(
+                    "--target-evidence-bundle requires --active-probe runtime-readonly"
+                )
         report, artifact = configured_discovery_service(
             runtime.settings,
             runtime.artifacts,
@@ -166,6 +194,7 @@ def discovery_run(
             robot=capability,
             urdf_path=urdf,
             active_inputs=active_inputs,
+            target_probes=target_probes,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc

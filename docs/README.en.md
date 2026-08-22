@@ -200,6 +200,8 @@ verifies the multi-file adapter, Rolo-owned State Graph, operation-scoped target
 allowlisted ROS runtime context. Adapt does not
 execute write operations to judge behavior; that work starts in Diagnose. See
 [`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md) for the real-device procedure.
+Choose target-local Rolo or the pinned remote read-only collector during installation as described
+in [`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md).
 
 ```text
 robot_wiki.md

@@ -1975,6 +1975,7 @@ class DiscoveryService:
         urdf_path: Path | None = None,
         source_roots: Sequence[Path] | None = None,
         active_inputs: ActiveDiscoveryInputs | None = None,
+        target_probes: Mapping[str, ProbeResult] | None = None,
     ) -> tuple[DiscoveryReport, Path]:
         if active_inputs is not None and source_roots is not None:
             raise ValueError("pass active_inputs or source_roots, not both")
@@ -2010,20 +2011,53 @@ class DiscoveryService:
         dependency_report_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/direct_dependencies.json"
         )
-        ros_probe = (
-            RosProbe().run()
-            if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
-            else ProbeResult(
-                layer="ros",
-                status=DiscoveryStatus.UNAVAILABLE,
-                data={"nodes": [], "topics": [], "services": [], "actions": []},
-                warnings=["ROS runtime inspection was not requested"],
+        if target_probes is not None:
+            if set(target_probes) != {"hw", "linux", "ros"}:
+                raise ValueError("target evidence must contain exactly hw, linux, and ros probes")
+            if any(probe.layer != layer for layer, probe in target_probes.items()):
+                raise ValueError("target evidence probe layer identity mismatch")
+            target_bindings = [
+                probe.data.get("target_evidence") for probe in target_probes.values()
+            ]
+            if not all(isinstance(binding, dict) for binding in target_bindings):
+                raise ValueError("target evidence probes lack verified target binding metadata")
+            binding_identities = {
+                (
+                    binding.get("robot_id"),
+                    binding.get("collector_id"),
+                    binding.get("target_host_fingerprint"),
+                    binding.get("bundle_payload_sha256"),
+                    binding.get("access"),
+                )
+                for binding in target_bindings
+                if isinstance(binding, dict)
+            }
+            if len(binding_identities) != 1 or next(iter(binding_identities))[0] != robot.robot_id:
+                raise ValueError("target evidence binding identity is inconsistent")
+            if next(iter(binding_identities))[-1] != "READ_ONLY":
+                raise ValueError("target evidence binding is not read-only")
+            ros_probe = target_probes["ros"]
+        else:
+            ros_probe = (
+                RosProbe().run()
+                if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
+                else ProbeResult(
+                    layer="ros",
+                    status=DiscoveryStatus.UNAVAILABLE,
+                    data={"nodes": [], "topics": [], "services": [], "actions": []},
+                    warnings=["ROS runtime inspection was not requested"],
+                )
             )
-        )
         application_scan = ApplicationProbe().scan(active_inputs.source_roots)
         probes = {
-            "hw": HardwareProbe().run(robot_id=robot.robot_id),
-            "linux": LinuxProbe().run(),
+            "hw": (
+                target_probes["hw"]
+                if target_probes is not None
+                else HardwareProbe().run(robot_id=robot.robot_id)
+            ),
+            "linux": (
+                target_probes["linux"] if target_probes is not None else LinuxProbe().run()
+            ),
             "ros": ros_probe,
             "application": application_scan.probe,
         }

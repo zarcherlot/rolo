@@ -28,6 +28,14 @@ an admitted overlay path requires rediscovery and a new release.
 
 ## 2. Collect target evidence
 
+Select target-local Rolo or the pinned remote read-only collector by following
+[`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md). Both modes first produce the same
+verified target-bound bundle:
+
+```bash
+robotctl target-evidence collect --robot "$ROBOT_ID" --output ./target-evidence.json
+```
+
 Use only paths that exist on this target; omit unavailable optional arguments:
 
 ```bash
@@ -39,7 +47,8 @@ uv run robotctl adapt discover run \
   --doc-root /path/to/docs \
   --launch-root /path/to/launch \
   --source-root /path/to/source \
-  --active-probe runtime-readonly
+  --active-probe runtime-readonly \
+  --target-evidence-bundle ./target-evidence.json
 ```
 
 Expected: discovery is `SUCCEEDED` or `PARTIAL`, and at least one candidate intended for adaptation
