@@ -200,7 +200,7 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 
 ```text
 src/rolo/stages/adapt/            第一阶段：发现、适配、conformance 与 handoff 发布
-skills/robot-wiki-heuristics/      可选只读 Wiki 启发式 Agent skill
+skills/rolo-wiki-authoring/        可选只读 Wiki 启发式 Agent skill
 src/rolo/stages/diagnose/         第二阶段：Diagnosis Agent 闭环诊断、调参与 robot_use
 src/rolo/stages/verify/           第三阶段：可选自主验证与正式验收
 src/rolo/commands/                按命令域拆分的 robotctl 接口

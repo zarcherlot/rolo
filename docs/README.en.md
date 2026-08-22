@@ -265,7 +265,7 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 
 ```text
 src/rolo/stages/adapt/            Stage 1: discovery, adapters, conformance, and handoff publication
-skills/robot-wiki-heuristics/      Optional read-only Wiki heuristic Agent skill
+skills/rolo-wiki-authoring/        Optional read-only Wiki heuristic Agent skill
 src/rolo/stages/diagnose/         Stage 2: Diagnosis Agent loop, tuning, and robot_use
 src/rolo/stages/verify/           Stage 3: optional autonomous verification and acceptance
 src/rolo/commands/                robotctl interfaces grouped by command domain

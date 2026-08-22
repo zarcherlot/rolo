@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     wiki_polish_timeout_s: int = 60
     wiki_insights_agent_enabled: bool = True
     wiki_insights_agent_timeout_s: int = 120
-    wiki_insights_skill_path: Path = Path("skills/robot-wiki-heuristics/SKILL.md")
+    wiki_insights_skill_path: Path = Path("skills/rolo-wiki-authoring/SKILL.md")
 
     @property
     def robot_config_dir(self) -> Path:

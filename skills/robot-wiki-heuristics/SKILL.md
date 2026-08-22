@@ -1,9 +1,12 @@
 ---
 name: robot-wiki-heuristics
-description: Review bounded robot discovery evidence, including machine-reported unknowns, and produce explicitly unverified engineering findings for a robot Wiki. Do not validate hardware behavior or execute discovered commands.
+description: Deprecated read-only fallback for legacy robot-wiki-insights/v1 callers. Use rolo-wiki-authoring for all new Wiki insight requests.
 ---
 
 # Robot Wiki Heuristics
+
+> Deprecated compatibility fallback. Do not select this skill for new work. New callers must use
+> `rolo-wiki-authoring`; this directory remains read-only for one migration cycle.
 
 Produce a small `robot-wiki-insights/v1` bundle that helps an engineer decide what to verify next.
 This is an evidence-review task, not prose polishing.
