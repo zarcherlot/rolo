@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     adapt_operation_slice_robot_ids: str = ""
     adapt_operation_slice_run_ids: str = ""
     adapt_operation_slice_max_operations: int = Field(default=20, gt=0, le=50)
+    adapt_heuristic_agent_mode: Literal["disabled", "shadow", "enabled"] = "shadow"
+    adapt_heuristic_agent_provider_enabled: bool = True
+    adapt_heuristic_agent_timeout_s: int = Field(default=120, gt=0, le=3_600)
+    adapt_heuristic_agent_max_actions: int = Field(default=8, ge=0, le=32)
+    adapt_heuristic_agent_max_operations: int = Field(default=20, gt=0, le=256)
+    adapt_discovery_skill_path: Path = Path("skills/rolo-adapt-discovery/SKILL.md")
+    adapt_mapping_skill_path: Path = Path("skills/rolo-operation-mapping/SKILL.md")
     robot_use_backend: str = "mock"
     openai_api_key: str | None = None
     openai_model: str | None = None

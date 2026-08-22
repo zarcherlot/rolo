@@ -234,6 +234,7 @@ class OperationCandidate(BaseModel):
     hardware_resource_ids: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     status: Literal["DISCOVERED_UNVERIFIED"] = "DISCOVERED_UNVERIFIED"
+    origin: Literal["DETERMINISTIC", "HEURISTIC_AGENT"] = "DETERMINISTIC"
 
 
 class DiscoveryReport(BaseModel):
@@ -252,6 +253,11 @@ class DiscoveryReport(BaseModel):
     active_discovery_report_ref: str = ""
     review_ref: str = ""
     discovery_mode: str = ""
+    heuristic_analysis_ref: str = ""
+    heuristic_status: str = "DISABLED"
+    heuristic_mode: str = "disabled"
+    heuristic_inferred_operation_count: int = Field(default=0, ge=0)
+    heuristic_missing_evidence_count: int = Field(default=0, ge=0)
     source_roots: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
 

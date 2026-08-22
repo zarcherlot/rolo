@@ -732,6 +732,7 @@ class ProposalValidator:
             executable_ids=list(proposal.executable_ids),
             hardware_resource_ids=list(proposal.hardware_resource_ids),
             limitations=limitations,
+            origin="HEURISTIC_AGENT",
         )
 
 

@@ -44,6 +44,10 @@ from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderRequest,
     HardwareEvidenceProviderResult,
 )
+from rolo.stages.adapt.heuristic_discovery import (
+    DiscoveryPlanningContext,
+    HeuristicDiscoverySummary,
+)
 from rolo.stages.adapt.inputs import AdaptInputs
 from rolo.stages.adapt.journey import AdaptJourneyResult
 from rolo.stages.adapt.models import (
@@ -136,6 +140,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationProposalBundle,
     ToolSessionDescriptor,
     AdaptDiscoveryPlan,
+    DiscoveryPlanningContext,
+    HeuristicDiscoverySummary,
     AdaptOperationWorkset,
     TargetOperationSlice,
     TargetOperationSliceShadowReport,

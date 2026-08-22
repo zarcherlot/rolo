@@ -12,6 +12,12 @@ from rolo.core.models import DiscoveryStatus
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_latest_report
+from rolo.stages.adapt.heuristic_discovery import (
+    CodexDiscoveryPlanningProvider,
+    HeuristicAdaptMode,
+    HeuristicDiscoveryOrchestrator,
+)
+from rolo.stages.adapt.proposal_orchestration import CodexOperationMappingProvider
 from rolo.stages.adapt.wiki import OpenAIWikiNarrativePolisher
 from rolo.stages.adapt.wiki_agent import CodexWikiInsightProvider
 from rolo.stages.artifact_paths import resolve_artifact_ref
@@ -48,10 +54,47 @@ def configured_discovery_service(
         if settings.wiki_insights_agent_enabled
         else None
     )
+    heuristic_mode = HeuristicAdaptMode(settings.adapt_heuristic_agent_mode)
+    heuristic_orchestrator = None
+    if heuristic_mode != HeuristicAdaptMode.DISABLED:
+        common = {
+            "executable": settings.coding_agent_executable,
+            "model": settings.coding_agent_model,
+            "provider": settings.coding_agent_provider,
+            "base_url": settings.coding_agent_base_url,
+            "api_key": settings.coding_agent_api_key,
+            "timeout_s": settings.adapt_heuristic_agent_timeout_s,
+        }
+        planning_provider = (
+            CodexDiscoveryPlanningProvider(
+                skill_path=settings.adapt_discovery_skill_path,
+                **common,
+            )
+            if settings.adapt_heuristic_agent_provider_enabled
+            else None
+        )
+        mapping_provider = (
+            CodexOperationMappingProvider(
+                discovery_skill_path=settings.adapt_discovery_skill_path,
+                mapping_skill_path=settings.adapt_mapping_skill_path,
+                **common,
+            )
+            if settings.adapt_heuristic_agent_provider_enabled
+            else None
+        )
+        heuristic_orchestrator = HeuristicDiscoveryOrchestrator(
+            artifacts,
+            mode=heuristic_mode,
+            planning_provider=planning_provider,
+            mapping_provider=mapping_provider,
+            max_actions=settings.adapt_heuristic_agent_max_actions,
+            max_operations=settings.adapt_heuristic_agent_max_operations,
+        )
     return DiscoveryService(
         artifacts,
         wiki_polisher=wiki_polisher,
         wiki_insight_provider=wiki_insight_provider,
+        heuristic_orchestrator=heuristic_orchestrator,
     )
 
 
@@ -152,6 +195,10 @@ def discovery_run(
             "discovery_mode": report.discovery_mode,
             "active_discovery_report": report.active_discovery_report_ref,
             "wiki": report.review_ref,
+            "heuristic_analysis": report.heuristic_analysis_ref,
+            "heuristic_status": report.heuristic_status,
+            "heuristic_inferred_operations": report.heuristic_inferred_operation_count,
+            "missing_evidence": report.heuristic_missing_evidence_count,
             "next": f"robotctl adapt discover review --robot {report.robot_id}",
             "artifact": str(artifact),
         }

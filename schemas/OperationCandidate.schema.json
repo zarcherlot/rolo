@@ -179,6 +179,15 @@
       "default": "DISCOVERED_UNVERIFIED",
       "title": "Status",
       "type": "string"
+    },
+    "origin": {
+      "default": "DETERMINISTIC",
+      "enum": [
+        "DETERMINISTIC",
+        "HEURISTIC_AGENT"
+      ],
+      "title": "Origin",
+      "type": "string"
     }
   },
   "required": [

@@ -61,6 +61,10 @@ from rolo.stages.adapt.evidence import (
     walk_files,
 )
 from rolo.stages.adapt.hardware_provider import collect_hardware_provider_evidence
+from rolo.stages.adapt.heuristic_discovery import (
+    HeuristicDiscoveryOrchestrator,
+    render_heuristic_summary_markdown,
+)
 from rolo.stages.adapt.inputs import (
     AdaptInputs,
     SemanticCandidate,
@@ -1789,11 +1793,13 @@ class DiscoveryService:
         software_policy: SoftwareDiscoveryPolicy | None = None,
         wiki_polisher: WikiNarrativePolisher | None = None,
         wiki_insight_provider: WikiInsightProvider | None = None,
+        heuristic_orchestrator: HeuristicDiscoveryOrchestrator | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.software_policy = software_policy or SoftwareDiscoveryPolicy()
         self.wiki_polisher = wiki_polisher
         self.wiki_insight_provider = wiki_insight_provider
+        self.heuristic_orchestrator = heuristic_orchestrator
 
     def run(
         self,
@@ -1928,7 +1934,6 @@ class DiscoveryService:
             source_roots=[str(path) for path in active_inputs.source_roots],
             created_at=now,
         )
-        payload = report.model_dump(mode="json")
         self.artifacts.write_json(
             layout.relative(run_root / "software_summary.json"),
             software_summary.model_dump(mode="json"),
@@ -1945,6 +1950,26 @@ class DiscoveryService:
             f"{run_location}/active_discovery_report.md",
             render_active_discovery_markdown(active_report),
         )
+        heuristic_markdown = ""
+        if self.heuristic_orchestrator is not None:
+            heuristic_summary, heuristic_candidates = self.heuristic_orchestrator.run(
+                report,
+                active_report,
+                relative_root=run_location,
+            )
+            report = report.model_copy(
+                update={
+                    "operation_candidates": heuristic_candidates,
+                    "heuristic_analysis_ref": (f"artifact://{run_location}/heuristic/summary.json"),
+                    "heuristic_status": heuristic_summary.status.value,
+                    "heuristic_mode": heuristic_summary.mode.value,
+                    "heuristic_inferred_operation_count": len(
+                        heuristic_summary.inferred_operations
+                    ),
+                    "heuristic_missing_evidence_count": len(heuristic_summary.missing_evidence),
+                }
+            )
+            heuristic_markdown = render_heuristic_summary_markdown(heuristic_summary)
         wiki_insights, insight_fallback_reason = collect_wiki_insights(
             report,
             active_report,
@@ -1957,6 +1982,8 @@ class DiscoveryService:
             previous_report=previous_report,
             previous_active=previous_active,
         )
+        if heuristic_markdown:
+            wiki_draft = f"{wiki_draft.rstrip()}\n\n{heuristic_markdown}"
         robot_wiki, wiki_generation = generate_robot_wiki(
             wiki_draft,
             self.wiki_polisher,
@@ -2018,6 +2045,7 @@ class DiscoveryService:
             semantic_context_ref=semantic_context_ref,
             robot_wiki_ref=report.review_ref,
             discovery_manifest_ref=discovery_manifest_ref,
+            heuristic_analysis_ref=report.heuristic_analysis_ref,
         )
         inputs_payload = adapt_inputs.model_dump(mode="json")
         stage_payloads: dict[str, dict[str, Any]] = {}
@@ -2032,6 +2060,7 @@ class DiscoveryService:
             ).model_dump(mode="json")
             stage_payloads[stage] = stage_inputs
 
+        payload = report.model_dump(mode="json")
         # The immutable run report is its commit marker as well.
         run_path = self.artifacts.write_json(f"{run_location}/report.json", payload)
 

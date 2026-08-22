@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "DiscoveryActionDisposition": {
+      "enum": [
+        "SATISFIED_BY_FROZEN_EVIDENCE",
+        "BLOCKED_MISSING_TARGET_CONTEXT",
+        "REJECTED_NOT_WHITELISTED"
+      ],
+      "title": "DiscoveryActionDisposition",
+      "type": "string"
+    },
+    "DiscoveryActionOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "title": "Action Id",
+          "type": "string"
+        },
+        "definition_id": {
+          "title": "Definition Id",
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/$defs/DiscoveryActionDisposition"
+        },
+        "detail": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_id",
+        "definition_id",
+        "disposition",
+        "detail"
+      ],
+      "title": "DiscoveryActionOutcome",
+      "type": "object"
+    },
+    "EvidenceGapCode": {
+      "enum": [
+        "TARGET_HARDWARE_INVENTORY",
+        "ROS_RUNTIME_GRAPH",
+        "BUILD_ARTIFACTS",
+        "INSTALL_ARTIFACTS",
+        "TARGET_EXECUTABLE",
+        "EXECUTABLE_HELP",
+        "ROUTE_PROVIDER_IDENTITY",
+        "INTERFACE_SCHEMA",
+        "TARGET_RUNTIME_REVISION",
+        "AGENT_REPORTED_UNKNOWN",
+        "REQUESTED_VERIFICATION"
+      ],
+      "title": "EvidenceGapCode",
+      "type": "string"
+    },
+    "HeuristicAdaptMode": {
+      "enum": [
+        "disabled",
+        "shadow",
+        "enabled"
+      ],
+      "title": "HeuristicAdaptMode",
+      "type": "string"
+    },
+    "HeuristicDiscoveryStatus": {
+      "enum": [
+        "AGENT_COMPLETED",
+        "FALLBACK",
+        "DISABLED"
+      ],
+      "title": "HeuristicDiscoveryStatus",
+      "type": "string"
+    },
+    "HeuristicEvidenceGap": {
+      "additionalProperties": false,
+      "description": "One explicit fact that static or current-host discovery could not establish.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/EvidenceGapCode"
+        },
+        "subject_ref": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Subject Ref",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Reason",
+          "type": "string"
+        },
+        "required_evidence": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Required Evidence",
+          "type": "string"
+        },
+        "collection_context": {
+          "enum": [
+            "TARGET_HOST",
+            "BUILT_WORKSPACE",
+            "RUNTIME_ROS",
+            "EXTERNAL_INPUT"
+          ],
+          "title": "Collection Context",
+          "type": "string"
+        },
+        "blocks": {
+          "items": {
+            "enum": [
+              "ELIGIBILITY",
+              "VERIFICATION",
+              "RELEASE"
+            ],
+            "type": "string"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "subject_ref",
+        "reason",
+        "required_evidence",
+        "collection_context"
+      ],
+      "title": "HeuristicEvidenceGap",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Developer-facing separation of observed facts, inference, and missing evidence.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-heuristic-discovery-summary/v1",
+      "default": "rolo-heuristic-discovery-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/HeuristicAdaptMode"
+    },
+    "status": {
+      "$ref": "#/$defs/HeuristicDiscoveryStatus"
+    },
+    "target_fingerprint_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Fingerprint Sha256",
+      "type": "string"
+    },
+    "registry_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Sha256",
+      "type": "string"
+    },
+    "target_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Target Operations",
+      "type": "array"
+    },
+    "observed": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Observed",
+      "type": "object"
+    },
+    "inferred_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Inferred Operations",
+      "type": "array"
+    },
+    "applied_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Applied Operations",
+      "type": "array"
+    },
+    "missing_evidence": {
+      "items": {
+        "$ref": "#/$defs/HeuristicEvidenceGap"
+      },
+      "title": "Missing Evidence",
+      "type": "array"
+    },
+    "planning_fallback_reason": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Planning Fallback Reason"
+    },
+    "mapping_fallback_reason": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mapping Fallback Reason"
+    },
+    "action_outcomes": {
+      "items": {
+        "$ref": "#/$defs/DiscoveryActionOutcome"
+      },
+      "title": "Action Outcomes",
+      "type": "array"
+    },
+    "artifact_refs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Artifact Refs",
+      "type": "object"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "mode",
+    "status",
+    "target_fingerprint_sha256",
+    "registry_sha256",
+    "target_operations",
+    "observed",
+    "inferred_operations",
+    "applied_operations",
+    "missing_evidence"
+  ],
+  "title": "HeuristicDiscoverySummary",
+  "type": "object"
+}

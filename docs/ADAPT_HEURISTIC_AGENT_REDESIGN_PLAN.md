@@ -514,3 +514,69 @@ Registry、contract、Catalog 和 release 摘要；其他分支不得自行增�
 只读 Verified Tool Gateway；约 140 项精简留作独立后续 RFC。若要求首版
 同时支持重新扩张 Registry、运动控制和自动发布，则应判定 No-Go 并拆成独立项目，因为这会
 同时扩大语义治理、安全授权和真机验证三个风险面。
+
+## 12. 开发者设计模型：事实、推断与授权必须分层
+
+Adapt 的目标不是“让大模型接管机器人发现”，而是让启发式 Agent 在严格证据边界内补足
+确定性规则难以覆盖的规划与语义映射。开发者必须保持以下三层分离：
+
+1. **确定性 Probe 是事实层**：以固定、只读、有预算的实现采集硬件、Linux、ROS、源码、
+   构建、依赖、launch 和 executable 事实。相同环境快照与规则产生相同结构化结论；Probe
+   生成可寻址 Evidence，但不做开放式语义猜测。
+2. **`rolo-` 启发式技能是推断层**：`rolo-adapt-discovery` 只提出下一步只读发现计划，
+   `rolo-operation-mapping` 只提出 Evidence 到 canonical Operation 的低/中置信度映射，
+   `rolo-wiki-authoring` 只补充面向工程师的解释。它们不能直接执行 Probe、声明 VERIFIED、
+   修改 Registry 或发布 release。
+3. **Orchestrator、Validator 和 Gate 是授权层**：Orchestrator 校验 Probe definition、R0 权限、
+   参数和预算后才执行；Proposal Validator 重新校验 Registry/contract/provenance、Evidence
+   存在性和 Operation 级归属；Conformance Gate 是唯一能把候选推进到 release 的边界。
+
+### 12.1 什么是确定性 Probe
+
+当前事实层包括：
+
+| 组件 | 权威事实 | 非职责 |
+|---|---|---|
+| `HardwareProbe` | CPU/架构、USB/PCI、串口、摄像头、网络等当前主机可见设备 | 猜测源码工程对应的目标机硬件 |
+| `LinuxProbe` | OS、内核、发行版和当前系统能力 | 推断目标部署环境 |
+| `RosProbe` | 当前 ROS graph 中的 node/topic/service/action、RMW、Domain ID | 从静态源码声称接口正在运行 |
+| `ApplicationProbe` | 源码和构建文件中声明的 ROS/API/配置线索 | 把静态声明升级为在线观察 |
+| `ActiveDiscoveryAnalyzer` | executable、help、launch、依赖和覆盖率证据 | 在没有二进制时虚构执行结果 |
+| `DirectDependencyResolver` | 可从工程文件解析的直接依赖、缺失和冲突 | 声称未构建源码已经可运行 |
+
+“确定性”描述的是规则对环境快照的处理方式，不表示环境本身不会随时间变化。所有时间、主机、
+源码和运行时差异都必须显式进入 artifact/provenance。
+
+### 12.2 目标调用流程
+
+```text
+第一轮确定性 Probe
+  -> 冻结 Discovery Evidence
+  -> rolo-adapt-discovery 提出有界 R0 计划
+  -> Orchestrator 校验并执行允许的确定性 Probe
+  -> 冻结补充 Evidence 与未满足 Evidence Gap
+  -> rolo-operation-mapping 生成 OperationProposalBundle
+  -> Proposal Validator 确定性复算
+  -> DISCOVERED_UNVERIFIED candidates（或确定性 fallback）
+  -> AdaptPlan / 通用 Adapter Agent 编码
+  -> 独立 Conformance Gate
+  -> Verified immutable release
+```
+
+Adapter 编码刻意不设置独立 `rolo-coding` 技能。编码是受 `AdaptPlan`、contract slice、输出
+schema 和独立 Gate 约束的工程生成任务；可复用的领域判断才沉淀为技能。
+
+### 12.3 离线源码工程的预期行为
+
+对“只有源码、没有 build/install、Rolo 不在目标机运行”的工程，Adapt 仍应完成静态发现和
+启发式分析，但必须清楚输出：
+
+- `observed`：源码、package、launch、配置和静态 ROS 接口等已采集事实；
+- `inferred`：Agent 提出的 `DISCOVERED_UNVERIFIED` Operation 映射及其证据引用；
+- `missing_evidence`：目标机硬件枚举、在线 ROS graph、实际 executable/help、provider identity、
+  runtime revision、interface type/hash、设备序列号或运行验证等缺失项；
+- `effect`：shadow 模式只记录比较；enabled 模式也只能加入未验证候选，不能因此获得 eligible、
+  VERIFIED 或发布权限。
+
+离线工程没有候选或 Agent 不可用不是发现失败。系统必须持久化 fallback 原因和 Evidence Gap，
+让开发者知道下一次应在目标机或已构建环境补采什么，而不是输出空白或伪装成已验证结果。

@@ -63,4 +63,5 @@ class AdaptInputs(BaseModel):
     robot_wiki_ref: str = ""
     discovery_manifest_ref: str = ""
     discovery_manifest_sha256: str = ""
+    heuristic_analysis_ref: str = ""
     created_at: datetime = Field(default_factory=utc_now)
