@@ -19,3 +19,7 @@ logs/
 .DS_Store
 BP/
 .validation/
+/.validation-*/
+/.pytest-*/
+/.codex-pytest-*/
+/.tmp/

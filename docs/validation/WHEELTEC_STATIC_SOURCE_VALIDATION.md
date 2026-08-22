@@ -126,3 +126,35 @@ The real run exposed integration failures that fixture providers could not revea
    pinning `CODING_AGENT_MODEL=gpt-5.4` avoided treating the stale cache as model selection authority.
 6. WebSocket requests timed out and Codex recovered through HTTPS. Provider timeouts therefore need
    to cover the transport fallback as well as model generation.
+
+## Same-discovery three-Agent acceptance
+
+The current integration baseline was rerun after the provider-boundary fixes with all three trusted
+skills enabled in one canonical discovery. The run retained the fixture owner's existing bounded
+source-context authorization, used model `gpt-5.4`, disabled the unrelated prose polisher, and kept
+heuristic activation in `shadow` mode:
+
+- Discovery ID: `disc-20260822T112439-323df424`
+- `rolo-adapt-discovery` fallback: none
+- `rolo-operation-mapping` fallback: none
+- `rolo-wiki-authoring` fallback: none
+- Target Operation slice: 20 of 294
+- Accepted proposals: 2 of 2
+- Invalid evidence references: 0
+- False-positive rate: 0
+- Inferred Operations: `app.camera.snapshot`, `app.teleop.velocity`
+- Applied candidates: 0; release influence: false
+- Wiki findings: 6 total, 4 Agent-authored
+- Wiki Unknown assessments: 38, all Agent-authored and allowlist validated
+- Release-blocking evidence gaps: 16
+
+The immutable artifacts are under:
+
+```text
+.validation-wheeltec-full-head3/artifacts/discovery/demo_diff/runs/
+  disc-20260822T112439-323df424/
+```
+
+This run supersedes the earlier isolated Wiki caller check as the canonical real-Agent acceptance.
+It still does not qualify a target release: the two source-derived routes remain unobserved on a
+target runtime, no candidate was applied, and no robot operation was invoked.
