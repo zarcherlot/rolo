@@ -46,8 +46,11 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["robots"] == 2
     assert health.json()["api_features"] == [
         "adapt.baseline-status/v1",
+        "adapt.fleet-slice-stability/v1",
         "adapt.operation-governance/v1",
+        "adapt.slice-review-packet/v1",
         "adapt.slice-run-detail/v1",
+        "adapt.slice-stability-comparison/v1",
         "adapt.slice-stability/v1",
         "adapt.target-operation-slice/v1",
     ]
@@ -299,6 +302,35 @@ def test_adapt_baseline_and_missing_slice_run_are_explicit() -> None:
     assert baseline.json()["influences_release"] is False
     assert missing_run.status_code == 404
     assert missing_run.json()["detail"] == "Adapt Slice run decision is unavailable"
+
+
+def test_adapt_review_intelligence_routes_are_bounded_and_release_neutral() -> None:
+    with TestClient(app) as client:
+        fleet = client.get("/v1/adapt/slice-fleet")
+        comparison = client.get(
+            "/v1/robots/demo_diff/adapt/slice-stability/comparison",
+            params={"recent_observations": 4, "previous_observations": 3},
+        )
+        packet = client.get(
+            "/v1/robots/demo_diff/adapt/slice-review",
+            params={"max_evidence_runs": 5},
+        )
+        invalid = client.get(
+            "/v1/robots/demo_diff/adapt/slice-review?max_evidence_runs=21"
+        )
+
+    assert fleet.status_code == 200
+    assert fleet.json()["schema_version"] == "rolo-adapt-fleet-slice-stability/v1"
+    assert fleet.json()["influences_release"] is False
+    assert comparison.status_code == 200
+    assert comparison.json()["status"] == "NO_PREVIOUS_WINDOW"
+    assert comparison.json()["recent"]["requested_observations"] == 4
+    assert comparison.json()["previous"]["requested_observations"] == 3
+    assert packet.status_code == 200
+    assert packet.json()["status"] == "INCOMPLETE"
+    assert packet.json()["contains_secret_payloads"] is False
+    assert packet.json()["checks"][-1]["status"] == "HUMAN_REQUIRED"
+    assert invalid.status_code == 422
 
 
 def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
