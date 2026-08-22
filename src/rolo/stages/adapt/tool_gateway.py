@@ -110,6 +110,19 @@ class _SessionState:
 
 
 RuntimeInvoker = Callable[..., dict[str, Any]]
+SessionAuthorizer = Callable[[ToolSessionDescriptor, str], bool]
+
+
+def tool_session_descriptor_sha256(descriptor: ToolSessionDescriptor) -> str:
+    """Return the canonical digest a trusted issuer must authorize out of band."""
+    encoded = json.dumps(
+        descriptor.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class ToolGateway:
@@ -126,6 +139,7 @@ class ToolGateway:
         artifact_root: Path,
         resolver: OperationRegistryResolver,
         policy: ToolGatewayPolicy,
+        session_authorizer: SessionAuthorizer,
         gateway_audit_path: Path,
         runtime_policy_path: Path | None = None,
         runtime_audit_path: Path | None = None,
@@ -137,6 +151,7 @@ class ToolGateway:
         self.artifact_root = artifact_root
         self.resolver = resolver
         self.policy = ToolGatewayPolicy.model_validate(policy.model_dump())
+        self._session_authorizer = session_authorizer
         self.gateway_audit_path = gateway_audit_path
         self.runtime_policy_path = runtime_policy_path
         self.runtime_audit_path = runtime_audit_path
@@ -148,18 +163,36 @@ class ToolGateway:
         self._audit_lock = threading.Lock()
 
     def open_session(self, descriptor: ToolSessionDescriptor) -> None:
-        """Admit an immutable session only after Registry, release, and policy checks."""
+        """Admit only an out-of-band-issued session after all deterministic checks.
+
+        ``session_authorizer`` is a trusted deployment boundary. It must compare the
+        canonical descriptor digest with a protected issuer record or verify an equivalent
+        signed artifact. Fields asserted inside the caller-provided descriptor are never
+        treated as proof of issuance.
+        """
+        frozen_descriptor = ToolSessionDescriptor.model_validate(descriptor.model_dump())
+        descriptor_sha256 = tool_session_descriptor_sha256(frozen_descriptor)
         try:
-            self._validate_descriptor_policy(descriptor)
-            validate_tool_session_descriptor(descriptor, self.resolver)
-            self._bound_tools(descriptor)
-            with self._sessions_lock:
-                if descriptor.session_id in self._sessions:
-                    raise ToolGatewayError("Tool Session ID is already registered")
-                frozen_descriptor = ToolSessionDescriptor.model_validate(
-                    descriptor.model_dump()
+            try:
+                issued = self._session_authorizer(
+                    frozen_descriptor,
+                    descriptor_sha256,
                 )
-                self._sessions[descriptor.session_id] = _SessionState(
+            except Exception as exc:
+                raise ToolSessionAuthorizationError(
+                    "trusted Tool Session issuer rejected the descriptor"
+                ) from exc
+            if issued is not True:
+                raise ToolSessionAuthorizationError(
+                    "descriptor has no matching trusted Tool Session issuance"
+                )
+            self._validate_descriptor_policy(frozen_descriptor)
+            validate_tool_session_descriptor(frozen_descriptor, self.resolver)
+            self._bound_tools(frozen_descriptor)
+            with self._sessions_lock:
+                if frozen_descriptor.session_id in self._sessions:
+                    raise ToolGatewayError("Tool Session ID is already registered")
+                self._sessions[frozen_descriptor.session_id] = _SessionState(
                     descriptor=frozen_descriptor
                 )
         except Exception as exc:
@@ -169,6 +202,7 @@ class ToolGateway:
                 session_id=descriptor.session_id,
                 robot_id=descriptor.robot_id,
                 reason=str(exc),
+                session_descriptor_sha256=descriptor_sha256,
             )
             raise
         self._audit(
@@ -176,7 +210,11 @@ class ToolGateway:
             outcome="ALLOWED",
             session_id=descriptor.session_id,
             robot_id=descriptor.robot_id,
-            reason="Registry, release, and Tool Gateway policy identities matched",
+            reason=(
+                "trusted issuance, Registry, release, and Tool Gateway policy identities "
+                "matched"
+            ),
+            session_descriptor_sha256=descriptor_sha256,
         )
 
     def list_tools(self, session_id: str, nonce: str) -> list[ToolDescriptor]:
@@ -243,7 +281,9 @@ class ToolGateway:
         timeout_s: float | None,
     ) -> ToolInvocationResult:
         descriptor = state.descriptor
+        payload_sha256 = self._safe_json_sha256(payload)
         try:
+            self._require_json_payload(payload)
             tools = {tool.operation: tool for tool in self._bound_tools(descriptor)}
             tool = tools.get(operation)
             if tool is None:
@@ -303,7 +343,7 @@ class ToolGateway:
                     else "Adapter Runtime invocation completed"
                 ),
                 operation=operation,
-                payload_sha256=self._json_sha256(payload),
+                payload_sha256=payload_sha256,
                 result_sha256=result_sha256,
                 result_bytes=len(encoded),
             )
@@ -324,7 +364,7 @@ class ToolGateway:
                 outcome="DENIED" if isinstance(exc, ToolGatewayError) else "FAILED",
                 reason=str(exc),
                 operation=operation,
-                payload_sha256=self._json_sha256(payload),
+                payload_sha256=payload_sha256,
             )
             raise
 
@@ -472,14 +512,34 @@ class ToolGateway:
         return value.astimezone(timezone.utc)
 
     @staticmethod
-    def _json_sha256(value: object) -> str:
-        payload = json.dumps(
+    def _canonical_json_bytes(value: object) -> bytes:
+        return json.dumps(
             value,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
+            allow_nan=False,
         ).encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
+
+    @classmethod
+    def _safe_json_sha256(cls, value: object) -> str:
+        """Hash JSON inputs without letting malformed values break failure auditing."""
+        try:
+            encoded = cls._canonical_json_bytes(value)
+        except (TypeError, ValueError):
+            encoded = b"rolo-invalid-json-payload/v1"
+        return hashlib.sha256(encoded).hexdigest()
+
+    @classmethod
+    def _require_json_payload(cls, payload: object) -> None:
+        if not isinstance(payload, dict) or any(
+            not isinstance(key, str) for key in payload
+        ):
+            raise ToolGatewayError("tool payload must be a JSON object with string keys")
+        try:
+            cls._canonical_json_bytes(payload)
+        except (TypeError, ValueError) as exc:
+            raise ToolGatewayError("tool payload must be JSON-serializable") from exc
 
     def _audit_state(
         self,
@@ -527,6 +587,7 @@ class ToolGateway:
         payload_sha256: str | None = None,
         result_sha256: str | None = None,
         result_bytes: int | None = None,
+        session_descriptor_sha256: str | None = None,
     ) -> str:
         event_id = str(uuid4())
         record = {
@@ -548,6 +609,7 @@ class ToolGateway:
             "payload_sha256": payload_sha256,
             "result_sha256": result_sha256,
             "result_bytes": result_bytes,
+            "session_descriptor_sha256": session_descriptor_sha256,
         }
         try:
             with self._audit_lock:

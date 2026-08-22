@@ -20,9 +20,11 @@ from rolo.stages.adapt.agent_contracts import (
 from rolo.stages.adapt.models import ToolCatalog
 from rolo.stages.adapt.tool_gateway import (
     ToolGateway,
+    ToolGatewayError,
     ToolGatewayPolicy,
     ToolSessionAuthorizationError,
     ToolSessionBudgetError,
+    tool_session_descriptor_sha256,
 )
 
 
@@ -155,6 +157,7 @@ def _gateway(
     *,
     tools: list[ToolDescriptor] | None = None,
     invoker: Any = None,
+    authorizer: Any = None,
 ) -> tuple[ToolGateway, _Resolver, datetime, Path]:
     resolver = _resolver()
     now = datetime(2026, 8, 22, 12, tzinfo=timezone.utc)
@@ -172,6 +175,7 @@ def _gateway(
             policy_version="policy-v1",
             allowed_callers=["diagnose-agent"],
         ),
+        session_authorizer=authorizer or (lambda _descriptor, _digest: True),
         gateway_audit_path=audit,
         runtime_invoker=invoker or (lambda *_args, **_kwargs: {"status": "ok"}),
         clock=lambda: now,
@@ -330,6 +334,82 @@ def test_policy_version_and_expiry_are_fail_closed(
     )
     with pytest.raises(ToolSessionAuthorizationError, match="expired"):
         gateway.open_session(expired)
+
+
+def test_self_minted_session_without_trusted_issuance_is_denied_and_audited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    resolver = _resolver()
+    now = datetime(2026, 8, 22, 12, tzinfo=timezone.utc)
+    issued = _session(resolver, now)
+    issued_digests = {
+        issued.session_id: tool_session_descriptor_sha256(issued),
+    }
+
+    def authorize(descriptor: ToolSessionDescriptor, digest: str) -> bool:
+        return issued_digests.get(descriptor.session_id) == digest
+
+    gateway, resolver, now, audit = _gateway(
+        tmp_path,
+        monkeypatch,
+        authorizer=authorize,
+    )
+    gateway.open_session(issued)
+    issuer_spoof = issued.model_copy(
+        update={"nonce": "spoofed_issuer_nonce_1234"}
+    )
+    with pytest.raises(ToolSessionAuthorizationError, match="trusted.*issuance"):
+        gateway.open_session(issuer_spoof)
+
+    self_minted = _session(resolver, now).model_copy(
+        update={
+            "session_id": "self-minted-session",
+            "nonce": "self_minted_nonce_123456",
+        }
+    )
+
+    with pytest.raises(ToolSessionAuthorizationError, match="trusted.*issuance"):
+        gateway.open_session(self_minted)
+
+    record = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert record["action"] == "OPEN"
+    assert record["outcome"] == "DENIED"
+    assert record["session_descriptor_sha256"] == tool_session_descriptor_sha256(
+        self_minted
+    )
+
+
+def test_non_json_payload_is_denied_without_breaking_failure_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    invoked = False
+
+    def invoke(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        nonlocal invoked
+        invoked = True
+        return {"status": "unexpected"}
+
+    gateway, resolver, now, audit = _gateway(
+        tmp_path,
+        monkeypatch,
+        invoker=invoke,
+    )
+    session = _session(resolver, now)
+    gateway.open_session(session)
+
+    with pytest.raises(ToolGatewayError, match="JSON-serializable"):
+        gateway.invoke(
+            session.session_id,
+            session.nonce,
+            "app.camera.snapshot",
+            {"not_json": {"set-member"}},
+        )
+
+    assert not invoked
+    record = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert record["action"] == "INVOKE"
+    assert record["outcome"] == "DENIED"
+    assert len(record["payload_sha256"]) == 64
 
 
 def test_adapter_runtime_rejects_a_release_that_differs_from_the_invocation_pin(
