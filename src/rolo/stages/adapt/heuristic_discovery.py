@@ -8,7 +8,8 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import Literal, Protocol
@@ -177,6 +178,11 @@ class DiscoveryPlanningContext(BaseModel):
 
 
 class DiscoveryActionDisposition(str, Enum):
+    APPROVED_READ_ONLY = "APPROVED_READ_ONLY"
+    EXECUTED_READ_ONLY = "EXECUTED_READ_ONLY"
+    FAILED_READ_ONLY_PROBE = "FAILED_READ_ONLY_PROBE"
+    REJECTED_INVALID_PARAMETERS = "REJECTED_INVALID_PARAMETERS"
+    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
     SATISFIED_BY_FROZEN_EVIDENCE = "SATISFIED_BY_FROZEN_EVIDENCE"
     BLOCKED_MISSING_TARGET_CONTEXT = "BLOCKED_MISSING_TARGET_CONTEXT"
     REJECTED_NOT_WHITELISTED = "REJECTED_NOT_WHITELISTED"
@@ -189,6 +195,92 @@ class DiscoveryActionOutcome(BaseModel):
     definition_id: str
     disposition: DiscoveryActionDisposition
     detail: str = Field(min_length=1, max_length=1_000)
+
+
+ReadOnlyProbeHandler = Callable[
+    [DiscoveryReport, ActiveDiscoveryReport],
+    tuple[DiscoveryReport, ActiveDiscoveryReport],
+]
+
+
+class ReadOnlyProbeDispatchResult(BaseModel):
+    """Result of one caller-authorized deterministic R0 dispatch."""
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    report: DiscoveryReport
+    active: ActiveDiscoveryReport
+    result_bytes: int = Field(ge=0)
+
+
+class ReadOnlyProbeDispatcher(Protocol):
+    """Orchestrator-owned boundary; the Agent never receives this authority."""
+
+    def dispatch(
+        self,
+        action: object,
+        report: DiscoveryReport,
+        active: ActiveDiscoveryReport,
+    ) -> ReadOnlyProbeDispatchResult: ...
+
+
+class WhitelistedR0ProbeDispatcher:
+    """Dispatch only pinned, parameter-free R0 handlers registered by the caller.
+
+    Handlers are trusted in-process functions. Agent-supplied executable names, argv,
+    paths, shell fragments, environment variables, writes, or release operations are
+    never accepted at this boundary.
+    """
+
+    def __init__(self, handlers: Mapping[str, ReadOnlyProbeHandler]) -> None:
+        definitions = {item.definition_id: item for item in PROBE_DEFINITIONS}
+        unknown = sorted(set(handlers) - set(definitions))
+        if unknown:
+            raise ValueError(f"read-only dispatcher handlers are not whitelisted: {unknown}")
+        self._handlers = dict(handlers)
+        self._definitions = definitions
+
+    def dispatch(
+        self,
+        action: object,
+        report: DiscoveryReport,
+        active: ActiveDiscoveryReport,
+    ) -> ReadOnlyProbeDispatchResult:
+        from rolo.stages.adapt.skill_contracts import DiscoveryPlanAction
+
+        canonical_action = DiscoveryPlanAction.model_validate(action)
+        definition = self._definitions.get(canonical_action.definition_id)
+        if definition is None or definition.kind != canonical_action.kind:
+            raise ValueError("read-only Probe definition is not in the pinned R0 whitelist")
+        if canonical_action.parameters:
+            raise ValueError("read-only Probe definitions do not accept Agent parameters")
+        if canonical_action.expected_evidence_types != definition.evidence_types:
+            raise ValueError("requested evidence types do not match the pinned definition")
+        handler = self._handlers.get(canonical_action.definition_id)
+        if handler is None:
+            raise RuntimeError("read-only Probe has no caller-registered handler")
+        # Handlers operate on isolated copies. The orchestrator adopts their output only
+        # after all caller-owned time/size budgets pass.
+        updated_report, updated_active = handler(
+            report.model_copy(deep=True),
+            active.model_copy(deep=True),
+        )
+        payload = {
+            "report": updated_report.model_dump(mode="json"),
+            "active": updated_active.model_dump(mode="json"),
+        }
+        return ReadOnlyProbeDispatchResult(
+            report=updated_report,
+            active=updated_active,
+            result_bytes=len(
+                json.dumps(
+                    payload,
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ),
+        )
 
 
 class HeuristicDiscoveryStatus(str, Enum):
@@ -553,6 +645,10 @@ def build_planning_context(
     target_fingerprint: str,
     gaps: Sequence[HeuristicEvidenceGap],
     max_actions: int,
+    remaining_rounds: int = 1,
+    remaining_elapsed_ms: int = 120_000,
+    remaining_result_bytes: int = 1_000_000,
+    remaining_failures: int = 1,
 ) -> DiscoveryPlanningContext:
     available: set[str] = set()
     inputs = active.inputs
@@ -593,10 +689,10 @@ def build_planning_context(
         allowed_definitions=sorted(PROBE_DEFINITIONS, key=lambda item: item.definition_id),
         max_actions=max_actions,
         remaining_budget=DiscoveryRemainingBudget(
-            rounds=1,
-            elapsed_ms=120_000,
-            result_bytes=1_000_000,
-            failures=1,
+            rounds=remaining_rounds,
+            elapsed_ms=remaining_elapsed_ms,
+            result_bytes=remaining_result_bytes,
+            failures=remaining_failures,
         ),
         input_artifact_sha256={
             "discovery": _stable_digest(frozen_report),
@@ -637,11 +733,24 @@ def validate_and_evaluate_plan(
                 )
             )
             continue
+        if action.parameters or action.expected_evidence_types != definition.evidence_types:
+            outcomes.append(
+                DiscoveryActionOutcome(
+                    action_id=action.action_id,
+                    definition_id=action.definition_id,
+                    disposition=DiscoveryActionDisposition.REJECTED_INVALID_PARAMETERS,
+                    detail=(
+                        "Agent parameters and evidence-type overrides are forbidden at the "
+                        "pinned R0 dispatcher boundary."
+                    ),
+                )
+            )
+            continue
         if definition.required_context in context.available_contexts:
-            disposition = DiscoveryActionDisposition.SATISFIED_BY_FROZEN_EVIDENCE
+            disposition = DiscoveryActionDisposition.APPROVED_READ_ONLY
             detail = (
-                "The deterministic first-pass Probe already collected this available context; "
-                "the orchestrator does not repeat it."
+                "The requested definition is a pinned, parameter-free R0 action and its "
+                "required context is present. Only the caller-owned dispatcher may execute it."
             )
         else:
             disposition = DiscoveryActionDisposition.BLOCKED_MISSING_TARGET_CONTEXT
@@ -745,12 +854,22 @@ class HeuristicDiscoveryOrchestrator:
         mapping_provider: CodexOperationMappingProvider | None,
         max_actions: int = 8,
         max_operations: int = 20,
+        max_probe_rounds: int = 1,
+        max_probe_elapsed_ms: int = 120_000,
+        max_probe_result_bytes: int = 1_000_000,
+        max_probe_failures: int = 1,
         discovery_skill_version: str = DISCOVERY_SKILL_VERSION,
     ) -> None:
         if not 0 <= max_actions <= 32:
             raise ValueError("heuristic discovery max actions must be between 0 and 32")
         if not 1 <= max_operations <= 256:
             raise ValueError("heuristic mapping max operations must be between 1 and 256")
+        if not 0 <= max_probe_rounds <= 4:
+            raise ValueError("heuristic Probe rounds must be between 0 and 4")
+        if max_probe_elapsed_ms < 1 or max_probe_result_bytes < 1:
+            raise ValueError("heuristic Probe time and result budgets must be positive")
+        if not 1 <= max_probe_failures <= 16:
+            raise ValueError("heuristic Probe failure budget must be between 1 and 16")
         if not re.fullmatch(_SEMVER_PATTERN, discovery_skill_version):
             raise ValueError("discovery skill version must be semantic versioning")
         self.artifacts = artifacts
@@ -759,6 +878,10 @@ class HeuristicDiscoveryOrchestrator:
         self.mapping_provider = mapping_provider
         self.max_actions = max_actions
         self.max_operations = max_operations
+        self.max_probe_rounds = max_probe_rounds
+        self.max_probe_elapsed_ms = max_probe_elapsed_ms
+        self.max_probe_result_bytes = max_probe_result_bytes
+        self.max_probe_failures = max_probe_failures
         self.discovery_skill_version = discovery_skill_version
 
     def run(
@@ -767,46 +890,242 @@ class HeuristicDiscoveryOrchestrator:
         active: ActiveDiscoveryReport,
         *,
         relative_root: str,
+        probe_dispatcher: ReadOnlyProbeDispatcher | None = None,
     ) -> tuple[HeuristicDiscoverySummary, list[OperationCandidate]]:
-        target_fingerprint = target_fingerprint_sha256(report, self.artifacts.root)
+        caller_report = report
+        caller_active = active
         registry = RegistrySnapshot(canonical_operation_registry())
-        gaps = derive_evidence_gaps(report, active)
-        context = build_planning_context(
-            report,
-            active,
-            target_fingerprint=target_fingerprint,
-            gaps=gaps,
-            max_actions=self.max_actions,
-        )
         heuristic_root = f"{relative_root.strip('/')}/heuristic"
         refs: dict[str, str] = {}
-        context_path = self.artifacts.write_json(
-            f"{heuristic_root}/discovery-planning-context.json",
-            context.model_dump(mode="json"),
-        )
-        refs["planning_context"] = str(context_path)
-
         planning_fallback: str | None = None
         outcomes: list[DiscoveryActionOutcome] = []
         agent_completed = False
-        if self.planning_provider is not None:
+        gaps = derive_evidence_gaps(report, active)
+        target_fingerprint = target_fingerprint_sha256(report, self.artifacts.root)
+        executed_definitions: set[str] = set()
+        probe_rounds = 0
+        probe_failures = 0
+        probe_result_bytes = 0
+        probe_failure_gaps: list[HeuristicEvidenceGap] = []
+        probe_started_ms = int(time.monotonic() * 1_000)
+
+        # The first plan may authorize one bounded Probe round. If that round produces a
+        # new frozen snapshot, the Agent is called once more against the new hashes. The
+        # post-Probe plan cannot silently extend the caller-owned execution budget.
+        for planning_round in range(self.max_probe_rounds + 1):
+            elapsed_ms = int(time.monotonic() * 1_000) - probe_started_ms
+            context = build_planning_context(
+                report,
+                active,
+                target_fingerprint=target_fingerprint,
+                gaps=gaps,
+                max_actions=self.max_actions,
+                remaining_rounds=max(0, self.max_probe_rounds - probe_rounds),
+                remaining_elapsed_ms=max(0, self.max_probe_elapsed_ms - elapsed_ms),
+                remaining_result_bytes=max(
+                    0, self.max_probe_result_bytes - probe_result_bytes
+                ),
+                remaining_failures=max(0, self.max_probe_failures - probe_failures),
+            )
+            context_path = self.artifacts.write_json(
+                f"{heuristic_root}/probe-loop/round-{planning_round}/planning-context.json",
+                context.model_dump(mode="json"),
+            )
+            refs[f"planning_context_round_{planning_round}"] = str(context_path)
+            canonical_context = self.artifacts.write_json(
+                f"{heuristic_root}/discovery-planning-context.json",
+                context.model_dump(mode="json"),
+            )
+            refs["planning_context"] = str(canonical_context)
+            if self.planning_provider is None:
+                planning_fallback = "discovery planning provider is not configured"
+                break
             try:
                 plan = self.planning_provider.plan(context)
-                outcomes = validate_and_evaluate_plan(
+                round_outcomes = validate_and_evaluate_plan(
                     plan,
                     context,
                     skill_version=self.discovery_skill_version,
                 )
                 plan_path = self.artifacts.write_json(
+                    f"{heuristic_root}/probe-loop/round-{planning_round}/adapt-discovery-plan.json",
+                    plan.model_dump(mode="json"),
+                )
+                refs[f"discovery_plan_round_{planning_round}"] = str(plan_path)
+                canonical_plan = self.artifacts.write_json(
                     f"{heuristic_root}/adapt-discovery-plan.json",
                     plan.model_dump(mode="json"),
                 )
-                refs["discovery_plan"] = str(plan_path)
+                refs["discovery_plan"] = str(canonical_plan)
                 agent_completed = True
             except Exception as exc:
                 planning_fallback = str(exc)[:1_000]
-        else:
-            planning_fallback = "discovery planning provider is not configured"
+                break
+
+            approved_actions = []
+            for action, outcome in zip(plan.actions, round_outcomes, strict=True):
+                if outcome.disposition != DiscoveryActionDisposition.APPROVED_READ_ONLY:
+                    outcomes.append(outcome)
+                    continue
+                if action.definition_id in executed_definitions:
+                    outcomes.append(
+                        outcome.model_copy(
+                            update={
+                                "disposition": (
+                                    DiscoveryActionDisposition.SATISFIED_BY_FROZEN_EVIDENCE
+                                ),
+                                "detail": (
+                                    "This definition already produced the frozen evidence used "
+                                    "by the current planning context; repeated execution is denied."
+                                ),
+                            }
+                        )
+                    )
+                    continue
+                approved_actions.append((action, outcome))
+
+            if not approved_actions:
+                break
+            if probe_dispatcher is None:
+                outcomes.extend(
+                    outcome.model_copy(
+                        update={
+                            "disposition": (
+                                DiscoveryActionDisposition.SATISFIED_BY_FROZEN_EVIDENCE
+                            ),
+                            "detail": (
+                                "The first-pass deterministic evidence already covers this "
+                                "context; no caller-owned second-round dispatcher was supplied."
+                            ),
+                        }
+                    )
+                    for _, outcome in approved_actions
+                )
+                break
+            if probe_rounds >= self.max_probe_rounds:
+                outcomes.extend(
+                    outcome.model_copy(
+                        update={
+                            "disposition": DiscoveryActionDisposition.BUDGET_EXHAUSTED,
+                            "detail": (
+                                "The caller-owned deterministic Probe round budget is exhausted."
+                            ),
+                        }
+                    )
+                    for _, outcome in approved_actions
+                )
+                break
+
+            probe_rounds += 1
+            produced_snapshot = False
+            for action, outcome in approved_actions:
+                elapsed_ms = int(time.monotonic() * 1_000) - probe_started_ms
+                if (
+                    elapsed_ms >= self.max_probe_elapsed_ms
+                    or probe_result_bytes >= self.max_probe_result_bytes
+                    or probe_failures >= self.max_probe_failures
+                ):
+                    outcomes.append(
+                        outcome.model_copy(
+                            update={
+                                "disposition": DiscoveryActionDisposition.BUDGET_EXHAUSTED,
+                                "detail": (
+                                    "The caller-owned deterministic Probe time, result, or "
+                                    "failure budget is exhausted."
+                                ),
+                            }
+                        )
+                    )
+                    continue
+                try:
+                    result = probe_dispatcher.dispatch(action, report, active)
+                    elapsed_after_dispatch = (
+                        int(time.monotonic() * 1_000) - probe_started_ms
+                    )
+                    if elapsed_after_dispatch > self.max_probe_elapsed_ms:
+                        raise RuntimeError("read-only Probe exceeds the frozen elapsed-time budget")
+                    if probe_result_bytes + result.result_bytes > self.max_probe_result_bytes:
+                        raise RuntimeError("read-only Probe result exceeds the frozen byte budget")
+                    report = result.report
+                    active = result.active
+                    probe_result_bytes += result.result_bytes
+                    executed_definitions.add(action.definition_id)
+                    produced_snapshot = True
+                    outcomes.append(
+                        outcome.model_copy(
+                            update={
+                                "disposition": DiscoveryActionDisposition.EXECUTED_READ_ONLY,
+                                "detail": (
+                                    "The caller-owned dispatcher executed the pinned R0 action; "
+                                    "its result was frozen before any further Agent call."
+                                ),
+                            }
+                        )
+                    )
+                except Exception as exc:
+                    probe_failures += 1
+                    failure_detail = str(exc)[:850]
+                    outcomes.append(
+                        outcome.model_copy(
+                            update={
+                                "disposition": DiscoveryActionDisposition.FAILED_READ_ONLY_PROBE,
+                                "detail": f"The deterministic R0 Probe failed: {failure_detail}",
+                            }
+                        )
+                    )
+                    failure_gap = HeuristicEvidenceGap(
+                        code=EvidenceGapCode.REQUESTED_VERIFICATION,
+                        subject_ref=f"probe:{action.definition_id}",
+                        reason=(
+                            "The caller-authorized deterministic read-only Probe failed: "
+                            f"{failure_detail}"
+                        ),
+                        required_evidence=(
+                            "Resolve the target context or Probe failure and collect the "
+                            "same deterministic evidence in a later discovery run."
+                        ),
+                        collection_context=(
+                            "RUNTIME_ROS"
+                            if action.definition_id == "probe.ros.runtime_graph"
+                            else (
+                                "BUILT_WORKSPACE"
+                                if action.definition_id
+                                in {
+                                    "query.application.build_install",
+                                    "query.executable.help",
+                                }
+                                else (
+                                    "EXTERNAL_INPUT"
+                                    if action.definition_id
+                                    == "query.application.source_interfaces"
+                                    else "TARGET_HOST"
+                                )
+                            )
+                        ),
+                    )
+                    gaps.append(failure_gap)
+                    probe_failure_gaps.append(failure_gap)
+
+            if not produced_snapshot:
+                break
+            snapshot_root = f"{heuristic_root}/probe-loop/round-{probe_rounds}/frozen-evidence"
+            report_path = self.artifacts.write_json(
+                f"{snapshot_root}/discovery.json", report.model_dump(mode="json")
+            )
+            active_path = self.artifacts.write_json(
+                f"{snapshot_root}/active-discovery.json", active.model_dump(mode="json")
+            )
+            refs[f"probe_round_{probe_rounds}_discovery"] = str(report_path)
+            refs[f"probe_round_{probe_rounds}_active"] = str(active_path)
+            # Recompute all caller-owned facts and identities before the only permitted
+            # post-Probe Agent round. No Agent statement enters these calculations.
+            gaps = [*derive_evidence_gaps(report, active), *probe_failure_gaps]
+            target_fingerprint = target_fingerprint_sha256(report, self.artifacts.root)
+            fingerprint_path = self.artifacts.write_json(
+                f"{snapshot_root}/target-fingerprint.json",
+                {"target_fingerprint_sha256": target_fingerprint},
+            )
+            refs[f"probe_round_{probe_rounds}_fingerprint"] = str(fingerprint_path)
 
         target_operations = select_target_operations(
             report,
@@ -926,4 +1245,10 @@ class HeuristicDiscoveryOrchestrator:
             f"{heuristic_root}/summary.json",
             summary.model_dump(mode="json"),
         )
+        # Preserve the existing service API while exposing only budget-accepted snapshots
+        # to the caller. Rejected/oversized handler output never mutates these models.
+        for field_name in type(report).model_fields:
+            setattr(caller_report, field_name, getattr(report, field_name))
+        for field_name in type(active).model_fields:
+            setattr(caller_active, field_name, getattr(active, field_name))
         return summary, sorted(candidates, key=lambda item: item.operation)

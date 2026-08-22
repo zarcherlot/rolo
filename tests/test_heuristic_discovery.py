@@ -34,12 +34,14 @@ from rolo.stages.adapt.agent_contracts import (
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.heuristic_discovery import (
     CodexDiscoveryPlanningProvider,
+    DiscoveryActionDisposition,
     DiscoveryPlanningContext,
     DiscoveryPlanningProvider,
     EvidenceGapCode,
     HeuristicAdaptMode,
     HeuristicDiscoveryOrchestrator,
     HeuristicDiscoveryStatus,
+    WhitelistedR0ProbeDispatcher,
     derive_evidence_gaps,
     validate_and_evaluate_plan,
 )
@@ -88,6 +90,26 @@ class FixturePlanningProvider(DiscoveryPlanningProvider):
                 model_id="fixture-model",
                 input_artifact_sha256=context.input_artifact_sha256,
             ),
+        )
+
+
+class SourceRefreshPlanningProvider(FixturePlanningProvider):
+    def plan(self, context: DiscoveryPlanningContext) -> AdaptDiscoveryPlan:
+        plan = super().plan(context)
+        return plan.model_copy(
+            update={
+                "actions": [
+                    DiscoveryPlanAction(
+                        action_id="refresh-source-interfaces",
+                        kind="QUERY",
+                        definition_id="query.application.source_interfaces",
+                        expected_evidence_types=["application.source_interfaces"],
+                        rationale=(
+                            "Refresh bounded source-interface evidence before semantic mapping."
+                        ),
+                    )
+                ]
+            }
         )
 
 
@@ -329,6 +351,149 @@ def test_discovery_plan_rejects_stale_provenance() -> None:
         raise AssertionError("stale provenance was accepted")
 
 
+def test_plan_rejects_agent_parameters_before_read_only_dispatch() -> None:
+    report = _report()
+    active = _active()
+    from rolo.stages.adapt.heuristic_discovery import build_planning_context
+
+    context = build_planning_context(
+        report,
+        active,
+        target_fingerprint="a" * 64,
+        gaps=derive_evidence_gaps(report, active),
+        max_actions=4,
+    )
+    plan = FixturePlanningProvider().plan(context)
+    unsafe_action = plan.actions[0].model_copy(
+        update={"parameters": {"command": "ros2 topic pub /cmd_vel"}}
+    )
+    plan = plan.model_copy(update={"actions": [unsafe_action]})
+
+    outcomes = validate_and_evaluate_plan(plan, context)
+
+    assert outcomes[0].disposition == DiscoveryActionDisposition.REJECTED_INVALID_PARAMETERS
+
+
+def test_probe_loop_freezes_evidence_rehashes_and_replans_once(tmp_path: Path) -> None:
+    report = _report()
+    report.probes["ros"] = ProbeResult(
+        layer="ros",
+        status=DiscoveryStatus.SUCCEEDED,
+        data={"route_evidence": []},
+    )
+    active = _active().model_copy(deep=True)
+    active.inputs["active_probe"] = ActiveProbeMode.RUNTIME_READONLY.value
+    contexts: list[DiscoveryPlanningContext] = []
+
+    class RecordingProvider(FixturePlanningProvider):
+        def plan(self, context: DiscoveryPlanningContext) -> AdaptDiscoveryPlan:
+            contexts.append(context)
+            return super().plan(context)
+
+    def observe_runtime(
+        current_report: DiscoveryReport,
+        current_active: ActiveDiscoveryReport,
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        updated = current_report.model_copy(deep=True)
+        route = RouteEvidence(
+            resource_id="ros_topic:/camera/image_raw",
+            kind="ros_topic",
+            endpoint="/camera/image_raw",
+            interface_type="sensor_msgs/msg/Image",
+            interface_schema_sha256="d" * 64,
+            provider_id="ros-node:camera",
+            runtime_revision="pkg:camera-driver@1.0.0",
+            observed_at=datetime.now(timezone.utc),
+            evidence_origin="OBSERVED_RUNTIME",
+            source="runtime_probe:ros",
+        )
+        updated.probes["ros"] = ProbeResult(
+            layer="ros",
+            status=DiscoveryStatus.SUCCEEDED,
+            data={
+                "nodes": ["/camera"],
+                "topics": ["/camera/image_raw"],
+                "route_evidence": [route.model_dump(mode="json")],
+            },
+        )
+        return updated, current_active
+
+    dispatcher = WhitelistedR0ProbeDispatcher(
+        {"probe.ros.runtime_graph": observe_runtime}
+    )
+    orchestrator = HeuristicDiscoveryOrchestrator(
+        ArtifactStore(tmp_path),
+        mode=HeuristicAdaptMode.SHADOW,
+        planning_provider=RecordingProvider(),
+        mapping_provider=FixtureMappingProvider(_dynamic_bundle),
+        max_actions=4,
+        max_operations=10,
+        max_probe_rounds=1,
+    )
+
+    summary, _ = orchestrator.run(
+        report,
+        active,
+        relative_root="discovery/wheeltec-static/runs/disc-static",
+        probe_dispatcher=dispatcher,
+    )
+
+    assert len(contexts) == 2
+    assert contexts[0].input_artifact_sha256 != contexts[1].input_artifact_sha256
+    assert contexts[1].remaining_budget.rounds == 0
+    assert report.probes["ros"].data["nodes"] == ["/camera"]
+    assert [outcome.disposition for outcome in summary.action_outcomes] == [
+        DiscoveryActionDisposition.EXECUTED_READ_ONLY,
+        DiscoveryActionDisposition.SATISFIED_BY_FROZEN_EVIDENCE,
+    ]
+    frozen = (
+        tmp_path
+        / "discovery/wheeltec-static/runs/disc-static/heuristic"
+        / "probe-loop/round-1/frozen-evidence"
+    )
+    assert (frozen / "discovery.json").is_file()
+    assert (frozen / "active-discovery.json").is_file()
+    assert (frozen / "target-fingerprint.json").is_file()
+
+
+def test_probe_failure_remains_an_explicit_evidence_gap(tmp_path: Path) -> None:
+    report = _report()
+    report.probes["ros"] = ProbeResult(
+        layer="ros", status=DiscoveryStatus.SUCCEEDED, data={"route_evidence": []}
+    )
+    active = _active().model_copy(deep=True)
+    active.inputs["active_probe"] = ActiveProbeMode.RUNTIME_READONLY.value
+
+    def fail_probe(
+        current_report: DiscoveryReport,
+        current_active: ActiveDiscoveryReport,
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        raise RuntimeError("target ROS daemon unavailable")
+
+    summary, _ = HeuristicDiscoveryOrchestrator(
+        ArtifactStore(tmp_path),
+        mode=HeuristicAdaptMode.SHADOW,
+        planning_provider=FixturePlanningProvider(),
+        mapping_provider=None,
+        max_probe_rounds=1,
+    ).run(
+        report,
+        active,
+        relative_root="discovery/wheeltec-static/runs/disc-static",
+        probe_dispatcher=WhitelistedR0ProbeDispatcher(
+            {"probe.ros.runtime_graph": fail_probe}
+        ),
+    )
+
+    assert summary.action_outcomes[0].disposition == (
+        DiscoveryActionDisposition.FAILED_READ_ONLY_PROBE
+    )
+    assert any(
+        gap.subject_ref == "probe:probe.ros.runtime_graph"
+        for gap in summary.missing_evidence
+    )
+
+
 def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
     monkeypatch,
     tmp_path: Path,
@@ -364,7 +529,7 @@ def test_discovery_service_wires_heuristic_artifacts_into_report_wiki_and_plan_i
     orchestrator = HeuristicDiscoveryOrchestrator(
         artifacts,
         mode=HeuristicAdaptMode.SHADOW,
-        planning_provider=FixturePlanningProvider(),
+        planning_provider=SourceRefreshPlanningProvider(),
         mapping_provider=FixtureMappingProvider(_dynamic_bundle),
         max_operations=20,
     )
@@ -388,6 +553,12 @@ def test_discovery_service_wires_heuristic_artifacts_into_report_wiki_and_plan_i
     assert report.heuristic_missing_evidence_count >= 4
     assert report.heuristic_analysis_ref.endswith("/heuristic/summary.json")
     assert (run_path.parent / "heuristic/summary.json").is_file()
+    summary = (run_path.parent / "heuristic/summary.json").read_text(encoding="utf-8")
+    assert '"disposition": "EXECUTED_READ_ONLY"' in summary
+    assert (
+        run_path.parent
+        / "heuristic/probe-loop/round-1/frozen-evidence/target-fingerprint.json"
+    ).is_file()
     assert "Heuristic Adapt analysis" in (run_path.parent / "robot_wiki.md").read_text(
         encoding="utf-8"
     )

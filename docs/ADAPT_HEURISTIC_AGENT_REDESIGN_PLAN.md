@@ -566,6 +566,27 @@ Adapt 的目标不是“让大模型接管机器人发现”，而是让启发�
 Adapter 编码刻意不设置独立 `rolo-coding` 技能。编码是受 `AdaptPlan`、contract slice、输出
 schema 和独立 Gate 约束的工程生成任务；可复用的领域判断才沉淀为技能。
 
+#### 12.2.1 二次确定性 Probe 闭环
+
+`rolo-adapt-discovery` 的 action 只是提案，不携带执行权限。Caller 只把 action ID 交给
+`WhitelistedR0ProbeDispatcher`；dispatcher 必须同时满足以下边界才调用已有的确定性实现：
+
+- definition ID、kind 和 evidence type 与代码内固定 `PROBE_DEFINITIONS` 完全一致；
+- action 的 `parameters` 必须为空，禁止传入 executable、argv、路径、环境变量、shell 片段、
+  写操作、工具调用或 release 操作；
+- handler 必须由 DiscoveryService 在进程内按 definition ID 注册，Agent 不能注册或替换；
+- 默认最多执行一个二次 Probe round，并同时限制 action 数、总耗时、结果字节数和失败数；
+- 每个 definition 在一个 discovery 内至多执行一次，后续重复提案标记为已由冻结 Evidence 满足；
+- 新 `DiscoveryReport`、`ActiveDiscoveryReport` 和 target fingerprint 先持久化为冻结 artifact，
+  重新计算 planning context 的输入哈希后，才允许一次 post-Probe Agent 复盘；该复盘不能自动
+  延长 Probe 预算；
+- Probe 失败或预算耗尽均 fail closed。失败原因保留为 `EvidenceGap`，不会产生 eligibility、
+  verification、Adapter 编码或发布权限。
+
+当前 dispatcher 只绑定 `HardwareProbe`、`LinuxProbe`、`RosProbe`、`ApplicationProbe`、
+`ActiveDiscoveryAnalyzer` 和 `DirectDependencyResolver` 的既有有界只读入口。它允许固定 argv
+的自描述/ROS 查询，但不提供任意命令执行接口；artifact 写入仅由 Orchestrator 用于冻结证据。
+
 ### 12.3 离线源码工程的预期行为
 
 对“只有源码、没有 build/install、Rolo 不在目标机运行”的工程，Adapt 仍应完成静态发现和
