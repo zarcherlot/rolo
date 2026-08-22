@@ -71,12 +71,17 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 
 ## 快速开始
 
+开发和评审首先遵循 [ROLO 最高开发准则](docs/DEVELOPMENT_PRINCIPLES.md)。新环境的第一条
+验收路径是 [10 分钟安装与 Demo](docs/QUICKSTART_10_MIN.md)：它使用离线 mock 夹具验证
+安装、Discovery、Wiki、阶段状态和完整 Adapt 测试链路，不冒充真实机器人验收。
+
 ### 安装与配置
 
 ```bash
 git clone https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
+uv run python --version  # Python 3.10.x（本地默认）
 
 uv run robotctl init --robot-id your_robot_id
 ```
