@@ -2,6 +2,11 @@
   "$defs": {
     "DiscoveryActionDisposition": {
       "enum": [
+        "APPROVED_READ_ONLY",
+        "EXECUTED_READ_ONLY",
+        "FAILED_READ_ONLY_PROBE",
+        "REJECTED_INVALID_PARAMETERS",
+        "BUDGET_EXHAUSTED",
         "SATISFIED_BY_FROZEN_EVIDENCE",
         "BLOCKED_MISSING_TARGET_CONTEXT",
         "REJECTED_NOT_WHITELISTED"
