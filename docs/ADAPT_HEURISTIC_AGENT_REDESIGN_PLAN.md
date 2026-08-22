@@ -245,6 +245,23 @@ Proposal 不直接携带新建的权威 `RouteEvidence` 对象，只能通过 ID
 6. 只物化 `DISCOVERED_UNVERIFIED` 候选；
 7. Agent 超时、schema 错误或无有效提案时，回退到现有确定性候选路径。
 
+### 4.3 Contracts 对 294/约 140 项 Registry 的兼容
+
+Contracts 可以与 Registry Core 同步开发。`AgentOperationProposal`、`OperationProposalBundle`
+和 `ToolSessionDescriptor` 不把 Operation 列表生成为 `Literal`/enum，也不依赖固定数量；
+Operation ID 是受长度和格式约束的 opaque canonical ID，是否存在由注入的 Registry 解析器
+确定。
+
+兼容边界如下：
+
+- schema 同时接受当前 294 项 Registry 和目标约 140 项 Registry 生成的合法 artifact；
+- artifact 必须携带 `registry_version`、`registry_sha256` 和适用时的 contract hashes；
+- Validator、release 和 Tool Session 只接受与当前活动 Registry 精确同 hash 的 artifact；
+- “兼容两种规模”只表示共用同一 schema/代码，不表示 294 与约 140 的 release 可以交叉调用；
+- Contracts worktree 维护 294 基线 fixture 和约 140 投影 fixture，但不修改 Registry、contract
+  YAML、governance 或生成文档；
+- Registry Core 冻结后，只替换目标 fixture/hash 并运行兼容矩阵，不修改已经冻结的字段语义。
+
 ## 5. Verified Operation 交给后续 Agent
 
 ### 5.1 Tool Session
@@ -352,16 +369,16 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 - 提交本计划，冻结约 140 项目标、三个技能、Tool Gateway 边界和 worktree 所有权；
 - 不在 Wave 0 修改 Registry、Discovery、eligibility、Catalog 或 release 行为。
 
-### 7.2 Wave 1：Registry Core 收敛（约 1–2 周）
+### 7.2 Wave 1：Registry Core 与 Contracts 并行（约 1–2 周）
 
-- 从 294 项筛选并冻结 130–150 项活动 Core Registry；
-- 同步更新 contract、governance、生成文档、Catalog fixture 和精确覆盖测试；
-- 增加 legacy disposition 与旧 release 迁移/拒绝规则；
-- 输出新的 Registry hash，作为后续 Proposal v1 的固定父契约。
+- Registry Core 从 294 项筛选并冻结 130–150 项活动词汇，同步更新 contract、governance、
+  legacy disposition、生成物和覆盖测试；
+- Contracts 从 Wave 0 同步启动，新增 Proposal/Bundle/Tool Session schema 和 Validator 接口；
+- Contracts 不枚举 Operation，使用 294 基线 + 约 140 投影双 fixture；
+- Registry Core 输出新 hash 后，Contracts 只更新目标 fixture/hash 并运行兼容矩阵。
 
-### 7.3 Wave 2：契约、启发式发现与映射（约 2–3 周）
+### 7.3 Wave 2：启发式发现与映射（约 2–3 周）
 
-- 新增 Proposal/Bundle/Tool Session 数据模型和 schema；
 - 建立三个 `rolo-` 技能、严格输出契约和离线 fixture；
 - Discovery 接入计划提案、Operation proposal artifact 和确定性 Validator；
 - Adapter Executor 使用内部 `AdapterCodingPolicy`，保持 Bundle/conformance 接口兼容；
@@ -401,7 +418,9 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 2 个提交。三方合并预演没有内容冲突，但远端修改了 `active_discovery.py`、CI、`pyproject.toml`、
 `uv.lock` 和 LeRobot E2E，因此它必须先进入共同起点。不要 rebase 已发布的
 `codex/adapt-capability-integration`；从远端分支新建集成分支，再 cherry-pick `de78a27` 和
-Wave 0 设计提交，既保留历史，也避免后续 Proposal worktree 重做 Discovery 冲突。
+Wave 0 设计提交，既保留历史，也避免后续 Proposal worktree 重做 Discovery 冲突。Registry
+Core 继续使用既有 `codex/adapt-capability-integration`：在其独立 worktree 中先 merge Wave 0，
+再开始约 140 项收敛，不改写该分支的远端历史。
 
 Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 worktree 才使用下表的独立目录，
 并且只从 Wave 0 提交或其已合并后继提交创建。
@@ -410,10 +429,10 @@ Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 wo
 
 | Worktree / 分支 | 文件所有权与交付 | 依赖 | 禁止触碰 |
 |---|---|---|---|
-| `robot-loop-registry-core` / `codex/registry-core-140` | 约 140 项选择、contract/governance、legacy disposition、迁移与覆盖测试 | Wave 0 | Agent、Runtime 业务代码 |
-| `robot-loop-adapt-contracts` / `codex/adapt-agent-contracts` | Proposal、Bundle、Tool Session 模型；schema 导出；validator 接口 | Registry Core | 业务编排、生成文档 |
+| `robot-loop-registry-core` / `codex/adapt-capability-integration`（既有） | 先合入 Wave 0；再完成约 140 项选择、contract/governance、legacy disposition、迁移与覆盖测试 | Wave 0 | Agent、Runtime 业务代码 |
+| `robot-loop-adapt-contracts` / `codex/adapt-agent-contracts` | 与 Operation 数量无关的 Proposal、Bundle、Tool Session 模型；294/约 140 双 fixture；schema 导出；validator 接口 | Wave 0；最终验收等待 Registry Core hash | Registry、contract YAML、governance、生成文档 |
 | `robot-loop-adapt-skills` / `codex/adapt-agent-skills` | 三个 `rolo-` 技能；Wiki 兼容迁移；fixture；技能校验测试 | contracts schema | Registry、Discovery 主流程 |
-| `robot-loop-adapt-proposals` / `codex/adapt-proposal-orchestration` | Discovery skill runner、mapping provider、proposal artifact、validator、fallback/metrics | Registry Core + contracts | Runtime gateway、Registry 词汇 |
+| `robot-loop-adapt-proposals` / `codex/adapt-proposal-orchestration` | Discovery skill runner、mapping provider、proposal artifact、validator、fallback/metrics | contracts；最终验收等待 Registry Core | Runtime gateway、Registry 词汇 |
 | `robot-loop-adapt-tool-gateway` / `codex/adapt-tool-gateway` | Tool Session、会话 list/invoke、policy/audit、Runtime 接线 | contracts | Discovery 和技能提示词 |
 | `robot-loop-adapt-downstream` / `codex/adapt-downstream-agents` | Diagnose/Verify handoff 绑定与只读工具消费 | contracts + gateway | Registry 和 Adapter 生成 |
 
@@ -423,12 +442,15 @@ Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 wo
 ### 8.3 启动与合并波次
 
 1. **Wave 0**：远端 P0/CI/LeRobot + `de78a27` + 本设计，形成共同基线；
-2. **Wave 1**：只创建 Registry Core worktree，先冻结约 140 项和新 hash；
-3. **Wave 2A**：合并 Registry Core 后创建 contracts worktree；
-4. **Wave 2B（可并行）**：contracts 合并后创建 skills、proposals、tool-gateway；
-5. **Wave 3**：gateway 稳定后创建 downstream；proposal shadow 达标后启用新候选路径；
-6. **最终集成**：Registry Core → contracts → skills → proposals → tool-gateway → downstream；
-7. 最后由 integration 独占生成 schema/docs，并运行 Python 矩阵、LeRobot opt-in、全量回归、
+2. **Wave 1 启动同步**：为既有 `codex/adapt-capability-integration` 创建 Registry Core
+   worktree 并 merge Wave 0；同时从 Wave 0 创建 contracts worktree；
+3. **Wave 1 并行开发**：Registry Core 冻结约 140 项和新 hash；Contracts 以 294 + 约 140
+   投影 fixture 开发数量无关的 schema，双方不得修改对方所有权文件；
+4. **Wave 2A**：先把 Registry Core 合回 integration，再合入 Contracts 并替换最终目标 hash；
+5. **Wave 2B（可并行）**：上述兼容矩阵通过后创建 skills、proposals、tool-gateway；
+6. **Wave 3**：gateway 稳定后创建 downstream；proposal shadow 达标后启用新候选路径；
+7. **最终集成**：Registry Core → contracts → skills → proposals → tool-gateway → downstream；
+8. 最后由 integration 独占生成 schema/docs，并运行 Python 矩阵、LeRobot opt-in、全量回归、
    shadow 与 canary。
 
 Registry Core 是强制前置而不是可选分支。它会改变 Registry、contract、Catalog 和 release
@@ -474,9 +496,10 @@ Registry Core 是强制前置而不是可选分支。它会改变 Registry、con
 - [ ] 以远端 `codex/p0-python-ci-lerobot`、`de78a27` 和本提交形成 Wave 0；
 - [ ] 记录 294 项 Registry/contract/governance/Catalog 摘要和性能基线；
 - [ ] 冻结约 140 项的选择准则、legacy disposition schema 和迁移验收；
-- [ ] 为 Proposal、Bundle、Tool Session 冻结 `v1` schema；
-- [ ] 从 Wave 0 创建 integration 和 Registry Core worktree；
-- [ ] Registry Core 合并后创建 contracts；contracts 合并后再创建三个并行 worktree；
+- [ ] 为 Proposal、Bundle、Tool Session 冻结数量无关的 `v1` schema；
+- [ ] 为既有 `codex/adapt-capability-integration` 创建 Registry Core worktree，并无冲突合入 Wave 0；
+- [ ] 从 Wave 0 同步创建 Contracts，并建立 294 + 约 140 投影双 fixture；
+- [ ] Registry Core 与 Contracts 依次合回并通过最终 hash 矩阵后，再创建三个并行 worktree；
 - [ ] LeRobot E2E 作为首个真实工程验收，不为其保留仓库专用 Operation；
 - [ ] 建立 1,000 无关 Operation 的上下文与 Catalog 规模测试；
 - [ ] shadow 指标至少包含有效提案率、错误引用率、误报率、token/延迟、fallback 原因；
