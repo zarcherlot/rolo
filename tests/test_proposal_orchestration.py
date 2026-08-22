@@ -185,6 +185,8 @@ def _bundle(
     proposals: list[AgentOperationProposal],
     *,
     registry_sha256: str | None = None,
+    skill_name: str | None = None,
+    skill_version: str | None = None,
 ) -> OperationProposalBundle:
     return OperationProposalBundle(
         robot_id=request.robot_id,
@@ -204,8 +206,8 @@ def _bundle(
             stop_reason=AgentStopReason.COMPLETED,
         ),
         provenance=AgentArtifactProvenance(
-            skill_name="rolo-operation-mapping",
-            skill_version="1.0.0",
+            skill_name=skill_name or request.mapping_skill_name,
+            skill_version=skill_version or request.mapping_skill_version,
             model_id="fixture-model",
             input_artifact_sha256=request.input_artifact_sha256,
         ),
@@ -222,6 +224,35 @@ def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice(
     ]
     assert request.target_contracts[0].input_schema
     assert request.input_artifact_sha256["registry"] == registry.registry_sha256
+    assert request.mapping_skill_name == "rolo-operation-mapping"
+    assert request.mapping_skill_version == "1.0.0"
+    assert request.discovery_evidence.deterministic_bindings[
+        "app.camera.snapshot"
+    ].evidence_refs == ["runtime_probe:camera"]
+
+
+def test_explicit_trusted_mapping_skill_version_is_accepted() -> None:
+    report = _report()
+    registry = RegistrySnapshot(canonical_operation_registry())
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={"app.camera.snapshot"},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+        mapping_skill_version="2.3.0",
+    )
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [_proposal()])),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert request.mapping_skill_version == "2.3.0"
+    assert artifact.source == ProposalArtifactSource.AGENT
 
 
 def test_request_prefers_observed_route_when_candidate_has_same_declared_resource() -> None:
@@ -340,6 +371,36 @@ def test_unknown_reference_is_rejected_and_measured() -> None:
     )
 
 
+@pytest.mark.parametrize("as_counter_evidence", [False, True])
+def test_cross_operation_evidence_is_rejected_even_when_globally_frozen(
+    as_counter_evidence: bool,
+) -> None:
+    report, registry, request = _request()
+    assert "runtime_probe:odom" in request.discovery_evidence.evidence_refs
+    proposal = (
+        _proposal().model_copy(
+            update={"counter_evidence_refs": ["runtime_probe:odom"]}
+        )
+        if as_counter_evidence
+        else _proposal(evidence_ref="runtime_probe:odom")
+    )
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.metrics.erroneous_reference_rate == 0.0
+    assert artifact.metrics.false_positive_rate == 1.0
+    assert artifact.rejected_proposals[0].issue_codes == [
+        ProposalIssueCode.EVIDENCE_MAPPING_NOT_REPRODUCIBLE
+    ]
+
+
 def test_known_but_non_reproducible_route_is_rejected() -> None:
     report, registry, request = _request()
     proposal = _proposal(
@@ -381,6 +442,40 @@ def test_stale_registry_bundle_fails_closed_to_deterministic_path() -> None:
     assert artifact.metrics.fallback_reason == ProposalFallbackReason.BUNDLE_INVALID
     assert artifact.accepted_proposals == []
     assert "Registry identity" in (artifact.fallback_detail or "")
+
+
+@pytest.mark.parametrize(
+    ("skill_name", "skill_version"),
+    [
+        ("rolo-adapt-discovery", "1.0.0"),
+        ("rolo-operation-mapping", "1.0.1"),
+    ],
+)
+def test_untrusted_mapping_skill_identity_or_version_fails_closed(
+    skill_name: str,
+    skill_version: str,
+) -> None:
+    report, registry, request = _request()
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(
+            lambda value: _bundle(
+                value,
+                [_proposal()],
+                skill_name=skill_name,
+                skill_version=skill_version,
+            )
+        ),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
+    assert artifact.metrics.fallback_reason == ProposalFallbackReason.BUNDLE_INVALID
+    assert "provenance skill" in (artifact.fallback_detail or "")
 
 
 def test_provider_failure_and_unconfigured_provider_have_explicit_fallback_reasons() -> None:
