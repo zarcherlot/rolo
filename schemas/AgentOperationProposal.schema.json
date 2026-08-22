@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "ProposalConfidence": {
+      "enum": [
+        "LOW",
+        "MEDIUM"
+      ],
+      "title": "ProposalConfidence",
+      "type": "string"
+    },
+    "VerificationRequest": {
+      "additionalProperties": false,
+      "description": "One deterministic follow-up requested by an untrusted mapping Agent.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/VerificationRequestKind"
+        },
+        "subject_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Subject Ref",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject_ref",
+        "reason"
+      ],
+      "title": "VerificationRequest",
+      "type": "object"
+    },
+    "VerificationRequestKind": {
+      "enum": [
+        "ROUTE_OBSERVATION",
+        "EXECUTABLE_INSPECTION",
+        "HARDWARE_INSPECTION",
+        "CONTRACT_REVIEW"
+      ],
+      "title": "VerificationRequestKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Untrusted mapping proposal that only references collected target evidence.",
+  "properties": {
+    "operation": {
+      "maxLength": 160,
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "route_resource_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Route Resource Ids",
+      "type": "array"
+    },
+    "executable_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Executable Ids",
+      "type": "array"
+    },
+    "hardware_resource_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Hardware Resource Ids",
+      "type": "array"
+    },
+    "confidence": {
+      "$ref": "#/$defs/ProposalConfidence"
+    },
+    "rationale": {
+      "maxLength": 2000,
+      "minLength": 8,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "counter_evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Counter Evidence Refs",
+      "type": "array"
+    },
+    "requested_verification": {
+      "items": {
+        "$ref": "#/$defs/VerificationRequest"
+      },
+      "maxItems": 16,
+      "title": "Requested Verification",
+      "type": "array"
+    }
+  },
+  "required": [
+    "operation",
+    "evidence_refs",
+    "confidence",
+    "rationale"
+  ],
+  "title": "AgentOperationProposal",
+  "type": "object"
+}
