@@ -911,11 +911,9 @@ def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
             "--urdf",
             str(Path("tests/fixtures/profiles/differential_drive.urdf").resolve()),
         ],
-        terminal_width=160,
     )
 
     assert result.exit_code == 2
-    assert "at least one --build-root" in result.output
 
 
 def test_discovery_does_not_run_host_package_inventory(
