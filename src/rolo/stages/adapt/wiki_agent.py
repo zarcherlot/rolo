@@ -488,6 +488,7 @@ class CodexWikiInsightProvider:
             },
             allowed_evidence_refs=_bounded_evidence_reference_allowlist(selected),
         )
+        allowed_evidence_refs = sorted(validation_context.allowed_evidence_refs)
         output_bindings = json.dumps(
             {
                 "input_artifact_sha256": validation_context.input_artifact_sha256,
@@ -498,7 +499,7 @@ class CodexWikiInsightProvider:
                     "Use only exact strings from allowed_evidence_refs; do not add '$', '/', "
                     "or another path notation."
                 ),
-                "allowed_evidence_refs": sorted(validation_context.allowed_evidence_refs),
+                "allowed_evidence_refs": allowed_evidence_refs,
                 "allowed_unknown_assessments": active.unknowns,
             },
             ensure_ascii=False,
@@ -524,7 +525,11 @@ class CodexWikiInsightProvider:
                                 validation_context.input_artifact_sha256
                             )
                         },
-                        fixed_string_enums={"unknown": active.unknowns},
+                        fixed_string_enums={
+                            "unknown": active.unknowns,
+                            "basis": allowed_evidence_refs,
+                            "counter_evidence_refs": allowed_evidence_refs,
+                        },
                     ),
                     ensure_ascii=False,
                     indent=2,

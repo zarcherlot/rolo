@@ -70,3 +70,17 @@ def test_codex_output_schema_can_pin_agent_unknowns_to_caller_values() -> None:
         "platform.compute",
         "platform.drive_model",
     ]
+
+
+def test_codex_output_schema_can_pin_array_items_to_caller_values() -> None:
+    refs = ["probes.ros.status", "active_discovery.unknowns[0]"]
+    compatible = codex_output_schema(
+        RoloWikiInsightBundle,
+        fixed_string_enums={"basis": refs, "counter_evidence_refs": refs},
+    )
+
+    finding = compatible["$defs"]["RoloWikiHeuristicFinding"]
+    assessment = compatible["$defs"]["RoloWikiUnknownAssessment"]
+    assert finding["properties"]["basis"]["items"]["enum"] == refs
+    assert finding["properties"]["counter_evidence_refs"]["items"]["enum"] == refs
+    assert assessment["properties"]["basis"]["items"]["enum"] == refs

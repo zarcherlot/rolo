@@ -70,6 +70,16 @@ def codex_output_schema(
                     field_schema = properties.get(name)
                     if not isinstance(field_schema, dict):
                         continue
+                    if field_schema.get("type") == "array" and isinstance(
+                        field_schema.get("items"), dict
+                    ):
+                        item_schema = field_schema["items"]
+                        item_title = item_schema.get("title")
+                        item_schema.clear()
+                        item_schema.update({"type": "string", "enum": values})
+                        if item_title:
+                            item_schema["title"] = item_title
+                        continue
                     title = field_schema.get("title")
                     field_schema.clear()
                     field_schema.update({"type": "string", "enum": values})
