@@ -29,6 +29,7 @@ ADAPT_API_FEATURES = (
     "adapt.slice-stability-comparison/v1",
     "adapt.slice-stability/v1",
     "adapt.target-operation-slice/v1",
+    "workbench.blocker-detail/v1",
 )
 
 

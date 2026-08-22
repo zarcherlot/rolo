@@ -1,13 +1,35 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.models import RobotCapability, utc_now
 from rolo.read_models import OverviewState, RobotOverview, build_robot_overview
 from rolo.stages.contracts import PipelineAssessment, StageName, StageStatus
+
+
+class BlockerCategory(str, Enum):
+    MISSING_VERIFIED_EVIDENCE = "MISSING_VERIFIED_EVIDENCE"
+    EVIDENCE_UNAVAILABLE_OR_INVALID = "EVIDENCE_UNAVAILABLE_OR_INVALID"
+    POLICY_OR_AUTHORIZATION = "POLICY_OR_AUTHORIZATION"
+    DEPENDENCY_OR_PREREQUISITE = "DEPENDENCY_OR_PREREQUISITE"
+    PIPELINE_BLOCKER = "PIPELINE_BLOCKER"
+
+
+def _blocker_category(message: str) -> BlockerCategory:
+    normalized = message.casefold()
+    if "missing verified" in normalized:
+        return BlockerCategory.MISSING_VERIFIED_EVIDENCE
+    if "unavailable or invalid" in normalized:
+        return BlockerCategory.EVIDENCE_UNAVAILABLE_OR_INVALID
+    if "denied" in normalized or "authorization" in normalized or "policy" in normalized:
+        return BlockerCategory.POLICY_OR_AUTHORIZATION
+    if "dependency" in normalized or "prerequisite" in normalized:
+        return BlockerCategory.DEPENDENCY_OR_PREREQUISITE
+    return BlockerCategory.PIPELINE_BLOCKER
 
 
 class FleetRobotSummary(BaseModel):
@@ -31,8 +53,8 @@ class FleetRobotSummary(BaseModel):
 
 
 class FleetBlockerSummary(BaseModel):
-    schema_version: Literal["rolo-fleet-blocker-summary/v1"] = (
-        "rolo-fleet-blocker-summary/v1"
+    schema_version: Literal["rolo-fleet-blocker-summary/v2"] = (
+        "rolo-fleet-blocker-summary/v2"
     )
     blocker_id: str
     robot_id: str
@@ -40,6 +62,12 @@ class FleetBlockerSummary(BaseModel):
     message: str
     recommended_action: str
     owner: str
+    category: BlockerCategory
+    classification_basis: Literal["normalized_pipeline_message"] = (
+        "normalized_pipeline_message"
+    )
+    impact: str
+    resolution_requirement_count: int = Field(ge=1)
     evidence_ids: list[str] = Field(default_factory=list)
     observed_at: datetime
     freshness: Literal["fresh"] = "fresh"
@@ -68,8 +96,8 @@ class FleetCollection(BaseModel):
 
 
 class FleetBlockerCollection(BaseModel):
-    schema_version: Literal["rolo-fleet-blocker-collection/v1"] = (
-        "rolo-fleet-blocker-collection/v1"
+    schema_version: Literal["rolo-fleet-blocker-collection/v2"] = (
+        "rolo-fleet-blocker-collection/v2"
     )
     items: list[FleetBlockerSummary]
     total: int = Field(ge=0)
@@ -83,6 +111,71 @@ class FleetBlockerCollection(BaseModel):
     )
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     integrity_status: Literal["validated"] = "validated"
+    limitations: list[str] = Field(
+        default_factory=lambda: [
+            "Blocker categories normalize pipeline messages for triage; they are not "
+            "causal diagnoses."
+        ]
+    )
+
+
+class BlockerResolutionRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_id: str
+    kind: Literal["FRESH_ASSESSMENT", "VALIDATED_EVIDENCE"]
+    statement: str
+    evidence_id: str | None = None
+    status: Literal["REQUIRED"] = "REQUIRED"
+
+
+class FleetBlockerDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-fleet-blocker-detail/v1"] = (
+        "rolo-fleet-blocker-detail/v1"
+    )
+    blocker: FleetBlockerSummary
+    stage_status: StageStatus
+    stage_summary: str
+    expected_stage_statuses: list[Literal["READY", "COMPLETE"]] = Field(
+        default_factory=lambda: ["READY", "COMPLETE"]
+    )
+    resolution_requirements: list[BlockerResolutionRequirement]
+    canonical_cli_argv: list[str]
+    resolution_state: Literal["OPEN"] = "OPEN"
+    contains_secret_payloads: Literal[False] = False
+    source_kind: Literal["pipeline_assessment"] = "pipeline_assessment"
+    integrity_status: Literal["validated"] = "validated"
+    limitations: list[str] = Field(
+        default_factory=lambda: [
+            "Resolution requirements describe evidence needed for reassessment; they do "
+            "not execute remediation or prove physical outcomes.",
+            "The category is normalized from a pipeline message and is not a root-cause "
+            "diagnosis.",
+        ]
+    )
+
+    @model_validator(mode="after")
+    def require_safe_consistent_detail(self) -> FleetBlockerDetail:
+        if not self.resolution_requirements:
+            raise ValueError("Blocker detail requires at least one resolution requirement")
+        requirement_ids = [item.requirement_id for item in self.resolution_requirements]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ValueError("Blocker resolution requirement IDs must be unique")
+        if self.blocker.resolution_requirement_count != len(
+            self.resolution_requirements
+        ):
+            raise ValueError("Blocker resolution requirement count is inconsistent")
+        expected_cli = [
+            "robotctl",
+            "pipeline-status",
+            "--robot",
+            self.blocker.robot_id,
+        ]
+        if self.canonical_cli_argv != expected_cli:
+            raise ValueError("Blocker reproduction CLI is inconsistent")
+        return self
 
 
 def _active_stage(overview: RobotOverview):
@@ -126,6 +219,12 @@ def _fleet_blockers(overview: RobotOverview) -> list[FleetBlockerSummary]:
             message=blocker.message,
             recommended_action=blocker.recommended_action,
             owner=blocker.owner,
+            category=_blocker_category(blocker.message),
+            impact=(
+                f"Prevents {blocker.stage.title()} from advancing while the validated "
+                "pipeline assessment reports this blocker."
+            ),
+            resolution_requirement_count=1 + len(blocker.evidence_ids),
             evidence_ids=blocker.evidence_ids,
             observed_at=blocker.observed_at,
         )
@@ -231,3 +330,59 @@ def build_fleet_blocker_collection(
         next_offset=next_offset,
         observed_at=observed_at,
     )
+
+
+def get_fleet_blocker_detail(
+    robots: list[RobotCapability],
+    pipelines: dict[str, PipelineAssessment],
+    blocker_id: str,
+) -> FleetBlockerDetail:
+    for _, overview in _overviews(robots, pipelines):
+        blocker = next(
+            (
+                item
+                for item in _fleet_blockers(overview)
+                if item.blocker_id == blocker_id
+            ),
+            None,
+        )
+        if blocker is None:
+            continue
+        stage = next(
+            item for item in overview.pipeline.stages if item.stage is blocker.stage
+        )
+        requirements = [
+            BlockerResolutionRequirement(
+                requirement_id="fresh_pipeline_assessment",
+                kind="FRESH_ASSESSMENT",
+                statement=(
+                    f"A newer {blocker.stage.value.title()} assessment must no longer "
+                    "report this blocker."
+                ),
+            )
+        ]
+        requirements.extend(
+            BlockerResolutionRequirement(
+                requirement_id=f"validated_evidence_{index:02d}",
+                kind="VALIDATED_EVIDENCE",
+                statement=(
+                    "The bound opaque evidence record must resolve with validated "
+                    "integrity before reassessment."
+                ),
+                evidence_id=evidence_id,
+            )
+            for index, evidence_id in enumerate(blocker.evidence_ids, start=1)
+        )
+        return FleetBlockerDetail(
+            blocker=blocker,
+            stage_status=stage.status,
+            stage_summary=stage.summary,
+            resolution_requirements=requirements,
+            canonical_cli_argv=[
+                "robotctl",
+                "pipeline-status",
+                "--robot",
+                blocker.robot_id,
+            ],
+        )
+    raise KeyError(f"Unknown blocker_id: {blocker_id}")
