@@ -216,7 +216,7 @@ def test_init_registers_and_runs_runtime_checks(tmp_path: Path) -> None:
 
 
 def test_init_help_contains_no_urdf_option() -> None:
-    result = CliRunner().invoke(app, ["init", "--help"])
+    result = CliRunner().invoke(app, ["init", "--help"], terminal_width=160)
 
     assert result.exit_code == 0, result.output
     assert "--robot-id" in result.output

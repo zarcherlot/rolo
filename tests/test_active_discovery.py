@@ -911,6 +911,7 @@ def test_discovery_cli_does_not_fall_back_to_current_directory() -> None:
             "--urdf",
             str(Path("tests/fixtures/profiles/differential_drive.urdf").resolve()),
         ],
+        terminal_width=160,
     )
 
     assert result.exit_code == 2
