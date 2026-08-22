@@ -1,0 +1,425 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from rolo.core.artifacts import ArtifactStore
+from rolo.core.models import (
+    DiscoveryReport,
+    DiscoveryStatus,
+    OperationCandidate,
+    ProbeResult,
+    RouteEvidence,
+)
+from rolo.stages.adapt.agent_contracts import (
+    AgentArtifactProvenance,
+    AgentBudgetUsage,
+    AgentOperationProposal,
+    AgentStopReason,
+    OperationProposalBundle,
+    ProposalConfidence,
+)
+from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.proposal_orchestration import (
+    CodexOperationMappingProvider,
+    DiscoverySkillRequest,
+    DiscoverySkillRunner,
+    OperationMappingProvider,
+    ProposalArtifactSource,
+    ProposalFallbackReason,
+    ProposalIssueCode,
+    RegistrySnapshot,
+    build_discovery_skill_request,
+    persist_proposal_artifacts,
+)
+
+TARGET_FINGERPRINT = "a" * 64
+
+
+class FixtureProvider(OperationMappingProvider):
+    def __init__(
+        self,
+        factory: Callable[[DiscoverySkillRequest], OperationProposalBundle],
+    ) -> None:
+        self.factory = factory
+
+    def propose(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+        return self.factory(request)
+
+
+def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Discover from frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Map only canonical target Operations.", encoding="utf-8")
+    _report_value, _registry, request = _request()
+    expected = _bundle(request, [_proposal()])
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["command"] = command
+        captured["input"] = kwargs["input"]
+        captured["environment"] = kwargs["env"]
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(expected.model_dump_json(), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.shutil.which",
+        lambda _value: "codex",
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.subprocess.run",
+        fake_run,
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+        api_key="fixture-secret",
+    )
+
+    actual = provider.propose(request)
+
+    assert actual == expected
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[command.index("--sandbox") + 1] == "read-only"
+    assert "fixture-secret" not in json.dumps(command)
+    assert "UNTRUSTED FROZEN DISCOVERY REQUEST" in str(captured["input"])
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert environment["CODEX_API_KEY"] == "fixture-secret"
+
+
+def _route(endpoint: str, source: str) -> RouteEvidence:
+    return RouteEvidence(
+        resource_id=f"ros_topic:{endpoint}",
+        kind="ros_topic",
+        endpoint=endpoint,
+        interface_type="sensor_msgs/msg/Image" if "camera" in endpoint else None,
+        evidence_origin="OBSERVED_RUNTIME",
+        source=source,
+    )
+
+
+def _report() -> DiscoveryReport:
+    camera = _route("/camera/image_raw", "runtime_probe:camera")
+    odom = _route("/odom", "runtime_probe:odom")
+    return DiscoveryReport(
+        discovery_id="discovery-fixture",
+        robot_id="robot-fixture",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={"os": "linux"},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [
+                        camera.model_dump(mode="json"),
+                        odom.model_dump(mode="json"),
+                    ]
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.snapshot",
+                evidence=["runtime_probe:camera"],
+                route_evidence=[camera],
+                executable_ids=["exe-camera"],
+            ),
+            OperationCandidate(
+                operation="app.localization.status",
+                evidence=["runtime_probe:odom"],
+                route_evidence=[odom],
+                executable_ids=["exe-localization"],
+            ),
+        ],
+    )
+
+
+def _request(
+    *,
+    targets: tuple[str, ...] = ("app.camera.snapshot",),
+) -> tuple[DiscoveryReport, RegistrySnapshot, DiscoverySkillRequest]:
+    report = _report()
+    registry = RegistrySnapshot(canonical_operation_registry(), registry_version="294-fixture")
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations=targets,
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    return report, registry, request
+
+
+def _proposal(
+    operation: str = "app.camera.snapshot",
+    *,
+    evidence_ref: str = "runtime_probe:camera",
+    route_resource_id: str = "ros_topic:/camera/image_raw",
+    executable_id: str = "exe-camera",
+) -> AgentOperationProposal:
+    return AgentOperationProposal(
+        operation=operation,
+        evidence_refs=[evidence_ref],
+        route_resource_ids=[route_resource_id],
+        executable_ids=[executable_id],
+        confidence=ProposalConfidence.MEDIUM,
+        rationale="Observed route and executable match the requested contract.",
+    )
+
+
+def _bundle(
+    request: DiscoverySkillRequest,
+    proposals: list[AgentOperationProposal],
+    *,
+    registry_sha256: str | None = None,
+) -> OperationProposalBundle:
+    return OperationProposalBundle(
+        robot_id=request.robot_id,
+        discovery_id=request.discovery_id,
+        target_fingerprint_sha256=request.target_fingerprint_sha256,
+        registry_version=request.registry_version,
+        registry_sha256=registry_sha256 or request.registry_sha256,
+        contract_catalog_sha256=request.contract_catalog_sha256,
+        registry_operation_count=request.registry_operation_count,
+        proposals=proposals,
+        budget_usage=AgentBudgetUsage(
+            rounds=2,
+            input_tokens=120,
+            output_tokens=45,
+            elapsed_ms=18,
+            result_bytes=512,
+            stop_reason=AgentStopReason.COMPLETED,
+        ),
+        provenance=AgentArtifactProvenance(
+            skill_name="rolo-operation-mapping",
+            skill_version="1.0.0",
+            model_id="fixture-model",
+            input_artifact_sha256=request.input_artifact_sha256,
+        ),
+    )
+
+
+def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice() -> None:
+    _report_value, registry, request = _request()
+
+    assert registry.operation_count == 294
+    assert request.registry_operation_count == 294
+    assert [item.operation for item in request.target_contracts] == [
+        "app.camera.snapshot"
+    ]
+    assert request.target_contracts[0].input_schema
+    assert request.input_artifact_sha256["registry"] == registry.registry_sha256
+
+
+def test_request_prefers_observed_route_when_candidate_has_same_declared_resource() -> None:
+    report = _report()
+    declared = report.operation_candidates[0].route_evidence[0].model_copy(
+        update={
+            "evidence_origin": "DECLARED_STATIC",
+            "source": "launch:camera",
+            "interface_type": None,
+        }
+    )
+    report = report.model_copy(
+        update={
+            "operation_candidates": [
+                report.operation_candidates[0].model_copy(
+                    update={"route_evidence": [declared]}
+                ),
+                report.operation_candidates[1],
+            ]
+        }
+    )
+    registry = RegistrySnapshot(canonical_operation_registry())
+
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={"app.camera.snapshot"},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+
+    selected = request.discovery_evidence.route_resources[
+        "ros_topic:/camera/image_raw"
+    ]
+    assert selected.observed is True
+    assert selected.interface_type == "sensor_msgs/msg/Image"
+    assert "launch:camera" in request.discovery_evidence.evidence_refs
+
+
+def test_runner_accepts_valid_proposal_as_discovered_unverified_and_persists_artifacts(
+    tmp_path: Path,
+) -> None:
+    report, registry, request = _request()
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [_proposal()])),
+    )
+
+    bundle, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert bundle is not None
+    assert artifact.source == ProposalArtifactSource.AGENT
+    assert artifact.operation_candidates[0].status == "DISCOVERED_UNVERIFIED"
+    assert artifact.operation_candidates[0].operation == "app.camera.snapshot"
+    assert artifact.influences_release is False
+    assert artifact.metrics.valid_proposal_rate == 1.0
+    assert artifact.metrics.input_tokens == 120
+    refs = persist_proposal_artifacts(
+        ArtifactStore(tmp_path),
+        "adapt/robot-fixture/proposals/run-1",
+        bundle=bundle,
+        validation=artifact,
+    )
+    assert set(refs) == {"bundle", "validation"}
+    assert Path(refs["bundle"]).is_file()
+    assert Path(refs["validation"]).is_file()
+
+
+def test_outside_slice_proposal_falls_back_and_records_false_positive() -> None:
+    report, registry, request = _request()
+    proposal = _proposal(
+        "app.localization.status",
+        evidence_ref="runtime_probe:odom",
+        route_resource_id="ros_topic:/odom",
+        executable_id="exe-localization",
+    )
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
+    assert artifact.metrics.fallback_reason == ProposalFallbackReason.NO_VALID_PROPOSALS
+    assert artifact.metrics.false_positive_rate == 1.0
+    assert artifact.rejected_proposals[0].issue_codes == [
+        ProposalIssueCode.OPERATION_OUTSIDE_TARGET_SLICE
+    ]
+    assert [item.operation for item in artifact.operation_candidates] == [
+        "app.camera.snapshot"
+    ]
+
+
+def test_unknown_reference_is_rejected_and_measured() -> None:
+    report, registry, request = _request()
+    proposal = _proposal(evidence_ref="runtime_probe:invented")
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.metrics.erroneous_reference_rate == 1.0
+    assert ProposalIssueCode.UNKNOWN_EVIDENCE_REF in (
+        artifact.rejected_proposals[0].issue_codes
+    )
+
+
+def test_known_but_non_reproducible_route_is_rejected() -> None:
+    report, registry, request = _request()
+    proposal = _proposal(
+        route_resource_id="ros_topic:/odom",
+        executable_id="exe-camera",
+    )
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.metrics.erroneous_reference_rate == 0.0
+    assert artifact.metrics.false_positive_rate == 1.0
+    assert ProposalIssueCode.ROUTE_MAPPING_NOT_REPRODUCIBLE in (
+        artifact.rejected_proposals[0].issue_codes
+    )
+
+
+def test_stale_registry_bundle_fails_closed_to_deterministic_path() -> None:
+    report, registry, request = _request()
+    runner = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(
+            lambda value: _bundle(value, [_proposal()], registry_sha256="b" * 64)
+        ),
+    )
+
+    _bundle_value, artifact = runner.run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
+    assert artifact.metrics.fallback_reason == ProposalFallbackReason.BUNDLE_INVALID
+    assert artifact.accepted_proposals == []
+    assert "Registry identity" in (artifact.fallback_detail or "")
+
+
+def test_provider_failure_and_unconfigured_provider_have_explicit_fallback_reasons() -> None:
+    report, registry, request = _request()
+
+    def fail(_request_value: DiscoverySkillRequest) -> OperationProposalBundle:
+        raise RuntimeError("provider unavailable")
+
+    _bundle_value, failed = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(fail),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+    _bundle_value, unconfigured = DiscoverySkillRunner(registry, None).run(
+        request,
+        deterministic_candidates=report.operation_candidates,
+    )
+
+    assert failed.metrics.fallback_reason == ProposalFallbackReason.PROVIDER_FAILURE
+    assert failed.fallback_detail == "provider unavailable"
+    assert (
+        unconfigured.metrics.fallback_reason
+        == ProposalFallbackReason.PROVIDER_NOT_CONFIGURED
+    )
+
+
+def test_schema_failure_is_classified_without_exposing_provider_authority() -> None:
+    report, registry, request = _request()
+
+    def invalid(_request_value: DiscoverySkillRequest) -> OperationProposalBundle:
+        try:
+            return OperationProposalBundle.model_validate({})
+        except ValidationError:
+            raise
+
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(invalid),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    assert artifact.metrics.fallback_reason == ProposalFallbackReason.SCHEMA_INVALID
+    assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
+    assert artifact.influences_release is False
