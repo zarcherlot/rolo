@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -26,6 +27,12 @@ class WikiHeuristicFinding(BaseModel):
     basis: list[str] = Field(min_length=1, max_length=8)
     verification: str = Field(min_length=1, max_length=500)
     source: Literal["DETERMINISTIC_RULE", "ADAPT_AGENT_SKILL"] = "DETERMINISTIC_RULE"
+
+
+class RoloDeterministicWikiFinding(WikiHeuristicFinding):
+    """Built-in finding retained inside a new-writer bundle without Agent authorship."""
+
+    source: Literal["DETERMINISTIC_RULE"] = "DETERMINISTIC_RULE"
 
 
 class RoloWikiHeuristicFinding(WikiHeuristicFinding):
@@ -111,7 +118,10 @@ class RoloWikiInsightBundle(WikiInsightBundle):
     release_id: str | None = Field(default=None, min_length=1, max_length=128)
     conformance_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     previous_wiki_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
-    findings: list[RoloWikiHeuristicFinding] = Field(default_factory=list, max_length=40)
+    findings: list[RoloWikiHeuristicFinding | RoloDeterministicWikiFinding] = Field(
+        default_factory=list,
+        max_length=40,
+    )
     unknown_assessments: list[RoloWikiUnknownAssessment] = Field(
         default_factory=list,
         max_length=100,
@@ -124,11 +134,72 @@ class RoloWikiInsightBundle(WikiInsightBundle):
             raise ValueError("Wiki writer provenance must identify rolo-wiki-authoring")
         if not self.provenance.input_artifact_sha256:
             raise ValueError("Wiki writer provenance requires input artifact hashes")
-        authored_versions = [item.author_skill_version for item in self.findings]
+        authored_versions = [
+            item.author_skill_version
+            for item in self.findings
+            if isinstance(item, RoloWikiHeuristicFinding)
+        ]
         authored_versions.extend(item.author_skill_version for item in self.unknown_assessments)
         if any(version != self.provenance.skill_version for version in authored_versions):
             raise ValueError("Wiki insight author versions must match bundle provenance")
         return self
+
+
+class RoloWikiValidationContext(BaseModel):
+    """Caller-owned identities and references accepted for one Wiki Agent run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    input_artifact_sha256: dict[str, str] = Field(min_length=1, max_length=64)
+    allowed_evidence_refs: frozenset[str] = Field(min_length=1, max_length=20_000)
+    target_fingerprint_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    release_id: str | None = Field(default=None, min_length=1, max_length=128)
+    conformance_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+
+    @field_validator("input_artifact_sha256")
+    @classmethod
+    def validate_input_hashes(cls, value: dict[str, str]) -> dict[str, str]:
+        for name, digest in value.items():
+            if not name or len(name) > 160:
+                raise ValueError("input artifact names must contain 1-160 characters")
+            if not re.fullmatch(_SHA256_PATTERN, digest):
+                raise ValueError("input artifact hashes must be lowercase SHA-256")
+        return value
+
+
+def validate_rolo_wiki_insights(
+    bundle: RoloWikiInsightBundle,
+    context: RoloWikiValidationContext,
+) -> None:
+    """Reject stale identities, fabricated provenance and unresolvable evidence references."""
+
+    if bundle.provenance.input_artifact_sha256 != context.input_artifact_sha256:
+        raise ValueError("Wiki writer input artifact identity does not match caller context")
+    actual_identity = (
+        bundle.target_fingerprint_sha256,
+        bundle.release_id,
+        bundle.conformance_sha256,
+    )
+    expected_identity = (
+        context.target_fingerprint_sha256,
+        context.release_id,
+        context.conformance_sha256,
+    )
+    if actual_identity != expected_identity:
+        raise ValueError("Wiki writer target/release/conformance identity mismatch")
+    refs = {
+        ref
+        for finding in bundle.findings
+        if isinstance(finding, RoloWikiHeuristicFinding)
+        for ref in [*finding.basis, *finding.counter_evidence_refs]
+    }
+    refs.update(ref for item in bundle.unknown_assessments for ref in item.basis)
+    unknown_refs = sorted(refs - context.allowed_evidence_refs)
+    if unknown_refs:
+        raise ValueError(
+            "Wiki writer references evidence outside the caller allowlist: "
+            + ", ".join(unknown_refs[:3])
+        )
 
 
 def parse_wiki_insight_bundle_json(value: str) -> WikiInsightBundle | RoloWikiInsightBundle:
@@ -150,6 +221,12 @@ class WikiInsightProvider(Protocol):
         report: DiscoveryReport,
         active: ActiveDiscoveryReport,
     ) -> WikiInsightBundle: ...
+
+    def validation_context(
+        self,
+        report: DiscoveryReport,
+        active: ActiveDiscoveryReport,
+    ) -> RoloWikiValidationContext: ...
 
 
 _MOTION_CUES = (
@@ -303,14 +380,25 @@ def merge_wiki_insights(
             + ", ".join(invalid_unknowns[:3])
         )
     if isinstance(external, RoloWikiInsightBundle):
-        unique_rolo = {
-            (item.category, item.statement): item for item in external.findings
+        unique_rolo: dict[
+            tuple[str, str],
+            WikiHeuristicFinding | RoloWikiHeuristicFinding | RoloDeterministicWikiFinding,
+        ] = {
+            (item.category, item.statement): item for item in builtin.findings
         }
+        for item in external.findings:
+            unique_rolo.setdefault((item.category, item.statement), item)
         unique_unknowns = {item.unknown: item for item in external.unknown_assessments}
-        return external.model_copy(
-            update={
-                "findings": list(unique_rolo.values())[:40],
-                "unknown_assessments": list(unique_unknowns.values())[:100],
+        return RoloWikiInsightBundle.model_validate(
+            external.model_dump(mode="json")
+            | {
+                "findings": [
+                    item.model_dump(mode="json") for item in list(unique_rolo.values())[:40]
+                ],
+                "unknown_assessments": [
+                    item.model_dump(mode="json")
+                    for item in list(unique_unknowns.values())[:100]
+                ],
             }
         )
     unique: dict[tuple[str, str], WikiHeuristicFinding] = {}
@@ -339,6 +427,11 @@ def collect_wiki_insights(
         return infer_builtin_wiki_insights(report, active), None
     try:
         external = provider.infer(report, active)
+        if isinstance(external, RoloWikiInsightBundle):
+            context_factory = getattr(provider, "validation_context", None)
+            if not callable(context_factory):
+                raise ValueError("Rolo Wiki provider did not supply a validation context")
+            validate_rolo_wiki_insights(external, context_factory(report, active))
         return merge_wiki_insights(report, active, external), None
     except Exception as exc:
         return infer_builtin_wiki_insights(report, active), str(exc)[:500]

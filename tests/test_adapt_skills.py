@@ -16,7 +16,13 @@ from rolo.stages.adapt.skill_contracts import (
     DiscoveryPlanAction,
     DiscoveryRemainingBudget,
 )
-from rolo.stages.adapt.wiki_insights import RoloWikiInsightBundle, WikiInsightBundle
+from rolo.stages.adapt.wiki_insights import (
+    RoloWikiHeuristicFinding,
+    RoloWikiInsightBundle,
+    RoloWikiValidationContext,
+    WikiInsightBundle,
+    validate_rolo_wiki_insights,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = (
@@ -206,4 +212,55 @@ def test_wiki_writer_requires_matching_author_and_artifact_provenance() -> None:
                     }
                 ],
             }
+        )
+
+
+def test_wiki_validator_rejects_identity_drift_and_unknown_evidence_refs() -> None:
+    bundle = RoloWikiInsightBundle(
+        robot_id="demo",
+        discovery_id="disc-1",
+        target_fingerprint_sha256=SHA,
+        release_id="release-1",
+        conformance_sha256="b" * 64,
+        findings=[
+            RoloWikiHeuristicFinding(
+                category="MAINTENANCE",
+                statement="The deployment may differ from the frozen release.",
+                confidence="LOW",
+                basis=["release.summary"],
+                counter_evidence_refs=["release.counter"],
+                verification="Compare the read-only deployment manifest.",
+                author_skill_version="1.0.0",
+            )
+        ],
+        provenance=AgentArtifactProvenance(
+            skill_name="rolo-wiki-authoring",
+            skill_version="1.0.0",
+            model_id="fixture-model",
+            input_artifact_sha256={"discovery-context": SHA},
+        ),
+    )
+
+    with pytest.raises(ValueError, match="identity mismatch"):
+        validate_rolo_wiki_insights(
+            bundle,
+            RoloWikiValidationContext(
+                input_artifact_sha256={"discovery-context": SHA},
+                allowed_evidence_refs={"release.summary", "release.counter"},
+                target_fingerprint_sha256=SHA,
+                release_id="release-stale",
+                conformance_sha256="b" * 64,
+            ),
+        )
+
+    with pytest.raises(ValueError, match="outside the caller allowlist"):
+        validate_rolo_wiki_insights(
+            bundle,
+            RoloWikiValidationContext(
+                input_artifact_sha256={"discovery-context": SHA},
+                allowed_evidence_refs={"release.summary"},
+                target_fingerprint_sha256=SHA,
+                release_id="release-1",
+                conformance_sha256="b" * 64,
+            ),
         )
