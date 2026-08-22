@@ -33,6 +33,9 @@ from rolo.stages.adapt.operation_registry import (
 from rolo.stages.adapt.routes import observed_probe_routes
 
 MAX_MAPPING_CONTEXT_CHARS = 200_000
+MAPPING_SKILL_NAME = "rolo-operation-mapping"
+MAPPING_SKILL_VERSION = "1.0.0"
+_SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
 
 
 def _digest(value: object) -> str:
@@ -97,6 +100,7 @@ class ProposalBindingSet(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    evidence_refs: list[str] = Field(default_factory=list)
     route_resource_ids: list[str] = Field(default_factory=list)
     executable_ids: list[str] = Field(default_factory=list)
     hardware_resource_ids: list[str] = Field(default_factory=list)
@@ -168,6 +172,11 @@ class DiscoverySkillRequest(BaseModel):
     registry_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     contract_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     registry_operation_count: int = Field(ge=1)
+    mapping_skill_name: Literal["rolo-operation-mapping"] = MAPPING_SKILL_NAME
+    mapping_skill_version: str = Field(
+        default=MAPPING_SKILL_VERSION,
+        pattern=_SEMVER_PATTERN,
+    )
     target_contracts: list[TargetOperationContract] = Field(min_length=1, max_length=256)
     discovery_evidence: FrozenDiscoveryEvidence
     input_artifact_sha256: dict[str, str]
@@ -203,6 +212,7 @@ def build_discovery_skill_request(
     *,
     target_operations: Collection[str],
     target_fingerprint_sha256: str,
+    mapping_skill_version: str = MAPPING_SKILL_VERSION,
 ) -> DiscoverySkillRequest:
     """Freeze discovery references and the exact Registry slice for one Agent run."""
 
@@ -250,14 +260,31 @@ def build_discovery_skill_request(
             record_route(route)
             evidence_refs.add(route.source)
     for candidate in report.operation_candidates:
+        if candidate.operation in deterministic_bindings:
+            raise ValueError(
+                f"duplicate deterministic Operation candidate: {candidate.operation}"
+            )
         evidence_refs.update(candidate.evidence)
         executable_ids.update(candidate.executable_ids)
         hardware_resource_ids.update(candidate.hardware_resource_ids)
         for route in candidate.route_evidence:
             record_route(route)
             evidence_refs.add(route.source)
+        route_resource_ids = sorted(
+            route.resource_id for route in candidate.route_evidence
+        )
         deterministic_bindings[candidate.operation] = ProposalBindingSet(
-            route_resource_ids=sorted(route.resource_id for route in candidate.route_evidence),
+            evidence_refs=sorted(
+                {
+                    *candidate.evidence,
+                    *(route.source for route in candidate.route_evidence),
+                    *(
+                        route_resources[resource_id].source
+                        for resource_id in route_resource_ids
+                    ),
+                }
+            ),
+            route_resource_ids=route_resource_ids,
             executable_ids=sorted(set(candidate.executable_ids)),
             hardware_resource_ids=sorted(set(candidate.hardware_resource_ids)),
         )
@@ -295,6 +322,7 @@ def build_discovery_skill_request(
         registry_sha256=registry.registry_sha256,
         contract_catalog_sha256=registry.contract_catalog_sha256,
         registry_operation_count=registry.operation_count,
+        mapping_skill_version=mapping_skill_version,
         target_contracts=contracts,
         discovery_evidence=frozen,
         input_artifact_sha256={
@@ -489,6 +517,7 @@ class ProposalIssueCode(str, Enum):
     UNKNOWN_ROUTE_RESOURCE = "UNKNOWN_ROUTE_RESOURCE"
     UNKNOWN_EXECUTABLE = "UNKNOWN_EXECUTABLE"
     UNKNOWN_HARDWARE_RESOURCE = "UNKNOWN_HARDWARE_RESOURCE"
+    EVIDENCE_MAPPING_NOT_REPRODUCIBLE = "EVIDENCE_MAPPING_NOT_REPRODUCIBLE"
     ROUTE_MAPPING_NOT_REPRODUCIBLE = "ROUTE_MAPPING_NOT_REPRODUCIBLE"
     EXECUTABLE_MAPPING_NOT_REPRODUCIBLE = "EXECUTABLE_MAPPING_NOT_REPRODUCIBLE"
     HARDWARE_MAPPING_NOT_REPRODUCIBLE = "HARDWARE_MAPPING_NOT_REPRODUCIBLE"
@@ -579,6 +608,10 @@ class CandidateBackedBindingEvaluator:
     ) -> Sequence[ProposalIssueCode]:
         expected = evidence.deterministic_bindings.get(proposal.operation, ProposalBindingSet())
         issues: set[ProposalIssueCode] = set()
+        if not set(proposal.evidence_refs + proposal.counter_evidence_refs) <= set(
+            expected.evidence_refs
+        ):
+            issues.add(ProposalIssueCode.EVIDENCE_MAPPING_NOT_REPRODUCIBLE)
         if not set(proposal.route_resource_ids) <= set(expected.route_resource_ids):
             issues.add(ProposalIssueCode.ROUTE_MAPPING_NOT_REPRODUCIBLE)
         if not set(proposal.executable_ids) <= set(expected.executable_ids):
@@ -622,6 +655,14 @@ class ProposalValidator:
         for name, digest in request.input_artifact_sha256.items():
             if bundle.provenance.input_artifact_sha256.get(name) != digest:
                 raise ProposalBundleRejected(f"proposal bundle provenance mismatch: {name}")
+        if bundle.provenance.skill_name != request.mapping_skill_name:
+            raise ProposalBundleRejected(
+                "proposal bundle provenance skill does not match the trusted mapping skill"
+            )
+        if bundle.provenance.skill_version != request.mapping_skill_version:
+            raise ProposalBundleRejected(
+                "proposal bundle provenance skill version does not match the trusted pin"
+            )
 
         evidence = request.discovery_evidence
         accepted: list[AgentOperationProposal] = []
@@ -711,6 +752,7 @@ def _metrics(
     }
     false_positive_codes = {
         ProposalIssueCode.OPERATION_OUTSIDE_TARGET_SLICE,
+        ProposalIssueCode.EVIDENCE_MAPPING_NOT_REPRODUCIBLE,
         ProposalIssueCode.ROUTE_MAPPING_NOT_REPRODUCIBLE,
         ProposalIssueCode.EXECUTABLE_MAPPING_NOT_REPRODUCIBLE,
         ProposalIssueCode.HARDWARE_MAPPING_NOT_REPRODUCIBLE,
