@@ -1,4 +1,4 @@
-# P4 Adapt 启发式 Agent、约 140 项 Registry 与 Verified Tool Gateway 改版计划
+# P4 Adapt 启发式 Agent、Registry Core 与 Verified Tool Gateway 改版计划
 
 ## 0. 决策与启动结论
 
@@ -11,9 +11,8 @@
    Active Tool Catalog；
 4. 只有 release 中状态为 `VERIFIED` 的 Operation，才能通过 Tool Gateway 提供给后续
    Diagnose/Verify Agent；
-5. 在 Agent Proposal 契约冻结前，先把当前 294 项 Registry 精简为约 140 项核心词汇；不为
-   LeRobot 或单一厂商保留专用 Operation，被移出项进入独立兼容清单而不是继续占用活动
-   Registry；
+5. Registry Core 本轮以完整 294 项 Operation 为权威基线先行开发；Contracts 不枚举
+   Operation，因此兼容未来数量变化，但约 140 项精简不作为 P4 启动或合入前置；
 6. 所有新技能统一使用 `rolo-` 前缀。
 
 这允许启发式能力加速“不知道目标工程有什么”的阶段，同时保留当前架构中最重要的安全
@@ -37,8 +36,8 @@
 - Agent 还没有统一的“证据引用式 Operation 提案”契约；
 - `agentd` 目前只提供工具列表，没有面向后续 Agent 的受控调用会话；
 - Diagnose/Verify handoff 尚未冻结到具体 release、Catalog 哈希和允许工具集合；
-- Registry 从 294 精简到约 140 会改变治理、契约、Catalog、release 摘要和旧引用，但尚无
-  冻结的保留清单、兼容清单和迁移门。
+- Registry Core 需要先完成 294 项下的身份摘要、契约覆盖、Catalog 完整性和兼容门；未来
+  如果精简到约 140 项，仍需另行冻结保留清单、兼容清单和迁移门。
 
 ## 2. 目标架构与信任边界
 
@@ -291,8 +290,8 @@ Operation ID 是受长度和格式约束的 opaque canonical ID，是否存在�
 
 ### 6.1 当前测量基线
 
-当前代码 Registry 共 294 个 Operation；Wave 1 目标是冻结约 140 项活动 Core Registry，具体
-数量允许在 130–150 之间，以语义闭环和验证能力优先，不为凑整数保留或删除条目。
+当前代码及 Wave 1 Registry Core 均以 294 个 Operation 为权威基线。本轮先稳定完整词汇、
+identity/hash、contract/governance 覆盖和 Catalog 行为，不在并行开发期间删除 Operation。
 
 | 维度 | 数量 |
 |---|---:|
@@ -314,24 +313,25 @@ Operation ID 是受长度和格式约束的 opaque canonical ID，是否存在�
 源码侧 contract + governance 的直接线性成本约为 1.2 KB/Operation；实际维护成本更高，因为
 每个 Operation 还会进入 schema、文档、Catalog 完整性、release digest 和回归测试。
 
-140 项估算只用于容量和工期规划，最终大小取决于保留 Operation 的 contract 复杂度。Registry
-缩减对 Agent prompt 的收益小于 52%，因为当前 Target Operation Slice 已经避免完整注入；主要
-收益是治理面、Catalog 完整性、测试矩阵和人类评审面的缩小。
+140 项估算只保留为未来容量规划，最终大小取决于保留 Operation 的 contract 复杂度。Registry
+缩减对 Agent prompt 的收益小于 52%，因为当前 Target Operation Slice 已经避免完整注入；它
+不是本轮 Contracts、Skills、Proposal、Gateway 或 Downstream 开发的阻塞条件。
 
 ### 6.2 对本方案的影响模型
 
 | 变化 | Agent 上下文 | 构建/校验 | 治理与兼容性 | 方案处理 |
 |---|---|---|---|---|
-| 294 → 约 140 | Slice 下只小幅下降 | Catalog/文档约减半 | 154 项左右的旧引用迁移是主成本 | 必须先于 Proposal v1 冻结 |
-| 维持 130–150 | 上下文稳定 | 明显低于当前量级 | 审核边界清晰 | P4 默认预算带 |
+| 维持 294 | Slice 下保持有界 | 当前量级 | 无删除迁移；身份和覆盖可先稳定 | P4 当前权威基线 |
+| 294 → 约 140 | Slice 下只小幅下降 | Catalog/文档约减半 | 154 项左右的旧引用迁移是主成本 | 后续独立 RFC，不阻塞 P4 |
+| 维持 130–150 | 上下文稳定 | 明显低于当前量级 | 审核边界清晰 | 未来可选预算带 |
 | 新增 1–12 | 基本不变 | 线性小幅增加 | 每项均需契约与治理决定；摘要失效 | 独立 Registry RFC |
 | 再增长到 200+ | Slice 下仍有界 | Catalog/完整性 O(N) 增加 | 重新审视 Core 选择标准 | 不自动放宽预算带 |
 | 新增约 1000 | 禁止完整注入提示词 | Registry/Catalog 增加约 2–3 MB | 人工治理不可接受 | 分页、分片和多层 Registry 另案 |
 | 删除/重命名 | Slice 可控 | 摘要和 release 全部重算 | 兼容别名、旧 Wiki/release 迁移最贵 | 非紧急不做；单独 RFC |
 
-关键结论：从 294 精简到约 140 值得做，但理由是聚焦可验证产品闭环和降低治理面，不是为了
-解决 Agent 上下文问题。缩减必须作为 P4 的前置迁移，不能在 Proposal、Tool Session 和 release
-已经绑定新哈希后再进行。
+关键结论：P4 可以并且应当先在 294 项上开发。Contracts 通过数量无关 schema 与精确
+`registry_version + registry_sha256` 绑定隔离未来变化；从 294 精简到约 140 需要发布新的
+Registry identity 和迁移规则，但无需推翻 Proposal 或 Tool Session 字段语义。
 
 ### 6.3 Registry 变更触发门
 
@@ -346,7 +346,7 @@ Operation ID 是受长度和格式约束的 opaque canonical ID，是否存在�
 LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、策略训练/推理等确有缺口时，也应
 抽象为跨工程语义，而不是使用 `lerobot.*` 命名。
 
-### 6.4 294 → 约 140 的迁移规则
+### 6.4 未来 294 → 约 140 的迁移规则
 
 保留项必须至少满足一项：进入 P0/P4 纵向闭环、已有真实 route/Adapter、属于必要的安全与
 证据基础设施、或能被两个以上不同工程以同一语义验证。仅有远期愿景、与具体平台强绑定、
@@ -357,7 +357,7 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 - 写入版本化 `legacy-operation-dispositions`，记录旧 ID、原因和替代项；
 - 旧 release 可审计读取，但不得用已移出 Operation 创建新的 Tool Session；
 - 不在同一波次重命名保留项，避免把删除和 rename 风险叠加；
-- 精确覆盖测试从 294 改为约 140 活动项 + 全部 legacy disposition；
+- 精确覆盖测试届时从 294 改为约 140 活动项 + 全部 legacy disposition；
 - Registry、contract、governance、schema、Catalog fixture、Wiki 引用和 release migration 必须
   在同一 worktree 内原子更新。
 
@@ -366,18 +366,20 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 ### 7.1 Wave 0：共同设计基线（本提交）
 
 - 以远端 Python/CI/LeRobot 分支为代码父基线；
-- 提交本计划，冻结约 140 项目标、三个技能、Tool Gateway 边界和 worktree 所有权；
+- 提交本计划，冻结 294 项当前基线、三个技能、Tool Gateway 边界和 worktree 所有权；
 - 不在 Wave 0 修改 Registry、Discovery、eligibility、Catalog 或 release 行为。
 
-### 7.2 Wave 1：Registry Core 与 Contracts 并行（约 1–2 周）
+### 7.2 Wave 1：全部 worktree 并行开发（约 1–3 周）
 
-- Registry Core 从 294 项筛选并冻结 130–150 项活动词汇，同步更新 contract、governance、
-  legacy disposition、生成物和覆盖测试；
-- Contracts 从 Wave 0 同步启动，新增 Proposal/Bundle/Tool Session schema 和 Validator 接口；
-- Contracts 不枚举 Operation，使用 294 基线 + 约 140 投影双 fixture；
-- Registry Core 输出新 hash 后，Contracts 只更新目标 fixture/hash 并运行兼容矩阵。
+- Registry Core 在完整 294 项上稳定 identity/hash、contract/governance、Catalog 和覆盖测试；
+- Contracts 新增 Proposal/Bundle/Tool Session schema 和 Validator 接口，不枚举 Operation，
+  使用真实 294 基线 + 约 140 合成投影双 fixture；
+- Skills、Proposals、Tool Gateway、Downstream Agents 均从 Wave 0 创建独立 worktree，按文件
+  所有权同步开发；
+- 下游 worktree 使用 Contracts draft 接口或本地 fixture，不复制 Registry，不提前获得发布权；
+- 并行开发不改变顺序集成门，跨分支接口通过提交 hash 显式同步。
 
-### 7.3 Wave 2：启发式发现与映射（约 2–3 周）
+### 7.3 Wave 2：顺序集成与启发式 shadow（约 2–3 周）
 
 - 建立三个 `rolo-` 技能、严格输出契约和离线 fixture；
 - Discovery 接入计划提案、Operation proposal artifact 和确定性 Validator；
@@ -396,10 +398,10 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 - 前后置条件与独立机器验证；
 - 真机失败恢复和安全测试。
 
-不设置独立 Coding 技能预计减少约 5–8 个技能/胶水/测试文件和 0.5–1 周，但 294 → 约 140
-的兼容迁移会增加约 1–2 周。只读 MVP 合计预计改动 5,000–8,000 行、25–40 个文件、5–7 周/
+不设置独立 Coding 技能预计减少约 5–8 个技能/胶水/测试文件和 0.5–1 周；本轮保持 294 项，
+不计入未来精简迁移的 1–2 周。只读 MVP 合计预计改动 5,000–8,000 行、25–40 个文件、4–6 周/
 单工程师；含写入/运动和完整下游 Agent 执行器的方案约 8,000–13,000 行、30–50 个文件、
-8–12 周。生成文档和删除旧 contract 造成的行数变化不计为功能复杂度。
+7–11 周。多 worktree 可以缩短多人协作的日历时间，但不降低总工程量和顺序集成成本。
 
 ## 8. Worktree 设计
 
@@ -420,7 +422,7 @@ LeRobot 首轮适配先映射到保留的通用 Operation。数据集采集、�
 `codex/adapt-capability-integration`；从远端分支新建集成分支，再 cherry-pick `de78a27` 和
 Wave 0 设计提交，既保留历史，也避免后续 Proposal worktree 重做 Discovery 冲突。Registry
 Core 继续使用既有 `codex/adapt-capability-integration`：在其独立 worktree 中先 merge Wave 0，
-再开始约 140 项收敛，不改写该分支的远端历史。
+再在完整 294 项上开发，不改写该分支的远端历史。
 
 Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 worktree 才使用下表的独立目录，
 并且只从 Wave 0 提交或其已合并后继提交创建。
@@ -429,12 +431,12 @@ Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 wo
 
 | Worktree / 分支 | 文件所有权与交付 | 依赖 | 禁止触碰 |
 |---|---|---|---|
-| `robot-loop-registry-core` / `codex/adapt-capability-integration`（既有） | 先合入 Wave 0；再完成约 140 项选择、contract/governance、legacy disposition、迁移与覆盖测试 | Wave 0 | Agent、Runtime 业务代码 |
-| `robot-loop-adapt-contracts` / `codex/adapt-agent-contracts` | 与 Operation 数量无关的 Proposal、Bundle、Tool Session 模型；294/约 140 双 fixture；schema 导出；validator 接口 | Wave 0；最终验收等待 Registry Core hash | Registry、contract YAML、governance、生成文档 |
-| `robot-loop-adapt-skills` / `codex/adapt-agent-skills` | 三个 `rolo-` 技能；Wiki 兼容迁移；fixture；技能校验测试 | contracts schema | Registry、Discovery 主流程 |
-| `robot-loop-adapt-proposals` / `codex/adapt-proposal-orchestration` | Discovery skill runner、mapping provider、proposal artifact、validator、fallback/metrics | contracts；最终验收等待 Registry Core | Runtime gateway、Registry 词汇 |
-| `robot-loop-adapt-tool-gateway` / `codex/adapt-tool-gateway` | Tool Session、会话 list/invoke、policy/audit、Runtime 接线 | contracts | Discovery 和技能提示词 |
-| `robot-loop-adapt-downstream` / `codex/adapt-downstream-agents` | Diagnose/Verify handoff 绑定与只读工具消费 | contracts + gateway | Registry 和 Adapter 生成 |
+| `robot-loop-registry-core` / `codex/adapt-capability-integration`（既有） | 先合入 Wave 0；再稳定 294 项 identity/hash、contract/governance、Catalog 和覆盖测试 | Wave 0 | Agent、Runtime 业务代码 |
+| `robot-loop-adapt-contracts` / `codex/adapt-agent-contracts` | 与 Operation 数量无关的 Proposal、Bundle、Tool Session 模型；真实 294/合成约 140 双 fixture；schema 导出；validator 接口 | Wave 0 | Registry、contract YAML、governance、生成文档 |
+| `robot-loop-adapt-skills` / `codex/adapt-agent-skills` | 三个 `rolo-` 技能；Wiki 兼容迁移；fixture；技能校验测试 | Wave 0 + Contracts draft | Registry、Discovery 主流程 |
+| `robot-loop-adapt-proposals` / `codex/adapt-proposal-orchestration` | Discovery skill runner、mapping provider、proposal artifact、validator、fallback/metrics | Wave 0 + Contracts draft；集成时要求正式 Contracts | Runtime gateway、Registry 词汇 |
+| `robot-loop-adapt-tool-gateway` / `codex/adapt-tool-gateway` | Tool Session、会话 list/invoke、policy/audit、Runtime 接线 | Wave 0 + Contracts draft；集成时要求正式 Contracts | Discovery 和技能提示词 |
+| `robot-loop-adapt-downstream` / `codex/adapt-downstream-agents` | Diagnose/Verify handoff 绑定与只读工具消费 | Wave 0 + Contracts/Gateway draft；集成时要求正式 Gateway | Registry 和 Adapter 生成 |
 
 所有目录建议位于 `C:\Users\zarch\Desktop`，避免嵌套在当前仓库。当前工作树中的未跟踪测试
 产物不带入新 worktree，也不删除或暂存。
@@ -442,19 +444,21 @@ Wave 0 已按上述策略在当前 worktree 建立新集成分支。后续子 wo
 ### 8.3 启动与合并波次
 
 1. **Wave 0**：远端 P0/CI/LeRobot + `de78a27` + 本设计，形成共同基线；
-2. **Wave 1 启动同步**：为既有 `codex/adapt-capability-integration` 创建 Registry Core
-   worktree 并 merge Wave 0；同时从 Wave 0 创建 contracts worktree；
-3. **Wave 1 并行开发**：Registry Core 冻结约 140 项和新 hash；Contracts 以 294 + 约 140
-   投影 fixture 开发数量无关的 schema，双方不得修改对方所有权文件；
-4. **Wave 2A**：先把 Registry Core 合回 integration，再合入 Contracts 并替换最终目标 hash；
-5. **Wave 2B（可并行）**：上述兼容矩阵通过后创建 skills、proposals、tool-gateway；
-6. **Wave 3**：gateway 稳定后创建 downstream；proposal shadow 达标后启用新候选路径；
+2. **Wave 1 启动同步**：Registry Core 先 merge Wave 0；Contracts、Skills、Proposals、
+   Tool Gateway、Downstream Agents 全部从 Wave 0 创建独立 worktree；
+3. **Wave 1 并行开发**：Registry Core 保持 294 项；Contracts 固化数量无关 schema；其余分支
+   使用 draft interface/fixture 开发，任何分支不得修改其他分支所有权文件；
+4. **Wave 2A**：先把 Registry Core 合回 integration，再合入 Contracts 并运行 294 identity/hash
+   与 schema 矩阵；
+5. **Wave 2B**：依次合入 skills、proposals、tool-gateway；每一步重放定向与全量测试；
+6. **Wave 3**：gateway 稳定后合入 downstream；proposal shadow 达标后启用新候选路径；
 7. **最终集成**：Registry Core → contracts → skills → proposals → tool-gateway → downstream；
 8. 最后由 integration 独占生成 schema/docs，并运行 Python 矩阵、LeRobot opt-in、全量回归、
    shadow 与 canary。
 
-Registry Core 是强制前置而不是可选分支。它会改变 Registry、contract、Catalog 和 release
-摘要；其他分支不得自行恢复旧 Operation 或更新冲突的生成物。
+Registry Core 与其他 worktree 同步开发，但在集成序列中先行。它保持 294 项权威词汇并稳定
+Registry、contract、Catalog 和 release 摘要；其他分支不得自行增删 Operation 或更新冲突的
+生成物。
 
 ## 9. 验收门
 
@@ -492,14 +496,13 @@ Registry Core 是强制前置而不是可选分支。它会改变 Registry、con
 
 ## 10. 启动检查清单
 
-- [ ] 本计划评审通过并提交为设计基线；
-- [ ] 以远端 `codex/p0-python-ci-lerobot`、`de78a27` 和本提交形成 Wave 0；
-- [ ] 记录 294 项 Registry/contract/governance/Catalog 摘要和性能基线；
-- [ ] 冻结约 140 项的选择准则、legacy disposition schema 和迁移验收；
-- [ ] 为 Proposal、Bundle、Tool Session 冻结数量无关的 `v1` schema；
-- [ ] 为既有 `codex/adapt-capability-integration` 创建 Registry Core worktree，并无冲突合入 Wave 0；
-- [ ] 从 Wave 0 同步创建 Contracts，并建立 294 + 约 140 投影双 fixture；
-- [ ] Registry Core 与 Contracts 依次合回并通过最终 hash 矩阵后，再创建三个并行 worktree；
+- [x] 本计划评审通过并提交为设计基线；
+- [x] 以远端 `codex/p0-python-ci-lerobot`、`de78a27` 和本提交形成 Wave 0；
+- [x] 记录 294 项 Registry/contract/governance/Catalog 摘要和性能基线；
+- [x] 为 Proposal、Bundle、Tool Session 实现数量无关的 `v1` schema；
+- [x] 为既有 `codex/adapt-capability-integration` 创建 Registry Core worktree，并无冲突合入 Wave 0；
+- [x] 从 Wave 0 创建全部并行 worktree；Contracts 建立真实 294 + 合成约 140 双 fixture；
+- [ ] 各 worktree 按所有权完成开发，Registry Core 与 Contracts 先通过 294 hash/schema 矩阵；
 - [ ] LeRobot E2E 作为首个真实工程验收，不为其保留仓库专用 Operation；
 - [ ] 建立 1,000 无关 Operation 的上下文与 Catalog 规模测试；
 - [ ] shadow 指标至少包含有效提案率、错误引用率、误报率、token/延迟、fallback 原因；
@@ -507,7 +510,7 @@ Registry Core 是强制前置而不是可选分支。它会改变 Registry、con
 
 ## 11. Go / No-Go 标准
 
-可以启动实现，前提是先完成 294 → 约 140 的 Registry Core 收敛，再冻结 Agent Proposal
-契约；第一阶段只做三个 `rolo-` 技能、Agent 提案和只读 Verified Tool Gateway。若要求首版
+已经可以在完整 294 项 Registry 上并行开发。第一阶段只做三个 `rolo-` 技能、Agent 提案和
+只读 Verified Tool Gateway；约 140 项精简留作独立后续 RFC。若要求首版
 同时支持重新扩张 Registry、运动控制和自动发布，则应判定 No-Go 并拆成独立项目，因为这会
 同时扩大语义治理、安全授权和真机验证三个风险面。
