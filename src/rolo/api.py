@@ -40,9 +40,11 @@ from rolo.discovery_history_read_models import (
 )
 from rolo.fleet_read_models import (
     FleetBlockerCollection,
+    FleetBlockerDetail,
     FleetCollection,
     build_fleet_blocker_collection,
     build_fleet_collection,
+    get_fleet_blocker_detail,
 )
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
@@ -370,6 +372,24 @@ async def list_fleet_blockers(
         robot_id=robot_id,
         stage=stage,
     )
+
+
+@app.get("/v1/blockers/{blocker_id}", response_model=FleetBlockerDetail)
+async def get_fleet_blocker(blocker_id: str, request: Request) -> FleetBlockerDetail:
+    runtime = get_runtime(request)
+    try:
+        return get_fleet_blocker_detail(
+            runtime.registry.list(),
+            _fleet_pipelines(runtime),
+            blocker_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Fleet blocker is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Fleet blocker evidence failed integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}", response_model=RobotCapability)

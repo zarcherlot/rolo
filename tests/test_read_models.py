@@ -70,7 +70,9 @@ def test_blocked_overview_has_stable_evidence_bound_blocker() -> None:
 
     assert first.state is OverviewState.ATTENTION
     assert first.blockers[0].blocker_id == second.blockers[0].blocker_id
-    assert first.blockers[0].recommended_action == "Run adapt discovery"
+    assert first.blockers[0].recommended_action == (
+        "Resolve the reported Adapt blocker, then reassess the pipeline."
+    )
     assert first.blockers[0].source_kind == "pipeline_assessment"
 
 
