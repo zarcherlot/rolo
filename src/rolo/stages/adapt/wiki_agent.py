@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections import deque
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,9 @@ from urllib.parse import urlparse
 from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.codex_output_schema import codex_output_schema
 from rolo.stages.adapt.wiki_insights import (
+    RoloWikiHeuristicFinding,
     RoloWikiInsightBundle,
     RoloWikiValidationContext,
     WikiInsightBundle,
@@ -24,6 +27,8 @@ from rolo.stages.adapt.wiki_insights import (
 MAX_AGENT_CONTEXT_CHARS = 40_000
 MAX_AGENT_STRING_CHARS = 1_000
 MAX_CONTEXT_EXECUTABLES = 24
+MAX_AGENT_EVIDENCE_REFS = 512
+WIKI_SKILL_VERSION = "1.0.0"
 
 
 def _toml_string(value: str) -> str:
@@ -320,6 +325,33 @@ def _evidence_reference_allowlist(value: Any, path: str = "") -> frozenset[str]:
     return frozenset(refs)
 
 
+def _bounded_evidence_reference_allowlist(value: Any) -> frozenset[str]:
+    refs = _evidence_reference_allowlist(value)
+    grouped: dict[str, deque[str]] = {}
+    for ref in refs:
+        root = ref.split(".", 1)[0].split("[", 1)[0]
+        grouped.setdefault(root, deque()).append(ref)
+    for root, values in grouped.items():
+        grouped[root] = deque(
+            sorted(
+                values,
+                key=lambda ref: (ref.count(".") + ref.count("["), len(ref), ref),
+            )
+        )
+    selected: list[str] = []
+    while len(selected) < MAX_AGENT_EVIDENCE_REFS:
+        progressed = False
+        for root in sorted(grouped):
+            if values := grouped[root]:
+                selected.append(values.popleft())
+                progressed = True
+                if len(selected) == MAX_AGENT_EVIDENCE_REFS:
+                    break
+        if not progressed:
+            break
+    return frozenset(selected)
+
+
 class CodexWikiInsightProvider:
     """Apply the bundled heuristic skill without granting write or execution authority."""
 
@@ -350,6 +382,7 @@ class CodexWikiInsightProvider:
         command = [
             self.executable,
             "exec",
+            "--skip-git-repo-check",
             "--json",
             "--ephemeral",
             "--sandbox",
@@ -435,7 +468,7 @@ class CodexWikiInsightProvider:
             input_artifact_sha256={
                 "discovery-context": sha256_bytes(context.encode("utf-8"))
             },
-            allowed_evidence_refs=_evidence_reference_allowlist(selected),
+            allowed_evidence_refs=_bounded_evidence_reference_allowlist(selected),
         )
 
     def infer(
@@ -453,7 +486,7 @@ class CodexWikiInsightProvider:
             input_artifact_sha256={
                 "discovery-context": sha256_bytes(context.encode("utf-8"))
             },
-            allowed_evidence_refs=_evidence_reference_allowlist(selected),
+            allowed_evidence_refs=_bounded_evidence_reference_allowlist(selected),
         )
         output_bindings = json.dumps(
             {
@@ -461,7 +494,12 @@ class CodexWikiInsightProvider:
                 "target_fingerprint_sha256": validation_context.target_fingerprint_sha256,
                 "release_id": validation_context.release_id,
                 "conformance_sha256": validation_context.conformance_sha256,
-                "evidence_ref_rule": "Use exact JSON paths present in the evidence object.",
+                "evidence_ref_rule": (
+                    "Use only exact strings from allowed_evidence_refs; do not add '$', '/', "
+                    "or another path notation."
+                ),
+                "allowed_evidence_refs": sorted(validation_context.allowed_evidence_refs),
+                "allowed_unknown_assessments": active.unknowns,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -478,7 +516,19 @@ class CodexWikiInsightProvider:
             schema = workspace / "wiki-insights.schema.json"
             output = workspace / "final-message.json"
             schema.write_text(
-                json.dumps(RoloWikiInsightBundle.model_json_schema(), ensure_ascii=False, indent=2),
+                json.dumps(
+                    codex_output_schema(
+                        RoloWikiInsightBundle,
+                        fixed_string_map_keys={
+                            "input_artifact_sha256": (
+                                validation_context.input_artifact_sha256
+                            )
+                        },
+                        fixed_string_enums={"unknown": active.unknowns},
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
             completed = subprocess.run(
@@ -504,6 +554,30 @@ class CodexWikiInsightProvider:
             bundle = RoloWikiInsightBundle.model_validate_json(
                 output.read_text(encoding="utf-8")
             )
+        provenance_update = {"skill_version": WIKI_SKILL_VERSION}
+        if self.model:
+            provenance_update["model_id"] = self.model
+        bundle = bundle.model_copy(
+            update={
+                "findings": [
+                    item.model_copy(
+                        update={"author_skill_version": WIKI_SKILL_VERSION}
+                    )
+                    if isinstance(item, RoloWikiHeuristicFinding)
+                    else item
+                    for item in bundle.findings
+                ],
+                "unknown_assessments": [
+                    item.model_copy(
+                        update={"author_skill_version": WIKI_SKILL_VERSION}
+                    )
+                    for item in bundle.unknown_assessments
+                ],
+                "provenance": bundle.provenance.model_copy(
+                    update=provenance_update
+                ),
+            }
+        )
         if bundle.robot_id != report.robot_id or bundle.discovery_id != report.discovery_id:
             raise ValueError("Wiki insight Agent output identity does not match discovery")
         findings = [

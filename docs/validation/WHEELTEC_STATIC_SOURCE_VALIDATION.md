@@ -68,3 +68,61 @@ configured Codex provider and should persist:
 Because this can transmit source-derived content to an external model provider, it requires explicit
 fixture-owner authorization. The local-only result above is the safe default validation when that
 authorization is absent.
+
+## Authorized real-Agent result
+
+The fixture owner explicitly authorized transmission of the bounded source-derived context. A real
+Codex run was then completed in `shadow` mode with model `gpt-5.4`:
+
+- Discovery ID: `disc-20260822T094205-483f7c96`
+- Heuristic status: `AGENT_COMPLETED`
+- Registry slice: 20 of 294 Operations
+- Inferred Operations: `app.camera.snapshot`, `app.teleop.velocity`
+- Accepted proposals: 2 of 2
+- Rejected proposals: 0
+- Invalid evidence references: 0
+- Applied candidates: 0 (`shadow` mode)
+- Eligible Operations: 0
+- Deferred reason for both deterministic candidates: `TARGET_ROUTE_NOT_OBSERVED`
+- Missing evidence: 16 items
+- Release influence: false
+
+`rolo-adapt-discovery` correctly proposed no repeated action: the source-interface query was already
+complete and the remaining gaps require `BUILT_WORKSPACE`, `TARGET_HOST`, or `RUNTIME_ROS`. It
+preserved 38 unresolved ROS dependencies as Unknowns.
+
+`rolo-operation-mapping` proposed the two evidence-bound Operations above and requested runtime
+route observation for `/image_raw` and `/cmd_vel`. The deterministic Validator accepted both as
+proposals, but neither proposal was allowed to become Verified, eligible, registered, or released.
+
+An isolated `rolo-wiki-authoring` caller validation against the same frozen discovery produced seven
+merged findings and eight exact Unknown assessments. Provenance was caller-pinned to skill version
+`1.0.0` and model `gpt-5.4`; evidence references and Unknown text both passed their caller-owned
+allowlists without fallback.
+
+The canonical Agent artifacts are under:
+
+```text
+.validation-wheeltec/artifacts/discovery/demo_diff/runs/
+  disc-20260822T094205-483f7c96/heuristic/
+```
+
+## Real-provider debugging findings
+
+The real run exposed integration failures that fixture providers could not reveal:
+
+1. Codex temporary workspaces are intentionally not Git repositories. Providers must pass
+   `--skip-git-repo-check` while retaining `--sandbox read-only` and `--ephemeral`.
+2. Canonical Pydantic schemas are richer than the Codex Structured Outputs subset. The provider
+   schema copy removes unsupported property-count keywords, marks every object property required,
+   closes unused dynamic objects, fixes provenance hash-map keys to the caller-known set, and prunes
+   unreachable definitions. The canonical schemas and post-generation Pydantic validation remain
+   unchanged.
+3. Agent self-reported model and skill versions are not trusted. Configured model identity and the
+   trusted Wiki skill version are caller-owned provenance.
+4. Wiki evidence references and Unknown assessments must be supplied as bounded exact allowlists.
+   Natural-language path instructions alone caused correct fail-closed rejection.
+5. The installed Codex CLI and desktop model cache were schema-skewed in this environment. Explicitly
+   pinning `CODING_AGENT_MODEL=gpt-5.4` avoided treating the stale cache as model selection authority.
+6. WebSocket requests timed out and Codex recovered through HTTPS. Provider timeouts therefore need
+   to cover the transport fallback as well as model generation.

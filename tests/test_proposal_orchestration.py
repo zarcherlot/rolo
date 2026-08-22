@@ -83,6 +83,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
         mapping_skill_path=mapping_skill,
+        model="fixture-model",
         api_key="fixture-secret",
     )
 
@@ -91,6 +92,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     assert actual == expected
     command = captured["command"]
     assert isinstance(command, list)
+    assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert "fixture-secret" not in json.dumps(command)
     assert "UNTRUSTED FROZEN DISCOVERY REQUEST" in str(captured["input"])

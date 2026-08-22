@@ -26,6 +26,7 @@ from rolo.stages.adapt.agent_contracts import (
     registry_identity_sha256,
     validate_operation_proposal_bundle,
 )
+from rolo.stages.adapt.codex_output_schema import codex_output_schema
 from rolo.stages.adapt.operation_registry import (
     CanonicalOperationDefinition,
     CanonicalOperationRegistry,
@@ -351,6 +352,25 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _process_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
+    lines = [
+        line.strip()
+        for stream in (completed.stderr, completed.stdout)
+        for line in (stream or "").splitlines()
+        if line.strip()
+    ]
+    signals = [
+        line
+        for line in lines
+        if any(
+            marker in line.casefold()
+            for marker in ("error", "failed", "invalid", "schema", "timed out", "timeout")
+        )
+    ]
+    selected = (signals or lines)[-3:]
+    return " | ".join(line[:600] for line in selected)[:1_800]
+
+
 class CodexOperationMappingProvider:
     """Execute the discovery and mapping skills with read-only Agent authority."""
 
@@ -383,6 +403,7 @@ class CodexOperationMappingProvider:
         command = [
             self.executable,
             "exec",
+            "--skip-git-repo-check",
             "--json",
             "--ephemeral",
             "--sandbox",
@@ -477,7 +498,12 @@ class CodexOperationMappingProvider:
             output = workspace / "final-message.json"
             schema.write_text(
                 json.dumps(
-                    OperationProposalBundle.model_json_schema(),
+                    codex_output_schema(
+                        OperationProposalBundle,
+                        fixed_string_map_keys={
+                            "input_artifact_sha256": request.input_artifact_sha256
+                        },
+                    ),
                     ensure_ascii=False,
                     indent=2,
                 ),
@@ -499,16 +525,25 @@ class CodexOperationMappingProvider:
             except subprocess.TimeoutExpired as exc:
                 raise TimeoutError("Operation mapping Agent timed out") from exc
             if completed.returncode != 0:
-                detail = (completed.stderr or completed.stdout).strip().splitlines()
-                suffix = f": {detail[-1][:300]}" if detail else ""
+                detail = _process_failure_detail(completed)
+                suffix = f": {detail}" if detail else ""
                 raise RuntimeError(
                     f"Operation mapping Agent exited with code {completed.returncode}{suffix}"
                 )
             if not output.is_file():
                 raise RuntimeError("Operation mapping Agent did not produce a final message")
-            return OperationProposalBundle.model_validate_json(
+            bundle = OperationProposalBundle.model_validate_json(
                 output.read_text(encoding="utf-8")
             )
+            if self.model:
+                bundle = bundle.model_copy(
+                    update={
+                        "provenance": bundle.provenance.model_copy(
+                            update={"model_id": self.model}
+                        )
+                    }
+                )
+            return bundle
 
 
 class ProposalIssueCode(str, Enum):

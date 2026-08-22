@@ -580,3 +580,19 @@ schema 和独立 Gate 约束的工程生成任务；可复用的领域判断才�
 
 离线工程没有候选或 Agent 不可用不是发现失败。系统必须持久化 fallback 原因和 Evidence Gap，
 让开发者知道下一次应在目标机或已构建环境补采什么，而不是输出空白或伪装成已验证结果。
+
+### 12.4 真实 Provider 也是契约边界
+
+Mock Provider 只能证明编排逻辑，不能证明真实 Codex 进程能够接受契约。真实 Provider 必须把
+canonical Pydantic Schema 转换为 Structured Outputs 支持的副本，同时保留原 Schema 作为最终
+确定性校验：
+
+- 临时工作目录不是 Git 仓库，因此显式跳过仓库检查，但仍使用 `read-only` sandbox；
+- 动态 provenance hash map 按 caller 已知键收紧为固定对象，不能由 Agent 新增键；
+- Wiki Evidence 引用和可评估 Unknown 由 caller 提供有界精确 allowlist；
+- 配置模型 ID、可信技能名和技能版本属于 caller provenance，不接受 Agent 自报值；
+- 输出即使通过 Structured Outputs，仍必须经过 Pydantic、身份、Evidence、Registry 和 Gate 复算；
+- 传输超时、Schema 不兼容、模型不可用或引用越界均 fail closed，并持久化有界诊断。
+
+因此，“Agent 返回了 JSON”不是成功条件；只有真实进程、输出 Schema、caller provenance、
+确定性 Validator 和授权 Gate 全链通过，才能标记 `AGENT_COMPLETED`。

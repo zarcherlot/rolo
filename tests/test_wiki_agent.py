@@ -7,8 +7,10 @@ import pytest
 
 from rolo.stages.adapt.wiki_agent import (
     MAX_AGENT_CONTEXT_CHARS,
+    MAX_AGENT_EVIDENCE_REFS,
     CodexWikiInsightProvider,
     _bounded_context,
+    _bounded_evidence_reference_allowlist,
     _selected_context,
 )
 from tests.test_wiki import _review_inputs
@@ -87,16 +89,37 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
 
     command = captured["command"]
     assert isinstance(command, list)
+    assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
+    assert bundle.findings[0].author_skill_version == "1.0.0"
     assert bundle.unknown_assessments[0].source == "ADAPT_AGENT_SKILL"
+    assert bundle.unknown_assessments[0].author_skill_version == "1.0.0"
+    assert bundle.provenance.skill_version == "1.0.0"
     assert "TRUSTED OUTPUT BINDINGS" in str(captured["input"])
+    assert "allowed_evidence_refs" in str(captured["input"])
+    assert "allowed_unknown_assessments" in str(captured["input"])
     assert "UNTRUSTED DISCOVERY EVIDENCE" in str(captured["input"])
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+
+
+def test_wiki_evidence_allowlist_is_bounded_and_prefers_addressable_parents() -> None:
+    context = {
+        "active_discovery": {
+            "unknowns": [f"unknown-{index}" for index in range(1_000)],
+        },
+        "operation_candidates": [{"operation": "app.camera.snapshot"}],
+    }
+
+    refs = _bounded_evidence_reference_allowlist(context)
+
+    assert len(refs) == MAX_AGENT_EVIDENCE_REFS
+    assert "active_discovery.unknowns" in refs
+    assert "operation_candidates[0].operation" in refs
 
 
 def test_wiki_insight_context_uses_a_serialized_character_budget() -> None:
