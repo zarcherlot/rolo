@@ -16,5 +16,6 @@ artifacts/
 logs/
 .idea/
 .vscode/
+.DS_Store
 BP/
 .validation/
