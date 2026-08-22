@@ -34,6 +34,11 @@ from rolo.invocation_policy import (
 )
 from rolo.runtime_context import AdapterRuntimeContext
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.agent_contracts import (
+    AgentOperationProposal,
+    OperationProposalBundle,
+    ToolSessionDescriptor,
+)
 from rolo.stages.adapt.baseline import AdaptBaselineSnapshot
 from rolo.stages.adapt.hardware_provider import (
     HardwareEvidenceProviderRequest,
@@ -126,6 +131,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     SoftwareSummary,
     DirectDependencyReport,
     ActiveDiscoveryReport,
+    AgentOperationProposal,
+    OperationProposalBundle,
+    ToolSessionDescriptor,
     AdaptOperationWorkset,
     TargetOperationSlice,
     TargetOperationSliceShadowReport,
