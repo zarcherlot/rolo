@@ -294,7 +294,10 @@ class CodexDiscoveryPlanningProvider:
             "COMSPEC",
             "TMP",
             "TEMP",
+            "HOME",
             "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
             "APPDATA",
             "LOCALAPPDATA",
             "CODEX_HOME",
@@ -302,6 +305,18 @@ class CodexDiscoveryPlanningProvider:
             "SSL_CERT_DIR",
         }
         environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+        if "HOME" not in environment and environment.get("USERPROFILE"):
+            environment["HOME"] = environment["USERPROFILE"]
+        if (
+            "HOME" not in environment
+            and environment.get("HOMEDRIVE")
+            and environment.get("HOMEPATH")
+        ):
+            environment["HOME"] = environment["HOMEDRIVE"] + environment["HOMEPATH"]
+        if "CODEX_HOME" not in environment and environment.get("HOME"):
+            default_codex_home = Path(environment["HOME"]) / ".codex"
+            if default_codex_home.is_dir():
+                environment["CODEX_HOME"] = str(default_codex_home)
         if self.api_key:
             environment["CODEX_API_KEY"] = self.api_key
         return environment

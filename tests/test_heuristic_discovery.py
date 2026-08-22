@@ -329,12 +329,22 @@ def test_discovery_plan_rejects_stale_provenance() -> None:
         raise AssertionError("stale provenance was accepted")
 
 
-def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary() -> None:
+def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert CodexDiscoveryPlanningProvider.provider.endswith("rolo-adapt-discovery")
     provider = CodexDiscoveryPlanningProvider(skill_path=Path("skill.md"))
     command = provider._command(Path("workspace"), Path("schema.json"), Path("output.json"))
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert provider._environment()["HOME"] == str(tmp_path)
+    assert provider._environment()["CODEX_HOME"] == str(codex_home)
 
 
 def test_discovery_service_wires_heuristic_artifacts_into_report_wiki_and_plan_inputs(
