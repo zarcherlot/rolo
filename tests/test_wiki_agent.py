@@ -1,5 +1,6 @@
 import json
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,9 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
         captured["command"] = command
         captured["input"] = kwargs["input"]
         captured["environment"] = kwargs["env"]
+        prompt = str(kwargs["input"])
+        context = prompt.split("UNTRUSTED DISCOVERY EVIDENCE:\n", 1)[1]
+        context_sha256 = sha256(context.encode("utf-8")).hexdigest()
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(
             json.dumps(
@@ -38,7 +42,9 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                         "skill_name": "rolo-wiki-authoring",
                         "skill_version": "1.0.0",
                         "model_id": "fixture-model",
-                        "input_artifact_sha256": {"discovery": "a" * 64},
+                        "input_artifact_sha256": {
+                            "discovery-context": context_sha256
+                        },
                     },
                     "findings": [
                         {
@@ -86,6 +92,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
     assert bundle.unknown_assessments[0].source == "ADAPT_AGENT_SKILL"
+    assert "TRUSTED OUTPUT BINDINGS" in str(captured["input"])
     assert "UNTRUSTED DISCOVERY EVIDENCE" in str(captured["input"])
     environment = captured["environment"]
     assert isinstance(environment, dict)

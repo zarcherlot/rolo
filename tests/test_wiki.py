@@ -4,6 +4,7 @@ import pytest
 
 from rolo.core.models import DiscoveryReport, DiscoveryStatus, OperationCandidate, ProbeResult
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.agent_contracts import AgentArtifactProvenance
 from rolo.stages.adapt.review import render_discovery_review_markdown
 from rolo.stages.adapt.wiki import (
     MAX_WIKI_NARRATIVE_INPUT_CHARS,
@@ -12,6 +13,9 @@ from rolo.stages.adapt.wiki import (
 )
 from rolo.stages.adapt.wiki_diff import build_wiki_discovery_diff
 from rolo.stages.adapt.wiki_insights import (
+    RoloWikiHeuristicFinding,
+    RoloWikiInsightBundle,
+    RoloWikiValidationContext,
     WikiHeuristicFinding,
     WikiInsightBundle,
     WikiUnknownAssessment,
@@ -363,6 +367,122 @@ def test_optional_insight_provider_failure_falls_back_to_builtin_rules() -> None
     )
 
     assert fallback_reason == "agent unavailable"
+    assert bundle.findings
+    assert all(item.source == "DETERMINISTIC_RULE" for item in bundle.findings)
+
+
+def test_rolo_wiki_success_keeps_builtin_findings_and_agent_provenance() -> None:
+    report, active = _review_inputs()
+    provenance = AgentArtifactProvenance(
+        skill_name="rolo-wiki-authoring",
+        skill_version="1.0.0",
+        model_id="fixture-model",
+        input_artifact_sha256={"discovery": "a" * 64},
+    )
+
+    class SuccessfulRoloInsightProvider:
+        provider = "adapt-agent-skill:rolo-wiki-authoring"
+
+        def infer(
+            self,
+            _report: DiscoveryReport,
+            _active: ActiveDiscoveryReport,
+        ) -> RoloWikiInsightBundle:
+            return RoloWikiInsightBundle(
+                robot_id=report.robot_id,
+                discovery_id=report.discovery_id,
+                findings=[
+                    RoloWikiHeuristicFinding(
+                        category="MAINTENANCE",
+                        statement=f"部署版本 {index} 可能需要与冻结 release 摘要核对。",
+                        confidence="LOW",
+                        basis=["release.summary"],
+                        verification="只读比较部署 manifest 与冻结 release 摘要。",
+                        author_skill_version="1.0.0",
+                    )
+                    for index in range(40)
+                ],
+                provenance=provenance,
+            )
+
+        def validation_context(
+            self,
+            _report: DiscoveryReport,
+            _active: ActiveDiscoveryReport,
+        ) -> RoloWikiValidationContext:
+            return RoloWikiValidationContext(
+                input_artifact_sha256={"discovery": "a" * 64},
+                allowed_evidence_refs={"release.summary"},
+            )
+
+    bundle, fallback_reason = collect_wiki_insights(
+        report,
+        active,
+        SuccessfulRoloInsightProvider(),
+    )
+
+    assert fallback_reason is None
+    assert isinstance(bundle, RoloWikiInsightBundle)
+    assert bundle.provenance == provenance
+    deterministic = {
+        item.category for item in bundle.findings if item.source == "DETERMINISTIC_RULE"
+    }
+    assert {"SAFETY", "ARCHITECTURE", "HARDWARE"} <= deterministic
+    assert any(item.source == "ADAPT_AGENT_SKILL" for item in bundle.findings)
+    assert len(bundle.findings) == 40
+
+
+def test_rolo_wiki_validation_failure_falls_back_to_builtin_findings() -> None:
+    report, active = _review_inputs()
+
+    class StaleRoloInsightProvider:
+        provider = "adapt-agent-skill:rolo-wiki-authoring"
+
+        def infer(
+            self,
+            _report: DiscoveryReport,
+            _active: ActiveDiscoveryReport,
+        ) -> RoloWikiInsightBundle:
+            return RoloWikiInsightBundle(
+                robot_id=report.robot_id,
+                discovery_id=report.discovery_id,
+                findings=[
+                    RoloWikiHeuristicFinding(
+                        category="MAINTENANCE",
+                        statement="需要核对部署摘要。",
+                        confidence="LOW",
+                        basis=["untrusted.ref"],
+                        verification="只读核对部署摘要。",
+                        author_skill_version="1.0.0",
+                    )
+                ],
+                provenance=AgentArtifactProvenance(
+                    skill_name="rolo-wiki-authoring",
+                    skill_version="1.0.0",
+                    model_id="fixture-model",
+                    input_artifact_sha256={"discovery": "a" * 64},
+                ),
+            )
+
+        def validation_context(
+            self,
+            _report: DiscoveryReport,
+            _active: ActiveDiscoveryReport,
+        ) -> RoloWikiValidationContext:
+            return RoloWikiValidationContext(
+                input_artifact_sha256={"discovery": "b" * 64},
+                allowed_evidence_refs={"release.summary"},
+                release_id="release-current",
+            )
+
+    bundle, fallback_reason = collect_wiki_insights(
+        report,
+        active,
+        StaleRoloInsightProvider(),
+    )
+
+    assert "input artifact identity" in (fallback_reason or "")
+    assert isinstance(bundle, WikiInsightBundle)
     assert bundle.findings
     assert all(item.source == "DETERMINISTIC_RULE" for item in bundle.findings)
 

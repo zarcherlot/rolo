@@ -3,7 +3,7 @@
 The authoritative model is
 `rolo.stages.adapt.skill_contracts.AdaptDiscoveryPlan`. The caller must derive the JSON Schema from
 `AdaptDiscoveryPlan.model_json_schema()` and validate the returned object before considering any
-action.
+action. The corresponding canonical export is `schemas/AdaptDiscoveryPlan.schema.json`.
 
 The v1 object binds the robot, discovery and target fingerprint; contains zero to 32 R0 `PROBE` or
 `QUERY` actions; records unknowns, stop conditions, remaining budget and actual usage; and carries
