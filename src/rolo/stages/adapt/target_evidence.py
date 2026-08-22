@@ -430,6 +430,7 @@ def verify_evidence_bundle(
             "target_host_fingerprint": bundle.target_host_fingerprint,
             "bundle_payload_sha256": bundle.payload_sha256,
             "access": bundle.access,
+            "deployment_mode": deployment.mode.value,
             "collected_at": bundle.collected_at.isoformat(),
         }
         bound[layer] = probe.model_copy(update={"data": data})

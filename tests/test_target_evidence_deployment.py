@@ -14,7 +14,8 @@ from rolo.core.config import get_settings
 from rolo.core.models import ProbeResult
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
-from rolo.stages.adapt.discovery import DiscoveryService
+from rolo.stages.adapt.discovery import DiscoveryService, _DeterministicR0ProbeDispatcher
+from rolo.stages.adapt.software_relevance import SoftwareDiscoveryPolicy
 from rolo.stages.adapt.target_evidence import (
     EvidenceDeploymentMode,
     collect_over_ssh,
@@ -83,6 +84,7 @@ def test_local_bundle_is_target_bound_signed_and_read_only(
     assert bundle.access == "READ_ONLY"
     assert set(probes) == {"hw", "linux", "ros"}
     assert probes["hw"].data["target_evidence"]["target_host_fingerprint"] == "a" * 64
+    assert probes["hw"].data["target_evidence"]["deployment_mode"] == "local"
     assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (
         bundle.payload_sha256
     )
@@ -363,6 +365,7 @@ def test_discovery_uses_bound_target_probes_not_controller_host(
         "target_host_fingerprint": "a" * 64,
         "bundle_payload_sha256": "b" * 64,
         "access": "READ_ONLY",
+        "deployment_mode": "local",
         "collected_at": datetime.now(timezone.utc).isoformat(),
     }
     target_probes = {
@@ -427,3 +430,18 @@ def test_discovery_rejects_unbound_precollected_probes(tmp_path: Path) -> None:
             active_inputs=ActiveDiscoveryInputs(active_probe=ActiveProbeMode.RUNTIME_READONLY),
             target_probes=probes,
         )
+
+
+def test_remote_probe_loop_cannot_fall_back_to_controller_runtime(tmp_path: Path) -> None:
+    dispatcher = _DeterministicR0ProbeDispatcher(
+        robot_id="wheeltec",
+        run_root=tmp_path / "run",
+        artifact_prefix="artifact://discovery/wheeltec/runs/test",
+        artifacts=ArtifactStore(tmp_path / "artifacts"),
+        software_policy=SoftwareDiscoveryPolicy(),
+        dependency_report_ref="artifact://discovery/wheeltec/runs/test/dependencies.json",
+        allow_host_runtime_probes=False,
+    )
+
+    with pytest.raises(RuntimeError, match="new signed bundle"):
+        dispatcher._hardware(object(), object())

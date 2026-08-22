@@ -24,6 +24,9 @@ does not change verification or Operation eligibility.
   `known_hosts` file. Host-key prompts and fallback to an unpinned host are forbidden.
 - With a verified bundle, Discovery uses its target `hw`, `linux`, and `ros` probes and does not
   run those probes on the controller. Controller source trees are supporting static evidence only.
+- In remote mode, an Agent-requested second-round hardware, Linux, ROS, or executable-help Probe
+  never falls back to the controller host. Rolo records a missing-evidence outcome and requires a
+  newly collected signed target bundle.
 - The 32-byte collector secret must be readable only by the Rolo service identity and provisioned
   through a separate secure channel. Rotate both secret and descriptor after suspected exposure.
 

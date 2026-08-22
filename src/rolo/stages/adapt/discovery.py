@@ -1799,6 +1799,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
         artifacts: ArtifactStore,
         software_policy: SoftwareDiscoveryPolicy,
         dependency_report_ref: str,
+        allow_host_runtime_probes: bool = True,
     ) -> None:
         self.robot_id = robot_id
         self.run_root = run_root
@@ -1806,6 +1807,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
         self.artifacts = artifacts
         self.software_policy = software_policy
         self.dependency_report_ref = dependency_report_ref
+        self.allow_host_runtime_probes = allow_host_runtime_probes
         super().__init__(
             {
                 "probe.hardware.inventory": self._hardware,
@@ -1816,6 +1818,12 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
                 "query.executable.help": self._executable_help,
             }
         )
+
+    def _require_target_host(self) -> None:
+        if not self.allow_host_runtime_probes:
+            raise RuntimeError(
+                "remote target evidence can be refreshed only by collecting a new signed bundle"
+            )
 
     @staticmethod
     def _replace_model(target: Any, source: Any) -> None:
@@ -1842,6 +1850,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
     def _hardware(
         self, report: DiscoveryReport, active: ActiveDiscoveryReport
     ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
         return self._replace_probe(
             report,
             active,
@@ -1852,11 +1861,13 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
     def _linux(
         self, report: DiscoveryReport, active: ActiveDiscoveryReport
     ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
         return self._replace_probe(report, active, "linux", LinuxProbe().run())
 
     def _ros(
         self, report: DiscoveryReport, active: ActiveDiscoveryReport
     ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
         inputs = ActiveDiscoveryInputs.model_validate(active.inputs)
         if inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY:
             raise RuntimeError("ROS runtime Probe was not authorized at installation/run time")
@@ -1942,6 +1953,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
     def _executable_help(
         self, report: DiscoveryReport, active: ActiveDiscoveryReport
     ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
         inputs = ActiveDiscoveryInputs.model_validate(active.inputs)
         if inputs.active_probe not in {ActiveProbeMode.HELP, ActiveProbeMode.RUNTIME_READONLY}:
             raise RuntimeError("help query was not authorized at installation/run time")
@@ -2011,6 +2023,7 @@ class DiscoveryService:
         dependency_report_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/direct_dependencies.json"
         )
+        target_probe_mode: str | None = None
         if target_probes is not None:
             if set(target_probes) != {"hw", "linux", "ros"}:
                 raise ValueError("target evidence must contain exactly hw, linux, and ros probes")
@@ -2028,13 +2041,24 @@ class DiscoveryService:
                     binding.get("target_host_fingerprint"),
                     binding.get("bundle_payload_sha256"),
                     binding.get("access"),
+                    binding.get("deployment_mode"),
                 )
                 for binding in target_bindings
                 if isinstance(binding, dict)
             }
-            if len(binding_identities) != 1 or next(iter(binding_identities))[0] != robot.robot_id:
+            if len(binding_identities) != 1:
                 raise ValueError("target evidence binding identity is inconsistent")
-            if next(iter(binding_identities))[-1] != "READ_ONLY":
+            binding_identity = next(iter(binding_identities))
+            if binding_identity[0] != robot.robot_id:
+                raise ValueError("target evidence binding identity is inconsistent")
+            target_probe_mode = str(binding_identity[-1])
+            if target_probe_mode not in {"local", "remote"}:
+                raise ValueError("target evidence deployment mode is invalid")
+            if target_probe_mode == "remote" and active_inputs.executables:
+                raise ValueError(
+                    "remote target evidence forbids controller-side explicit executable probes"
+                )
+            if binding_identity[-2] != "READ_ONLY":
                 raise ValueError("target evidence binding is not read-only")
             ros_probe = target_probes["ros"]
         else:
@@ -2164,6 +2188,7 @@ class DiscoveryService:
                     artifacts=self.artifacts,
                     software_policy=self.software_policy,
                     dependency_report_ref=dependency_report_ref,
+                    allow_host_runtime_probes=target_probe_mode != "remote",
                 ),
             )
             self.artifacts.write_json(
