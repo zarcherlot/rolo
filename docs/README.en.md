@@ -200,6 +200,8 @@ verifies the multi-file adapter, Rolo-owned State Graph, operation-scoped target
 allowlisted ROS runtime context. Adapt does not
 execute write operations to judge behavior; that work starts in Diagnose. See
 [`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md) for the real-device procedure.
+Choose target-local Rolo or the pinned remote read-only collector during installation as described
+in [`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md).
 
 ```text
 robot_wiki.md
@@ -265,7 +267,7 @@ uv run robotctl verify status --robot "$ROBOT_ID"
 
 ```text
 src/rolo/stages/adapt/            Stage 1: discovery, adapters, conformance, and handoff publication
-skills/robot-wiki-heuristics/      Optional read-only Wiki heuristic Agent skill
+skills/rolo-wiki-authoring/        Optional read-only Wiki heuristic Agent skill
 src/rolo/stages/diagnose/         Stage 2: Diagnosis Agent loop, tuning, and robot_use
 src/rolo/stages/verify/           Stage 3: optional autonomous verification and acceptance
 src/rolo/commands/                robotctl interfaces grouped by command domain

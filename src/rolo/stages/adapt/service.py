@@ -254,6 +254,7 @@ class AdaptStageService:
             robot_wiki_ref=inputs.robot_wiki_ref,
             discovery_manifest_ref=inputs.discovery_manifest_ref,
             discovery_manifest_sha256=inputs.discovery_manifest_sha256,
+            heuristic_analysis_ref=inputs.heuristic_analysis_ref,
         )
         return plan
 

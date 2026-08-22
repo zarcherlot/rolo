@@ -41,6 +41,11 @@
       "title": "Discovery Manifest Sha256",
       "type": "string"
     },
+    "heuristic_analysis_ref": {
+      "default": "",
+      "title": "Heuristic Analysis Ref",
+      "type": "string"
+    },
     "created_at": {
       "format": "date-time",
       "title": "Created At",

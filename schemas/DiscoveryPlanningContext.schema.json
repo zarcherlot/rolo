@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "ActiveProbeMode": {
+      "enum": [
+        "none",
+        "help",
+        "runtime-readonly"
+      ],
+      "title": "ActiveProbeMode",
+      "type": "string"
+    },
+    "DiscoveryRemainingBudget": {
+      "additionalProperties": false,
+      "description": "Budget left for the orchestrator after accepting this proposal.",
+      "properties": {
+        "rounds": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "elapsed_ms": {
+          "minimum": 0,
+          "title": "Elapsed Ms",
+          "type": "integer"
+        },
+        "result_bytes": {
+          "minimum": 0,
+          "title": "Result Bytes",
+          "type": "integer"
+        },
+        "failures": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Failures",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rounds",
+        "elapsed_ms",
+        "result_bytes",
+        "failures"
+      ],
+      "title": "DiscoveryRemainingBudget",
+      "type": "object"
+    },
+    "EvidenceGapCode": {
+      "enum": [
+        "TARGET_HARDWARE_INVENTORY",
+        "ROS_RUNTIME_GRAPH",
+        "BUILD_ARTIFACTS",
+        "INSTALL_ARTIFACTS",
+        "TARGET_EXECUTABLE",
+        "EXECUTABLE_HELP",
+        "ROUTE_PROVIDER_IDENTITY",
+        "INTERFACE_SCHEMA",
+        "TARGET_RUNTIME_REVISION",
+        "AGENT_REPORTED_UNKNOWN",
+        "REQUESTED_VERIFICATION"
+      ],
+      "title": "EvidenceGapCode",
+      "type": "string"
+    },
+    "HeuristicEvidenceGap": {
+      "additionalProperties": false,
+      "description": "One explicit fact that static or current-host discovery could not establish.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/EvidenceGapCode"
+        },
+        "subject_ref": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Subject Ref",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Reason",
+          "type": "string"
+        },
+        "required_evidence": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Required Evidence",
+          "type": "string"
+        },
+        "collection_context": {
+          "enum": [
+            "TARGET_HOST",
+            "BUILT_WORKSPACE",
+            "RUNTIME_ROS",
+            "EXTERNAL_INPUT"
+          ],
+          "title": "Collection Context",
+          "type": "string"
+        },
+        "blocks": {
+          "items": {
+            "enum": [
+              "ELIGIBILITY",
+              "VERIFICATION",
+              "RELEASE"
+            ],
+            "type": "string"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "subject_ref",
+        "reason",
+        "required_evidence",
+        "collection_context"
+      ],
+      "title": "HeuristicEvidenceGap",
+      "type": "object"
+    },
+    "ProbeDefinition": {
+      "additionalProperties": false,
+      "description": "Whitelisted R0 definition exposed to the discovery planning skill.",
+      "properties": {
+        "definition_id": {
+          "title": "Definition Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PROBE",
+            "QUERY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Types",
+          "type": "array"
+        },
+        "required_context": {
+          "enum": [
+            "CURRENT_HOST",
+            "TARGET_HOST",
+            "SOURCE_TREE",
+            "BUILT_WORKSPACE",
+            "RUNTIME_ROS"
+          ],
+          "title": "Required Context",
+          "type": "string"
+        },
+        "risk": {
+          "const": "R0",
+          "default": "R0",
+          "title": "Risk",
+          "type": "string"
+        }
+      },
+      "required": [
+        "definition_id",
+        "kind",
+        "description",
+        "evidence_types",
+        "required_context"
+      ],
+      "title": "ProbeDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Bounded facts and authority supplied to ``rolo-adapt-discovery``.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-discovery-planning-context/v1",
+      "default": "rolo-discovery-planning-context/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "target_fingerprint_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Fingerprint Sha256",
+      "type": "string"
+    },
+    "skill_name": {
+      "const": "rolo-adapt-discovery",
+      "default": "rolo-adapt-discovery",
+      "title": "Skill Name",
+      "type": "string"
+    },
+    "skill_version": {
+      "default": "1.0.0",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "title": "Skill Version",
+      "type": "string"
+    },
+    "active_probe_mode": {
+      "$ref": "#/$defs/ActiveProbeMode"
+    },
+    "available_contexts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Available Contexts",
+      "type": "array"
+    },
+    "coverage": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "observed_resources": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Observed Resources",
+      "type": "object"
+    },
+    "unresolved_unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Unknowns",
+      "type": "array"
+    },
+    "deterministic_gaps": {
+      "items": {
+        "$ref": "#/$defs/HeuristicEvidenceGap"
+      },
+      "title": "Deterministic Gaps",
+      "type": "array"
+    },
+    "allowed_definitions": {
+      "items": {
+        "$ref": "#/$defs/ProbeDefinition"
+      },
+      "title": "Allowed Definitions",
+      "type": "array"
+    },
+    "max_actions": {
+      "maximum": 32,
+      "minimum": 0,
+      "title": "Max Actions",
+      "type": "integer"
+    },
+    "remaining_budget": {
+      "$ref": "#/$defs/DiscoveryRemainingBudget"
+    },
+    "input_artifact_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Artifact Sha256",
+      "type": "object"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "target_fingerprint_sha256",
+    "active_probe_mode",
+    "available_contexts",
+    "coverage",
+    "observed_resources",
+    "unresolved_unknowns",
+    "deterministic_gaps",
+    "allowed_definitions",
+    "max_actions",
+    "remaining_budget",
+    "input_artifact_sha256"
+  ],
+  "title": "DiscoveryPlanningContext",
+  "type": "object"
+}

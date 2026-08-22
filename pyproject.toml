@@ -3,7 +3,7 @@ name = "rolo"
 version = "0.1.0"
 description = "Evidence-backed robot adaptation, diagnosis, and verification toolkit"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
@@ -35,9 +35,17 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/rolo"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills/rolo-adapt-discovery" = "rolo/bundled_skills/rolo-adapt-discovery"
+"skills/rolo-operation-mapping" = "rolo/bundled_skills/rolo-operation-mapping"
+"skills/rolo-wiki-authoring" = "rolo/bundled_skills/rolo-wiki-authoring"
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "lerobot: opt-in integration test requiring a separately installed LeRobot checkout",
+]
 
 [tool.ruff]
 line-length = 100

@@ -4,6 +4,8 @@
 
 ## 核心入口
 
+- [最高开发准则](DEVELOPMENT_PRINCIPLES.md)：所有代码、测试、文档和发布的最高验收规则；
+- [10 分钟 Quickstart](QUICKSTART_10_MIN.md)：从干净 checkout 安装并跑通离线 Demo；
 - [ROLO 白皮书](ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
 - [三阶段架构](ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
@@ -13,7 +15,7 @@
 
 ## 文档权威顺序
 
-1. 版本化 Schema、Operation Contract、运行时门禁与对应测试；
+1. 最高开发准则、版本化 Schema、Operation Contract、运行时门禁与对应测试；
 2. 白皮书、架构与安全规范；
 3. 操作指南和验收清单；
 4. Proposal、Plan、Draft、评审样本与生成型参考。

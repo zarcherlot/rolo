@@ -1,13 +1,16 @@
 import json
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 from rolo.stages.adapt.wiki_agent import (
     MAX_AGENT_CONTEXT_CHARS,
+    MAX_AGENT_EVIDENCE_REFS,
     CodexWikiInsightProvider,
     _bounded_context,
+    _bounded_evidence_reference_allowlist,
     _selected_context,
 )
 from tests.test_wiki import _review_inputs
@@ -28,12 +31,23 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
         captured["command"] = command
         captured["input"] = kwargs["input"]
         captured["environment"] = kwargs["env"]
+        prompt = str(kwargs["input"])
+        context = prompt.split("UNTRUSTED DISCOVERY EVIDENCE:\n", 1)[1]
+        context_sha256 = sha256(context.encode("utf-8")).hexdigest()
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(
             json.dumps(
                 {
                     "robot_id": "demo",
                     "discovery_id": "disc-test",
+                    "provenance": {
+                        "skill_name": "rolo-wiki-authoring",
+                        "skill_version": "1.0.0",
+                        "model_id": "fixture-model",
+                        "input_artifact_sha256": {
+                            "discovery-context": context_sha256
+                        },
+                    },
                     "findings": [
                         {
                             "category": "MAINTENANCE",
@@ -41,6 +55,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                             "confidence": "LOW",
                             "basis": ["active_discovery.executables"],
                             "verification": "只读核对部署清单。",
+                            "author_skill_version": "1.0.0",
                         }
                     ],
                     "unknown_assessments": [
@@ -50,7 +65,8 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
                             "assessment": "现有构建清单可能包含依赖声明。",
                             "confidence": "LOW",
                             "basis": ["active_discovery.unknowns[0]"],
-                            "next_step": "只读检查构建清单。"
+                            "next_step": "只读检查构建清单。",
+                            "author_skill_version": "1.0.0"
                         }
                     ],
                 },
@@ -73,15 +89,37 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
 
     command = captured["command"]
     assert isinstance(command, list)
+    assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
+    assert bundle.findings[0].author_skill_version == "1.0.0"
     assert bundle.unknown_assessments[0].source == "ADAPT_AGENT_SKILL"
+    assert bundle.unknown_assessments[0].author_skill_version == "1.0.0"
+    assert bundle.provenance.skill_version == "1.0.0"
+    assert "TRUSTED OUTPUT BINDINGS" in str(captured["input"])
+    assert "allowed_evidence_refs" in str(captured["input"])
+    assert "allowed_unknown_assessments" in str(captured["input"])
     assert "UNTRUSTED DISCOVERY EVIDENCE" in str(captured["input"])
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+
+
+def test_wiki_evidence_allowlist_is_bounded_and_prefers_addressable_parents() -> None:
+    context = {
+        "active_discovery": {
+            "unknowns": [f"unknown-{index}" for index in range(1_000)],
+        },
+        "operation_candidates": [{"operation": "app.camera.snapshot"}],
+    }
+
+    refs = _bounded_evidence_reference_allowlist(context)
+
+    assert len(refs) == MAX_AGENT_EVIDENCE_REFS
+    assert "active_discovery.unknowns" in refs
+    assert "operation_candidates[0].operation" in refs
 
 
 def test_wiki_insight_context_uses_a_serialized_character_budget() -> None:

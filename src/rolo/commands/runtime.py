@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Annotated
 
 import httpx
@@ -12,6 +13,13 @@ from rolo.core.config import get_settings
 from rolo.doctor import build_doctor_report
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.enrollment import EnrollmentService
+from rolo.stages.adapt.target_evidence import (
+    CollectorDescriptor,
+    EvidenceDeploymentMode,
+    configure_deployment,
+    initialize_collector,
+    load_collector_state,
+)
 
 runtime_app = typer.Typer(help="Inspect the local Rolo runtime without starting services.")
 
@@ -61,14 +69,108 @@ def register_runtime_commands(root: typer.Typer) -> None:
     @root.command("init")
     def initialize(
         robot_id: Annotated[str, typer.Option("--robot-id", help="User-assigned robot identity")],
+        evidence_mode: Annotated[
+            EvidenceDeploymentMode,
+            typer.Option(
+                "--evidence-mode",
+                help="local runs probes on this target; remote uses a pinned target collector",
+            ),
+        ] = EvidenceDeploymentMode.LOCAL,
+        collector_descriptor: Annotated[
+            Path | None,
+            typer.Option(
+                "--collector-descriptor", help="Remote collector descriptor from collector-init"
+            ),
+        ] = None,
+        verification_secret: Annotated[
+            Path | None,
+            typer.Option(
+                "--verification-secret", help="Collector secret provisioned separately"
+            ),
+        ] = None,
+        ssh_target: Annotated[str | None, typer.Option("--ssh-target")] = None,
+        known_hosts: Annotated[
+            Path | None,
+            typer.Option("--known-hosts", help="Pinned known_hosts file for remote mode"),
+        ] = None,
+        collector_config: Annotated[
+            str,
+            typer.Option("--collector-config", help="Collector state path on the target"),
+        ] = ".rolo/config/target-evidence-collector.json",
     ) -> None:
         """Register identity and validate the installed runtime environment."""
         settings = get_settings()
+        deployment_root = settings.rolo_config_dir / "target-evidence"
+        deployment_path = deployment_root / f"{robot_id}.json"
         try:
+            if evidence_mode == EvidenceDeploymentMode.LOCAL:
+                if any(
+                    value is not None
+                    for value in (
+                        collector_descriptor,
+                        verification_secret,
+                        ssh_target,
+                        known_hosts,
+                    )
+                ):
+                    raise ValueError("local evidence mode does not accept remote collector options")
+                local_state = deployment_root / f"{robot_id}-collector.json"
+                local_secret = deployment_root / f"{robot_id}-collector.key"
+                if local_state.exists() or deployment_path.exists():
+                    if not local_state.is_file() or not deployment_path.is_file():
+                        raise ValueError(
+                            "local target evidence enrollment is incomplete; explicit recovery "
+                            "is required"
+                        )
+                    state = load_collector_state(local_state)
+                    descriptor = CollectorDescriptor.model_validate(
+                        state.model_dump(exclude={"secret_path"})
+                    )
+                else:
+                    descriptor = initialize_collector(
+                        robot_id=robot_id,
+                        state_path=local_state,
+                        secret_path=local_secret,
+                    )
+                deployment = configure_deployment(
+                    robot_id=robot_id,
+                    mode=evidence_mode,
+                    descriptor=descriptor,
+                    verification_secret_path=local_secret,
+                    output_path=deployment_path,
+                    local_collector_state_path=local_state,
+                )
+            else:
+                if not all(
+                    value is not None
+                    for value in (
+                        collector_descriptor,
+                        verification_secret,
+                        ssh_target,
+                        known_hosts,
+                    )
+                ):
+                    raise ValueError(
+                        "remote evidence mode requires --collector-descriptor, "
+                        "--verification-secret, --ssh-target, and --known-hosts"
+                    )
+                descriptor = CollectorDescriptor.model_validate_json(
+                    collector_descriptor.read_text(encoding="utf-8")
+                )
+                deployment = configure_deployment(
+                    robot_id=robot_id,
+                    mode=evidence_mode,
+                    descriptor=descriptor,
+                    verification_secret_path=verification_secret,
+                    output_path=deployment_path,
+                    ssh_target=ssh_target,
+                    known_hosts_path=known_hosts,
+                    collector_config=collector_config,
+                )
             enrollment = EnrollmentService(config_root=settings.rolo_config_dir).enroll(
                 robot_id=robot_id,
             )
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             raise typer.BadParameter(str(exc)) from exc
 
         doctor_result = build_doctor_report(settings)
@@ -93,13 +195,11 @@ def register_runtime_commands(root: typer.Typer) -> None:
                     "status": enrollment.status,
                     "capability_path": str(enrollment.capability_path),
                 },
+                "target_evidence": deployment.model_dump(mode="json"),
                 "doctor": doctor_result,
                 "robots": registered_robots,
                 "next_step": (
-                    f'uv run robotctl adapt discover run --robot "{robot_id}" '
-                    "--build-root /path/to/build --doc-root /path/to/docs "
-                    "[--source-root /path/to/robot-application] "
-                    "[--urdf /path/to/your_robot.urdf]"
+                    f'robotctl target-evidence collect --robot "{robot_id}"'
                 ),
                 "motion_safety_status": "UNAPPROVED",
             }

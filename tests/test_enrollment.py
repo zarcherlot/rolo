@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from rolo.agentd import create_agentd_app
@@ -216,12 +217,16 @@ def test_init_registers_and_runs_runtime_checks(tmp_path: Path) -> None:
 
 
 def test_init_help_contains_no_urdf_option() -> None:
-    result = CliRunner().invoke(app, ["init", "--help"])
+    init_command = get_command(app).commands["init"]
+    option_names = {
+        option
+        for parameter in init_command.params
+        for option in getattr(parameter, "opts", ())
+    }
 
-    assert result.exit_code == 0, result.output
-    assert "--robot-id" in result.output
-    assert "--profile" not in result.output
-    assert "--urdf" not in result.output
+    assert "--robot-id" in option_names
+    assert "--profile" not in option_names
+    assert "--urdf" not in option_names
 
 
 def test_doctor_treats_fresh_unenrolled_checkout_as_ready(tmp_path: Path) -> None:
