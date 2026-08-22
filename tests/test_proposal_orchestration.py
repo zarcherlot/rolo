@@ -68,6 +68,8 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         captured["command"] = command
         captured["input"] = kwargs["input"]
         captured["environment"] = kwargs["env"]
+        schema = Path(command[command.index("--output-schema") + 1])
+        captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(expected.model_dump_json(), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -96,6 +98,19 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert "fixture-secret" not in json.dumps(command)
     assert "UNTRUSTED FROZEN DISCOVERY REQUEST" in str(captured["input"])
+    schema = captured["schema"]
+    assert isinstance(schema, dict)
+    proposal_schema = schema["$defs"]["AgentOperationProposal"]
+    assert proposal_schema["properties"]["operation"]["enum"] == [
+        "app.camera.snapshot"
+    ]
+    assert proposal_schema["properties"]["evidence_refs"]["items"]["enum"] == (
+        request.discovery_evidence.evidence_refs
+    )
+    assert proposal_schema["properties"]["route_resource_ids"]["items"]["enum"] == [
+        "ros_topic:/camera/image_raw",
+        "ros_topic:/odom",
+    ]
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"

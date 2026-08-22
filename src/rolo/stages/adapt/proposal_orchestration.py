@@ -503,6 +503,20 @@ class CodexOperationMappingProvider:
                         fixed_string_map_keys={
                             "input_artifact_sha256": request.input_artifact_sha256
                         },
+                        fixed_string_enums={
+                            "operation": sorted(request.target_operations),
+                            "evidence_refs": request.discovery_evidence.evidence_refs,
+                            "counter_evidence_refs": (
+                                request.discovery_evidence.evidence_refs
+                            ),
+                            "route_resource_ids": sorted(
+                                request.discovery_evidence.route_resources
+                            ),
+                            "executable_ids": request.discovery_evidence.executable_ids,
+                            "hardware_resource_ids": (
+                                request.discovery_evidence.hardware_resource_ids
+                            ),
+                        },
                     ),
                     ensure_ascii=False,
                     indent=2,
