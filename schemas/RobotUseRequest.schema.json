@@ -10,6 +10,7 @@
         "image_url": {
           "anyOf": [
             {
+              "maxLength": 8388608,
               "type": "string"
             },
             {
@@ -22,6 +23,7 @@
         "artifact_ref": {
           "anyOf": [
             {
+              "maxLength": 512,
               "type": "string"
             },
             {
@@ -33,6 +35,7 @@
         },
         "camera_id": {
           "default": "semantic://sensor/front_camera",
+          "maxLength": 256,
           "title": "Camera Id",
           "type": "string"
         }
@@ -51,20 +54,24 @@
       "type": "string"
     },
     "request_id": {
+      "maxLength": 128,
       "title": "Request Id",
       "type": "string"
     },
     "robot_id": {
+      "maxLength": 128,
       "title": "Robot Id",
       "type": "string"
     },
     "execution_id": {
+      "maxLength": 128,
       "title": "Execution Id",
       "type": "string"
     },
     "test_case_id": {
       "anyOf": [
         {
+          "maxLength": 128,
           "type": "string"
         },
         {

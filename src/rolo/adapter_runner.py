@@ -76,7 +76,26 @@ def sanitized_adapter_environment(
 
 
 class BoundedAdapterRunner:
-    """Portable baseline runner with bounded I/O and a sanitized environment."""
+    """Run generated adapters through a protected OS sandbox launcher.
+
+    The launcher contract is ``launcher --cwd <release-root> -- <adapter argv...>``.
+    Production defaults fail closed when no launcher is configured. The explicit
+    development escape hatch exists for tests and offline demos only.
+    """
+
+    def __init__(
+        self,
+        *,
+        sandbox_launcher: Path | None = None,
+        allow_unsandboxed_development: bool | None = None,
+    ) -> None:
+        from rolo.core.config import get_settings
+
+        settings = get_settings()
+        self.sandbox_launcher = sandbox_launcher or settings.rolo_adapter_sandbox_launcher
+        if allow_unsandboxed_development is None:
+            allow_unsandboxed_development = settings.rolo_adapter_unsandboxed_dev
+        self.allow_unsandboxed_development = allow_unsandboxed_development
 
     def run(
         self,
@@ -98,10 +117,11 @@ class BoundedAdapterRunner:
         root = cwd.resolve()
         if not root.is_dir():
             raise ValueError(f"adapter runner cwd is not a directory: {root}")
+        launch_command = self._sandbox_command(command, root)
 
         with tempfile.TemporaryDirectory(prefix="rolo-adapter-home-") as temporary_home:
             process = subprocess.Popen(
-                command,
+                launch_command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -173,6 +193,27 @@ class BoundedAdapterRunner:
                 timed_out=timed_out,
                 output_limited=exceeded.is_set(),
             )
+
+    def _sandbox_command(self, command: list[str], cwd: Path) -> list[str]:
+        if self.sandbox_launcher is None:
+            if self.allow_unsandboxed_development:
+                return command
+            raise RuntimeError(
+                "generated adapter execution requires ROLO_ADAPTER_SANDBOX_LAUNCHER; "
+                "ROLO_ADAPTER_UNSANDBOXED_DEV=1 is restricted to tests and offline demos"
+            )
+        from rolo.invocation_policy import validate_protected_file
+
+        try:
+            launcher = validate_protected_file(
+                self.sandbox_launcher,
+                label="adapter sandbox launcher",
+            )
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
+        if os.name != "nt" and not os.access(launcher, os.X_OK):
+            raise RuntimeError("adapter sandbox launcher must be executable")
+        return [str(launcher), "--cwd", str(cwd), "--", *command]
 
     @staticmethod
     def _platform_process_options(timeout_s: float) -> dict[str, object]:

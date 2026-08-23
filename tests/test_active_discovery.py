@@ -946,7 +946,9 @@ def test_discovery_does_not_run_host_package_inventory(
     assert report.software_summary["unknown_dependency_count"] == 1
     assert (tmp_path / "artifacts/discovery/demo_diff/latest.json").is_file()
     assert report.probes["ros"].status == "UNAVAILABLE"
-    assert report.probes["ros"].warnings == ["ROS runtime inspection was not requested"]
+    assert report.probes["ros"].warnings == [
+        "verified target ROS evidence was not supplied"
+    ]
 
 
 def test_relevant_dependency_findings_flow_to_authoritative_reports(

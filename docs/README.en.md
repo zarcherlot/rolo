@@ -181,7 +181,8 @@ uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --doc-root /path/to/robot-application/docs \
   --launch-root /path/to/robot-application/launch \
   --source-root /path/to/robot-application \
-  --active-probe runtime-readonly  # supporting source; target route presence only
+  --active-probe runtime-readonly \
+  --target-evidence-bundle /path/to/fresh-signed-target-bundle.json
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt operations summary --robot "$ROBOT_ID"
 uv run robotctl adapt operations list --robot "$ROBOT_ID" \
@@ -190,6 +191,13 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 # Optional parent for an automatically deleted workspace outside the rolo checkout:
 uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
+
+Generated adapter `describe` and `invoke` execution fails closed unless a protected target-side OS
+sandbox launcher is configured. Rolo calls it as
+`launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...`; the deployment launcher owns service-identity,
+filesystem, device, and network isolation. Set `ROLO_ADAPTER_SANDBOX_LAUNCHER` to that protected
+executable. `ROLO_ADAPTER_UNSANDBOXED_DEV=1` is restricted to tests and offline demos. A non-loopback
+`ROLO_HOST` additionally requires a high-entropy `ROLO_API_TOKEN` and Bearer authentication.
 
 The Wiki heuristic Agent skill is enabled by default and runs in a read-only sandbox. If it is
 unavailable or returns invalid output, discovery automatically falls back to deterministic rules.

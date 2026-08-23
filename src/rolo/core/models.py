@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
@@ -26,9 +27,9 @@ class RobotUseVerdict(str, Enum):
 
 class ImageFrame(BaseModel):
     timestamp: datetime
-    image_url: str | None = None
-    artifact_ref: str | None = None
-    camera_id: str = "semantic://sensor/front_camera"
+    image_url: str | None = Field(default=None, max_length=8 * 1024 * 1024)
+    artifact_ref: str | None = Field(default=None, max_length=512)
+    camera_id: str = Field(default="semantic://sensor/front_camera", max_length=256)
 
     @model_validator(mode="after")
     def require_source(self) -> ImageFrame:
@@ -39,10 +40,10 @@ class ImageFrame(BaseModel):
 
 class RobotUseRequest(BaseModel):
     schema_version: str = "robot-use-request/v1"
-    request_id: str
-    robot_id: str
-    execution_id: str
-    test_case_id: str | None = None
+    request_id: str = Field(max_length=128)
+    robot_id: str = Field(max_length=128)
+    execution_id: str = Field(max_length=128)
+    test_case_id: str | None = Field(default=None, max_length=128)
     window_start: datetime
     window_end: datetime
     frames: list[ImageFrame] = Field(min_length=1, max_length=16)
@@ -53,6 +54,18 @@ class RobotUseRequest(BaseModel):
     def validate_window(self) -> RobotUseRequest:
         if self.window_end <= self.window_start:
             raise ValueError("window_end must be after window_start")
+        context_bytes = len(
+            json.dumps(
+                {
+                    "task_contract": self.task_contract,
+                    "telemetry_summary": self.telemetry_summary,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        if context_bytes > 1_000_000:
+            raise ValueError("task contract and telemetry exceed the 1000000-byte budget")
         return self
 
 

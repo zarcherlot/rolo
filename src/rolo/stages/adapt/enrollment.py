@@ -15,6 +15,7 @@ import yaml
 from rolo.core.config import load_yaml
 from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import RobotCapability
+from rolo.core.persistence import atomic_write_text, interprocess_lock
 
 ROBOT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
@@ -655,6 +656,10 @@ class EnrollmentService:
             raise ValueError(
                 "robot_id must match ^[a-z][a-z0-9_-]{2,63}$ and is assigned at initialization"
             )
+        with interprocess_lock(self.config_root / "enrollment.json"):
+            return self._enroll_locked(robot_id)
+
+    def _enroll_locked(self, robot_id: str) -> EnrollmentResult:
         robots_root = self.config_root / "robots"
         robots_root.mkdir(parents=True, exist_ok=True)
         active = sorted(robots_root.glob("*.yaml"))
@@ -706,16 +711,15 @@ class EnrollmentService:
                 "features": features,
             }
         )
-        temporary = target.with_suffix(".yaml.tmp")
-        temporary.write_text(
+        atomic_write_text(
+            target,
             yaml.safe_dump(
                 capability.model_dump(mode="json"),
                 sort_keys=False,
                 allow_unicode=True,
             ),
-            encoding="utf-8",
+            acquire_lock=False,
         )
-        temporary.replace(target)
         record = {
             "schema_version": "robot-enrollment/v1",
             "robot_id": robot_id,
@@ -728,8 +732,10 @@ class EnrollmentService:
             "bindings_verified": False,
             "calibration_verified": False,
         }
-        (self.config_root / "enrollment.json").write_text(
-            json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        atomic_write_text(
+            self.config_root / "enrollment.json",
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+            acquire_lock=False,
         )
         return EnrollmentResult(
             status="IDENTITY_REGISTERED",

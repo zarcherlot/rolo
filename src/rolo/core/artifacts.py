@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rolo.core.persistence import append_text_record, atomic_write_text
+
 
 class ArtifactStore:
     def __init__(self, root: Path) -> None:
@@ -16,28 +18,24 @@ class ArtifactStore:
         self.ensure()
         path = self.root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(value, ensure_ascii=False, default=str))
-            stream.write("\n")
+        append_text_record(
+            path, json.dumps(value, ensure_ascii=False, default=str) + "\n"
+        )
         return path
 
     def write_json(self, relative_path: str, value: dict[str, Any]) -> Path:
         self.ensure()
         path = self.root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(
+        atomic_write_text(
+            path,
             json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n",
-            encoding="utf-8",
         )
-        temporary.replace(path)
         return path
 
     def write_text(self, relative_path: str, value: str) -> Path:
         self.ensure()
         path = self.root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(value, encoding="utf-8")
-        temporary.replace(path)
+        atomic_write_text(path, value)
         return path

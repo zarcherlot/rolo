@@ -32,6 +32,20 @@ def make_request(*, progress_delta: float, commanded_speed_mps: float) -> RobotU
     )
 
 
+def test_robot_use_rejects_oversized_context() -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValueError, match="1000000-byte budget"):
+        RobotUseRequest(
+            request_id="req-large",
+            robot_id="demo_diff",
+            execution_id="exec-large",
+            window_start=now - timedelta(seconds=1),
+            window_end=now,
+            frames=[ImageFrame(timestamp=now, image_url="data:image/png;base64,AA==")],
+            task_contract={"content": "x" * 1_000_000},
+        )
+
+
 @pytest.mark.asyncio
 async def test_mock_robot_use_reports_normal(tmp_path: Path) -> None:
     registry = RobotRegistry(Path("tests/fixtures/robots"))

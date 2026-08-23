@@ -421,8 +421,9 @@ def test_published_runtime_closes_the_authorization_and_compensation_matrix(
 
     audit_text = audit.read_text(encoding="utf-8")
     records = [json.loads(line) for line in audit_text.splitlines()]
+    policy_records = [record for record in records if "policy_domain" in record]
     assert {"data", "write", "r3", "quiescence"} <= {
-        record["policy_domain"] for record in records
+        record["policy_domain"] for record in policy_records
     }
     assert "private-camera-id" not in audit_text
     assert "controller.gain" not in audit_text

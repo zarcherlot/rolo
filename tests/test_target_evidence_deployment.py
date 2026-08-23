@@ -812,6 +812,85 @@ def test_discovery_rejects_unbound_precollected_probes(tmp_path: Path) -> None:
         )
 
 
+def test_runtime_discovery_requires_verified_target_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
+    registry.load()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.HardwareProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller hardware probe must not run"),
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.LinuxProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller Linux probe must not run"),
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller ROS probe must not run"),
+    )
+
+    with pytest.raises(ValueError, match="verified target evidence bundle"):
+        DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+            robot=registry.get("demo_diff"),
+            active_inputs=ActiveDiscoveryInputs(
+                active_probe=ActiveProbeMode.RUNTIME_READONLY
+            ),
+        )
+
+
+def test_granular_runtime_discovery_cli_requires_signed_bundle() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "adapt",
+            "discover",
+            "run",
+            "--robot",
+            "demo_diff",
+            "--active-probe",
+            "runtime-readonly",
+        ],
+    )
+
+    assert result.exit_code == 2
+
+
+def test_source_only_discovery_never_attributes_controller_probes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("# Static application evidence\n", encoding="utf-8")
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
+    registry.load()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.HardwareProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller hardware probe must not run"),
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.LinuxProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller Linux probe must not run"),
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.RosProbe.run",
+        lambda *args, **kwargs: pytest.fail("controller ROS probe must not run"),
+    )
+
+    report, _ = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+        robot=registry.get("demo_diff"),
+        active_inputs=ActiveDiscoveryInputs(
+            source_roots=[source],
+            document_roots=[source],
+            active_probe=ActiveProbeMode.NONE,
+        ),
+    )
+
+    assert report.probes["hw"].status == "UNAVAILABLE"
+    assert report.probes["linux"].status == "UNAVAILABLE"
+    assert report.probes["ros"].status == "UNAVAILABLE"
+
+
 def test_remote_probe_loop_cannot_fall_back_to_controller_runtime(tmp_path: Path) -> None:
     dispatcher = _DeterministicR0ProbeDispatcher(
         robot_id="wheeltec",

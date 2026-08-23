@@ -11,6 +11,7 @@ from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import ProbeResult, utc_now
 from rolo.core.registry import RobotRegistry
+from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_report
 from rolo.stages.adapt.models import (
     AdapterAgentConfig,
@@ -26,7 +27,9 @@ from rolo.stages.adapt.service import AdaptStageService
 from rolo.stages.pipeline import assess_pipeline
 
 
-def discover_demo(artifact_root: Path, source_root: Path) -> str:
+def discover_demo(
+    artifact_root: Path, source_root: Path, *, target_runtime: bool = False
+) -> str:
     (source_root / "pyproject.toml").write_text(
         '[project]\nname = "stage-demo"\n\n[project.scripts]\nstage-demo = "demo:main"\n',
         encoding="utf-8",
@@ -36,7 +39,13 @@ def discover_demo(artifact_root: Path, source_root: Path) -> str:
     report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
         robot=registry.get("demo_diff"),
         urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
-        source_roots=[source_root],
+        active_inputs=ActiveDiscoveryInputs(
+            source_roots=[source_root],
+            active_probe=(
+                ActiveProbeMode.RUNTIME_READONLY if target_runtime else ActiveProbeMode.NONE
+            ),
+        ),
+        target_probes=_bound_target_probes() if target_runtime else None,
     )
     return report.discovery_id
 
@@ -59,6 +68,31 @@ def _runtime_ros_probe() -> ProbeResult:
             "actions": [],
         },
     )
+
+
+def _bound_target_probes() -> dict[str, ProbeResult]:
+    binding = {
+        "robot_id": "demo_diff",
+        "collector_id": "collector-test",
+        "target_host_fingerprint": "f" * 64,
+        "bundle_payload_sha256": "a" * 64,
+        "access": "READ_ONLY",
+        "deployment_mode": "local",
+    }
+    ros = _runtime_ros_probe()
+    return {
+        "hw": ProbeResult(
+            layer="hw",
+            status="SUCCEEDED",
+            data={"components": [], "target_evidence": binding},
+        ),
+        "linux": ProbeResult(
+            layer="linux",
+            status="SUCCEEDED",
+            data={"target_evidence": binding},
+        ),
+        "ros": ros.model_copy(update={"data": {**ros.data, "target_evidence": binding}}),
+    }
 
 
 def test_discovery_writes_adapt_inputs_and_derives_runtime_plan(tmp_path: Path) -> None:
@@ -271,7 +305,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             },
         ),
     )
-    discovery_id = discover_demo(artifact_root, workspace)
+    discovery_id = discover_demo(artifact_root, workspace, target_runtime=True)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
     get_settings.cache_clear()
@@ -454,7 +488,7 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
         artifact_root=artifact_root,
     ) == {"status": "SUCCEEDED"}
 
-    newer_discovery_id = discover_demo(artifact_root, workspace)
+    newer_discovery_id = discover_demo(artifact_root, workspace, target_runtime=True)
     assert newer_discovery_id != discovery_id
     adapt = assess_pipeline(artifact_root, "demo_diff").stages[0]
     assert adapt.status == "COMPLETE"
@@ -470,7 +504,7 @@ def test_adapt_run_prepares_dependency_without_confirmation(
     monkeypatch.setattr(
         "rolo.stages.adapt.discovery.RosProbe.run", lambda self: _runtime_ros_probe()
     )
-    discover_demo(artifact_root, workspace)
+    discover_demo(artifact_root, workspace, target_runtime=True)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     get_settings.cache_clear()
     calls: list[str] = []
@@ -513,7 +547,7 @@ def test_adapt_run_rejects_scratch_and_output_inside_rolo_source(
     monkeypatch.setattr(
         "rolo.stages.adapt.discovery.RosProbe.run", lambda self: _runtime_ros_probe()
     )
-    discover_demo(artifact_root, source)
+    discover_demo(artifact_root, source, target_runtime=True)
     monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
     monkeypatch.setenv("ROLO_OUTPUT_DIR", str(Path.cwd() / "forbidden-adapter-output"))
     get_settings.cache_clear()
