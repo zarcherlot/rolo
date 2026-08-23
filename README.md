@@ -81,10 +81,24 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 git clone https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
-uv run python --version  # Python 3.10.x（本地默认）
 
-uv run robotctl init --robot-id your_robot_id
+# 在目标机器人上 source 日常运行使用的 ROS 和 workspace overlay 后执行：
+uv run robotctl adapt start \
+  --robot-id your_robot_id \
+  --project-root /path/to/robot-workspace \
+  --urdf /path/to/robot.urdf  # 可省略
 ```
+
+不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；此后的正式产品
+入口只有一条 `robotctl adapt start`。它自动注册或复用机器人身份、检查环境、识别工程证据、
+执行只读发现、生成 Wiki，并在存在目标机观测路由时继续完成 Adapter Agent、独立门禁、
+State Graph、Tool Catalog、handoff 和 release。Codex 首次认证是独立的人工安全门；尚未认证
+时，以运行 Rolo 的同一操作系统用户执行一次 `codex login --device-auth`。
+
+上述一条命令适用于 Rolo 与机器人工程运行在同一目标机的模式。控制器与目标机分离时，
+descriptor、secret 和 SSH host-key 必须独立置备，按
+[`TARGET_EVIDENCE_DEPLOYMENT.md`](docs/TARGET_EVIDENCE_DEPLOYMENT.md) 使用签名证据流程，不能为
+追求“一条命令”而取消信任绑定。
 
 ### 访问管理 API
 
@@ -121,24 +135,37 @@ Adapt 的目标是交付两样核心资产：
 节点和协议怎样连接、哪些依赖缺失、哪些能力只是推断、哪些接口已经完成门禁注册并可交给
 Agent。新成员、算法、嵌入式、运维和测试看到的是同一份系统全貌。
 
-“发现并生成 Wiki → Adapter Agent 检索证据 → 执行适配”的流程如下：
+正式产品流程是一条命令：
 
 ```bash
-# --urdf 可省略；缺失硬件规格保持未解析
+uv run robotctl adapt start \
+  --robot-id "$ROBOT_ID" \
+  --project-root /path/to/robot-application \
+  --urdf /path/to/your_robot.urdf
+```
+
+`--urdf` 可省略；缺失硬件规格会作为未知项保留。`adapt start` 会在工程根目录四层以内有界
+识别常规 `build`、`install`、`docs` 和 `launch`，并把工程根目录作为源码补充。若只需要
+Discovery 与 Wiki，可增加 `--discover-only`。
+
+Rolo 开发者和现场排障仍可使用同一套底层服务的细粒度命令：
+
+```bash
 uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --urdf /path/to/your_robot.urdf \
   --build-root /path/to/robot-application/build \
+  --install-root /path/to/robot-application/install \
   --doc-root /path/to/robot-application/docs \
-  --source-root /path/to/robot-application  # 仅作缺口补充
+  --launch-root /path/to/robot-application/launch \
+  --source-root /path/to/robot-application \
+  --active-probe runtime-readonly
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
-# 先查看 Registry、候选能力与当前已门禁 release 的整合视图
 uv run robotctl adapt operations summary --robot "$ROBOT_ID"
-uv run robotctl adapt operations list --robot "$ROBOT_ID" \
-  --applicability OBSERVED --registration NOT_REGISTERED
 uv run robotctl adapt run --robot "$ROBOT_ID"
-# 可选：指定源码工程外部的临时目录父路径；每次运行结束后自动删除
-uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 ```
+
+细粒度命令是调试接口，不是产品用户的必经启动步骤。完整边界见
+[`ADAPT_SHORT_JOURNEY.md`](docs/ADAPT_SHORT_JOURNEY.md)。
 
 Wiki 启发式 Agent skill 默认开启并在只读 sandbox 中运行；不可用或输出不合规时自动回退到
 确定性规则，可通过 `WIKI_INSIGHTS_AGENT_ENABLED=false` 关闭。
