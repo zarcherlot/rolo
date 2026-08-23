@@ -110,7 +110,7 @@ def test_health_and_robot_registry() -> None:
     assert topology_path.json()["hop_count"] == 1
     assert topology_path.json()["steps"][0]["evidence_ids"]
     assert capabilities.status_code == 200
-    assert capabilities.json()["schema_version"] == "rolo-capability-collection/v1"
+    assert capabilities.json()["schema_version"] == "rolo-capability-collection/v2"
     assert capabilities.json()["total"] == 294
     assert len(capabilities.json()["items"]) == 10
     assert capabilities.json()["source_kind"] == "product_registry"
@@ -401,7 +401,7 @@ def test_capabilities_are_filterable_and_detail_is_contract_bound() -> None:
     assert search.status_code == 200
     assert [item["operation"] for item in search.json()["items"]] == ["tool.catalog"]
     assert detail.status_code == 200
-    assert detail.json()["schema_version"] == "rolo-capability-detail/v1"
+    assert detail.json()["schema_version"] == "rolo-capability-detail/v2"
     assert detail.json()["capability"]["operation"] == "tool.catalog"
     assert detail.json()["capability"]["registration"] == "BUILTIN"
     assert detail.json()["capability"]["availability"] == "AVAILABLE"
@@ -524,7 +524,7 @@ def test_overview_openapi_contract_is_versioned() -> None:
     capability_schema = openapi["components"]["schemas"]["CapabilityCollection"]
     assert (
         capability_schema["properties"]["schema_version"]["const"]
-        == "rolo-capability-collection/v1"
+        == "rolo-capability-collection/v2"
     )
     lifecycle_schema = openapi["components"]["schemas"]["LifecycleRunCollection"]
     assert (
@@ -548,7 +548,7 @@ def test_overview_openapi_contract_is_versioned() -> None:
     ]
     assert (
         discovery_history_schema["properties"]["schema_version"]["const"]
-        == "rolo-discovery-snapshot-collection/v2"
+        == "rolo-discovery-snapshot-collection/v3"
     )
     heuristic_schema = openapi["components"]["schemas"]["DiscoveryHeuristicSummary"]
     assert heuristic_schema["properties"]["influences_release"]["const"] is False
@@ -613,7 +613,7 @@ def test_discovery_history_has_a_verified_empty_state(
 
     assert response.status_code == 200
     assert response.json()["schema_version"] == (
-        "rolo-discovery-snapshot-collection/v2"
+        "rolo-discovery-snapshot-collection/v3"
     )
     assert response.json()["items"] == []
     assert response.json()["integrity_status"] == "verified"
