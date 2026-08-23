@@ -27,6 +27,7 @@ from rolo.stages.adapt.target_evidence import (
     collect_over_ssh,
     collect_target_evidence,
     configure_deployment,
+    ensure_local_deployment,
     initialize_collector,
     load_collector_state,
     load_deployment,
@@ -543,6 +544,43 @@ def test_reenroll_replaces_expected_pin_and_persists_transition_record(
     assert transition.new_collector_id == replacement.collector_id
     assert transition_path.is_file()
     assert transition_path.parent.name == "transitions"
+
+
+def test_local_journey_reuses_reenrolled_collector_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64
+    )
+    original, original_state = ensure_local_deployment(
+        robot_id="wheeltec",
+        config_root=tmp_path,
+    )
+    replacement_state = tmp_path / "collector-next.json"
+    replacement_secret = tmp_path / "collector-next.key"
+    replacement = stage_collector_rotation(
+        previous_state_path=original_state,
+        expected_collector_id=original.collector.collector_id,
+        new_state_path=replacement_state,
+        new_secret_path=replacement_secret,
+    )
+    deployment_path = tmp_path / "target-evidence/wheeltec.json"
+    reenroll_deployment(
+        output_path=deployment_path,
+        expected_collector_id=original.collector.collector_id,
+        reason="scheduled credential rotation",
+        descriptor=replacement,
+        verification_secret_path=replacement_secret,
+        local_collector_state_path=replacement_state,
+    )
+
+    ensured, ensured_state = ensure_local_deployment(
+        robot_id="wheeltec",
+        config_root=tmp_path,
+    )
+
+    assert ensured.collector.collector_id == replacement.collector_id
+    assert ensured_state == replacement_state.resolve()
 
 
 def test_reenroll_rejects_stale_expected_pin_without_changing_deployment(

@@ -112,8 +112,9 @@ uv run robotctl adapt start \
   --urdf /path/to/robot.urdf  # optional
 ```
 
-`adapt start` is the shortest safe product path. It enrolls the identity, runs readiness checks,
-finds conventional build/install/document/launch evidence, performs read-only runtime discovery,
+`adapt start` is the shortest safe product path. It enrolls the identity, idempotently establishes a
+local collector, collects and verifies fresh signed target evidence, runs readiness checks, finds
+conventional build/install/document/launch evidence, performs read-only runtime discovery,
 generates the editable Wiki, and—when target-observed routes exist—continues through the Adapter
 Agent, independent gate, State Graph, Tool Catalog, handoff, and release. Use `--discover-only` when
 only the Wiki and discovery evidence are needed. See

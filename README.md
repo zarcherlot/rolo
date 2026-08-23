@@ -91,14 +91,16 @@ uv run robotctl adapt start \
 
 不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；此后的正式产品
 入口只有一条 `robotctl adapt start`。它自动注册或复用机器人身份、检查环境、识别工程证据、
-执行只读发现、生成 Wiki，并在存在目标机观测路由时继续完成 Adapter Agent、独立门禁、
-State Graph、Tool Catalog、handoff 和 release。Codex 首次认证是独立的人工安全门；尚未认证
+幂等建立本地 collector、采集并验证新鲜签名证据、执行只读发现、生成 Wiki，并在存在目标机
+观测路由时继续完成 Adapter Agent、独立门禁、State Graph、Tool Catalog、handoff 和
+release。Codex 首次认证是独立的人工安全门；尚未认证
 时，以运行 Rolo 的同一操作系统用户执行一次 `codex login --device-auth`。
 
 上述一条命令适用于 Rolo 与机器人工程运行在同一目标机的模式。控制器与目标机分离时，
 descriptor、secret 和 SSH host-key 必须独立置备，按
 [`TARGET_EVIDENCE_DEPLOYMENT.md`](docs/TARGET_EVIDENCE_DEPLOYMENT.md) 使用签名证据流程，不能为
-追求“一条命令”而取消信任绑定。
+追求“一条命令”而取消信任绑定。远程 pin 完成后，同样由
+`robotctl adapt start --evidence-mode remote` 在一次 Journey 中采集、验签并完成 Adapt。
 
 ### 访问管理 API
 
@@ -146,7 +148,8 @@ uv run robotctl adapt start \
 
 `--urdf` 可省略；缺失硬件规格会作为未知项保留。`adapt start` 会在工程根目录四层以内有界
 识别常规 `build`、`install`、`docs` 和 `launch`，并把工程根目录作为源码补充。若只需要
-Discovery 与 Wiki，可增加 `--discover-only`。
+Discovery 与 Wiki，可增加 `--discover-only`。默认 `--evidence-mode local`，签名 bundle 的
+collector ID、目标指纹、payload digest 和路径会写入 Journey v2 输出。
 
 Rolo 开发者和现场排障仍可使用同一套底层服务的细粒度命令：
 

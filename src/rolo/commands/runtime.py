@@ -17,8 +17,7 @@ from rolo.stages.adapt.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
     configure_deployment,
-    initialize_collector,
-    load_collector_state,
+    ensure_local_deployment,
 )
 
 runtime_app = typer.Typer(help="Inspect the local Rolo runtime without starting services.")
@@ -114,31 +113,9 @@ def register_runtime_commands(root: typer.Typer) -> None:
                     )
                 ):
                     raise ValueError("local evidence mode does not accept remote collector options")
-                local_state = deployment_root / f"{robot_id}-collector.json"
-                local_secret = deployment_root / f"{robot_id}-collector.key"
-                if local_state.exists() or deployment_path.exists():
-                    if not local_state.is_file() or not deployment_path.is_file():
-                        raise ValueError(
-                            "local target evidence enrollment is incomplete; explicit recovery "
-                            "is required"
-                        )
-                    state = load_collector_state(local_state)
-                    descriptor = CollectorDescriptor.model_validate(
-                        state.model_dump(exclude={"secret_path"})
-                    )
-                else:
-                    descriptor = initialize_collector(
-                        robot_id=robot_id,
-                        state_path=local_state,
-                        secret_path=local_secret,
-                    )
-                deployment = configure_deployment(
+                deployment, _ = ensure_local_deployment(
                     robot_id=robot_id,
-                    mode=evidence_mode,
-                    descriptor=descriptor,
-                    verification_secret_path=local_secret,
-                    output_path=deployment_path,
-                    local_collector_state_path=local_state,
+                    config_root=settings.rolo_config_dir,
                 )
             else:
                 if not all(

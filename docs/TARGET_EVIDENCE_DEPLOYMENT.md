@@ -36,38 +36,38 @@ stable machine identity, host name, OS, and architecture. Raw machine IDs are ne
 
 ## Mode A: Rolo runs on the target
 
-Install the baseline wheel on the target and source the robot's ROS/workspace environment. Select
-local evidence mode during initialization:
+Clone the source baseline on the target, install the locked environment, and source the robot's
+ROS/workspace environment. The product journey defaults to local signed evidence:
 
 ```bash
-python -m pip install rolo-<version>-py3-none-any.whl
-robotctl init --robot-id wheeltec --evidence-mode local
-robotctl target-evidence collect --robot wheeltec --output ./wheeltec-evidence.json
-robotctl adapt discover run \
-  --robot wheeltec \
-  --source-root /path/to/source \
-  --build-root /path/to/build \
-  --install-root /path/to/install \
-  --active-probe runtime-readonly \
-  --target-evidence-bundle ./wheeltec-evidence.json
+git clone https://github.com/zarcherlot/rolo.git
+cd rolo
+uv sync --frozen
+uv run robotctl adapt start \
+  --robot-id wheeltec \
+  --project-root /path/to/robot-workspace \
+  --urdf /path/to/robot.urdf
 ```
 
-Run the two controller commands back-to-back. If setup or transfer delays exceed the freshness
-window, collect a new bundle instead of replaying the old one.
+`adapt start` idempotently establishes the local collector, collects and verifies a fresh bundle,
+and passes only its bound probes to Discovery. Repeating the command reuses the pinned collector but
+always creates a new nonce and bundle. Use the granular `init`, `target-evidence collect`, and
+`adapt discover run --target-evidence-bundle` commands only for recovery and diagnosis.
 
-`init` creates and pins a target-local collector identity. Codex credentials are required only for
-the full Agent chain, never for deterministic evidence collection.
+Codex credentials are required only for the full Agent chain, never for deterministic evidence
+collection.
 
 ## Mode B: controller plus target-side collector
 
-Install the same wheel on both systems. The target needs only `target-evidence`; it needs no Codex,
-OpenAI credentials, Agent workspace, or Tool Gateway access. The controller runs Discovery and the
-complete `rolo-adapt-discovery`, `rolo-operation-mapping`, and `rolo-wiki-authoring` chain.
+Clone the same commit and run `uv sync --frozen` on both systems. The target needs only
+`target-evidence`; it needs no Codex, OpenAI credentials, Agent workspace, or Tool Gateway access.
+The controller runs Discovery and the complete `rolo-adapt-discovery`,
+`rolo-operation-mapping`, and `rolo-wiki-authoring` chain.
 
 On the target:
 
 ```bash
-robotctl target-evidence collector-init \
+uv run robotctl target-evidence collector-init \
   --robot-id wheeltec \
   --config /etc/rolo/target-evidence-collector.json \
   --secret-file /etc/rolo/target-evidence-collector.key \
@@ -79,28 +79,25 @@ Provision the descriptor through the configuration channel, the secret through a
 channel, and the SSH host key through an independently verified `known_hosts` file. Use a dedicated
 SSH account and, where supported, restrict it to the fixed collector command.
 
-On the controller:
+On the controller, the initial independent provisioning values can be supplied to the same product
+journey. Subsequent runs may omit them and reuse the pinned deployment:
 
 ```bash
-robotctl init \
+uv run robotctl adapt start \
   --robot-id wheeltec \
+  --project-root /path/to/controller/source-copy \
   --evidence-mode remote \
   --collector-descriptor ./wheeltec-collector.json \
   --verification-secret /etc/rolo/secrets/wheeltec-collector.key \
   --ssh-target rolo-evidence@wheeltec-host \
   --known-hosts /etc/rolo/ssh/known_hosts \
-  --collector-config /etc/rolo/target-evidence-collector.json
-
-robotctl target-evidence collect \
-  --robot wheeltec \
-  --executable-help-id target-exe-ID-FROM-DESCRIPTOR \
-  --output ./wheeltec-evidence.json
-robotctl adapt discover run \
-  --robot wheeltec \
-  --source-root /path/to/controller/source-copy \
-  --active-probe runtime-readonly \
-  --target-evidence-bundle ./wheeltec-evidence.json
+  --collector-config /etc/rolo/target-evidence-collector.json \
+  --discover-only
 ```
+
+Remove `--discover-only` to continue through the Adapter Agent and release. Every executable in the
+target collector descriptor's allowlist is requested automatically; the target still verifies its
+exact path and digest before bounded `--help` execution.
 
 Controller build/install roots must be target artifacts copied without mutation; never pass
 controller-native binaries as target evidence. Each `--allow-executable` is resolved and hashed on
@@ -155,15 +152,16 @@ new pin before retiring the old collector through the operator's normal secrets-
 Rolo does not delete the old state or secret automatically. Rotation creates a fresh executable
 allowlist, so repeat every still-approved `--allow-executable`; omitted entries are revoked.
 
-## Installable baseline contents
+## Source baseline contents
 
-The wheel includes the three `rolo-` Agent skills and references under `rolo/bundled_skills`.
-Runtime resolution uses an existing configured/check-out path first, then the bundled resource for
-the three defaults. A missing explicit override fails instead of silently falling back.
+The Git checkout includes the three `rolo-` Agent skills under `skills/`. Runtime resolution uses an
+existing configured checkout path first; a missing explicit override fails instead of silently
+falling back.
 
-- **target/local:** wheel; optionally Codex for the complete Agent chain;
-- **target/remote:** wheel and the fixed collector command only;
-- **controller/remote:** wheel, Codex CLI, pinned descriptor, collector secret, and SSH host key.
+- **target/local:** Git checkout plus `uv sync`; optionally Codex for the complete Agent chain;
+- **target/remote:** Git checkout plus `uv sync` and the fixed collector command only;
+- **controller/remote:** Git checkout plus `uv sync`, Codex CLI, pinned descriptor, collector secret,
+  and SSH host key.
 
 ## Fail-closed troubleshooting
 

@@ -1,5 +1,13 @@
 {
   "$defs": {
+    "EvidenceDeploymentMode": {
+      "enum": [
+        "local",
+        "remote"
+      ],
+      "title": "EvidenceDeploymentMode",
+      "type": "string"
+    },
     "ProjectEvidence": {
       "properties": {
         "project_root": {
@@ -58,12 +66,55 @@
       ],
       "title": "ProjectEvidence",
       "type": "object"
+    },
+    "TargetEvidenceJourneySummary": {
+      "properties": {
+        "schema_version": {
+          "const": "robot-adapt-target-evidence/v1",
+          "default": "robot-adapt-target-evidence/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/EvidenceDeploymentMode"
+        },
+        "collector_id": {
+          "title": "Collector Id",
+          "type": "string"
+        },
+        "target_host_fingerprint": {
+          "title": "Target Host Fingerprint",
+          "type": "string"
+        },
+        "bundle_payload_sha256": {
+          "title": "Bundle Payload Sha256",
+          "type": "string"
+        },
+        "bundle_path": {
+          "title": "Bundle Path",
+          "type": "string"
+        },
+        "collected_at": {
+          "title": "Collected At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "collector_id",
+        "target_host_fingerprint",
+        "bundle_payload_sha256",
+        "bundle_path",
+        "collected_at"
+      ],
+      "title": "TargetEvidenceJourneySummary",
+      "type": "object"
     }
   },
   "properties": {
     "schema_version": {
-      "const": "robot-adapt-journey/v1",
-      "default": "robot-adapt-journey/v1",
+      "const": "robot-adapt-journey/v2",
+      "default": "robot-adapt-journey/v2",
       "title": "Schema Version",
       "type": "string"
     },
@@ -216,6 +267,17 @@
     "workbench_url": {
       "title": "Workbench Url",
       "type": "string"
+    },
+    "target_evidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetEvidenceJourneySummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

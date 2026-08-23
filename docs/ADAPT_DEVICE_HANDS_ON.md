@@ -26,41 +26,42 @@ Discovery captures the schema-defined, allowlisted non-secret Runtime Context fr
 reuses that context for adapter `describe` and invocation; changing the ROS domain, RMW selection or
 an admitted overlay path requires rediscovery and a new release.
 
-## 2. Collect target evidence
+## 2. Run the complete signed Adapt journey
 
-Select target-local Rolo or the pinned remote read-only collector by following
-[`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md). Both modes first produce the same
-verified target-bound bundle:
-
-```bash
-robotctl target-evidence collect --robot "$ROBOT_ID" --output ./target-evidence.json
-```
-
-Use only paths that exist on this target; omit unavailable optional arguments:
+Use only paths that exist on this target; `--urdf` is optional. Local mode is the default and needs
+no separate `init`, evidence collection, or Discovery command:
 
 ```bash
-uv run robotctl adapt discover run \
-  --robot "$ROBOT_ID" \
+uv run robotctl adapt start \
+  --robot-id "$ROBOT_ID" \
+  --project-root /path/to/robot-workspace \
   --urdf /path/to/robot.urdf \
-  --build-root /path/to/build \
-  --install-root /path/to/install \
-  --doc-root /path/to/docs \
-  --launch-root /path/to/launch \
-  --source-root /path/to/source \
-  --active-probe runtime-readonly \
-  --target-evidence-bundle ./target-evidence.json
+  --scratch-root /var/tmp/rolo-adapt-work \
+  --timeout 1800
 ```
+
+The command idempotently enrolls the robot and local collector, creates a fresh signed target
+evidence bundle, binds its Hardware/Linux/ROS probes to Discovery, runs the three heuristic Agent
+skills, generates the Wiki, starts the real Adapter Agent, freezes its output, and publishes only
+after the independent gate passes. Its `robot-adapt-journey/v2` output must contain non-empty
+`target_evidence.collector_id`, target fingerprint, bundle digest, gate, handoff, and release ID.
+
+For a controller plus target collector, complete the independent pinning described in
+[`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md), then run the same command with
+`--evidence-mode remote`. Remote collection failures never fall back to controller probes.
 
 Expected: discovery is `SUCCEEDED` or `PARTIAL`, and at least one candidate intended for adaptation
 has an observed ROS topic/service/action, device, or CLI route. `PARTIAL` is acceptable when the
-missing facts are unrelated to that operation.
+missing facts are unrelated to that operation. A successful full journey reports `COMPLETE` and a
+passed gate.
 
 If a manual `ros2 node list` succeeds but discovery reports the ROS probe unavailable, retain the
 new run's `ros.json`. Its `command_diagnostics` distinguishes the inherited-shell attempt from the
 clean base-setup retry and includes bounded exit-code/stderr evidence; do not interpret this state as
 an empty ROS graph.
 
-Review the bounded evidence without loading the whole source tree into the Agent:
+If the journey returns `BLOCKED`, review the persisted bounded evidence without loading the whole
+source tree into the Agent:
 
 ```bash
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
@@ -78,23 +79,13 @@ uv run robotctl adapt candidates inspect OPERATION --robot "$ROBOT_ID"
 uv run robotctl adapt operations inspect OPERATION --robot "$ROBOT_ID"
 ```
 
-## 3. Run the real Adapter Agent and gate
-
-```bash
-mkdir -p /var/tmp/rolo-adapt-work
-uv run robotctl adapt run \
-  --robot "$ROBOT_ID" \
-  --scratch-root /var/tmp/rolo-adapt-work \
-  --timeout 1800
-```
-
 The scratch project is isolated from the Rolo checkout. The Agent queries a bounded local snapshot,
 uses the deterministic handoff preflight, returns only structured final-file payloads, and removes
-its generated coding files before the workspace is deleted. A successful run must publish a
+its generated coding files before the workspace is deleted. A successful run publishes a
 multi-file-capable bundle, Rolo-owned State Graph v2, full product Tool Catalog, conformance report,
 gate report, handoff, and immutable external release.
 
-## 4. Verify the published control surface
+## 3. Verify the published control surface
 
 These checks are read-only and do **not** invoke a target operation:
 
@@ -125,7 +116,7 @@ Stop before `robotctl tool invoke`. Executing a write and assessing success/fail
 correctness, reliability, performance, and safety belong to Diagnose/Verify and require the target's
 normal safety process.
 
-## 5. Evidence to return
+## 4. Evidence to return
 
 Return the discovery ID, Adapt run/release ID, output from `adapt status` and `operations summary`,
 the eligible/deferred operation lists, and any gate error. Do not return credentials, invocation

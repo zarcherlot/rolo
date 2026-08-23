@@ -439,6 +439,63 @@ def configure_deployment(
     return config
 
 
+def ensure_local_deployment(
+    *,
+    robot_id: str,
+    config_root: Path,
+    help_executables: Sequence[Path] = (),
+) -> tuple[EvidenceDeploymentConfig, Path]:
+    """Idempotently establish the target-local collector used by product journeys."""
+    deployment_root = config_root.expanduser().resolve() / "target-evidence"
+    deployment_path = deployment_root / f"{robot_id}.json"
+    default_state_path = deployment_root / f"{robot_id}-collector.json"
+    default_secret_path = deployment_root / f"{robot_id}-collector.key"
+    if deployment_path.exists():
+        deployment = load_deployment(deployment_path)
+        if deployment.mode != EvidenceDeploymentMode.LOCAL:
+            raise ValueError("existing target evidence deployment is not local")
+        state_path = Path(deployment.local_collector_state_path or "")
+        state = load_collector_state(state_path)
+        descriptor = CollectorDescriptor.model_validate(
+            state.model_dump(exclude={"secret_path"})
+        )
+        if help_executables:
+            requested_allowlist = _build_help_allowlist(help_executables)
+            if requested_allowlist != descriptor.help_executables:
+                raise ValueError(
+                    "local executable help allowlist changed; use collector rotation and "
+                    "explicit re-enrollment"
+                )
+        configured = configure_deployment(
+            robot_id=robot_id,
+            mode=EvidenceDeploymentMode.LOCAL,
+            descriptor=descriptor,
+            verification_secret_path=Path(deployment.verification_secret_path),
+            output_path=deployment_path,
+            local_collector_state_path=state_path,
+        )
+        return configured, state_path
+    if default_state_path.exists() or default_secret_path.exists():
+        raise ValueError(
+            "local target evidence enrollment is incomplete; explicit recovery is required"
+        )
+    descriptor = initialize_collector(
+        robot_id=robot_id,
+        state_path=default_state_path,
+        secret_path=default_secret_path,
+        help_executables=help_executables,
+    )
+    deployment = configure_deployment(
+        robot_id=robot_id,
+        mode=EvidenceDeploymentMode.LOCAL,
+        descriptor=descriptor,
+        verification_secret_path=default_secret_path,
+        output_path=deployment_path,
+        local_collector_state_path=default_state_path,
+    )
+    return deployment, default_state_path
+
+
 def _build_deployment_config(
     *,
     robot_id: str,
