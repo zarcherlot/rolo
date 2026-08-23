@@ -71,7 +71,9 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         schema = Path(command[command.index("--output-schema") + 1])
         captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
         output = Path(command[command.index("--output-last-message") + 1])
-        output.write_text(expected.model_dump_json(), encoding="utf-8")
+        payload = expected.model_dump(mode="json")
+        payload["proposals"][0]["evidence_refs"] *= 2
+        output.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(

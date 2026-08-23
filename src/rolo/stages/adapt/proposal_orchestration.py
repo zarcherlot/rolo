@@ -11,7 +11,7 @@ import time
 from collections.abc import Collection, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -371,6 +371,36 @@ def _process_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
     return " | ".join(line[:600] for line in selected)[:1_800]
 
 
+def _normalize_provider_bundle(payload: Any) -> Any:
+    """Remove authority-neutral duplicate strings before canonical validation."""
+    if not isinstance(payload, dict):
+        return payload
+
+    def deduplicate(field: Any) -> Any:
+        if not isinstance(field, list) or not all(isinstance(item, str) for item in field):
+            return field
+        return list(dict.fromkeys(field))
+
+    for name in ("unmapped_capabilities", "unknowns"):
+        if name in payload:
+            payload[name] = deduplicate(payload[name])
+    proposals = payload.get("proposals")
+    if isinstance(proposals, list):
+        for proposal in proposals:
+            if not isinstance(proposal, dict):
+                continue
+            for name in (
+                "evidence_refs",
+                "route_resource_ids",
+                "executable_ids",
+                "hardware_resource_ids",
+                "counter_evidence_refs",
+            ):
+                if name in proposal:
+                    proposal[name] = deduplicate(proposal[name])
+    return payload
+
+
 class CodexOperationMappingProvider:
     """Execute the discovery and mapping skills with read-only Agent authority."""
 
@@ -546,8 +576,10 @@ class CodexOperationMappingProvider:
                 )
             if not output.is_file():
                 raise RuntimeError("Operation mapping Agent did not produce a final message")
-            bundle = OperationProposalBundle.model_validate_json(
-                output.read_text(encoding="utf-8")
+            bundle = OperationProposalBundle.model_validate(
+                _normalize_provider_bundle(
+                    json.loads(output.read_text(encoding="utf-8"))
+                )
             )
             if self.model:
                 bundle = bundle.model_copy(
