@@ -63,6 +63,21 @@ def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
     if not optional_tools["codex"]:
         warnings.append("codex is not installed; adapt run will attempt installation")
 
+    sandbox_launcher = settings.rolo_adapter_sandbox_launcher
+    if settings.rolo_adapter_unsandboxed_dev:
+        adapter_sandbox = "UNSANDBOXED_DEVELOPMENT"
+        warnings.append(
+            "ROLO_ADAPTER_UNSANDBOXED_DEV is enabled; generated adapters are not OS-isolated"
+        )
+    elif sandbox_launcher is None:
+        adapter_sandbox = "NOT_CONFIGURED"
+        warnings.append(
+            "ROLO_ADAPTER_SANDBOX_LAUNCHER is not configured; generated adapter execution "
+            "will fail closed"
+        )
+    else:
+        adapter_sandbox = "CONFIGURED"
+
     if backend == "openai":
         if not settings.openai_api_key:
             errors.append("OPENAI_API_KEY is required when ROBOT_USE_BACKEND=openai")
@@ -81,6 +96,10 @@ def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
         "enrollment_status": enrollment_status,
         "robot_use_backend": backend,
         "coding_agent": coding_agent_config(settings).model_dump(mode="json"),
+        "adapter_sandbox": {
+            "status": adapter_sandbox,
+            "launcher": str(sandbox_launcher) if sandbox_launcher is not None else None,
+        },
         "local_visual_detection": False,
         "optional_tools": optional_tools,
         "warnings": warnings,

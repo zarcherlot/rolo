@@ -9,6 +9,38 @@ from rolo.adapter_runner import BoundedAdapterRunner
 from rolo.runtime_context import AdapterRuntimeContext, admitted_runtime_environment
 
 
+def test_runner_fails_closed_without_os_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ROLO_ADAPTER_UNSANDBOXED_DEV", raising=False)
+    monkeypatch.delenv("ROLO_ADAPTER_SANDBOX_LAUNCHER", raising=False)
+
+    with pytest.raises(RuntimeError, match="requires ROLO_ADAPTER_SANDBOX_LAUNCHER"):
+        BoundedAdapterRunner().run(
+            [sys.executable, "-c", "print('must not execute')"],
+            cwd=tmp_path,
+            timeout_s=5,
+        )
+
+
+def test_runner_wraps_adapter_argv_with_protected_launcher(tmp_path: Path) -> None:
+    runner = BoundedAdapterRunner(
+        sandbox_launcher=Path(sys.executable),
+        allow_unsandboxed_development=False,
+    )
+
+    command = runner._sandbox_command(["adapter", "describe"], tmp_path.resolve())
+
+    assert command == [
+        str(Path(sys.executable).resolve()),
+        "--cwd",
+        str(tmp_path.resolve()),
+        "--",
+        "adapter",
+        "describe",
+    ]
+
+
 def test_runner_sanitizes_environment_and_private_home(
     tmp_path: Path, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]

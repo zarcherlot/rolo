@@ -7,6 +7,8 @@ description: Deprecated read-only fallback for legacy robot-wiki-insights/v1 cal
 
 > Deprecated compatibility fallback. Do not select this skill for new work. New callers must use
 > `rolo-wiki-authoring`; this directory remains read-only for one migration cycle.
+> Removal gate: delete this fallback with the `robot-wiki-insights/v1` reader after the first
+> `0.2.x` release confirms that supported upgrade fixtures no longer contain legacy bundles.
 
 Produce a small `robot-wiki-insights/v1` bundle that helps an engineer decide what to verify next.
 This is an evidence-review task, not prose polishing.

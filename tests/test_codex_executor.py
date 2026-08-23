@@ -61,15 +61,35 @@ def prepare_plan(artifact_root: Path, source_root: Path) -> AdaptPlan:
             "actions": [],
         },
     )
-    with patch("rolo.stages.adapt.discovery.RosProbe.run", return_value=ros_probe):
-        DiscoveryService(ArtifactStore(artifact_root)).run(
-            robot=registry.get("demo_diff"),
-            urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
-            active_inputs=ActiveDiscoveryInputs(
-                source_roots=[source_root],
-                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+    binding = {
+        "robot_id": "demo_diff",
+        "collector_id": "collector-test",
+        "target_host_fingerprint": "f" * 64,
+        "bundle_payload_sha256": "a" * 64,
+        "access": "READ_ONLY",
+        "deployment_mode": "local",
+    }
+    DiscoveryService(ArtifactStore(artifact_root)).run(
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
+        active_inputs=ActiveDiscoveryInputs(
+            source_roots=[source_root],
+            active_probe=ActiveProbeMode.RUNTIME_READONLY,
+        ),
+        target_probes={
+            "hw": ProbeResult(
+                layer="hw",
+                status="SUCCEEDED",
+                data={"components": [], "target_evidence": binding},
             ),
-        )
+            "linux": ProbeResult(
+                layer="linux", status="SUCCEEDED", data={"target_evidence": binding}
+            ),
+            "ros": ros_probe.model_copy(
+                update={"data": {**ros_probe.data, "target_evidence": binding}}
+            ),
+        },
+    )
     return AdaptStageService(ArtifactStore(artifact_root)).derive_plan("demo_diff")
 
 

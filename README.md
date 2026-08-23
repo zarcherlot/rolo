@@ -161,7 +161,8 @@ uv run robotctl adapt discover run --robot "$ROBOT_ID" \
   --doc-root /path/to/robot-application/docs \
   --launch-root /path/to/robot-application/launch \
   --source-root /path/to/robot-application \
-  --active-probe runtime-readonly
+  --active-probe runtime-readonly \
+  --target-evidence-bundle /path/to/fresh-signed-target-bundle.json
 uv run robotctl adapt discover review --robot "$ROBOT_ID"
 uv run robotctl adapt operations summary --robot "$ROBOT_ID"
 uv run robotctl adapt run --robot "$ROBOT_ID"
@@ -169,6 +170,18 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 
 细粒度命令是调试接口，不是产品用户的必经启动步骤。完整边界见
 [`ADAPT_SHORT_JOURNEY.md`](docs/ADAPT_SHORT_JOURNEY.md)。
+
+生成 Adapter 的 `describe` 和 `invoke` 默认失败关闭。真机部署必须配置受保护的目标侧沙箱
+启动器；Rolo 按 `launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...` 调用它，由部署层限制服务身份、
+文件、设备和网络：
+
+```bash
+export ROLO_ADAPTER_SANDBOX_LAUNCHER=/usr/local/libexec/rolo-adapter-sandbox
+```
+
+`ROLO_ADAPTER_UNSANDBOXED_DEV=1` 仅允许单元测试和离线 Demo，禁止用于目标机器。
+控制面保持默认回环监听；若设置 `ROLO_HOST=0.0.0.0` 或其他非回环地址，还必须设置高熵
+`ROLO_API_TOKEN`，客户端使用 `Authorization: Bearer ...`。
 
 Wiki 启发式 Agent skill 默认开启并在只读 sandbox 中运行；不可用或输出不合规时自动回退到
 确定性规则，可通过 `WIKI_INSIGHTS_AGENT_ENABLED=false` 关闭。

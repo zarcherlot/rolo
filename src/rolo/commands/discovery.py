@@ -176,6 +176,13 @@ def discovery_run(
             active_probe=active_probe,
         )
         target_probes = None
+        if (
+            active_probe == ActiveProbeMode.RUNTIME_READONLY
+            and target_evidence_bundle is None
+        ):
+            raise ValueError(
+                "--active-probe runtime-readonly requires --target-evidence-bundle"
+            )
         if target_evidence_bundle is not None:
             from rolo.commands.target_evidence import load_verified_probes
 

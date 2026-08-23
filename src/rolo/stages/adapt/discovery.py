@@ -2175,9 +2175,16 @@ class DiscoveryService:
         if active_inputs is None:
             active_inputs = ActiveDiscoveryInputs(
                 source_roots=list(source_roots or []),
-                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+                active_probe=ActiveProbeMode.NONE,
             )
         active_inputs = active_inputs.resolved()
+        if (
+            active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
+            and target_probes is None
+        ):
+            raise ValueError(
+                "runtime-readonly discovery requires a verified target evidence bundle"
+            )
         robot = _read_discovery_urdf(robot, urdf_path)
         previous_report: DiscoveryReport | None = None
         previous_active: ActiveDiscoveryReport | None = None
@@ -2243,25 +2250,33 @@ class DiscoveryService:
                 raise ValueError("target evidence binding is not read-only")
             ros_probe = target_probes["ros"]
         else:
-            ros_probe = (
-                RosProbe().run()
-                if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
-                else ProbeResult(
-                    layer="ros",
-                    status=DiscoveryStatus.UNAVAILABLE,
-                    data={"nodes": [], "topics": [], "services": [], "actions": []},
-                    warnings=["ROS runtime inspection was not requested"],
-                )
+            ros_probe = ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.UNAVAILABLE,
+                data={"nodes": [], "topics": [], "services": [], "actions": []},
+                warnings=["verified target ROS evidence was not supplied"],
             )
         application_scan = ApplicationProbe().scan(active_inputs.source_roots)
         probes = {
             "hw": (
                 target_probes["hw"]
                 if target_probes is not None
-                else HardwareProbe().run(robot_id=robot.robot_id)
+                else ProbeResult(
+                    layer="hw",
+                    status=DiscoveryStatus.UNAVAILABLE,
+                    data={"robot_id": robot.robot_id},
+                    warnings=["verified target hardware evidence was not supplied"],
+                )
             ),
             "linux": (
-                target_probes["linux"] if target_probes is not None else LinuxProbe().run()
+                target_probes["linux"]
+                if target_probes is not None
+                else ProbeResult(
+                    layer="linux",
+                    status=DiscoveryStatus.UNAVAILABLE,
+                    data={},
+                    warnings=["verified target Linux evidence was not supplied"],
+                )
             ),
             "ros": ros_probe,
             "application": application_scan.probe,

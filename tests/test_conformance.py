@@ -9,6 +9,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import OperationCandidate, ProbeResult, RouteEvidence, utc_now
 from rolo.core.registry import RobotRegistry
+from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.conformance import (
     AdapterPromotionService,
     validate_adapter_handoff,
@@ -60,12 +61,35 @@ def _prepare_promotion(
             "actions": [],
         },
     )
-    with patch("rolo.stages.adapt.discovery.RosProbe.run", return_value=ros_probe):
-        report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
-            robot=registry.get("demo_diff"),
-            urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
-            source_roots=[workspace],
-        )
+    binding = {
+        "robot_id": "demo_diff",
+        "collector_id": "collector-test",
+        "target_host_fingerprint": "f" * 64,
+        "bundle_payload_sha256": "a" * 64,
+        "access": "READ_ONLY",
+        "deployment_mode": "local",
+    }
+    target_probes = {
+        "hw": ProbeResult(
+            layer="hw",
+            status="SUCCEEDED",
+            data={"components": [], "target_evidence": binding},
+        ),
+        "linux": ProbeResult(
+            layer="linux", status="SUCCEEDED", data={"target_evidence": binding}
+        ),
+        "ros": ros_probe.model_copy(
+            update={"data": {**ros_probe.data, "target_evidence": binding}}
+        ),
+    }
+    report, _ = DiscoveryService(ArtifactStore(artifact_root)).run(
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
+        active_inputs=ActiveDiscoveryInputs(
+            source_roots=[workspace], active_probe=ActiveProbeMode.RUNTIME_READONLY
+        ),
+        target_probes=target_probes,
+    )
     definitions = {
         item.operation: item for item in canonical_operation_registry().operations
     }

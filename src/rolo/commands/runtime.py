@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import time
 from pathlib import Path
 from typing import Annotated
@@ -194,9 +195,20 @@ def register_runtime_commands(root: typer.Typer) -> None:
         import uvicorn
 
         settings = get_settings()
+        bind_host = host or settings.rolo_host
+        try:
+            loopback = bind_host.casefold() == "localhost" or ipaddress.ip_address(
+                bind_host
+            ).is_loopback
+        except ValueError:
+            loopback = False
+        if not loopback and not settings.rolo_api_token:
+            raise typer.BadParameter(
+                "non-loopback API binding requires ROLO_API_TOKEN"
+            )
         uvicorn.run(
             "rolo.api:app",
-            host=host or settings.rolo_host,
+            host=bind_host,
             port=port or settings.rolo_port,
             reload=reload,
         )

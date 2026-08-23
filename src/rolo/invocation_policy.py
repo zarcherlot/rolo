@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
 from rolo.core.models import ToolDescriptor
+from rolo.core.persistence import append_text_record
 from rolo.stages.artifact_paths import resolve_artifact_ref
 
 
@@ -310,11 +311,54 @@ def _write_audit(
             record["authorization_id"] = authorization_id
         if lease_id is not None:
             record["lease_id"] = lease_id
-        with audit_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
-            stream.write("\n")
+        append_text_record(
+            audit_path,
+            json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n",
+        )
     except OSError as exc:
         raise ValueError(f"invocation audit failed: {exc}") from exc
+
+
+def write_adapter_execution_audit(
+    audit_path: Path,
+    *,
+    invocation_id: str,
+    robot_id: str,
+    operation: str,
+    release_id: str,
+    payload: dict[str, object],
+    outcome: Literal[
+        "STARTED", "SUCCEEDED", "FAILED", "TIMED_OUT", "OUTPUT_LIMITED", "INVALID_RESULT"
+    ],
+    result: dict[str, object] | None = None,
+    duration_s: float | None = None,
+    error_code: str | None = None,
+) -> None:
+    """Append a content-free execution lifecycle record for one adapter invocation."""
+    record: dict[str, object] = {
+        "schema_version": "rolo-adapter-execution-audit/v1",
+        "observed_at": _now(),
+        "invocation_id": invocation_id,
+        "robot_id": robot_id,
+        "operation": operation,
+        "release_id": release_id,
+        "principal": getpass.getuser(),
+        "outcome": outcome,
+        "payload_sha256": _payload_sha256(payload),
+    }
+    if result is not None:
+        record["result_sha256"] = _payload_sha256(result)
+    if duration_s is not None:
+        record["duration_s"] = round(max(0.0, duration_s), 6)
+    if error_code is not None:
+        record["error_code"] = error_code
+    try:
+        append_text_record(
+            audit_path,
+            json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n",
+        )
+    except OSError as exc:
+        raise ValueError(f"adapter execution audit failed: {exc}") from exc
 
 
 def authorize_invocation(

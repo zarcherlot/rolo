@@ -1,4 +1,5 @@
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -709,3 +710,7 @@ def test_rendered_contract_catalog_contains_every_authored_contract() -> None:
 
     assert rendered.count("\n| `") == len(catalog.contracts)
     assert "app.teleop.velocity" in rendered
+    tracked = (Path(__file__).parents[1] / "docs" / "OPERATION_CONTRACTS.md").read_text(
+        encoding="utf-8"
+    )
+    assert tracked == rendered

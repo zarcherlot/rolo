@@ -18,6 +18,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import DiscoveryStatus
+from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ActiveProbeMode
 from rolo.stages.adapt.discovery import load_report
 from rolo.stages.adapt.models import (
@@ -28,6 +29,7 @@ from rolo.stages.adapt.models import (
     AdapterConformanceReport,
     AdapterHandoff,
     AdapterOutputSnapshot,
+    AdapterReleaseIndex,
     AdaptGateReport,
     AdaptGateStatus,
     AdaptLatestIndex,
@@ -59,10 +61,7 @@ def _restore_index(path: Path, previous: bytes | None) -> None:
     if previous is None:
         path.unlink(missing_ok=True)
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".rollback")
-    temporary.write_bytes(previous)
-    temporary.replace(path)
+    atomic_write_text(path, previous.decode("utf-8"))
 
 
 def _workspace_output(workspace: Path, relative: str) -> Path:
@@ -404,12 +403,28 @@ class AdapterPromotionService:
         run: AdapterAgentRun,
         snapshot: AdapterOutputSnapshot,
     ) -> tuple[AdapterHandoff, Path, AdaptGateReport, Path]:
+        promotion_lock = self.layout.stage_latest_index("adapt", run.robot_id).with_name(
+            "promotion"
+        )
+        with interprocess_lock(promotion_lock, timeout_s=30.0):
+            return self._promote_run_locked(run, snapshot)
+
+    def _promote_run_locked(
+        self,
+        run: AdapterAgentRun,
+        snapshot: AdapterOutputSnapshot,
+    ) -> tuple[AdapterHandoff, Path, AdaptGateReport, Path]:
         checks: list[str] = []
         published_release_root: Path | None = None
         gate_path = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "gate.json"
         runtime_index = AdapterOutputLayout(self.output_root).current(run.robot_id)
         adapt_index = self.layout.stage_latest_index("adapt", run.robot_id)
         previous_runtime_index = runtime_index.read_bytes() if runtime_index.is_file() else None
+        expected_current_release_id = (
+            AdapterReleaseIndex.model_validate_json(previous_runtime_index).release_id
+            if previous_runtime_index is not None
+            else None
+        )
         previous_adapt_index = adapt_index.read_bytes() if adapt_index.is_file() else None
         runtime_index_written = False
         adapt_index_written = False
@@ -687,6 +702,7 @@ class AdapterPromotionService:
                 run.robot_id,
                 run.run_id,
                 artifact_root=self.artifacts.root,
+                expected_current_release_id=expected_current_release_id,
             )
             runtime_index_written = True
             validate_adapter_handoff(

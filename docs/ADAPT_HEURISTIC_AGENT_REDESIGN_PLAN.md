@@ -1,5 +1,9 @@
 # P4 Adapt 启发式 Agent、Registry Core 与 Verified Tool Gateway 改版计划
 
+> **历史基线（Wave 0，已完成）**：本文保留当时的分支、worktree、合入顺序和设计决策，
+> 不再作为当前开发或分支操作指南。当前实现、部署和安全边界以 `main`、架构文档、
+> Operation Contract、目标证据部署文档及对应测试为准；文中已经删除的远端分支不得重建。
+
 ## 0. 决策与启动结论
 
 本轮改版采用“启发式 Agent 提案、Rolo 确定性裁决、Verified Operation 工具化”的分层方案：

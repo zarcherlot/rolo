@@ -579,3 +579,33 @@ def test_robot_use_poll_uses_offline_backend() -> None:
 
     assert response.status_code == 200
     assert response.json()["verdict"] == "SUSPECTED_FAILURE"
+
+
+def test_remote_api_binding_requires_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ROLO_HOST", "0.0.0.0")
+    monkeypatch.setenv("ROLO_API_TOKEN", "test-control-plane-token")
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/v1/robot-use/status").status_code == 401
+        response = client.get(
+            "/v1/robot-use/status",
+            headers={"Authorization": "Bearer test-control-plane-token"},
+        )
+        assert response.status_code == 200
+
+
+def test_remote_api_binding_fails_closed_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ROLO_HOST", "0.0.0.0")
+    monkeypatch.delenv("ROLO_API_TOKEN", raising=False)
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        response = client.get("/v1/robot-use/status")
+
+    assert response.status_code == 503

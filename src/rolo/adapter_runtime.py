@@ -3,19 +3,23 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from rolo.adapter_runner import AdapterRunner, BoundedAdapterRunner
 from rolo.core.hashing import sha256_file
+from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.invocation_policy import (
     authorize_invocation,
     validate_config_mutation_input,
     validate_config_mutation_result,
     validate_content_result,
     validate_digest_pinned_mutation_input,
+    write_adapter_execution_audit,
 )
 from rolo.runtime_context import AdapterRuntimeContext
 from rolo.schema_subset import validate_object
@@ -333,16 +337,6 @@ def invoke_adapter(
     ):
         raise ValueError(f"adapter contract binding mismatch: {operation}")
     _validate_object_schema(payload, descriptor.input_schema, "adapter input")
-    authorize_invocation(
-        descriptor,
-        robot_id=robot_id,
-        policy_path=policy_path,
-        audit_path=audit_path,
-        payload=payload,
-        r3_authorizer_path=r3_authorizer_path,
-        quiescence_provider_path=quiescence_provider_path,
-        required_quiescence_s=min(timeout_s, descriptor.max_duration_s) + 5,
-    )
     validate_config_mutation_input(
         descriptor,
         payload=payload,
@@ -353,33 +347,126 @@ def invoke_adapter(
         payload=payload,
         artifact_root=artifact_root,
     )
-    package_path = _relative_file(release_root, release.adapter_package)
-    completed = (runner or BoundedAdapterRunner()).run(
-        adapter_command(package_path)
-        + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
-        stdin=json.dumps(payload, ensure_ascii=False),
-        cwd=release_root,
-        timeout_s=min(timeout_s, descriptor.max_duration_s),
-        runtime_environment=release.runtime_environment.as_environment(),
+    effective_audit_path = audit_path or artifact_root / "runtime/invocation-audit.jsonl"
+    authorize_invocation(
+        descriptor,
+        robot_id=robot_id,
+        policy_path=policy_path,
+        audit_path=effective_audit_path,
+        payload=payload,
+        r3_authorizer_path=r3_authorizer_path,
+        quiescence_provider_path=quiescence_provider_path,
+        required_quiescence_s=min(timeout_s, descriptor.max_duration_s) + 5,
     )
+    package_path = _relative_file(release_root, release.adapter_package)
+    invocation_id = f"invoke-{uuid4().hex}"
+    write_adapter_execution_audit(
+        effective_audit_path,
+        invocation_id=invocation_id,
+        robot_id=robot_id,
+        operation=operation,
+        release_id=release.release_id,
+        payload=payload,
+        outcome="STARTED",
+    )
+    started = time.monotonic()
+    try:
+        completed = (runner or BoundedAdapterRunner()).run(
+            adapter_command(package_path)
+            + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
+            stdin=json.dumps(payload, ensure_ascii=False),
+            cwd=release_root,
+            timeout_s=min(timeout_s, descriptor.max_duration_s),
+            runtime_environment=release.runtime_environment.as_environment(),
+        )
+    except Exception:
+        write_adapter_execution_audit(
+            effective_audit_path,
+            invocation_id=invocation_id,
+            robot_id=robot_id,
+            operation=operation,
+            release_id=release.release_id,
+            payload=payload,
+            outcome="FAILED",
+            duration_s=time.monotonic() - started,
+            error_code="RUNNER_ERROR",
+        )
+        raise
     if completed.timed_out:
+        write_adapter_execution_audit(
+            effective_audit_path,
+            invocation_id=invocation_id,
+            robot_id=robot_id,
+            operation=operation,
+            release_id=release.release_id,
+            payload=payload,
+            outcome="TIMED_OUT",
+            duration_s=time.monotonic() - started,
+            error_code="ADAPTER_TIMEOUT",
+        )
         raise RuntimeError("adapter invocation timed out")
     if completed.output_limited:
+        write_adapter_execution_audit(
+            effective_audit_path,
+            invocation_id=invocation_id,
+            robot_id=robot_id,
+            operation=operation,
+            release_id=release.release_id,
+            payload=payload,
+            outcome="OUTPUT_LIMITED",
+            duration_s=time.monotonic() - started,
+            error_code="OUTPUT_LIMIT",
+        )
         raise RuntimeError("adapter invocation exceeded its output limit")
     if completed.returncode != 0:
+        write_adapter_execution_audit(
+            effective_audit_path,
+            invocation_id=invocation_id,
+            robot_id=robot_id,
+            operation=operation,
+            release_id=release.release_id,
+            payload=payload,
+            outcome="FAILED",
+            duration_s=time.monotonic() - started,
+            error_code="NONZERO_EXIT",
+        )
         raise RuntimeError(
             f"adapter invocation failed with code {completed.returncode}: "
             f"{completed.stderr.strip()[:1000]}"
         )
     try:
         result = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("adapter returned invalid JSON") from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("adapter result must be a JSON object")
-    _validate_object_schema(result, descriptor.output_schema, "adapter output")
-    validate_content_result(descriptor, payload=payload, result=result)
-    validate_config_mutation_result(descriptor, result=result)
+        if not isinstance(result, dict):
+            raise RuntimeError("adapter result must be a JSON object")
+        _validate_object_schema(result, descriptor.output_schema, "adapter output")
+        validate_content_result(descriptor, payload=payload, result=result)
+        validate_config_mutation_result(descriptor, result=result)
+    except (json.JSONDecodeError, RuntimeError, ValueError) as exc:
+        write_adapter_execution_audit(
+            effective_audit_path,
+            invocation_id=invocation_id,
+            robot_id=robot_id,
+            operation=operation,
+            release_id=release.release_id,
+            payload=payload,
+            outcome="INVALID_RESULT",
+            duration_s=time.monotonic() - started,
+            error_code="INVALID_RESULT",
+        )
+        if isinstance(exc, json.JSONDecodeError):
+            raise RuntimeError("adapter returned invalid JSON") from exc
+        raise
+    write_adapter_execution_audit(
+        effective_audit_path,
+        invocation_id=invocation_id,
+        robot_id=robot_id,
+        operation=operation,
+        release_id=release.release_id,
+        payload=payload,
+        outcome="SUCCEEDED",
+        result=result,
+        duration_s=time.monotonic() - started,
+    )
     return result
 
 
@@ -527,29 +614,41 @@ def activate_release(
     release_id: str,
     *,
     artifact_root: Path,
+    expected_current_release_id: str | None = None,
 ) -> Path:
     """Atomically make an already-published, fully validated release current."""
     layout = AdapterOutputLayout(output_root)
-    release_root, release, bundle, catalog = _load_verified_release(
-        layout, robot_id, release_id
-    )
-    _verify_release_freshness(
-        release_root,
-        release,
-        bundle,
-        catalog,
-        artifact_root=artifact_root,
-    )
-    manifest_path = _relative_file(release_root, "manifest.json")
-    index = AdapterReleaseIndex(
-        robot_id=robot_id,
-        release_id=release_id,
-        manifest="manifest.json",
-        manifest_sha256=sha256_file(manifest_path),
-    )
     current = layout.current(robot_id)
     current.parent.mkdir(parents=True, exist_ok=True)
-    temporary = current.with_suffix(".json.tmp")
-    temporary.write_text(index.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    temporary.replace(current)
+    with interprocess_lock(current):
+        if expected_current_release_id is not None:
+            if not current.is_file():
+                raise ValueError("active adapter release changed before activation")
+            observed = AdapterReleaseIndex.model_validate_json(
+                current.read_text(encoding="utf-8")
+            )
+            if observed.release_id != expected_current_release_id:
+                raise ValueError("active adapter release changed before activation")
+        release_root, release, bundle, catalog = _load_verified_release(
+            layout, robot_id, release_id
+        )
+        _verify_release_freshness(
+            release_root,
+            release,
+            bundle,
+            catalog,
+            artifact_root=artifact_root,
+        )
+        manifest_path = _relative_file(release_root, "manifest.json")
+        index = AdapterReleaseIndex(
+            robot_id=robot_id,
+            release_id=release_id,
+            manifest="manifest.json",
+            manifest_sha256=sha256_file(manifest_path),
+        )
+        atomic_write_text(
+            current,
+            index.model_dump_json(indent=2) + "\n",
+            acquire_lock=False,
+        )
     return current

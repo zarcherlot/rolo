@@ -112,10 +112,12 @@ Secrets remain process-local; plans and audit artifacts contain only secret-free
 `ROLO_OUTPUT_DIR` must resolve outside the rolo source checkout. Runtime invocation reads only its
 atomic `robots/<robot>/current.json` and calls the hash-verified adapter through the generic
 `robotctl tool invoke OPERATION --robot ID --input JSON` dispatcher. Generated adapter and hardware
-provider processes share one argv-only runner with a sanitized environment, private temporary home,
-bounded stdout/stderr, timeout, process-tree termination, and POSIX resource limits. Production
-deployments should additionally isolate the Rolo service account/container because this portable
-runner is not a kernel network/filesystem sandbox.
+ provider processes share one argv-only runner with a sanitized environment, private temporary home,
+ bounded stdout/stderr, timeout, process-tree termination, and POSIX resource limits. Generated code
+ additionally requires a protected deployment-owned OS sandbox launcher. Without one, execution
+ fails closed; the explicit unsandboxed development switch is limited to tests and offline demos.
+ The launcher owns least-privilege service identity, filesystem and device allowlists, network policy,
+ and platform-specific containment.
 
 Discovery records only the explicit `AdapterRuntimeContext` contract: allowlisted, non-secret ROS
 and middleware fields such as ROS domain, RMW implementation, profile file and existing overlay

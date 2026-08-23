@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hmac
+import ipaddress
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from rolo import __version__
 from rolo.adapt_read_models import (
@@ -85,6 +88,49 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+
+def _loopback_host(value: str) -> bool:
+    if value.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def protect_control_plane(request: Request, call_next):
+    runtime = get_runtime(request)
+    settings = runtime.settings
+    if request.method in {"POST", "PUT", "PATCH"}:
+        raw_length = request.headers.get("content-length")
+        if raw_length is None:
+            return JSONResponse(status_code=411, content={"detail": "Content-Length is required"})
+        try:
+            content_length = int(raw_length)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
+        if content_length < 0 or content_length > settings.rolo_api_max_body_bytes:
+            return JSONResponse(status_code=413, content={"detail": "Request body exceeds limit"})
+
+    token = settings.rolo_api_token
+    remote_binding = not _loopback_host(settings.rolo_host)
+    if request.url.path != "/health" and (remote_binding or token is not None):
+        authorization = request.headers.get("authorization", "")
+        supplied = (
+            authorization.removeprefix("Bearer ")
+            if authorization.startswith("Bearer ")
+            else ""
+        )
+        if token is None:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Remote API binding requires ROLO_API_TOKEN"},
+            )
+        if not supplied or not hmac.compare_digest(supplied, token):
+            return JSONResponse(status_code=401, content={"detail": "Invalid API token"})
+    return await call_next(request)
 
 
 def get_runtime(request: Request) -> RobotUseRuntime:

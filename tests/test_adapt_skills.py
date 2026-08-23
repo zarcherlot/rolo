@@ -70,6 +70,8 @@ def test_legacy_wiki_skill_is_an_explicit_read_only_fallback() -> None:
     assert "Deprecated" in legacy
     assert "rolo-wiki-authoring" in legacy
     assert "read-only" in legacy
+    assert "0.2.x" in legacy
+    assert "Removal gate" in legacy
 
 
 def _discovery_plan(**updates: object) -> AdaptDiscoveryPlan:

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from rolo.adapter_runner import AdapterProcessResult
 from rolo.adapter_runtime import activate_release, invoke_adapter, publish_release
 from rolo.cli import app
 from rolo.core.config import get_settings
@@ -259,8 +260,17 @@ def test_runtime_invokes_only_the_entrypoint_bound_in_active_catalog(tmp_path: P
     )
 
     assert result == {"status": "SUCCEEDED", "camera": "front_camera"}
-    audit_record = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
-    assert audit_record["outcome"] == "ALLOWED"
+    lines = audit.read_text(encoding="utf-8").splitlines()
+    records = [json.loads(line) for line in lines]
+    execution = [
+        record
+        for record in records
+        if record["schema_version"] == "rolo-adapter-execution-audit/v1"
+    ]
+    assert [record["outcome"] for record in execution] == ["STARTED", "SUCCEEDED"]
+    assert execution[0]["invocation_id"] == execution[1]["invocation_id"]
+    assert execution[1]["release_id"] == "release-1"
+    assert "result_sha256" in execution[1]
     assert "front_camera" not in audit.read_text(encoding="utf-8")
 
 
@@ -281,6 +291,37 @@ def test_runtime_denies_sensitive_operation_without_protected_policy(tmp_path: P
     record = json.loads(audit.read_text(encoding="utf-8"))
     assert record["outcome"] == "DENIED"
     assert "front_camera" not in audit.read_text(encoding="utf-8")
+
+
+def test_runtime_audits_invalid_adapter_result(tmp_path: Path) -> None:
+    class InvalidResultRunner:
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del command, kwargs
+            return AdapterProcessResult(returncode=0, stdout="not-json", stderr="")
+
+    output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front_camera"},
+            artifact_root=tmp_path,
+            policy_path=policy,
+            audit_path=audit,
+            runner=InvalidResultRunner(),
+        )
+
+    records = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    execution = [
+        record
+        for record in records
+        if record["schema_version"] == "rolo-adapter-execution-audit/v1"
+    ]
+    assert [record["outcome"] for record in execution] == ["STARTED", "INVALID_RESULT"]
+    assert execution[-1]["error_code"] == "INVALID_RESULT"
 
 
 def test_runtime_denies_sensitive_operation_for_unlisted_os_identity(tmp_path: Path) -> None:
@@ -344,6 +385,23 @@ def test_activation_rejects_tampered_candidate_and_preserves_current(
 
     with pytest.raises(ValueError, match="hash mismatch"):
         activate_release(output, "demo", "release-2", artifact_root=tmp_path)
+
+    current = json.loads((output / "robots/demo/current.json").read_text(encoding="utf-8"))
+    assert current["release_id"] == "release-1"
+
+
+def test_activation_compare_and_swap_preserves_newer_current(tmp_path: Path) -> None:
+    output = _publish_demo_release(tmp_path, release_id="release-1")
+    _publish_demo_release(tmp_path, release_id="release-2", activate=False)
+
+    with pytest.raises(ValueError, match="changed before activation"):
+        activate_release(
+            output,
+            "demo",
+            "release-2",
+            artifact_root=tmp_path,
+            expected_current_release_id="stale-release",
+        )
 
     current = json.loads((output / "robots/demo/current.json").read_text(encoding="utf-8"))
     assert current["release_id"] == "release-1"
