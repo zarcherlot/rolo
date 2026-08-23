@@ -48,6 +48,9 @@ from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryReport,
     ActiveProbeMode,
     CoverageStatus,
+    ExecutableDiscovery,
+    HelpProbeResult,
+    InvocationAnalysis,
     render_active_discovery_markdown,
 )
 from rolo.stages.adapt.discovery_status import (
@@ -1871,6 +1874,100 @@ def _bind_candidate_evidence_ids(
     return bound
 
 
+def _merge_target_executable_help(
+    active_report: ActiveDiscoveryReport,
+    linux_probe: ProbeResult,
+) -> None:
+    """Merge verified target-side help evidence without executing target binaries locally."""
+    binding = linux_probe.data.get("target_evidence")
+    if not isinstance(binding, dict):
+        return
+    raw_records = binding.get("executable_help", [])
+    if not isinstance(raw_records, list):
+        return
+    bundle_digest = str(binding.get("bundle_payload_sha256", "unknown"))
+    for raw in raw_records:
+        if not isinstance(raw, dict):
+            continue
+        executable_id = str(raw.get("executable_id", ""))
+        target_path = str(raw.get("path", ""))
+        executable_sha256 = str(raw.get("executable_sha256", ""))
+        if not executable_id or not target_path or not executable_sha256:
+            continue
+        try:
+            help_probe = HelpProbeResult.model_validate(raw.get("help_probe", {}))
+        except ValueError:
+            continue
+        help_probe = help_probe.model_copy(
+            update={
+                "output_ref": (
+                    f"target-evidence:{bundle_digest}#executable-help/{executable_id}"
+                ),
+                "usage": list(raw.get("usage", [])),
+                "parameters": list(raw.get("parameters", [])),
+                "subcommands": list(raw.get("subcommands", [])),
+            }
+        )
+        target_name = Path(target_path).name
+        matching = next(
+            (
+                executable
+                for executable in active_report.executables
+                if executable.path == target_path
+            ),
+            None,
+        )
+        if matching is None:
+            matching = next(
+                (
+                    executable
+                    for executable in active_report.executables
+                    if executable.name == target_name
+                ),
+                None,
+            )
+        evidence_ref = help_probe.output_ref
+        if matching is None:
+            active_report.executables.append(
+                ExecutableDiscovery(
+                    executable_id=executable_id,
+                    name=target_name,
+                    path=target_path,
+                    origin="EXPLICIT",
+                    sha256=executable_sha256,
+                    invocation=InvocationAnalysis(
+                        entrypoint=target_path,
+                        arguments=help_probe.parameters,
+                        subcommands=help_probe.subcommands,
+                        help_probe=help_probe,
+                    ),
+                    safety={
+                        "target_help_probe": "ALLOWLISTED_READ_ONLY",
+                        "possible_side_effect": True,
+                    },
+                    evidence={"help": [evidence_ref] if evidence_ref else []},
+                )
+            )
+            continue
+        matching.path = target_path
+        matching.sha256 = executable_sha256
+        matching.invocation.entrypoint = matching.invocation.entrypoint or target_path
+        matching.invocation.arguments = sorted(
+            set(matching.invocation.arguments) | set(help_probe.parameters)
+        )
+        matching.invocation.subcommands = sorted(
+            set(matching.invocation.subcommands) | set(help_probe.subcommands)
+        )
+        matching.invocation.help_probe = help_probe
+        matching.safety["target_help_probe"] = "ALLOWLISTED_READ_ONLY"
+        matching.safety["possible_side_effect"] = True
+        if evidence_ref:
+            matching.evidence["help"] = sorted(
+                set(matching.evidence.get("help", [])) | {evidence_ref}
+            )
+    active_report.executables.sort(key=lambda item: (item.name, item.executable_id))
+
+
 class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
     """Bind Agent-visible IDs only to existing deterministic read-only implementations."""
 
@@ -2193,6 +2290,7 @@ class DiscoveryService:
             technical_status=probe_status.value,
             created_at=now,
         )
+        _merge_target_executable_help(active_report, probes["linux"])
         operation_candidates = _bind_candidate_evidence_ids(
             operation_candidates,
             active_report,

@@ -21,6 +21,8 @@ from rolo.stages.adapt.target_evidence import (
     load_collector_state,
     load_deployment,
     new_request,
+    reenroll_deployment,
+    stage_collector_rotation,
     verify_evidence_bundle,
 )
 
@@ -48,6 +50,13 @@ def collector_init(
         Path | None,
         typer.Option("--descriptor-out", help="Non-secret descriptor for the controller"),
     ] = None,
+    allow_executable: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--allow-executable",
+            help="Exact target executable permitted for bounded --help evidence; repeatable",
+        ),
+    ] = None,
 ) -> None:
     """Initialize the target-side collector and print its pinned identity."""
     try:
@@ -55,6 +64,7 @@ def collector_init(
             robot_id=robot_id,
             state_path=config,
             secret_path=secret_file,
+            help_executables=allow_executable or (),
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -69,6 +79,51 @@ def collector_init(
             "secret_path": str(secret_file.resolve()),
             "warning": "Provision the secret to the controller through a separate secure channel.",
             "access": "READ_ONLY",
+        }
+    )
+
+
+@target_evidence_app.command("collector-rotate")
+def collector_rotate(
+    previous_config: Annotated[Path, typer.Option("--previous-config")],
+    expected_collector_id: Annotated[str, typer.Option("--expected-collector-id")],
+    config: Annotated[Path, typer.Option("--config", help="New parallel collector state")],
+    secret_file: Annotated[
+        Path, typer.Option("--secret-file", help="New parallel 0600 signing secret")
+    ],
+    descriptor_out: Annotated[Path, typer.Option("--descriptor-out")],
+    allow_executable: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--allow-executable",
+            help="Exact executable permitted by the replacement collector; repeatable",
+        ),
+    ] = None,
+) -> None:
+    """Stage rotated target credentials without overwriting the active collector."""
+    try:
+        descriptor = stage_collector_rotation(
+            previous_state_path=previous_config,
+            expected_collector_id=expected_collector_id,
+            new_state_path=config,
+            new_secret_path=secret_file,
+            help_executables=allow_executable or (),
+        )
+        descriptor_out.parent.mkdir(parents=True, exist_ok=True)
+        descriptor_out.write_text(
+            descriptor.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "COLLECTOR_ROTATION_STAGED",
+            "descriptor": descriptor.model_dump(mode="json"),
+            "descriptor_path": str(descriptor_out),
+            "secret_path": str(secret_file.resolve()),
+            "previous_collector_preserved": True,
+            "next": "transfer the new descriptor and secret, then run re-enroll",
         }
     )
 
@@ -124,6 +179,53 @@ def configure(
     )
 
 
+@target_evidence_app.command("re-enroll")
+def re_enroll(
+    robot_id: Annotated[str, typer.Option("--robot-id", "--robot")],
+    expected_collector_id: Annotated[str, typer.Option("--expected-collector-id")],
+    reason: Annotated[str, typer.Option("--reason")],
+    descriptor_path: Annotated[Path, typer.Option("--collector-descriptor")],
+    verification_secret: Annotated[Path, typer.Option("--verification-secret")],
+    mode: Annotated[EvidenceDeploymentMode | None, typer.Option("--mode")] = None,
+    ssh_target: Annotated[str | None, typer.Option("--ssh-target")] = None,
+    known_hosts: Annotated[Path | None, typer.Option("--known-hosts")] = None,
+    collector_config: Annotated[str | None, typer.Option("--collector-config")] = None,
+    collector_state: Annotated[Path | None, typer.Option("--collector-state")] = None,
+    deployment_config: Annotated[Path | None, typer.Option("--deployment-config")] = None,
+    transition_dir: Annotated[Path | None, typer.Option("--transition-dir")] = None,
+) -> None:
+    """Explicitly replace a pinned collector or verification credential."""
+    output_path = deployment_config or deployment_path(robot_id)
+    try:
+        descriptor = CollectorDescriptor.model_validate_json(
+            descriptor_path.read_text(encoding="utf-8")
+        )
+        deployment, transition, transition_path = reenroll_deployment(
+            output_path=output_path,
+            expected_collector_id=expected_collector_id,
+            reason=reason,
+            descriptor=descriptor,
+            verification_secret_path=verification_secret,
+            mode=mode,
+            ssh_target=ssh_target,
+            known_hosts_path=known_hosts,
+            collector_config=collector_config,
+            local_collector_state_path=collector_state,
+            transition_dir=transition_dir,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "TARGET_EVIDENCE_REENROLLED",
+            "deployment": deployment.model_dump(mode="json"),
+            "transition": transition.model_dump(mode="json"),
+            "transition_path": str(transition_path),
+            "next": f"robotctl target-evidence collect --robot {robot_id}",
+        }
+    )
+
+
 @target_evidence_app.command("collector-run", hidden=True)
 def collector_run(
     config: Annotated[Path, typer.Option("--config")],
@@ -151,11 +253,18 @@ def collect(
     ] = None,
     output: Annotated[Path | None, typer.Option("--output")] = None,
     timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=300.0)] = 45.0,
+    executable_help_id: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--executable-help-id",
+            help="Collector allowlist ID to probe with bounded --help; repeatable",
+        ),
+    ] = None,
 ) -> None:
     """Collect and verify one fresh target evidence bundle."""
     try:
         deployment = load_deployment(deployment_config or deployment_path(robot_id))
-        request = new_request(robot_id)
+        request = new_request(robot_id, executable_help_ids=executable_help_id or ())
         if deployment.mode == EvidenceDeploymentMode.LOCAL:
             state_path = collector_state or Path(deployment.local_collector_state_path or "")
             bundle = collect_target_evidence(request, load_collector_state(state_path))
@@ -181,6 +290,13 @@ def collect(
             "target_host_fingerprint": bundle.target_host_fingerprint,
             "access": bundle.access,
             "bundle": str(destination),
+            "executable_help": [
+                {
+                    "executable_id": item.executable_id,
+                    "status": item.help_probe.status.value,
+                }
+                for item in bundle.executable_help
+            ],
             "next": (
                 f"robotctl adapt discover run --robot {robot_id} "
                 f"--target-evidence-bundle {destination}"

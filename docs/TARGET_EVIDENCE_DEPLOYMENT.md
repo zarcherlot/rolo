@@ -1,14 +1,15 @@
 # Target Evidence Deployment
 
 Rolo supports two explicit evidence deployment modes. Both produce the same signed,
-target-bound `robot-target-evidence-bundle/v1`, and both permit only the deterministic
+target-bound `robot-target-evidence-bundle/v2`, and both permit only the deterministic
 `hw`, `linux`, and `ros` read-only probes. Selecting a mode changes where those probes run; it
 does not change verification or Operation eligibility.
 
 ## Security and attribution invariants
 
-- The collector accepts only `mode=READ_ONLY` and the allowlisted `hw`, `linux`, and `ros`
-  layers. It has no Operation invocation endpoint.
+- The collector accepts only `mode=READ_ONLY`, the allowlisted `hw`, `linux`, and `ros`
+  layers, and optional bounded `--help` requests for executables pinned during enrollment. It has
+  no Operation invocation endpoint.
 - Every request is bound to a robot ID, random nonce, and five-minute validity window.
 - Every response is bound to the robot ID, collector ID, target host fingerprint, request nonce,
   collection time, layer set, payload digest, and HMAC-SHA256 integrity signature.
@@ -19,7 +20,7 @@ does not change verification or Operation eligibility.
   identity is rejected; discovery never performs trust-on-first-use.
 - Repeating installation is idempotent only when robot, mode, collector identity/fingerprint,
   verification-secret digest, and transport paths are unchanged. Replacement or credential
-  rotation requires an explicit re-enroll/rotate workflow; this baseline never overwrites a pin.
+  rotation uses the explicit staged workflow below; ordinary `configure` never overwrites a pin.
 - Remote transport uses SSH with `BatchMode=yes`, `StrictHostKeyChecking=yes`, and an explicit
   `known_hosts` file. Host-key prompts and fallback to an unpinned host are forbidden.
 - With a verified bundle, Discovery uses its target `hw`, `linux`, and `ros` probes and does not
@@ -70,7 +71,8 @@ robotctl target-evidence collector-init \
   --robot-id wheeltec \
   --config /etc/rolo/target-evidence-collector.json \
   --secret-file /etc/rolo/target-evidence-collector.key \
-  --descriptor-out ./wheeltec-collector.json
+  --descriptor-out ./wheeltec-collector.json \
+  --allow-executable /opt/robot/bin/wheeltec_driver
 ```
 
 Provision the descriptor through the configuration channel, the secret through a separate secrets
@@ -89,7 +91,10 @@ robotctl init \
   --known-hosts /etc/rolo/ssh/known_hosts \
   --collector-config /etc/rolo/target-evidence-collector.json
 
-robotctl target-evidence collect --robot wheeltec --output ./wheeltec-evidence.json
+robotctl target-evidence collect \
+  --robot wheeltec \
+  --executable-help-id target-exe-ID-FROM-DESCRIPTOR \
+  --output ./wheeltec-evidence.json
 robotctl adapt discover run \
   --robot wheeltec \
   --source-root /path/to/controller/source-copy \
@@ -98,8 +103,57 @@ robotctl adapt discover run \
 ```
 
 Controller build/install roots must be target artifacts copied without mutation; never pass
-controller-native binaries as target evidence. Explicit executable `--help` evidence must be
-collected by a future target-side allowlisted Probe, not by executing target binaries remotely.
+controller-native binaries as target evidence. Each `--allow-executable` is resolved and hashed on
+the target during collector enrollment. Later requests carry only its descriptor ID; the collector
+refuses unknown IDs, changed hashes, non-files, or oversized binaries, then executes exactly
+`[pinned_path, "--help"]` with no shell, no stdin, a reduced environment, a five-second timeout, and
+a 200 KB output limit. The signed bundle contains the result and parsed usage, parameters, and
+subcommands. Discovery merges that evidence into the Active report and never runs the target binary
+on the controller. Because third-party programs can implement `--help` with side effects, operators
+must allowlist only reviewed executables and may omit this optional evidence entirely.
+
+## Collector rotation and target replacement
+
+Rotation is intentionally a two-step handoff. The target first creates a parallel collector and
+secret; it does not overwrite or remove the active collector:
+
+```bash
+robotctl target-evidence collector-rotate \
+  --previous-config /etc/rolo/target-evidence-collector.json \
+  --expected-collector-id collector-OLD \
+  --config /etc/rolo/target-evidence-collector-next.json \
+  --secret-file /etc/rolo/target-evidence-collector-next.key \
+  --descriptor-out ./wheeltec-collector-next.json \
+  --allow-executable /opt/robot/bin/wheeltec_driver
+```
+
+Transfer the new descriptor and secret through the same separate channels used for initial
+enrollment. Then switch the controller pin explicitly. Remote mode also supplies the new target-side
+collector config path:
+
+```bash
+robotctl target-evidence re-enroll \
+  --robot wheeltec \
+  --expected-collector-id collector-OLD \
+  --reason "scheduled credential rotation" \
+  --collector-descriptor ./wheeltec-collector-next.json \
+  --verification-secret /etc/rolo/secrets/wheeltec-collector-next.key \
+  --collector-config /etc/rolo/target-evidence-collector-next.json
+```
+
+For local mode, pass `--collector-state` with the new local state path. For physical target
+replacement, initialize a new collector on the replacement host instead of using
+`collector-rotate`, independently verify its host fingerprint, and run the same `re-enroll` command
+against the expected old pin.
+
+Re-enrollment fails when the expected old collector does not match, the descriptor and local state
+disagree, or local signing and verification secrets differ. It writes a
+`robot-target-evidence-transition/v1` record under the deployment's `transitions/` directory before
+atomically replacing the active configuration. The record contains IDs, fingerprints, secret
+digests, modes, reason, and timestamp—never secret bytes. Collect and verify a fresh bundle using the
+new pin before retiring the old collector through the operator's normal secrets-management process.
+Rolo does not delete the old state or secret automatically. Rotation creates a fresh executable
+allowlist, so repeat every still-approved `--allow-executable`; omitted entries are revoked.
 
 ## Installable baseline contents
 
@@ -119,4 +173,6 @@ Never bypass these errors:
 - collector or target fingerprint mismatch: stop and compare the physical target to deployment;
 - payload hash or signature mismatch: discard the bundle and rotate credentials if needed;
 - expired request: synchronize clocks and retry; do not expand the protocol window;
+- executable help ID rejected or digest changed: review the target binary and rotate/re-enroll the
+  collector allowlist; never substitute an unpinned path;
 - SSH host-key failure: update the pin only after independent host verification.
