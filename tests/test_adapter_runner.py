@@ -24,15 +24,16 @@ def test_runner_fails_closed_without_os_sandbox(
 
 
 def test_runner_wraps_adapter_argv_with_protected_launcher(tmp_path: Path) -> None:
+    launcher = Path(sys.executable).resolve()
     runner = BoundedAdapterRunner(
-        sandbox_launcher=Path(sys.executable),
+        sandbox_launcher=launcher,
         allow_unsandboxed_development=False,
     )
 
     command = runner._sandbox_command(["adapter", "describe"], tmp_path.resolve())
 
     assert command == [
-        str(Path(sys.executable).resolve()),
+        str(launcher),
         "--cwd",
         str(tmp_path.resolve()),
         "--",
