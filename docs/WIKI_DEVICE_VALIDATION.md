@@ -14,7 +14,7 @@
 ```bash
 export WIKI_INSIGHTS_AGENT_ENABLED=true
 export WIKI_INSIGHTS_AGENT_TIMEOUT_S=180
-export WIKI_INSIGHTS_SKILL_PATH=skills/robot-wiki-heuristics/SKILL.md
+export WIKI_INSIGHTS_SKILL_PATH=skills/rolo-wiki-authoring/SKILL.md
 ```
 
 ## 2. 第一次发现：静态基线

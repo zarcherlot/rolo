@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import yaml
 from packaging.requirements import InvalidRequirement, Requirement
 
 try:
@@ -30,7 +31,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import (
     DiscoveryLatestIndex,
     DiscoveryReport,
@@ -47,6 +48,9 @@ from rolo.stages.adapt.active_discovery import (
     ActiveDiscoveryReport,
     ActiveProbeMode,
     CoverageStatus,
+    ExecutableDiscovery,
+    HelpProbeResult,
+    InvocationAnalysis,
     render_active_discovery_markdown,
 )
 from rolo.stages.adapt.discovery_status import (
@@ -61,6 +65,11 @@ from rolo.stages.adapt.evidence import (
     walk_files,
 )
 from rolo.stages.adapt.hardware_provider import collect_hardware_provider_evidence
+from rolo.stages.adapt.heuristic_discovery import (
+    HeuristicDiscoveryOrchestrator,
+    WhitelistedR0ProbeDispatcher,
+    render_heuristic_summary_markdown,
+)
 from rolo.stages.adapt.inputs import (
     AdaptInputs,
     SemanticCandidate,
@@ -70,6 +79,7 @@ from rolo.stages.adapt.inputs import (
 from rolo.stages.adapt.operation_registry import validate_candidate_operations
 from rolo.stages.adapt.review import render_discovery_review_markdown
 from rolo.stages.adapt.routes import persist_route_evidence
+from rolo.stages.adapt.semantic_mapping import matching_semantic_rules
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyResolver,
     ResolutionStatus,
@@ -918,6 +928,99 @@ def _extract_semantic_candidates(
     return candidates
 
 
+def _extract_ros_config_names(text: str, *, suffix: str) -> dict[str, list[str]]:
+    """Read concrete ROS names from inert configuration data without executing it."""
+    names: dict[str, set[str]] = {"topics": set(), "services": set(), "actions": set()}
+    payload: Any = None
+    if suffix.casefold() in {".yaml", ".yml", ".json"}:
+        try:
+            payload = yaml.safe_load(text)
+        except yaml.YAMLError:
+            # Vendor ROS parameter files frequently contain tab-indented comments that
+            # strict YAML rejects. A bounded literal key/value pass still recovers names
+            # without attempting to repair or execute the configuration.
+            payload = None
+
+    def visit(value: Any, key_hint: str = "") -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                visit(nested, str(key).casefold())
+            return
+        if isinstance(value, list):
+            for nested in value:
+                visit(nested, key_hint)
+            return
+        if not isinstance(value, str) or not _is_concrete_ros_endpoint(value):
+            return
+        collection = next(
+            (
+                collection
+                for token, collection in (
+                    ("topic", "topics"),
+                    ("service", "services"),
+                    ("action", "actions"),
+                )
+                if token in key_hint
+            ),
+            None,
+        )
+        if collection:
+            names[collection].add(_ros_entity_name(value))
+
+    visit(payload)
+    literal_pattern = re.compile(
+        r"(?m)^\s*['\"]?(?P<key>[A-Za-z0-9_.-]*(?:topic|service|action)"
+        r"[A-Za-z0-9_.-]*)['\"]?\s*[:=]\s*['\"]?(?P<value>/?[A-Za-z0-9_/]+)"
+    )
+    for match in literal_pattern.finditer(text):
+        key = match.group("key").casefold()
+        value = match.group("value")
+        if not _is_concrete_ros_endpoint(value):
+            continue
+        collection = next(
+            collection
+            for token, collection in (
+                ("topic", "topics"),
+                ("service", "services"),
+                ("action", "actions"),
+            )
+            if token in key
+        )
+        names[collection].add(_ros_entity_name(value))
+    return {name: sorted(values) for name, values in names.items()}
+
+
+def _extract_parameter_default_ros_names(text: str) -> dict[str, list[str]]:
+    """Resolve literal ROS names used as defaults for C++ topic/service/action parameters."""
+    names: dict[str, set[str]] = {"topics": set(), "services": set(), "actions": set()}
+    pattern = re.compile(
+        r"declare_parameter(?:\s*<[^>]+>)?\s*\(\s*['\"]"
+        r"(?P<key>[^'\"]+)['\"]\s*,\s*(?:std::string\s*\(\s*)?['\"]"
+        r"(?P<value>[^'\"]+)['\"]",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(text):
+        key = match.group("key").casefold()
+        value = match.group("value")
+        if not _is_concrete_ros_endpoint(value):
+            continue
+        collection = next(
+            (
+                collection
+                for token, collection in (
+                    ("topic", "topics"),
+                    ("service", "services"),
+                    ("action", "actions"),
+                )
+                if token in key
+            ),
+            None,
+        )
+        if collection:
+            names[collection].add(_ros_entity_name(value))
+    return {name: sorted(values) for name, values in names.items()}
+
+
 def _python_without_comments(text: str) -> str:
     """Remove Python comments without changing string literals or executing source."""
     try:
@@ -1112,6 +1215,13 @@ class ApplicationProbe:
                                 source_kind=candidate_source_kind,
                             )
                         )
+                        if candidate_source_kind == "config":
+                            config_names = _extract_ros_config_names(
+                                candidate_text,
+                                suffix=path.suffix,
+                            )
+                            for collection, values in config_names.items():
+                                ros_names[collection].update(values)
                 if path.name in {
                     "pyproject.toml",
                     "setup.py",
@@ -1135,6 +1245,9 @@ class ApplicationProbe:
                             project["languages"].append(language)
                         interfaces = _extract_ros_interfaces(text, path)
                         project["ros_interfaces"].extend(interfaces)
+                        parameter_names = _extract_parameter_default_ros_names(text)
+                        for collection, values in parameter_names.items():
+                            ros_names[collection].update(values)
                         for interface in interfaces:
                             if interface.get("name_source") != "STRING_LITERAL":
                                 continue
@@ -1257,26 +1370,8 @@ def _ros_entity_type(value: str) -> str | None:
     return interface_type or None
 
 
-def _topic_rule_matches(topic: str, token: str) -> bool:
-    segments = [segment for segment in topic.casefold().split("/") if segment]
-    if token in segments:
-        return True
-    return token in {"image", "battery"} and any(
-        segment.startswith(f"{token}_") for segment in segments
-    )
-
-
 def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, Any]]:
     bindings: dict[str, dict[str, Any]] = {}
-    topic_rules = {
-        "cmd_vel": "semantic://actuator/base/velocity_command",
-        "odom": "semantic://state/base/odometry",
-        "scan": "semantic://sensor/range_scan_2d",
-        "image": "semantic://sensor/front_camera/image",
-        "imu": "semantic://sensor/imu",
-        "map": "semantic://environment/map_2d",
-        "battery": "semantic://power/battery_state",
-    }
     ros_probe = probes["ros"]
     ros_revision = ":".join(
         str(value)
@@ -1302,8 +1397,17 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         topic = _ros_entity_name(raw_topic)
         if not _is_concrete_ros_endpoint(raw_topic):
             continue
-        for token, semantic_uri in topic_rules.items():
-            if _topic_rule_matches(topic, token) and semantic_uri not in bindings:
+        for rule in matching_semantic_rules(topic):
+            if any(
+                binding.get("semantic_rule_id") == rule.rule_id
+                and _ros_entity_name(str(binding.get("binding", ""))) == topic
+                for binding in bindings.values()
+            ):
+                continue
+            semantic_uri = rule.semantic_uri
+            if semantic_uri in bindings:
+                semantic_uri = f"{semantic_uri}/{sha256_bytes(topic.encode('utf-8'))[:16]}"
+            if semantic_uri not in bindings:
                 bindings[semantic_uri] = {
                     "transport": transport,
                     "binding": topic,
@@ -1312,6 +1416,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "evidence": source,
                     "observed_at": observed_at,
                     "runtime_revision": runtime_revision,
+                    "semantic_rule_id": rule.rule_id,
+                    "operations": list(rule.operations),
                 }
     return bindings
 
@@ -1696,37 +1802,23 @@ def _build_operation_candidates(
             limitations=limitations,
         )
 
-    semantic_operations = {
-        "semantic://actuator/base/velocity_command": "app.teleop.velocity",
-        "semantic://state/base/odometry": "app.localization.status",
-        "semantic://environment/map_2d": "app.map.inspect",
-    }
     candidates: list[OperationCandidate] = []
-    for semantic_uri, operation in semantic_operations.items():
-        if semantic_uri in bindings:
-            candidates.append(
-                OperationCandidate(
-                    operation=operation,
-                    semantic_bindings=[semantic_uri],
-                    evidence=[bindings[semantic_uri]["binding"]],
-                    route_evidence=[route(semantic_uri)],
-                    limitations=["Requires adapter generation and independent conformance"],
-                )
-            )
-    camera_bindings = sorted(
-        semantic_uri
-        for semantic_uri in bindings
-        if semantic_uri.startswith("semantic://sensor/") and semantic_uri.endswith("/image")
-    )
-    if camera_bindings:
+    operation_bindings: dict[str, list[str]] = {}
+    for semantic_uri, binding in bindings.items():
+        for operation in binding.get("operations", []):
+            operation_bindings.setdefault(str(operation), []).append(semantic_uri)
+    for operation, semantic_uris in sorted(operation_bindings.items()):
+        semantic_uris = sorted(semantic_uris)
         candidates.append(
             OperationCandidate(
-                operation="app.camera.snapshot",
-                semantic_bindings=camera_bindings,
-                evidence=[bindings[semantic_uri]["binding"] for semantic_uri in camera_bindings],
-                route_evidence=[route(semantic_uri) for semantic_uri in camera_bindings],
+                operation=operation,
+                semantic_bindings=semantic_uris,
+                evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
+                route_evidence=[route(semantic_uri) for semantic_uri in semantic_uris],
                 limitations=[
-                    "Requires target-runtime topic type, publisher, QoS, and frame validation"
+                    "Rule-derived applicability requires target-runtime interface, provider, "
+                    "QoS, and semantic validation",
+                    "Requires adapter generation and independent conformance",
                 ],
             )
         )
@@ -1782,6 +1874,278 @@ def _bind_candidate_evidence_ids(
     return bound
 
 
+def _merge_target_executable_help(
+    active_report: ActiveDiscoveryReport,
+    linux_probe: ProbeResult,
+) -> None:
+    """Merge verified target-side help evidence without executing target binaries locally."""
+    binding = linux_probe.data.get("target_evidence")
+    if not isinstance(binding, dict):
+        return
+    raw_records = binding.get("executable_help", [])
+    if not isinstance(raw_records, list):
+        return
+    bundle_digest = str(binding.get("bundle_payload_sha256", "unknown"))
+    for raw in raw_records:
+        if not isinstance(raw, dict):
+            continue
+        executable_id = str(raw.get("executable_id", ""))
+        target_path = str(raw.get("path", ""))
+        executable_sha256 = str(raw.get("executable_sha256", ""))
+        if not executable_id or not target_path or not executable_sha256:
+            continue
+        try:
+            help_probe = HelpProbeResult.model_validate(raw.get("help_probe", {}))
+        except ValueError:
+            continue
+        help_probe = help_probe.model_copy(
+            update={
+                "output_ref": (
+                    f"target-evidence:{bundle_digest}#executable-help/{executable_id}"
+                ),
+                "usage": list(raw.get("usage", [])),
+                "parameters": list(raw.get("parameters", [])),
+                "subcommands": list(raw.get("subcommands", [])),
+            }
+        )
+        target_name = Path(target_path).name
+        matching = next(
+            (
+                executable
+                for executable in active_report.executables
+                if executable.path == target_path
+            ),
+            None,
+        )
+        if matching is None:
+            matching = next(
+                (
+                    executable
+                    for executable in active_report.executables
+                    if executable.name == target_name
+                ),
+                None,
+            )
+        evidence_ref = help_probe.output_ref
+        if matching is None:
+            active_report.executables.append(
+                ExecutableDiscovery(
+                    executable_id=executable_id,
+                    name=target_name,
+                    path=target_path,
+                    origin="EXPLICIT",
+                    sha256=executable_sha256,
+                    invocation=InvocationAnalysis(
+                        entrypoint=target_path,
+                        arguments=help_probe.parameters,
+                        subcommands=help_probe.subcommands,
+                        help_probe=help_probe,
+                    ),
+                    safety={
+                        "target_help_probe": "ALLOWLISTED_READ_ONLY",
+                        "possible_side_effect": True,
+                    },
+                    evidence={"help": [evidence_ref] if evidence_ref else []},
+                )
+            )
+            continue
+        matching.path = target_path
+        matching.sha256 = executable_sha256
+        matching.invocation.entrypoint = matching.invocation.entrypoint or target_path
+        matching.invocation.arguments = sorted(
+            set(matching.invocation.arguments) | set(help_probe.parameters)
+        )
+        matching.invocation.subcommands = sorted(
+            set(matching.invocation.subcommands) | set(help_probe.subcommands)
+        )
+        matching.invocation.help_probe = help_probe
+        matching.safety["target_help_probe"] = "ALLOWLISTED_READ_ONLY"
+        matching.safety["possible_side_effect"] = True
+        if evidence_ref:
+            matching.evidence["help"] = sorted(
+                set(matching.evidence.get("help", [])) | {evidence_ref}
+            )
+    active_report.executables.sort(key=lambda item: (item.name, item.executable_id))
+
+
+class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
+    """Bind Agent-visible IDs only to existing deterministic read-only implementations."""
+
+    def __init__(
+        self,
+        *,
+        robot_id: str,
+        run_root: Path,
+        artifact_prefix: str,
+        artifacts: ArtifactStore,
+        software_policy: SoftwareDiscoveryPolicy,
+        dependency_report_ref: str,
+        allow_host_runtime_probes: bool = True,
+    ) -> None:
+        self.robot_id = robot_id
+        self.run_root = run_root
+        self.artifact_prefix = artifact_prefix
+        self.artifacts = artifacts
+        self.software_policy = software_policy
+        self.dependency_report_ref = dependency_report_ref
+        self.allow_host_runtime_probes = allow_host_runtime_probes
+        super().__init__(
+            {
+                "probe.hardware.inventory": self._hardware,
+                "probe.linux.environment": self._linux,
+                "probe.ros.runtime_graph": self._ros,
+                "query.application.source_interfaces": self._application,
+                "query.application.build_install": self._build_install,
+                "query.executable.help": self._executable_help,
+            }
+        )
+
+    def _require_target_host(self) -> None:
+        if not self.allow_host_runtime_probes:
+            raise RuntimeError(
+                "remote target evidence can be refreshed only by collecting a new signed bundle"
+            )
+
+    @staticmethod
+    def _replace_model(target: Any, source: Any) -> None:
+        for field_name in type(source).model_fields:
+            setattr(target, field_name, getattr(source, field_name))
+
+    def _replace_probe(
+        self,
+        report: DiscoveryReport,
+        active: ActiveDiscoveryReport,
+        layer: str,
+        probe: ProbeResult,
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        updated = report.model_copy(deep=True)
+        updated.probes[layer] = persist_route_evidence(probe)
+        bindings = _semantic_bindings(updated.probes)
+        candidates = _build_operation_candidates(bindings)
+        candidates = _bind_candidate_evidence_ids(candidates, active, updated.probes["hw"])
+        updated.semantic_bindings = bindings
+        updated.operation_candidates = candidates
+        self._replace_model(report, updated)
+        return report, active
+
+    def _hardware(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
+        return self._replace_probe(
+            report,
+            active,
+            "hw",
+            HardwareProbe().run(robot_id=self.robot_id),
+        )
+
+    def _linux(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
+        return self._replace_probe(report, active, "linux", LinuxProbe().run())
+
+    def _ros(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
+        inputs = ActiveDiscoveryInputs.model_validate(active.inputs)
+        if inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY:
+            raise RuntimeError("ROS runtime Probe was not authorized at installation/run time")
+        return self._replace_probe(report, active, "ros", RosProbe().run())
+
+    def _refresh_application(
+        self,
+        report: DiscoveryReport,
+        active: ActiveDiscoveryReport,
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        inputs = ActiveDiscoveryInputs.model_validate(active.inputs).resolved()
+        scan = ApplicationProbe().scan(inputs.source_roots)
+        updated_report = report.model_copy(deep=True)
+        updated_report.probes["application"] = persist_route_evidence(scan.probe)
+        updated_active = ActiveDiscoveryAnalyzer(
+            inputs=inputs,
+            projects=scan.probe.data.get("projects", []),
+            ros_probe=updated_report.probes["ros"],
+            run_root=self.run_root,
+            artifact_prefix=self.artifact_prefix,
+            evidence_text=scan.evidence_text,
+        ).build(
+            discovery_id=active.discovery_id,
+            robot_id=active.robot_id,
+            technical_status=active.technical_status,
+            created_at=datetime.now(timezone.utc),
+        )
+        dependency_report = DirectDependencyResolver(self.software_policy).resolve(
+            discovery_id=active.discovery_id,
+            projects=scan.probe.data.get("projects", []),
+            active_report=updated_active,
+            collected_at=datetime.now(timezone.utc),
+        )
+        enrich_active_report(
+            updated_active,
+            dependency_report,
+            dependency_report_ref=self.dependency_report_ref,
+        )
+        software_summary = build_software_summary(
+            report=dependency_report,
+            dependency_report_ref=self.dependency_report_ref,
+        )
+        updated_report.software_summary = software_summary.model_dump(mode="json")
+        run_location = self.artifact_prefix.removeprefix("artifact://")
+        self.artifacts.write_json(
+            f"{run_location}/direct_dependencies.json",
+            dependency_report.model_dump(mode="json"),
+        )
+        self.artifacts.write_json(
+            f"{run_location}/software_summary.json",
+            software_summary.model_dump(mode="json"),
+        )
+        bindings = _semantic_bindings(updated_report.probes)
+        candidates = _build_operation_candidates(bindings)
+        candidates = _bind_candidate_evidence_ids(
+            candidates,
+            updated_active,
+            updated_report.probes["hw"],
+        )
+        updated_report.semantic_bindings = bindings
+        updated_report.operation_candidates = candidates
+        self._replace_model(report, updated_report)
+        self._replace_model(active, updated_active)
+        return report, active
+
+    def _application(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        if not active.inputs.get("source_roots"):
+            raise RuntimeError("source-interface query requires caller-supplied source roots")
+        return self._refresh_application(report, active)
+
+    def _build_install(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        if not any(
+            active.inputs.get(name)
+            for name in ("build_roots", "install_roots", "executables")
+        ):
+            raise RuntimeError("build/install query requires caller-supplied artifact roots")
+        return self._refresh_application(report, active)
+
+    def _executable_help(
+        self, report: DiscoveryReport, active: ActiveDiscoveryReport
+    ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+        self._require_target_host()
+        inputs = ActiveDiscoveryInputs.model_validate(active.inputs)
+        if inputs.active_probe not in {ActiveProbeMode.HELP, ActiveProbeMode.RUNTIME_READONLY}:
+            raise RuntimeError("help query was not authorized at installation/run time")
+        if not any(
+            active.inputs.get(name)
+            for name in ("executables", "build_roots", "install_roots")
+        ):
+            raise RuntimeError("help query requires caller-supplied executable evidence")
+        return self._refresh_application(report, active)
+
+
 class DiscoveryService:
     def __init__(
         self,
@@ -1789,11 +2153,13 @@ class DiscoveryService:
         software_policy: SoftwareDiscoveryPolicy | None = None,
         wiki_polisher: WikiNarrativePolisher | None = None,
         wiki_insight_provider: WikiInsightProvider | None = None,
+        heuristic_orchestrator: HeuristicDiscoveryOrchestrator | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.software_policy = software_policy or SoftwareDiscoveryPolicy()
         self.wiki_polisher = wiki_polisher
         self.wiki_insight_provider = wiki_insight_provider
+        self.heuristic_orchestrator = heuristic_orchestrator
 
     def run(
         self,
@@ -1802,6 +2168,7 @@ class DiscoveryService:
         urdf_path: Path | None = None,
         source_roots: Sequence[Path] | None = None,
         active_inputs: ActiveDiscoveryInputs | None = None,
+        target_probes: Mapping[str, ProbeResult] | None = None,
     ) -> tuple[DiscoveryReport, Path]:
         if active_inputs is not None and source_roots is not None:
             raise ValueError("pass active_inputs or source_roots, not both")
@@ -1837,20 +2204,65 @@ class DiscoveryService:
         dependency_report_ref = (
             f"artifact://discovery/{robot.robot_id}/runs/{discovery_id}/direct_dependencies.json"
         )
-        ros_probe = (
-            RosProbe().run()
-            if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
-            else ProbeResult(
-                layer="ros",
-                status=DiscoveryStatus.UNAVAILABLE,
-                data={"nodes": [], "topics": [], "services": [], "actions": []},
-                warnings=["ROS runtime inspection was not requested"],
+        target_probe_mode: str | None = None
+        if target_probes is not None:
+            if set(target_probes) != {"hw", "linux", "ros"}:
+                raise ValueError("target evidence must contain exactly hw, linux, and ros probes")
+            if any(probe.layer != layer for layer, probe in target_probes.items()):
+                raise ValueError("target evidence probe layer identity mismatch")
+            target_bindings = [
+                probe.data.get("target_evidence") for probe in target_probes.values()
+            ]
+            if not all(isinstance(binding, dict) for binding in target_bindings):
+                raise ValueError("target evidence probes lack verified target binding metadata")
+            binding_identities = {
+                (
+                    binding.get("robot_id"),
+                    binding.get("collector_id"),
+                    binding.get("target_host_fingerprint"),
+                    binding.get("bundle_payload_sha256"),
+                    binding.get("access"),
+                    binding.get("deployment_mode"),
+                )
+                for binding in target_bindings
+                if isinstance(binding, dict)
+            }
+            if len(binding_identities) != 1:
+                raise ValueError("target evidence binding identity is inconsistent")
+            binding_identity = next(iter(binding_identities))
+            if binding_identity[0] != robot.robot_id:
+                raise ValueError("target evidence binding identity is inconsistent")
+            target_probe_mode = str(binding_identity[-1])
+            if target_probe_mode not in {"local", "remote"}:
+                raise ValueError("target evidence deployment mode is invalid")
+            if target_probe_mode == "remote" and active_inputs.executables:
+                raise ValueError(
+                    "remote target evidence forbids controller-side explicit executable probes"
+                )
+            if binding_identity[-2] != "READ_ONLY":
+                raise ValueError("target evidence binding is not read-only")
+            ros_probe = target_probes["ros"]
+        else:
+            ros_probe = (
+                RosProbe().run()
+                if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
+                else ProbeResult(
+                    layer="ros",
+                    status=DiscoveryStatus.UNAVAILABLE,
+                    data={"nodes": [], "topics": [], "services": [], "actions": []},
+                    warnings=["ROS runtime inspection was not requested"],
+                )
             )
-        )
         application_scan = ApplicationProbe().scan(active_inputs.source_roots)
         probes = {
-            "hw": HardwareProbe().run(robot_id=robot.robot_id),
-            "linux": LinuxProbe().run(),
+            "hw": (
+                target_probes["hw"]
+                if target_probes is not None
+                else HardwareProbe().run(robot_id=robot.robot_id)
+            ),
+            "linux": (
+                target_probes["linux"] if target_probes is not None else LinuxProbe().run()
+            ),
             "ros": ros_probe,
             "application": application_scan.probe,
         }
@@ -1878,6 +2290,7 @@ class DiscoveryService:
             technical_status=probe_status.value,
             created_at=now,
         )
+        _merge_target_executable_help(active_report, probes["linux"])
         operation_candidates = _bind_candidate_evidence_ids(
             operation_candidates,
             active_report,
@@ -1928,7 +2341,6 @@ class DiscoveryService:
             source_roots=[str(path) for path in active_inputs.source_roots],
             created_at=now,
         )
-        payload = report.model_dump(mode="json")
         self.artifacts.write_json(
             layout.relative(run_root / "software_summary.json"),
             software_summary.model_dump(mode="json"),
@@ -1945,6 +2357,39 @@ class DiscoveryService:
             f"{run_location}/active_discovery_report.md",
             render_active_discovery_markdown(active_report),
         )
+        heuristic_markdown = ""
+        if self.heuristic_orchestrator is not None:
+            heuristic_summary, heuristic_candidates = self.heuristic_orchestrator.run(
+                report,
+                active_report,
+                relative_root=run_location,
+                probe_dispatcher=_DeterministicR0ProbeDispatcher(
+                    robot_id=robot.robot_id,
+                    run_root=run_root,
+                    artifact_prefix=f"artifact://{run_location}",
+                    artifacts=self.artifacts,
+                    software_policy=self.software_policy,
+                    dependency_report_ref=dependency_report_ref,
+                    allow_host_runtime_probes=target_probe_mode != "remote",
+                ),
+            )
+            self.artifacts.write_json(
+                f"{run_location}/active_discovery_report.json",
+                active_report.model_dump(mode="json"),
+            )
+            report = report.model_copy(
+                update={
+                    "operation_candidates": heuristic_candidates,
+                    "heuristic_analysis_ref": (f"artifact://{run_location}/heuristic/summary.json"),
+                    "heuristic_status": heuristic_summary.status.value,
+                    "heuristic_mode": heuristic_summary.mode.value,
+                    "heuristic_inferred_operation_count": len(
+                        heuristic_summary.inferred_operations
+                    ),
+                    "heuristic_missing_evidence_count": len(heuristic_summary.missing_evidence),
+                }
+            )
+            heuristic_markdown = render_heuristic_summary_markdown(heuristic_summary)
         wiki_insights, insight_fallback_reason = collect_wiki_insights(
             report,
             active_report,
@@ -1957,6 +2402,8 @@ class DiscoveryService:
             previous_report=previous_report,
             previous_active=previous_active,
         )
+        if heuristic_markdown:
+            wiki_draft = f"{wiki_draft.rstrip()}\n\n{heuristic_markdown}"
         robot_wiki, wiki_generation = generate_robot_wiki(
             wiki_draft,
             self.wiki_polisher,
@@ -2018,6 +2465,7 @@ class DiscoveryService:
             semantic_context_ref=semantic_context_ref,
             robot_wiki_ref=report.review_ref,
             discovery_manifest_ref=discovery_manifest_ref,
+            heuristic_analysis_ref=report.heuristic_analysis_ref,
         )
         inputs_payload = adapt_inputs.model_dump(mode="json")
         stage_payloads: dict[str, dict[str, Any]] = {}
@@ -2032,6 +2480,7 @@ class DiscoveryService:
             ).model_dump(mode="json")
             stage_payloads[stage] = stage_inputs
 
+        payload = report.model_dump(mode="json")
         # The immutable run report is its commit marker as well.
         run_path = self.artifacts.write_json(f"{run_location}/report.json", payload)
 

@@ -1,0 +1,195 @@
+{
+  "$defs": {
+    "ToolSessionBudget": {
+      "additionalProperties": false,
+      "description": "Hard invocation limits enforced independently of the downstream Agent.",
+      "properties": {
+        "max_calls": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Calls",
+          "type": "integer"
+        },
+        "max_elapsed_s": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Max Elapsed S",
+          "type": "number"
+        },
+        "max_result_bytes": {
+          "maximum": 1000000000,
+          "minimum": 1,
+          "title": "Max Result Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_calls",
+        "max_elapsed_s",
+        "max_result_bytes"
+      ],
+      "title": "ToolSessionBudget",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable, release-bound tool authority handed to a downstream Agent.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-tool-session/v1",
+      "default": "rolo-tool-session/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "nonce": {
+      "pattern": "^[A-Za-z0-9_-]{16,128}$",
+      "title": "Nonce",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "release_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Release Id",
+      "type": "string"
+    },
+    "target_fingerprint_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Fingerprint Sha256",
+      "type": "string"
+    },
+    "registry_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Registry Version",
+      "type": "string"
+    },
+    "registry_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Sha256",
+      "type": "string"
+    },
+    "registry_operation_count": {
+      "maximum": 2048,
+      "minimum": 1,
+      "title": "Registry Operation Count",
+      "type": "integer"
+    },
+    "contract_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Contract Catalog Sha256",
+      "type": "string"
+    },
+    "tool_catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Tool Catalog Sha256",
+      "type": "string"
+    },
+    "state_graph_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "State Graph Sha256",
+      "type": "string"
+    },
+    "allowed_operations": {
+      "items": {
+        "maxLength": 160,
+        "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+        "type": "string"
+      },
+      "maxItems": 2048,
+      "minItems": 1,
+      "title": "Allowed Operations",
+      "type": "array"
+    },
+    "contract_sha256": {
+      "maxProperties": 2048,
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "propertyNames": {
+        "maxLength": 160
+      },
+      "title": "Contract Sha256",
+      "type": "object"
+    },
+    "caller": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Caller",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "diagnose",
+        "verify"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "max_risk": {
+      "default": "R0",
+      "enum": [
+        "R0",
+        "R1"
+      ],
+      "title": "Max Risk",
+      "type": "string"
+    },
+    "policy_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "budget": {
+      "$ref": "#/$defs/ToolSessionBudget"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "nonce",
+    "robot_id",
+    "release_id",
+    "target_fingerprint_sha256",
+    "registry_version",
+    "registry_sha256",
+    "registry_operation_count",
+    "contract_catalog_sha256",
+    "tool_catalog_sha256",
+    "state_graph_sha256",
+    "allowed_operations",
+    "contract_sha256",
+    "caller",
+    "stage",
+    "policy_version",
+    "budget",
+    "expires_at"
+  ],
+  "title": "ToolSessionDescriptor",
+  "type": "object"
+}

@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -11,11 +12,43 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --locked --dev
-      - run: uv run ruff check src/rolo/api.py src/rolo/read_models.py src/rolo/workbench_read_models.py src/rolo/stages/contracts.py tests/test_api.py tests/test_read_models.py tests/test_workbench_read_models.py
-      - run: uv run pytest tests/test_api.py tests/test_read_models.py tests/test_workbench_read_models.py tests/test_schemas.py
+      - run: uv sync --locked --dev --python ${{ matrix.python-version }}
+      - run: uv run --python ${{ matrix.python-version }} ruff check .
+      - run: uv run --python ${{ matrix.python-version }} pytest
+
+  lerobot-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev --python 3.12
+      - name: Prepare real LeRobot CLI without the optional ML stack
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: |
+          git clone --depth 1 https://github.com/huggingface/lerobot.git .ci/lerobot
+          uv venv .ci/lerobot-venv --python 3.12
+          uv pip install --python .ci/lerobot-venv/bin/python --no-deps -e .ci/lerobot
+      - name: Run real LeRobot source-discovery acceptance
+        env:
+          ROLO_RUN_LEROBOT_E2E: "1"
+          LEROBOT_ROOT: ${{ github.workspace }}/.ci/lerobot
+          LEROBOT_INFO: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-info
+        run: uv run pytest -q tests/test_lerobot_e2e.py

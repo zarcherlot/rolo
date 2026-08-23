@@ -65,6 +65,15 @@
           "default": "DISCOVERED_UNVERIFIED",
           "title": "Status",
           "type": "string"
+        },
+        "origin": {
+          "default": "DETERMINISTIC",
+          "enum": [
+            "DETERMINISTIC",
+            "HEURISTIC_AGENT"
+          ],
+          "title": "Origin",
+          "type": "string"
         }
       },
       "required": [
@@ -317,6 +326,33 @@
       "default": "",
       "title": "Discovery Mode",
       "type": "string"
+    },
+    "heuristic_analysis_ref": {
+      "default": "",
+      "title": "Heuristic Analysis Ref",
+      "type": "string"
+    },
+    "heuristic_status": {
+      "default": "DISABLED",
+      "title": "Heuristic Status",
+      "type": "string"
+    },
+    "heuristic_mode": {
+      "default": "disabled",
+      "title": "Heuristic Mode",
+      "type": "string"
+    },
+    "heuristic_inferred_operation_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Heuristic Inferred Operation Count",
+      "type": "integer"
+    },
+    "heuristic_missing_evidence_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Heuristic Missing Evidence Count",
+      "type": "integer"
     },
     "source_roots": {
       "items": {

@@ -17,6 +17,13 @@ from rolo.stages.adapt.service import (
     coding_agent_config,
 )
 from rolo.stages.adapt.slice_observability import build_slice_stability_report
+from rolo.stages.adapt.target_evidence import (
+    CollectorDescriptor,
+    EvidenceDeploymentMode,
+    configure_deployment,
+    ensure_local_deployment,
+    load_deployment,
+)
 from rolo.stages.contracts import StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
@@ -68,11 +75,104 @@ def adapt_stage_start(
         int | None,
         typer.Option("--timeout", min=1, help="Maximum Adapter Agent time in seconds"),
     ] = None,
+    evidence_mode: Annotated[
+        EvidenceDeploymentMode,
+        typer.Option(
+            "--evidence-mode",
+            help="local collects signed evidence here; remote uses a pinned SSH collector",
+        ),
+    ] = EvidenceDeploymentMode.LOCAL,
+    allow_executable: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--allow-executable",
+            help="Local target executable permitted for bounded --help evidence; repeatable",
+        ),
+    ] = None,
+    collector_descriptor: Annotated[
+        Path | None,
+        typer.Option("--collector-descriptor", help="Remote collector descriptor JSON"),
+    ] = None,
+    verification_secret: Annotated[
+        Path | None,
+        typer.Option("--verification-secret", help="Remotely provisioned collector secret"),
+    ] = None,
+    ssh_target: Annotated[str | None, typer.Option("--ssh-target")] = None,
+    known_hosts: Annotated[
+        Path | None,
+        typer.Option("--known-hosts", help="Pinned SSH known_hosts file"),
+    ] = None,
+    collector_config: Annotated[
+        str,
+        typer.Option("--collector-config", help="Collector state path on the remote target"),
+    ] = ".rolo/config/target-evidence-collector.json",
+    evidence_timeout: Annotated[
+        float,
+        typer.Option("--evidence-timeout", min=1.0, max=300.0),
+    ] = 45.0,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
     settings = get_settings()
     try:
         evidence = detect_project_evidence(project_root or Path.cwd())
+        evidence_deployment = None
+        remote_options = (
+            collector_descriptor,
+            verification_secret,
+            ssh_target,
+            known_hosts,
+        )
+        if active_probe == ActiveProbeMode.RUNTIME_READONLY:
+            if evidence_mode == EvidenceDeploymentMode.LOCAL:
+                if any(value is not None for value in remote_options):
+                    raise ValueError(
+                        "local evidence mode does not accept remote collector options"
+                    )
+                evidence_deployment, _ = ensure_local_deployment(
+                    robot_id=robot_id,
+                    config_root=settings.rolo_config_dir,
+                    help_executables=allow_executable or (),
+                )
+            else:
+                if allow_executable:
+                    raise ValueError(
+                        "remote executable allowlists must be established on the target collector"
+                    )
+                deployment_path = (
+                    settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+                )
+                if deployment_path.is_file() and not any(
+                    value is not None for value in remote_options
+                ):
+                    evidence_deployment = load_deployment(deployment_path)
+                    if evidence_deployment.mode != EvidenceDeploymentMode.REMOTE:
+                        raise ValueError("existing target evidence deployment is not remote")
+                else:
+                    if not all(value is not None for value in remote_options):
+                        raise ValueError(
+                            "remote evidence mode requires an existing deployment or "
+                            "--collector-descriptor, --verification-secret, --ssh-target, "
+                            "and --known-hosts"
+                        )
+                    descriptor = CollectorDescriptor.model_validate_json(
+                        collector_descriptor.read_text(encoding="utf-8")
+                    )
+                    evidence_deployment = configure_deployment(
+                        robot_id=robot_id,
+                        mode=EvidenceDeploymentMode.REMOTE,
+                        descriptor=descriptor,
+                        verification_secret_path=verification_secret,
+                        output_path=deployment_path,
+                        ssh_target=ssh_target,
+                        known_hosts_path=known_hosts,
+                        collector_config=collector_config,
+                    )
+        elif evidence_mode == EvidenceDeploymentMode.REMOTE or allow_executable or any(
+            value is not None for value in remote_options
+        ):
+            raise ValueError(
+                "target evidence options require --active-probe runtime-readonly"
+            )
         result = AdaptJourneyService(
             settings,
             configured_discovery_service(
@@ -87,6 +187,8 @@ def adapt_stage_start(
             run_agent=run_agent,
             scratch_root=scratch_root,
             timeout_s=timeout or settings.coding_agent_timeout_s,
+            evidence_deployment=evidence_deployment,
+            evidence_timeout_s=evidence_timeout,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

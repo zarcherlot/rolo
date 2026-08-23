@@ -6,6 +6,9 @@
 身份注册、环境检查、工程证据选择、只读发现、Wiki 生成、Adapter Agent、独立门禁和
 release 发布编排为一次操作，同时保留原有细粒度命令供 ROLO 开发调试使用。
 
+默认本地模式还会幂等建立 target evidence collector、采集并验证新鲜 v2 签名 bundle，
+Discovery 只消费带目标绑定的 Hardware、Linux 和 ROS probes。
+
 该入口不会扩大权限：运行时探测仍然只读，URDF 不会自动猜测，Adapter Agent 不拥有
 门禁或发布权限，物理执行结果也不在 Adapt 阶段判定。
 
@@ -32,8 +35,9 @@ robotctl adapt start \
 6. 有目标运行时路由时启动 Adapter Agent；
 7. 由 ROLO 独立完成 freeze、gate、Tool Catalog、State Graph、handoff 和 release。
 
-成功输出是 `robot-adapt-journey/v1` JSON，其中直接给出 Wiki、discovery artifact、gate、
-handoff、release ID、Workbench 地址和下一步，不要求用户理解内部目录结构。
+成功输出是 `robot-adapt-journey/v2` JSON，其中直接给出 Wiki、discovery artifact、目标证据
+模式、collector ID、目标指纹、bundle digest、gate、handoff、release ID、Workbench 地址和
+下一步，不要求用户理解内部目录结构。
 
 如果只需要 Wiki 和发现证据：
 
@@ -46,6 +50,10 @@ robotctl adapt start \
 
 如果没有观察到 Topic、Service、Action 或其他目标路由，命令返回结构化 `BLOCKED`，但 Wiki
 和 discovery 证据仍然有效。它不会把源码或文档声明升级为真实运行时证据。
+
+控制器与目标机分离时，首次 descriptor、secret 和 SSH host-key pin 仍需独立置备；完成后
+使用 `robotctl adapt start --evidence-mode remote`，Journey 会通过固定 collector 采集、验签，
+且任何远程失败都不会回退到控制器 host probes。
 
 ## ROLO 开发者：保留可拆解路径
 

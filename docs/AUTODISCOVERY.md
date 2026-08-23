@@ -133,6 +133,22 @@ Semantic bindings inferred from source or a live ROS graph are emitted as operat
 matches them only to product-defined operations and builds the Active Tool Catalog after bundle and
 conformance checks. This prevents documentation or naming heuristics from becoming an operation
 definition or actuator command.
+
+Topic-name applicability is deterministic but no longer embedded as a project-specific Python
+dictionary. [`semantic_operation_rules.yaml`](../src/rolo/stages/adapt/semantic_operation_rules.yaml)
+contains the reviewable topic segments, semantic URIs, and candidate Operations. Startup validates
+every referenced Operation against the active Registry; an unknown Operation makes the ruleset
+invalid. The scanner applies the same rules to live graph names, literal source interfaces, inert
+ROS configuration, and literal C++ parameter defaults. Vendor configuration is never executed, and
+malformed vendor YAML receives only a bounded literal key/value scan.
+
+These rules are applicability hints, not truth. A matching `scan`, `imu`, `fix`, `image`, `odom`, or
+`cmd_vel` name can create only a declared-static candidate. Interface type/schema, provider identity,
+target revision, route direction, QoS, and contract semantics still require target evidence. Multiple
+endpoints are retained, normalized duplicates are collapsed, and no robot or repository name appears
+in the production rules. Extending deterministic coverage is therefore a data-and-test change rather
+than an edit to the discovery control flow.
+
 Unresolved graph-name templates such as `/%s/camera/image`, `$(var name)` or `{namespace}` remain
 available in the application source evidence but are not routable semantic bindings and therefore
 cannot create operation candidates.

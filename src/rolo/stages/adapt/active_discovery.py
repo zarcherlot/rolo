@@ -407,8 +407,11 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     try:
-        if os.name == "posix":
-            os.killpg(process.pid, signal.SIGTERM)
+        # Test doubles and alternative process implementations may not expose
+        # a PID; retain the portable terminate path for those callers.
+        process_pid = getattr(process, "pid", None)
+        if os.name == "posix" and process_pid is not None:
+            os.killpg(process_pid, signal.SIGTERM)
         else:
             process.terminate()
         process.wait(timeout=1)

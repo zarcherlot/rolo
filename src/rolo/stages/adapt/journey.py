@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings
 from rolo.doctor import build_doctor_report
 from rolo.runtime import create_runtime
@@ -16,6 +17,15 @@ from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.models import AdaptPlanStatus
 from rolo.stages.adapt.service import AdaptRunService, assess_adapt
+from rolo.stages.adapt.target_evidence import (
+    EvidenceDeploymentConfig,
+    EvidenceDeploymentMode,
+    collect_over_ssh,
+    collect_target_evidence,
+    load_collector_state,
+    new_request,
+    verify_evidence_bundle,
+)
 from rolo.stages.artifact_paths import resolve_artifact_ref
 
 MAX_PROJECT_DIRECTORIES = 2_000
@@ -61,8 +71,20 @@ class ProjectEvidence(BaseModel):
         )
 
 
+class TargetEvidenceJourneySummary(BaseModel):
+    schema_version: Literal["robot-adapt-target-evidence/v1"] = (
+        "robot-adapt-target-evidence/v1"
+    )
+    mode: EvidenceDeploymentMode
+    collector_id: str
+    target_host_fingerprint: str
+    bundle_payload_sha256: str
+    bundle_path: str
+    collected_at: str
+
+
 class AdaptJourneyResult(BaseModel):
-    schema_version: Literal["robot-adapt-journey/v1"] = "robot-adapt-journey/v1"
+    schema_version: Literal["robot-adapt-journey/v2"] = "robot-adapt-journey/v2"
     status: Literal["COMPLETE", "DISCOVERY_COMPLETE", "BLOCKED"]
     robot_id: str
     enrollment: str
@@ -80,6 +102,7 @@ class AdaptJourneyResult(BaseModel):
     blockers: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
     workbench_url: str
+    target_evidence: TargetEvidenceJourneySummary | None = None
 
 
 def _has_root_document(path: Path) -> bool:
@@ -175,6 +198,8 @@ class AdaptJourneyService:
         run_agent: bool,
         scratch_root: Path | None,
         timeout_s: int,
+        evidence_deployment: EvidenceDeploymentConfig | None = None,
+        evidence_timeout_s: float = 45.0,
     ) -> AdaptJourneyResult:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
             robot_id=robot_id
@@ -196,6 +221,66 @@ class AdaptJourneyService:
                 workbench_url=workbench_url,
             )
 
+        target_probes = None
+        target_evidence = None
+        if active_probe == ActiveProbeMode.RUNTIME_READONLY:
+            if evidence_deployment is None:
+                raise ValueError(
+                    "runtime-readonly Adapt journey requires a pinned target evidence deployment"
+                )
+            request = new_request(
+                robot_id,
+                executable_help_ids=[
+                    item.executable_id
+                    for item in evidence_deployment.collector.help_executables
+                ],
+            )
+            try:
+                if evidence_deployment.mode == EvidenceDeploymentMode.LOCAL:
+                    state_path = Path(
+                        evidence_deployment.local_collector_state_path or ""
+                    )
+                    bundle = collect_target_evidence(
+                        request,
+                        load_collector_state(state_path),
+                    )
+                else:
+                    bundle = collect_over_ssh(
+                        evidence_deployment,
+                        request,
+                        timeout_s=evidence_timeout_s,
+                    )
+                target_probes = verify_evidence_bundle(
+                    bundle,
+                    deployment=evidence_deployment,
+                    request=request,
+                )
+                bundle_path = ArtifactStore(self.settings.rolo_artifact_dir).write_text(
+                    f"target-evidence/{robot_id}/{request.nonce}.json",
+                    bundle.model_dump_json(indent=2) + "\n",
+                )
+                target_evidence = TargetEvidenceJourneySummary(
+                    mode=evidence_deployment.mode,
+                    collector_id=bundle.collector_id,
+                    target_host_fingerprint=bundle.target_host_fingerprint,
+                    bundle_payload_sha256=bundle.payload_sha256,
+                    bundle_path=str(bundle_path),
+                    collected_at=bundle.collected_at.isoformat(),
+                )
+            except (OSError, ValueError) as exc:
+                return AdaptJourneyResult(
+                    status="BLOCKED",
+                    robot_id=robot_id,
+                    enrollment=enrollment.status,
+                    doctor_status=str(doctor["status"]),
+                    evidence=evidence,
+                    blockers=[f"Target evidence collection or verification failed: {exc}"],
+                    next_steps=[
+                        f"robotctl target-evidence collect --robot {robot_id}",
+                    ],
+                    workbench_url=workbench_url,
+                )
+
         runtime = create_runtime(self.settings)
         try:
             robot = runtime.registry.get(robot_id)
@@ -205,6 +290,7 @@ class AdaptJourneyService:
             robot=robot,
             urdf_path=urdf_path,
             active_inputs=evidence.active_inputs(active_probe),
+            target_probes=target_probes,
         )
         wiki = resolve_artifact_ref(self.settings.rolo_artifact_dir, report.review_ref)
         assessment = assess_adapt(self.settings.rolo_artifact_dir, robot_id)
@@ -219,6 +305,7 @@ class AdaptJourneyService:
             "wiki": str(wiki),
             "discovery_artifact": str(discovery_artifact),
             "workbench_url": workbench_url,
+            "target_evidence": target_evidence,
         }
         if report.status.value == "FAILED":
             return AdaptJourneyResult(

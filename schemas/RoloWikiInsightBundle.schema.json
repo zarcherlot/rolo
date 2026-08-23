@@ -1,0 +1,400 @@
+{
+  "$defs": {
+    "AgentArtifactProvenance": {
+      "additionalProperties": false,
+      "description": "Bounded, secret-free identity for one Agent-produced artifact.",
+      "properties": {
+        "skill_name": {
+          "maxLength": 64,
+          "pattern": "^rolo-[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Skill Name",
+          "type": "string"
+        },
+        "skill_version": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "model_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "input_artifact_sha256": {
+          "additionalProperties": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "maxProperties": 64,
+          "title": "Input Artifact Sha256",
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_name",
+        "skill_version",
+        "model_id"
+      ],
+      "title": "AgentArtifactProvenance",
+      "type": "object"
+    },
+    "RoloDeterministicWikiFinding": {
+      "additionalProperties": false,
+      "description": "Built-in finding retained inside a new-writer bundle without Agent authorship.",
+      "properties": {
+        "category": {
+          "enum": [
+            "SAFETY",
+            "ARCHITECTURE",
+            "HARDWARE",
+            "OPERATIONS",
+            "MAINTENANCE"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Basis",
+          "type": "array"
+        },
+        "verification": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Verification",
+          "type": "string"
+        },
+        "source": {
+          "const": "DETERMINISTIC_RULE",
+          "default": "DETERMINISTIC_RULE",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "statement",
+        "confidence",
+        "basis",
+        "verification"
+      ],
+      "title": "RoloDeterministicWikiFinding",
+      "type": "object"
+    },
+    "RoloWikiHeuristicFinding": {
+      "additionalProperties": false,
+      "description": "Traceable new-writer finding; legacy readers keep their original shape.",
+      "properties": {
+        "category": {
+          "enum": [
+            "SAFETY",
+            "ARCHITECTURE",
+            "HARDWARE",
+            "OPERATIONS",
+            "MAINTENANCE"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Basis",
+          "type": "array"
+        },
+        "verification": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Verification",
+          "type": "string"
+        },
+        "source": {
+          "const": "ADAPT_AGENT_SKILL",
+          "default": "ADAPT_AGENT_SKILL",
+          "title": "Source",
+          "type": "string"
+        },
+        "insight_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "DISCOVERY_PATH",
+                "FAILURE_MODE",
+                "OPERATION_MAPPING",
+                "ADAPTER_CONSTRAINT",
+                "KNOWN_LIMITATION",
+                "REVERIFICATION_CONDITION",
+                "VERSION_DIFFERENCE"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Insight Type"
+        },
+        "counter_evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Counter Evidence Refs",
+          "type": "array"
+        },
+        "previous_version_difference": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Version Difference"
+        },
+        "author_skill_version": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "title": "Author Skill Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "statement",
+        "confidence",
+        "basis",
+        "verification",
+        "author_skill_version"
+      ],
+      "title": "RoloWikiHeuristicFinding",
+      "type": "object"
+    },
+    "RoloWikiUnknownAssessment": {
+      "additionalProperties": false,
+      "description": "Traceable new-writer assessment of an exact deterministic unknown.",
+      "properties": {
+        "unknown": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Unknown",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "COLLECTED_EVIDENCE_REVIEW",
+            "TARGET_PROBE_REQUIRED",
+            "EXTERNAL_INPUT_REQUIRED",
+            "INSUFFICIENT_EVIDENCE"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "assessment": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Assessment",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "basis": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Basis",
+          "type": "array"
+        },
+        "next_step": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Next Step",
+          "type": "string"
+        },
+        "source": {
+          "const": "ADAPT_AGENT_SKILL",
+          "default": "ADAPT_AGENT_SKILL",
+          "title": "Source",
+          "type": "string"
+        },
+        "author_skill_version": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "title": "Author Skill Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unknown",
+        "classification",
+        "assessment",
+        "confidence",
+        "basis",
+        "next_step",
+        "author_skill_version"
+      ],
+      "title": "RoloWikiUnknownAssessment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "New-writer contract; the wider base model remains the legacy read boundary.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-wiki-insights/v1",
+      "default": "rolo-wiki-insights/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "discovery_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RoloWikiHeuristicFinding"
+          },
+          {
+            "$ref": "#/$defs/RoloDeterministicWikiFinding"
+          }
+        ]
+      },
+      "maxItems": 40,
+      "title": "Findings",
+      "type": "array"
+    },
+    "unknown_assessments": {
+      "items": {
+        "$ref": "#/$defs/RoloWikiUnknownAssessment"
+      },
+      "maxItems": 100,
+      "title": "Unknown Assessments",
+      "type": "array"
+    },
+    "target_fingerprint_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Fingerprint Sha256"
+    },
+    "release_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Id"
+    },
+    "conformance_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Conformance Sha256"
+    },
+    "previous_wiki_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Wiki Sha256"
+    },
+    "provenance": {
+      "$ref": "#/$defs/AgentArtifactProvenance"
+    }
+  },
+  "required": [
+    "robot_id",
+    "discovery_id",
+    "provenance"
+  ],
+  "title": "RoloWikiInsightBundle",
+  "type": "object"
+}

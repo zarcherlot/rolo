@@ -282,11 +282,40 @@ def invoke_adapter(
     r3_authorizer_path: Path | None = None,
     quiescence_provider_path: Path | None = None,
     runner: AdapterRunner | None = None,
+    expected_release_id: str | None = None,
+    expected_target_fingerprint_sha256: str | None = None,
+    expected_tool_catalog_sha256: str | None = None,
+    expected_state_graph_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Invoke one catalogued operation through the immutable adapter RPC bundle."""
     release_root, release, bundle, catalog = load_current_release(
         output_root, robot_id, artifact_root=artifact_root
     )
+    expected_release_identity = (
+        expected_release_id,
+        expected_target_fingerprint_sha256,
+        expected_tool_catalog_sha256,
+        expected_state_graph_sha256,
+    )
+    actual_release_identity = (
+        release.release_id,
+        release.target_fingerprint_sha256,
+        release.tool_catalog_sha256,
+        release.state_graph_sha256,
+    )
+    for expected, actual, label in zip(
+        expected_release_identity,
+        actual_release_identity,
+        (
+            "release ID",
+            "target fingerprint",
+            "Tool Catalog",
+            "State Graph",
+        ),
+        strict=True,
+    ):
+        if expected is not None and expected != actual:
+            raise ValueError(f"active adapter {label} does not match the pinned invocation")
     descriptor = next((tool for tool in catalog.tools if tool.operation == operation), None)
     if descriptor is None:
         raise ValueError(f"operation is not in the active Tool Catalog: {operation}")

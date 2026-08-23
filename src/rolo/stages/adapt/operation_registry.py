@@ -522,7 +522,9 @@ def adapter_operation_eligibility(
     deferred: dict[str, str] = {}
     for candidate in report.operation_candidates:
         definition = definitions[candidate.operation]
-        if definition.contract_lifecycle not in {
+        if candidate.origin == "HEURISTIC_AGENT":
+            deferred[candidate.operation] = "HEURISTIC_MAPPING_REQUIRES_VERIFICATION"
+        elif definition.contract_lifecycle not in {
             ContractLifecycle.GATEABLE,
             ContractLifecycle.RELEASED,
         }:
