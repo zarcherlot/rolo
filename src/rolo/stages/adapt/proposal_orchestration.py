@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Collection, Mapping, Sequence
+from copy import deepcopy
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -37,6 +38,8 @@ MAX_MAPPING_CONTEXT_CHARS = 200_000
 MAPPING_SKILL_NAME = "rolo-operation-mapping"
 MAPPING_SKILL_VERSION = "1.0.0"
 _SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
+_EVIDENCE_ALIAS_PREFIX = "ev:"
+_EVIDENCE_ALIAS_HEX_LENGTH = 24
 
 
 def _digest(value: object) -> str:
@@ -401,6 +404,130 @@ def _normalize_provider_bundle(payload: Any) -> Any:
     return payload
 
 
+def _evidence_aliases(request: DiscoverySkillRequest) -> dict[str, str]:
+    """Return stable short IDs for Agent-facing evidence references."""
+    aliases: dict[str, str] = {}
+    occupied: dict[str, str] = {}
+    for reference in request.discovery_evidence.evidence_refs:
+        digest = sha256_bytes(reference.encode("utf-8"))
+        alias = f"{_EVIDENCE_ALIAS_PREFIX}{digest[:_EVIDENCE_ALIAS_HEX_LENGTH]}"
+        previous = occupied.get(alias)
+        if previous is not None and previous != reference:
+            raise ValueError("evidence reference alias collision")
+        aliases[reference] = alias
+        occupied[alias] = reference
+    return aliases
+
+
+def _provider_request_context(
+    request: DiscoverySkillRequest,
+    aliases: Mapping[str, str],
+) -> str:
+    """Project frozen evidence into an Agent-readable, alias-only reference surface."""
+    payload = request.model_dump(mode="json")
+    evidence = payload["discovery_evidence"]
+    evidence["evidence_refs"] = [aliases[item] for item in evidence["evidence_refs"]]
+    for binding in evidence["deterministic_bindings"].values():
+        binding["evidence_refs"] = [aliases[item] for item in binding["evidence_refs"]]
+    for route in evidence["route_resources"].values():
+        source = route.get("source")
+        if source in aliases:
+            route["source"] = aliases[source]
+    payload["evidence_catalog"] = {
+        alias: reference for reference, alias in sorted(aliases.items(), key=lambda item: item[1])
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def _set_array_enum(field_schema: dict[str, Any], values: Sequence[str]) -> None:
+    unique = list(dict.fromkeys(values))
+    if not unique:
+        field_schema["maxItems"] = 0
+        return
+    item_schema = field_schema.get("items")
+    if not isinstance(item_schema, dict):
+        raise ValueError("mapping proposal array schema lacks item definition")
+    title = item_schema.get("title")
+    item_schema.clear()
+    item_schema.update({"type": "string", "enum": unique})
+    if title:
+        item_schema["title"] = title
+
+
+def _mapping_output_schema(
+    request: DiscoverySkillRequest,
+    aliases: Mapping[str, str],
+) -> dict[str, Any]:
+    """Bind every proposal branch to one Operation's deterministic evidence slice."""
+    schema = codex_output_schema(
+        OperationProposalBundle,
+        fixed_string_map_keys={"input_artifact_sha256": request.input_artifact_sha256},
+    )
+    definitions = schema.get("$defs")
+    if not isinstance(definitions, dict):
+        raise ValueError("mapping output schema lacks definitions")
+    proposal_definition = definitions.get("AgentOperationProposal")
+    if not isinstance(proposal_definition, dict):
+        raise ValueError("mapping output schema lacks proposal definition")
+    proposal_field = schema.get("properties", {}).get("proposals", {})
+    if not isinstance(proposal_field, dict):
+        raise ValueError("mapping output schema lacks proposals field")
+
+    variants: list[dict[str, Any]] = []
+    mappable_operations = sorted(
+        operation
+        for operation in request.target_operations
+        if request.discovery_evidence.deterministic_bindings.get(operation)
+        and request.discovery_evidence.deterministic_bindings[operation].evidence_refs
+    )
+    if not mappable_operations:
+        raise ValueError("mapping target slice has no deterministic supporting evidence")
+    for operation in mappable_operations:
+        binding = request.discovery_evidence.deterministic_bindings[operation]
+        variant = deepcopy(proposal_definition)
+        properties = variant["properties"]
+        properties["operation"] = {
+            "type": "string",
+            "enum": [operation],
+            "title": properties["operation"].get("title", "Operation"),
+        }
+        _set_array_enum(
+            properties["evidence_refs"],
+            [aliases[item] for item in binding.evidence_refs],
+        )
+        _set_array_enum(
+            properties["counter_evidence_refs"],
+            [aliases[item] for item in binding.evidence_refs],
+        )
+        _set_array_enum(properties["route_resource_ids"], binding.route_resource_ids)
+        _set_array_enum(properties["executable_ids"], binding.executable_ids)
+        _set_array_enum(properties["hardware_resource_ids"], binding.hardware_resource_ids)
+        variants.append(variant)
+    proposal_field["items"] = {"anyOf": variants}
+    return schema
+
+
+def _resolve_provider_evidence_aliases(
+    payload: Any,
+    aliases: Mapping[str, str],
+) -> Any:
+    """Resolve schema-bound Agent aliases back to canonical frozen references."""
+    if not isinstance(payload, dict):
+        return payload
+    canonical = {alias: reference for reference, alias in aliases.items()}
+    proposals = payload.get("proposals")
+    if not isinstance(proposals, list):
+        return payload
+    for proposal in proposals:
+        if not isinstance(proposal, dict):
+            continue
+        for name in ("evidence_refs", "counter_evidence_refs"):
+            values = proposal.get(name)
+            if isinstance(values, list):
+                proposal[name] = [canonical.get(item, item) for item in values]
+    return payload
+
+
 class CodexOperationMappingProvider:
     """Execute the discovery and mapping skills with read-only Agent authority."""
 
@@ -509,7 +636,8 @@ class CodexOperationMappingProvider:
                 raise FileNotFoundError(f"{label} skill not found: {path}")
         if shutil.which(self.executable) is None:
             raise FileNotFoundError(f"Codex CLI executable not found: {self.executable}")
-        context = request.model_dump_json()
+        aliases = _evidence_aliases(request)
+        context = _provider_request_context(request, aliases)
         if len(context) > MAX_MAPPING_CONTEXT_CHARS:
             raise ValueError("Operation mapping Agent context exceeds the bounded size limit")
         discovery_skill = self.discovery_skill_path.read_text(encoding="utf-8")
@@ -528,26 +656,7 @@ class CodexOperationMappingProvider:
             output = workspace / "final-message.json"
             schema.write_text(
                 json.dumps(
-                    codex_output_schema(
-                        OperationProposalBundle,
-                        fixed_string_map_keys={
-                            "input_artifact_sha256": request.input_artifact_sha256
-                        },
-                        fixed_string_enums={
-                            "operation": sorted(request.target_operations),
-                            "evidence_refs": request.discovery_evidence.evidence_refs,
-                            "counter_evidence_refs": (
-                                request.discovery_evidence.evidence_refs
-                            ),
-                            "route_resource_ids": sorted(
-                                request.discovery_evidence.route_resources
-                            ),
-                            "executable_ids": request.discovery_evidence.executable_ids,
-                            "hardware_resource_ids": (
-                                request.discovery_evidence.hardware_resource_ids
-                            ),
-                        },
-                    ),
+                    _mapping_output_schema(request, aliases),
                     ensure_ascii=False,
                     indent=2,
                 ),
@@ -577,8 +686,11 @@ class CodexOperationMappingProvider:
             if not output.is_file():
                 raise RuntimeError("Operation mapping Agent did not produce a final message")
             bundle = OperationProposalBundle.model_validate(
-                _normalize_provider_bundle(
-                    json.loads(output.read_text(encoding="utf-8"))
+                _resolve_provider_evidence_aliases(
+                    _normalize_provider_bundle(
+                        json.loads(output.read_text(encoding="utf-8"))
+                    ),
+                    aliases,
                 )
             )
             if self.model:

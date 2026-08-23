@@ -158,3 +158,45 @@ The immutable artifacts are under:
 This run supersedes the earlier isolated Wiki caller check as the canonical real-Agent acceptance.
 It still does not qualify a target release: the two source-derived routes remain unobserved on a
 target runtime, no candidate was applied, and no robot operation was invoked.
+
+## Deterministic hardcoding audit
+
+The repeated two-Operation result was traced to two production-code dictionaries rather than to a
+Wheeltec repository-name special case. One dictionary recognized a small fixed set of ROS topic
+tokens; a second converted only velocity, odometry, map, and camera semantics into Operations. The
+source scanner was already finding additional literal interfaces, including `imu` and
+`odom_combined`, but the old candidate builder did not expose the full rule result. It also did not
+recover `/scan` from the vendor lidar parameter file because that YAML contains a tab that strict
+YAML parsers reject.
+
+The corrected current-HEAD run uses Registry-validated data rules and bounded extraction of literal
+topic parameters from inert configuration and C++ defaults:
+
+- Discovery ID: `disc-20260823T031945-6730876e`
+- Heuristic status: `AGENT_COMPLETED`
+- Discovery Planning fallback: none
+- Semantic bindings: 5
+- Operation candidates: 5
+- `app.camera.snapshot` → `/image_raw`
+- `app.imu.sample` → `/imu`
+- `app.lidar.snapshot` → `/scan`
+- `app.localization.status` → `/odom_combined`
+- `app.teleop.velocity` → `/cmd_vel`
+- Mapping proposals: 5 accepted, 0 rejected
+- Invalid evidence references and false positives: 0
+- Wiki Agent: 4 Agent findings and 4 Agent Unknown assessments
+- Missing evidence: 18; release influence: false
+
+All five remain `DISCOVERED_UNVERIFIED`; this result expands static applicability without creating
+runtime truth or release authority. The immutable report is under:
+
+```text
+.validation-wheeltec-hardcode-agent3/artifacts/discovery/demo_diff/runs/
+  disc-20260823T031945-6730876e/
+```
+
+The Agent Mapping boundary now exposes stable short `ev:<digest>` IDs in its output schema. Each
+Operation receives only its own deterministic evidence, route, executable, and hardware allowlists.
+The provider resolves accepted IDs back to canonical source references before normal validation, so
+long Windows paths cannot be abbreviated by the Agent and cross-Operation references remain
+fail-closed.

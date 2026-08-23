@@ -34,6 +34,9 @@ from rolo.stages.adapt.proposal_orchestration import (
     ProposalFallbackReason,
     ProposalIssueCode,
     RegistrySnapshot,
+    _evidence_aliases,
+    _mapping_output_schema,
+    _resolve_provider_evidence_aliases,
     build_discovery_skill_request,
     persist_proposal_artifacts,
 )
@@ -72,7 +75,13 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
         output = Path(command[command.index("--output-last-message") + 1])
         payload = expected.model_dump(mode="json")
-        payload["proposals"][0]["evidence_refs"] *= 2
+        proposal_variant = captured["schema"]["properties"]["proposals"]["items"][
+            "anyOf"
+        ][0]
+        evidence_alias = proposal_variant["properties"]["evidence_refs"]["items"][
+            "enum"
+        ][0]
+        payload["proposals"][0]["evidence_refs"] = [evidence_alias, evidence_alias]
         output.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -102,20 +111,137 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     assert "UNTRUSTED FROZEN DISCOVERY REQUEST" in str(captured["input"])
     schema = captured["schema"]
     assert isinstance(schema, dict)
-    proposal_schema = schema["$defs"]["AgentOperationProposal"]
+    proposal_schema = schema["properties"]["proposals"]["items"]["anyOf"][0]
     assert proposal_schema["properties"]["operation"]["enum"] == [
         "app.camera.snapshot"
     ]
-    assert proposal_schema["properties"]["evidence_refs"]["items"]["enum"] == (
-        request.discovery_evidence.evidence_refs
-    )
+    evidence_enums = proposal_schema["properties"]["evidence_refs"]["items"]["enum"]
+    assert len(evidence_enums) == 1
+    assert evidence_enums[0].startswith("ev:")
+    assert "runtime_probe:camera" not in evidence_enums
     assert proposal_schema["properties"]["route_resource_ids"]["items"]["enum"] == [
-        "ros_topic:/camera/image_raw",
-        "ros_topic:/odom",
+        "ros_topic:/camera/image_raw"
     ]
+    assert proposal_schema["properties"]["executable_ids"]["items"]["enum"] == [
+        "exe-camera"
+    ]
+    assert proposal_schema["properties"]["hardware_resource_ids"]["maxItems"] == 0
+    prompt = str(captured["input"])
+    assert '"evidence_catalog"' in prompt
+    assert f'"{evidence_enums[0]}":"runtime_probe:camera"' in prompt
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+
+
+def test_mapping_schema_binds_each_operation_to_its_own_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Discover from frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Map only canonical target Operations.", encoding="utf-8")
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.localization.status")
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        schema = Path(command[command.index("--output-schema") + 1])
+        captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(
+            json.dumps(_bundle(request, []).model_dump(mode="json")),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+    )
+
+    provider.propose(request)
+
+    schema = captured["schema"]
+    assert isinstance(schema, dict)
+    variants = schema["properties"]["proposals"]["items"]["anyOf"]
+    by_operation = {
+        variant["properties"]["operation"]["enum"][0]: variant for variant in variants
+    }
+    assert by_operation["app.camera.snapshot"]["properties"]["route_resource_ids"][
+        "items"
+    ]["enum"] == ["ros_topic:/camera/image_raw"]
+    assert by_operation["app.localization.status"]["properties"]["route_resource_ids"][
+        "items"
+    ]["enum"] == ["ros_topic:/odom"]
+
+
+def test_mapping_schema_excludes_context_contracts_without_deterministic_bindings() -> None:
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.camera.status")
+    )
+
+    aliases = _evidence_aliases(request)
+    schema = _mapping_output_schema(request, aliases)
+    operations = [
+        variant["properties"]["operation"]["enum"][0]
+        for variant in schema["properties"]["proposals"]["items"]["anyOf"]
+    ]
+
+    assert operations == ["app.camera.snapshot"]
+    assert {item.operation for item in request.target_contracts} == {
+        "app.camera.snapshot",
+        "app.camera.status",
+    }
+
+
+def test_windows_source_reference_round_trips_through_short_evidence_id() -> None:
+    report, registry, _request_value = _request()
+    source_ref = (
+        "source:C:\\Users\\zarch\\Desktop\\adapt-validation-data\\"
+        "wheeltec_drivers\\usb_cam_launcher"
+    )
+    camera = report.operation_candidates[0]
+    route = camera.route_evidence[0].model_copy(update={"source": source_ref})
+    report = report.model_copy(
+        update={
+            "operation_candidates": [
+                camera.model_copy(
+                    update={"evidence": [source_ref], "route_evidence": [route]}
+                ),
+                report.operation_candidates[1],
+            ]
+        }
+    )
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={"app.camera.snapshot"},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+
+    aliases = _evidence_aliases(request)
+    schema = _mapping_output_schema(request, aliases)
+    evidence_id = aliases[source_ref]
+    payload = _bundle(request, [_proposal(evidence_ref=source_ref)]).model_dump(mode="json")
+    payload["proposals"][0]["evidence_refs"] = [evidence_id]
+
+    resolved = _resolve_provider_evidence_aliases(payload, aliases)
+
+    assert evidence_id.startswith("ev:")
+    assert len(evidence_id) == 27
+    assert schema["properties"]["proposals"]["items"]["anyOf"][0]["properties"][
+        "evidence_refs"
+    ]["items"]["enum"] == [evidence_id]
+    assert resolved["proposals"][0]["evidence_refs"] == [source_ref]
 
 
 def _route(endpoint: str, source: str) -> RouteEvidence:

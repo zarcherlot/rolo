@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import yaml
 from packaging.requirements import InvalidRequirement, Requirement
 
 try:
@@ -30,7 +31,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import sha256_bytes, sha256_file
 from rolo.core.models import (
     DiscoveryLatestIndex,
     DiscoveryReport,
@@ -75,6 +76,7 @@ from rolo.stages.adapt.inputs import (
 from rolo.stages.adapt.operation_registry import validate_candidate_operations
 from rolo.stages.adapt.review import render_discovery_review_markdown
 from rolo.stages.adapt.routes import persist_route_evidence
+from rolo.stages.adapt.semantic_mapping import matching_semantic_rules
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyResolver,
     ResolutionStatus,
@@ -923,6 +925,99 @@ def _extract_semantic_candidates(
     return candidates
 
 
+def _extract_ros_config_names(text: str, *, suffix: str) -> dict[str, list[str]]:
+    """Read concrete ROS names from inert configuration data without executing it."""
+    names: dict[str, set[str]] = {"topics": set(), "services": set(), "actions": set()}
+    payload: Any = None
+    if suffix.casefold() in {".yaml", ".yml", ".json"}:
+        try:
+            payload = yaml.safe_load(text)
+        except yaml.YAMLError:
+            # Vendor ROS parameter files frequently contain tab-indented comments that
+            # strict YAML rejects. A bounded literal key/value pass still recovers names
+            # without attempting to repair or execute the configuration.
+            payload = None
+
+    def visit(value: Any, key_hint: str = "") -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                visit(nested, str(key).casefold())
+            return
+        if isinstance(value, list):
+            for nested in value:
+                visit(nested, key_hint)
+            return
+        if not isinstance(value, str) or not _is_concrete_ros_endpoint(value):
+            return
+        collection = next(
+            (
+                collection
+                for token, collection in (
+                    ("topic", "topics"),
+                    ("service", "services"),
+                    ("action", "actions"),
+                )
+                if token in key_hint
+            ),
+            None,
+        )
+        if collection:
+            names[collection].add(_ros_entity_name(value))
+
+    visit(payload)
+    literal_pattern = re.compile(
+        r"(?m)^\s*['\"]?(?P<key>[A-Za-z0-9_.-]*(?:topic|service|action)"
+        r"[A-Za-z0-9_.-]*)['\"]?\s*[:=]\s*['\"]?(?P<value>/?[A-Za-z0-9_/]+)"
+    )
+    for match in literal_pattern.finditer(text):
+        key = match.group("key").casefold()
+        value = match.group("value")
+        if not _is_concrete_ros_endpoint(value):
+            continue
+        collection = next(
+            collection
+            for token, collection in (
+                ("topic", "topics"),
+                ("service", "services"),
+                ("action", "actions"),
+            )
+            if token in key
+        )
+        names[collection].add(_ros_entity_name(value))
+    return {name: sorted(values) for name, values in names.items()}
+
+
+def _extract_parameter_default_ros_names(text: str) -> dict[str, list[str]]:
+    """Resolve literal ROS names used as defaults for C++ topic/service/action parameters."""
+    names: dict[str, set[str]] = {"topics": set(), "services": set(), "actions": set()}
+    pattern = re.compile(
+        r"declare_parameter(?:\s*<[^>]+>)?\s*\(\s*['\"]"
+        r"(?P<key>[^'\"]+)['\"]\s*,\s*(?:std::string\s*\(\s*)?['\"]"
+        r"(?P<value>[^'\"]+)['\"]",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(text):
+        key = match.group("key").casefold()
+        value = match.group("value")
+        if not _is_concrete_ros_endpoint(value):
+            continue
+        collection = next(
+            (
+                collection
+                for token, collection in (
+                    ("topic", "topics"),
+                    ("service", "services"),
+                    ("action", "actions"),
+                )
+                if token in key
+            ),
+            None,
+        )
+        if collection:
+            names[collection].add(_ros_entity_name(value))
+    return {name: sorted(values) for name, values in names.items()}
+
+
 def _python_without_comments(text: str) -> str:
     """Remove Python comments without changing string literals or executing source."""
     try:
@@ -1117,6 +1212,13 @@ class ApplicationProbe:
                                 source_kind=candidate_source_kind,
                             )
                         )
+                        if candidate_source_kind == "config":
+                            config_names = _extract_ros_config_names(
+                                candidate_text,
+                                suffix=path.suffix,
+                            )
+                            for collection, values in config_names.items():
+                                ros_names[collection].update(values)
                 if path.name in {
                     "pyproject.toml",
                     "setup.py",
@@ -1140,6 +1242,9 @@ class ApplicationProbe:
                             project["languages"].append(language)
                         interfaces = _extract_ros_interfaces(text, path)
                         project["ros_interfaces"].extend(interfaces)
+                        parameter_names = _extract_parameter_default_ros_names(text)
+                        for collection, values in parameter_names.items():
+                            ros_names[collection].update(values)
                         for interface in interfaces:
                             if interface.get("name_source") != "STRING_LITERAL":
                                 continue
@@ -1262,26 +1367,8 @@ def _ros_entity_type(value: str) -> str | None:
     return interface_type or None
 
 
-def _topic_rule_matches(topic: str, token: str) -> bool:
-    segments = [segment for segment in topic.casefold().split("/") if segment]
-    if token in segments:
-        return True
-    return token in {"image", "battery"} and any(
-        segment.startswith(f"{token}_") for segment in segments
-    )
-
-
 def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, Any]]:
     bindings: dict[str, dict[str, Any]] = {}
-    topic_rules = {
-        "cmd_vel": "semantic://actuator/base/velocity_command",
-        "odom": "semantic://state/base/odometry",
-        "scan": "semantic://sensor/range_scan_2d",
-        "image": "semantic://sensor/front_camera/image",
-        "imu": "semantic://sensor/imu",
-        "map": "semantic://environment/map_2d",
-        "battery": "semantic://power/battery_state",
-    }
     ros_probe = probes["ros"]
     ros_revision = ":".join(
         str(value)
@@ -1307,8 +1394,17 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         topic = _ros_entity_name(raw_topic)
         if not _is_concrete_ros_endpoint(raw_topic):
             continue
-        for token, semantic_uri in topic_rules.items():
-            if _topic_rule_matches(topic, token) and semantic_uri not in bindings:
+        for rule in matching_semantic_rules(topic):
+            if any(
+                binding.get("semantic_rule_id") == rule.rule_id
+                and _ros_entity_name(str(binding.get("binding", ""))) == topic
+                for binding in bindings.values()
+            ):
+                continue
+            semantic_uri = rule.semantic_uri
+            if semantic_uri in bindings:
+                semantic_uri = f"{semantic_uri}/{sha256_bytes(topic.encode('utf-8'))[:16]}"
+            if semantic_uri not in bindings:
                 bindings[semantic_uri] = {
                     "transport": transport,
                     "binding": topic,
@@ -1317,6 +1413,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "evidence": source,
                     "observed_at": observed_at,
                     "runtime_revision": runtime_revision,
+                    "semantic_rule_id": rule.rule_id,
+                    "operations": list(rule.operations),
                 }
     return bindings
 
@@ -1701,37 +1799,23 @@ def _build_operation_candidates(
             limitations=limitations,
         )
 
-    semantic_operations = {
-        "semantic://actuator/base/velocity_command": "app.teleop.velocity",
-        "semantic://state/base/odometry": "app.localization.status",
-        "semantic://environment/map_2d": "app.map.inspect",
-    }
     candidates: list[OperationCandidate] = []
-    for semantic_uri, operation in semantic_operations.items():
-        if semantic_uri in bindings:
-            candidates.append(
-                OperationCandidate(
-                    operation=operation,
-                    semantic_bindings=[semantic_uri],
-                    evidence=[bindings[semantic_uri]["binding"]],
-                    route_evidence=[route(semantic_uri)],
-                    limitations=["Requires adapter generation and independent conformance"],
-                )
-            )
-    camera_bindings = sorted(
-        semantic_uri
-        for semantic_uri in bindings
-        if semantic_uri.startswith("semantic://sensor/") and semantic_uri.endswith("/image")
-    )
-    if camera_bindings:
+    operation_bindings: dict[str, list[str]] = {}
+    for semantic_uri, binding in bindings.items():
+        for operation in binding.get("operations", []):
+            operation_bindings.setdefault(str(operation), []).append(semantic_uri)
+    for operation, semantic_uris in sorted(operation_bindings.items()):
+        semantic_uris = sorted(semantic_uris)
         candidates.append(
             OperationCandidate(
-                operation="app.camera.snapshot",
-                semantic_bindings=camera_bindings,
-                evidence=[bindings[semantic_uri]["binding"] for semantic_uri in camera_bindings],
-                route_evidence=[route(semantic_uri) for semantic_uri in camera_bindings],
+                operation=operation,
+                semantic_bindings=semantic_uris,
+                evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
+                route_evidence=[route(semantic_uri) for semantic_uri in semantic_uris],
                 limitations=[
-                    "Requires target-runtime topic type, publisher, QoS, and frame validation"
+                    "Rule-derived applicability requires target-runtime interface, provider, "
+                    "QoS, and semantic validation",
+                    "Requires adapter generation and independent conformance",
                 ],
             )
         )

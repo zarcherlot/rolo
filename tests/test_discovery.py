@@ -14,6 +14,9 @@ from rolo.stages.adapt.discovery import (
     ApplicationProbe,
     DiscoveryService,
     HardwareProbe,
+    _build_operation_candidates,
+    _extract_parameter_default_ros_names,
+    _extract_ros_config_names,
     _hardware_reconciliation,
     _semantic_bindings,
     detect_compute_platform,
@@ -21,6 +24,7 @@ from rolo.stages.adapt.discovery import (
 )
 from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.operation_registry import materialize_active_catalog
+from rolo.stages.adapt.semantic_mapping import SemanticOperationRule
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 
 
@@ -264,6 +268,126 @@ def test_unresolved_ros_name_template_is_retained_as_source_evidence_but_not_rou
 
     assert "semantic://actuator/base/velocity_command" in bindings
     assert "semantic://sensor/front_camera/image" not in bindings
+
+
+def test_semantic_operation_candidates_are_driven_by_registry_linked_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    custom_rule = SemanticOperationRule(
+        rule_id="custom_camera_status",
+        topic_segments=["custom_feed"],
+        semantic_uri="semantic://sensor/custom/feed",
+        operations=["app.camera.status"],
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.matching_semantic_rules",
+        lambda _topic: [custom_rule],
+    )
+    bindings = _semantic_bindings(
+        {
+            "ros": ProbeResult(
+                layer="ros",
+                status="UNAVAILABLE",
+                data={"topics": []},
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status="SUCCEEDED",
+                data={
+                    "projects": [
+                        {
+                            "root": "C:\\workspace\\custom_robot",
+                            "ros_names": {"topics": ["/vendor/custom_feed"]},
+                        }
+                    ]
+                },
+            ),
+        }
+    )
+
+    candidates = _build_operation_candidates(bindings)
+
+    assert [item.operation for item in candidates] == ["app.camera.status"]
+    assert candidates[0].route_evidence[0].endpoint == "/vendor/custom_feed"
+
+
+def test_semantic_rules_expand_beyond_camera_and_velocity() -> None:
+    bindings = _semantic_bindings(
+        {
+            "ros": ProbeResult(
+                layer="ros",
+                status="SUCCEEDED",
+                data={
+                    "topics": [
+                        "/front/scan [sensor_msgs/msg/LaserScan]",
+                        "/chassis/imu [sensor_msgs/msg/Imu]",
+                        "/gps/fix [sensor_msgs/msg/NavSatFix]",
+                    ]
+                },
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status="SUCCEEDED",
+                data={"projects": []},
+            ),
+        }
+    )
+
+    candidates = _build_operation_candidates(bindings)
+
+    assert {item.operation for item in candidates} == {
+        "app.gnss.sample",
+        "app.imu.sample",
+        "app.lidar.snapshot",
+    }
+
+
+def test_literal_topic_parameters_are_discovered_from_config_and_cpp_defaults() -> None:
+    config_names = _extract_ros_config_names(
+        """
+        node:
+          ros__parameters:
+            scan_topic: /front/scan
+            pointcloud_topic: /front/points
+            serial_port: /dev/ttyUSB0
+        """,
+        suffix=".yaml",
+    )
+    cpp_names = _extract_parameter_default_ros_names(
+        'declare_parameter<std::string>("scan_topic", "/fallback/scan");\n'
+        'declare_parameter<std::string>("frame_id", "laser");\n'
+    )
+
+    assert config_names == {
+        "topics": ["/front/points", "/front/scan"],
+        "services": [],
+        "actions": [],
+    }
+    assert cpp_names == {
+        "topics": ["/fallback/scan"],
+        "services": [],
+        "actions": [],
+    }
+
+
+def test_application_probe_integrates_vendor_topic_defaults(tmp_path: Path) -> None:
+    config = tmp_path / "driver" / "params" / "lidar.yaml"
+    source = tmp_path / "driver" / "src" / "driver.cpp"
+    config.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
+    config.write_text(
+        "node:\n  ros__parameters:\n    scan_topic: /front/scan\t# vendor tab\n",
+        encoding="utf-8",
+    )
+    source.write_text(
+        'declare_parameter<std::string>("pointcloud_topic", "/front/points");\n',
+        encoding="utf-8",
+    )
+
+    project = ApplicationProbe().run([tmp_path]).data["projects"][0]
+
+    assert "/front/scan" in project["ros_names"]["topics"]
+    assert "/front/points" in project["ros_names"]["topics"]
 
 
 def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Path) -> None:
