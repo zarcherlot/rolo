@@ -45,9 +45,15 @@ def test_health_and_robot_registry() -> None:
     assert health.json()["status"] == "HEALTHY"
     assert health.json()["robots"] == 2
     assert health.json()["api_features"] == [
+        "adapt.baseline-status/v1",
+        "adapt.fleet-slice-stability/v1",
         "adapt.operation-governance/v1",
+        "adapt.slice-review-packet/v1",
+        "adapt.slice-run-detail/v1",
+        "adapt.slice-stability-comparison/v1",
         "adapt.slice-stability/v1",
         "adapt.target-operation-slice/v1",
+        "workbench.blocker-detail/v1",
     ]
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
@@ -57,7 +63,7 @@ def test_health_and_robot_registry() -> None:
     assert fleet.json()["attention"] == 2
     assert fleet.json()["blocker_count"] == blockers.json()["total"]
     assert blockers.status_code == 200
-    assert blockers.json()["schema_version"] == "rolo-fleet-blocker-collection/v1"
+    assert blockers.json()["schema_version"] == "rolo-fleet-blocker-collection/v2"
     assert blockers.json()["total"] > 0
     assert len(blockers.json()["items"]) == 1
     assert blockers.json()["next_offset"] == 1
@@ -70,13 +76,17 @@ def test_health_and_robot_registry() -> None:
     assert overview.json()["schema_version"] == "rolo-robot-overview/v2"
     assert overview.json()["robot_id"] == "demo_diff"
     assert overview.json()["state"] == "ATTENTION"
-    assert overview.json()["next_action"] == "Run adapt discovery"
+    assert overview.json()["next_action"] == (
+        "Resolve the reported Adapt blocker, then reassess the pipeline."
+    )
     assert overview.json()["blockers"][0] == {
         "schema_version": "rolo-blocker-summary/v2",
         "blocker_id": overview.json()["blockers"][0]["blocker_id"],
         "stage": "adapt",
         "message": "Run adapt discovery",
-        "recommended_action": "Run adapt discovery",
+        "recommended_action": (
+            "Resolve the reported Adapt blocker, then reassess the pipeline."
+        ),
         "owner": "adapter_agent",
         "observed_at": overview.json()["blockers"][0]["observed_at"],
         "freshness": "fresh",
@@ -100,7 +110,7 @@ def test_health_and_robot_registry() -> None:
     assert topology_path.json()["hop_count"] == 1
     assert topology_path.json()["steps"][0]["evidence_ids"]
     assert capabilities.status_code == 200
-    assert capabilities.json()["schema_version"] == "rolo-capability-collection/v1"
+    assert capabilities.json()["schema_version"] == "rolo-capability-collection/v2"
     assert capabilities.json()["total"] == 294
     assert len(capabilities.json()["items"]) == 10
     assert capabilities.json()["source_kind"] == "product_registry"
@@ -147,6 +157,9 @@ def test_unknown_robot_is_404() -> None:
         slice_stability = client.get(
             "/v1/robots/not-a-robot/adapt/slice-stability"
         )
+        slice_run = client.get(
+            "/v1/robots/not-a-robot/adapt/slice-runs/run-1"
+        )
 
     assert response.status_code == 404
     assert overview.status_code == 404
@@ -158,6 +171,7 @@ def test_unknown_robot_is_404() -> None:
     assert evidence_detail.status_code == 404
     assert operation_slice.status_code == 404
     assert slice_stability.status_code == 404
+    assert slice_run.status_code == 404
 
 
 def test_operation_governance_is_bounded_external_metadata() -> None:
@@ -279,6 +293,69 @@ def test_slice_stability_route_is_bounded_and_runs_off_the_async_event_loop() ->
     assert invalid_threshold.status_code == 422
 
 
+def test_adapt_baseline_and_missing_slice_run_are_explicit() -> None:
+    with TestClient(app) as client:
+        baseline = client.get("/v1/adapt/baseline")
+        missing_run = client.get(
+            "/v1/robots/demo_diff/adapt/slice-runs/not-observed"
+        )
+
+    assert baseline.status_code == 200
+    assert baseline.json()["schema_version"] == "rolo-adapt-baseline-status/v1"
+    assert baseline.json()["status"] == "MATCHED"
+    assert baseline.json()["changed_fields"] == []
+    assert baseline.json()["influences_release"] is False
+    assert missing_run.status_code == 404
+    assert missing_run.json()["detail"] == "Adapt Slice run decision is unavailable"
+
+
+def test_adapt_review_intelligence_routes_are_bounded_and_release_neutral() -> None:
+    with TestClient(app) as client:
+        fleet = client.get("/v1/adapt/slice-fleet")
+        comparison = client.get(
+            "/v1/robots/demo_diff/adapt/slice-stability/comparison",
+            params={"recent_observations": 4, "previous_observations": 3},
+        )
+        packet = client.get(
+            "/v1/robots/demo_diff/adapt/slice-review",
+            params={"max_evidence_runs": 5},
+        )
+        invalid = client.get(
+            "/v1/robots/demo_diff/adapt/slice-review?max_evidence_runs=21"
+        )
+
+    assert fleet.status_code == 200
+    assert fleet.json()["schema_version"] == "rolo-adapt-fleet-slice-stability/v1"
+    assert fleet.json()["influences_release"] is False
+    assert comparison.status_code == 200
+    assert comparison.json()["status"] == "NO_PREVIOUS_WINDOW"
+    assert comparison.json()["recent"]["requested_observations"] == 4
+    assert comparison.json()["previous"]["requested_observations"] == 3
+    assert packet.status_code == 200
+    assert packet.json()["status"] == "INCOMPLETE"
+    assert packet.json()["contains_secret_payloads"] is False
+    assert packet.json()["checks"][-1]["status"] == "HUMAN_REQUIRED"
+    assert invalid.status_code == 422
+
+
+def test_fleet_blocker_detail_is_structured_and_missing_is_explicit() -> None:
+    with TestClient(app) as client:
+        collection = client.get("/v1/blockers")
+        blocker_id = collection.json()["items"][0]["blocker_id"]
+        detail = client.get(f"/v1/blockers/{blocker_id}")
+        missing = client.get("/v1/blockers/blocker_missing")
+
+    assert collection.status_code == 200
+    assert collection.json()["schema_version"] == "rolo-fleet-blocker-collection/v2"
+    assert detail.status_code == 200
+    assert detail.json()["schema_version"] == "rolo-fleet-blocker-detail/v1"
+    assert detail.json()["resolution_state"] == "OPEN"
+    assert detail.json()["contains_secret_payloads"] is False
+    assert detail.json()["canonical_cli_argv"][:2] == ["robotctl", "pipeline-status"]
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Fleet blocker is unavailable"
+
+
 def test_evidence_list_is_bounded_filterable_and_validates_pagination() -> None:
     with TestClient(app) as client:
         page = client.get(
@@ -324,7 +401,7 @@ def test_capabilities_are_filterable_and_detail_is_contract_bound() -> None:
     assert search.status_code == 200
     assert [item["operation"] for item in search.json()["items"]] == ["tool.catalog"]
     assert detail.status_code == 200
-    assert detail.json()["schema_version"] == "rolo-capability-detail/v1"
+    assert detail.json()["schema_version"] == "rolo-capability-detail/v2"
     assert detail.json()["capability"]["operation"] == "tool.catalog"
     assert detail.json()["capability"]["registration"] == "BUILTIN"
     assert detail.json()["capability"]["availability"] == "AVAILABLE"
@@ -447,7 +524,7 @@ def test_overview_openapi_contract_is_versioned() -> None:
     capability_schema = openapi["components"]["schemas"]["CapabilityCollection"]
     assert (
         capability_schema["properties"]["schema_version"]["const"]
-        == "rolo-capability-collection/v1"
+        == "rolo-capability-collection/v2"
     )
     lifecycle_schema = openapi["components"]["schemas"]["LifecycleRunCollection"]
     assert (
@@ -471,14 +548,16 @@ def test_overview_openapi_contract_is_versioned() -> None:
     ]
     assert (
         discovery_history_schema["properties"]["schema_version"]["const"]
-        == "rolo-discovery-snapshot-collection/v1"
+        == "rolo-discovery-snapshot-collection/v3"
     )
+    heuristic_schema = openapi["components"]["schemas"]["DiscoveryHeuristicSummary"]
+    assert heuristic_schema["properties"]["influences_release"]["const"] is False
     fleet_schema = openapi["components"]["schemas"]["FleetCollection"]
     assert fleet_schema["properties"]["schema_version"]["const"] == "rolo-fleet-collection/v1"
     blocker_schema = openapi["components"]["schemas"]["FleetBlockerCollection"]
     assert (
         blocker_schema["properties"]["schema_version"]["const"]
-        == "rolo-fleet-blocker-collection/v1"
+        == "rolo-fleet-blocker-collection/v2"
     )
     governance_schema = openapi["components"]["schemas"][
         "OperationGovernanceCollection"
@@ -496,6 +575,16 @@ def test_overview_openapi_contract_is_versioned() -> None:
     assert (
         stability_schema["properties"]["schema_version"]["const"]
         == "robot-target-operation-slice-stability/v1"
+    )
+    baseline_schema = openapi["components"]["schemas"]["AdaptBaselineStatus"]
+    assert (
+        baseline_schema["properties"]["schema_version"]["const"]
+        == "rolo-adapt-baseline-status/v1"
+    )
+    slice_run_schema = openapi["components"]["schemas"]["SliceRunDetail"]
+    assert (
+        slice_run_schema["properties"]["schema_version"]["const"]
+        == "rolo-adapt-slice-run-detail/v1"
     )
 
 
@@ -524,7 +613,7 @@ def test_discovery_history_has_a_verified_empty_state(
 
     assert response.status_code == 200
     assert response.json()["schema_version"] == (
-        "rolo-discovery-snapshot-collection/v1"
+        "rolo-discovery-snapshot-collection/v3"
     )
     assert response.json()["items"] == []
     assert response.json()["integrity_status"] == "verified"

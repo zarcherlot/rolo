@@ -21,9 +21,15 @@ from rolo.stages.adapt.slice_observability import (
 from rolo.stages.adapt.workset import TargetOperationSlice, build_target_operation_slice
 
 ADAPT_API_FEATURES = (
+    "adapt.baseline-status/v1",
+    "adapt.fleet-slice-stability/v1",
     "adapt.operation-governance/v1",
+    "adapt.slice-review-packet/v1",
+    "adapt.slice-run-detail/v1",
+    "adapt.slice-stability-comparison/v1",
     "adapt.slice-stability/v1",
     "adapt.target-operation-slice/v1",
+    "workbench.blocker-detail/v1",
 )
 
 

@@ -77,6 +77,26 @@ def _sanitize_stage_text(stage: StageAssessment, text: str) -> str:
     return sanitized
 
 
+def _recommended_blocker_action(stage: StageAssessment, safe_message: str) -> str:
+    normalized = safe_message.casefold()
+    stage_name = stage.stage.value.title()
+    if "missing verified" in normalized:
+        return (
+            f"Produce and validate the required {stage_name} evidence, then reassess "
+            "the pipeline."
+        )
+    if "unavailable or invalid" in normalized:
+        return (
+            f"Restore a validated {stage_name} handoff, then reassess the pipeline."
+        )
+    if "denied" in normalized or "authorization" in normalized or "policy" in normalized:
+        return (
+            f"Review the external {stage_name} policy or authorization decision, then "
+            "reassess the pipeline."
+        )
+    return f"Resolve the reported {stage_name} blocker, then reassess the pipeline."
+
+
 def _project_pipeline(pipeline: PipelineAssessment) -> PipelineAssessment:
     stages = [
         stage.model_copy(
@@ -109,7 +129,7 @@ def _overview_blockers(pipeline: PipelineAssessment) -> list[OverviewBlocker]:
                     blocker_id=_blocker_id(pipeline.robot_id, stage.stage.value, message),
                     stage=stage.stage.value,
                     message=safe_message,
-                    recommended_action=safe_message,
+                    recommended_action=_recommended_blocker_action(stage, safe_message),
                     owner=stage.agent_requirement.value,
                     observed_at=stage.observed_at,
                     evidence_ids=sorted(

@@ -61,8 +61,24 @@ class CapabilityBinding(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class CapabilityInferredBinding(BaseModel):
+    schema_version: Literal["rolo-capability-inferred-binding/v1"] = (
+        "rolo-capability-inferred-binding/v1"
+    )
+    inference_id: str
+    origin: Literal["HEURISTIC_AGENT"] = "HEURISTIC_AGENT"
+    verification_status: Literal["DISCOVERED_UNVERIFIED"] = "DISCOVERED_UNVERIFIED"
+    authority: Literal["OBSERVED", "DECLARED"]
+    kind: str
+    endpoint: str
+    interface_type: str | None = None
+    observed_at: datetime | None = None
+    reference_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    limitations: list[str] = Field(default_factory=list)
+
+
 class CapabilitySummary(BaseModel):
-    schema_version: Literal["rolo-capability-summary/v1"] = "rolo-capability-summary/v1"
+    schema_version: Literal["rolo-capability-summary/v2"] = "rolo-capability-summary/v2"
     operation: str
     layer: CapabilityLayer
     description: str
@@ -79,6 +95,9 @@ class CapabilitySummary(BaseModel):
     replacement_operation: str | None = None
     compensation_operation: str | None = None
     binding_count: int = Field(ge=0)
+    inferred_binding_count: int = Field(ge=0)
+    candidate_origin: Literal["DETERMINISTIC", "HEURISTIC_AGENT"] | None = None
+    candidate_verification_status: Literal["DISCOVERED_UNVERIFIED"] | None = None
     last_verified_at: datetime | None = None
     evidence_ids: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -87,9 +106,7 @@ class CapabilitySummary(BaseModel):
 
 
 class CapabilityCollection(BaseModel):
-    schema_version: Literal["rolo-capability-collection/v1"] = (
-        "rolo-capability-collection/v1"
-    )
+    schema_version: Literal["rolo-capability-collection/v2"] = "rolo-capability-collection/v2"
     robot_id: str
     items: list[CapabilitySummary]
     total: int = Field(ge=0)
@@ -123,11 +140,12 @@ class CapabilityContract(BaseModel):
 
 
 class CapabilityDetail(BaseModel):
-    schema_version: Literal["rolo-capability-detail/v1"] = "rolo-capability-detail/v1"
+    schema_version: Literal["rolo-capability-detail/v2"] = "rolo-capability-detail/v2"
     robot_id: str
     capability: CapabilitySummary
     contract: CapabilityContract
     bindings: list[CapabilityBinding]
+    inferred_bindings: list[CapabilityInferredBinding]
     observed_at: datetime
     freshness: Literal["fresh", "unknown"]
 
@@ -170,9 +188,11 @@ def _release_context(
         )
     except FileNotFoundError:
         return None, None, {}
-    return release.published_at, release.discovery_id, {
-        item.operation: item for item in catalog.tools
-    }
+    return (
+        release.published_at,
+        release.discovery_id,
+        {item.operation: item for item in catalog.tools},
+    )
 
 
 def _operation_evidence(
@@ -237,7 +257,15 @@ def _summary(
         registration = CapabilityRegistration.NOT_REGISTERED
         availability = CapabilityAvailability.UNAVAILABLE
 
-    if definition.operation in builtins or candidate is not None or active is not None:
+    deterministic_candidate = (
+        candidate if candidate and candidate.origin == "DETERMINISTIC" else None
+    )
+    heuristic_candidate = candidate if candidate and candidate.origin == "HEURISTIC_AGENT" else None
+    if (
+        definition.operation in builtins
+        or deterministic_candidate is not None
+        or active is not None
+    ):
         applicability = CapabilityApplicability.APPLICABLE
     elif discovery is None:
         applicability = CapabilityApplicability.UNKNOWN
@@ -245,14 +273,20 @@ def _summary(
         applicability = CapabilityApplicability.NOT_OBSERVED
 
     verified = active is not None and registration is CapabilityRegistration.REGISTERED
-    binding_count = len(candidate.route_evidence) if candidate else 0
+    binding_count = len(deterministic_candidate.route_evidence) if deterministic_candidate else 0
+    inferred_binding_count = len(heuristic_candidate.route_evidence) if heuristic_candidate else 0
     if active is not None:
         binding_count = max(binding_count, len(active.semantic_bindings), 1)
     limitations: list[str] = []
     if discovery is None and active is None:
         limitations.append("No discovery snapshot is available; applicability is unknown.")
-    elif candidate is None and definition.operation not in builtins:
+    elif deterministic_candidate is None and definition.operation not in builtins:
         limitations.append("The latest discovery did not observe an applicable binding.")
+    if heuristic_candidate is not None:
+        limitations.append(
+            "An Agent-inferred candidate is discovered-unverified and does not establish "
+            "applicability, binding readiness, availability, or release status."
+        )
     if registration is CapabilityRegistration.STALE:
         limitations.append("The active release belongs to a different discovery snapshot.")
     if registration is CapabilityRegistration.NOT_REGISTERED:
@@ -270,9 +304,7 @@ def _summary(
         access=definition.access,
         risk=definition.risk,
         data_classification=(
-            definition.data_classification.value
-            if definition.data_classification
-            else "INTERNAL"
+            definition.data_classification.value if definition.data_classification else "INTERNAL"
         ),
         contract_version=definition.contract_version or "0.0.0",
         contract_digest=definition.contract_sha256 or _digest(definition.operation),
@@ -280,8 +312,17 @@ def _summary(
         replacement_operation=definition.replacement_operation,
         compensation_operation=definition.compensation_operation,
         binding_count=binding_count,
+        inferred_binding_count=inferred_binding_count,
+        candidate_origin=candidate.origin if candidate else None,
+        candidate_verification_status=candidate.status if candidate else None,
         last_verified_at=published_at if verified else None,
-        evidence_ids=evidence_ids,
+        evidence_ids=(
+            []
+            if heuristic_candidate is not None
+            and active is None
+            and definition.operation not in builtins
+            else evidence_ids
+        ),
         confidence=1.0 if verified else (0.9 if definition.operation in builtins else 0.5),
         integrity_status="verified" if verified else "validated",
         limitations=limitations,
@@ -326,9 +367,7 @@ def build_capability_collection(
     observed_at: datetime | None = None,
 ) -> CapabilityCollection:
     context = _context(robot, artifact_root, output_root)
-    definitions, builtins, discovery, published_at, release_discovery_id, active, evidence = (
-        context
-    )
+    definitions, builtins, discovery, published_at, release_discovery_id, active, evidence = context
     items = [
         _summary(
             definition,
@@ -395,9 +434,7 @@ def get_capability_detail(
     observed_at: datetime | None = None,
 ) -> CapabilityDetail | None:
     context = _context(robot, artifact_root, output_root)
-    definitions, builtins, discovery, published_at, release_discovery_id, active, evidence = (
-        context
-    )
+    definitions, builtins, discovery, published_at, release_discovery_id, active, evidence = context
     definition = next((item for item in definitions if item.operation == operation), None)
     if definition is None:
         return None
@@ -420,6 +457,7 @@ def get_capability_detail(
         None,
     )
     bindings: list[CapabilityBinding] = []
+    inferred_bindings: list[CapabilityInferredBinding] = []
     if descriptor is not None:
         semantic_bindings = descriptor.semantic_bindings or [descriptor.adapter]
         for value in semantic_bindings:
@@ -441,7 +479,7 @@ def get_capability_detail(
                     ],
                 )
             )
-    if candidate is not None:
+    if candidate is not None and candidate.origin == "DETERMINISTIC":
         for route in candidate.route_evidence:
             bindings.append(
                 CapabilityBinding(
@@ -462,6 +500,27 @@ def get_capability_detail(
                     ],
                 )
             )
+    elif candidate is not None:
+        for route in candidate.route_evidence:
+            inferred_bindings.append(
+                CapabilityInferredBinding(
+                    inference_id=_stable_id(
+                        "inference", f"{robot.robot_id}\0{operation}\0{route.resource_id}"
+                    ),
+                    authority="OBSERVED" if route.observed else "DECLARED",
+                    kind=route.kind,
+                    endpoint=route.endpoint,
+                    interface_type=route.interface_type,
+                    observed_at=route.observed_at,
+                    reference_digest=_digest(route.source),
+                    limitations=[
+                        *route.limitations,
+                        "The route may be observed, but the operation mapping is Agent-inferred.",
+                        "This inference is not a gated adapter binding and cannot "
+                        "affect readiness.",
+                    ],
+                )
+            )
     return CapabilityDetail(
         robot_id=robot.robot_id,
         capability=summary,
@@ -475,9 +534,7 @@ def get_capability_detail(
             coordinate_frames=definition.coordinate_frames,
             time_semantics=definition.time_semantics,
             result_semantics=(
-                definition.result_semantics.value
-                if definition.result_semantics
-                else "OBSERVATION"
+                definition.result_semantics.value if definition.result_semantics else "OBSERVATION"
             ),
             execution_mode=definition.execution_mode.value,
             idempotent=definition.idempotent,
@@ -488,6 +545,7 @@ def get_capability_detail(
             requires_quiescence=definition.requires_quiescence,
         ),
         bindings=bindings,
+        inferred_bindings=inferred_bindings,
         observed_at=observed_at or utc_now(),
         freshness="unknown" if published_at else "fresh",
     )

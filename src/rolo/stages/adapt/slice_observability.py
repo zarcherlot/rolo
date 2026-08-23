@@ -144,6 +144,28 @@ def build_slice_stability_report(
     )
 
 
+def build_slice_run_observation(
+    artifact_root: Path,
+    robot_id: str,
+    run_id: str,
+) -> SliceRunObservation:
+    """Read one immutable Slice decision and its bounded run/gate metrics."""
+
+    layout = ArtifactLayout(artifact_root)
+    run_path = layout.stage_run("adapt", robot_id, run_id)
+    decision_path = run_path / "slice-activation-decision.json"
+    if not decision_path.is_file():
+        raise FileNotFoundError(decision_path)
+    decision = SliceActivationDecision.model_validate_json(
+        decision_path.read_text(encoding="utf-8")
+    )
+    if decision.robot_id != robot_id:
+        raise ValueError(f"Slice activation decision robot mismatch in run {run_id}")
+    if decision.run_id is not None and decision.run_id != run_id:
+        raise ValueError(f"Slice activation decision run mismatch in run {run_id}")
+    return _observe_run(layout, run_path, decision_path, decision)
+
+
 def _observe_run(
     layout: ArtifactLayout,
     run_path: Path,

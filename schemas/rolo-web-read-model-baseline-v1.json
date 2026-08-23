@@ -1,0 +1,23 @@
+{
+  "schema_version": "rolo-web-read-model-baseline/v1",
+  "baseline_id": "rolo-vis-mvp-readonly/2026-08",
+  "status": "baseline",
+  "mode": "read-only",
+  "producer_commit_minimum": "ce735a8",
+  "contracts": {
+    "capability_collection": "rolo-capability-collection/v2",
+    "capability_summary": "rolo-capability-summary/v2",
+    "capability_detail": "rolo-capability-detail/v2",
+    "capability_inferred_binding": "rolo-capability-inferred-binding/v1",
+    "discovery_collection": "rolo-discovery-snapshot-collection/v3",
+    "discovery_summary": "rolo-discovery-snapshot-summary/v3",
+    "discovery_heuristic_summary": "rolo-discovery-heuristic-summary/v1",
+    "discovery_target_evidence_summary": "rolo-discovery-target-evidence-summary/v1"
+  },
+  "trust_invariants": [
+    "heuristic inference never influences release",
+    "inferred capability bindings remain discovered and unverified",
+    "target evidence freshness is computed by the backend",
+    "public read models contain no raw artifact or host paths"
+  ]
+}

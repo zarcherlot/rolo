@@ -6,6 +6,18 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from rolo import __version__
+from rolo.adapt_observability_read_models import (
+    AdaptBaselineStatus,
+    FleetSliceStability,
+    SliceReviewPacket,
+    SliceRunDetail,
+    SliceStabilityComparison,
+    build_adapt_baseline_status,
+    build_fleet_slice_stability,
+    build_slice_review_packet,
+    build_slice_run_detail,
+    build_slice_stability_comparison,
+)
 from rolo.adapt_read_models import (
     ADAPT_API_FEATURES,
     OperationGovernanceCollection,
@@ -28,9 +40,11 @@ from rolo.discovery_history_read_models import (
 )
 from rolo.fleet_read_models import (
     FleetBlockerCollection,
+    FleetBlockerDetail,
     FleetCollection,
     build_fleet_blocker_collection,
     build_fleet_collection,
+    get_fleet_blocker_detail,
 )
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
@@ -128,6 +142,38 @@ async def list_operation_governance(
     )
 
 
+@app.get("/v1/adapt/baseline", response_model=AdaptBaselineStatus)
+def get_adapt_baseline_status() -> AdaptBaselineStatus:
+    try:
+        return build_adapt_baseline_status()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt protected baseline failed integrity validation",
+        ) from exc
+
+
+@app.get("/v1/adapt/slice-fleet", response_model=FleetSliceStability)
+def get_fleet_slice_stability(
+    request: Request,
+    max_runs_per_robot: Annotated[int, Query(ge=1, le=100)] = 20,
+    min_successful_canary_runs: Annotated[int, Query(ge=1, le=100)] = 10,
+) -> FleetSliceStability:
+    runtime = get_runtime(request)
+    try:
+        return build_fleet_slice_stability(
+            runtime.settings.rolo_artifact_dir,
+            [robot.robot_id for robot in runtime.registry.list()],
+            max_runs_per_robot=max_runs_per_robot,
+            min_successful_canary_runs=min_successful_canary_runs,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Fleet Adapt Slice evidence failed integrity validation",
+        ) from exc
+
+
 @app.get(
     "/v1/robots/{robot_id}/adapt/operation-slice",
     response_model=TargetOperationSlice,
@@ -188,6 +234,98 @@ def get_robot_slice_stability(
         ) from exc
 
 
+@app.get(
+    "/v1/robots/{robot_id}/adapt/slice-stability/comparison",
+    response_model=SliceStabilityComparison,
+)
+def get_robot_slice_stability_comparison(
+    robot_id: str,
+    request: Request,
+    recent_observations: Annotated[int, Query(ge=1, le=50)] = 10,
+    previous_observations: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> SliceStabilityComparison:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_slice_stability_comparison(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            recent_observations=recent_observations,
+            previous_observations=previous_observations,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt Slice stability comparison failed integrity validation",
+        ) from exc
+
+
+@app.get(
+    "/v1/robots/{robot_id}/adapt/slice-review",
+    response_model=SliceReviewPacket,
+)
+def get_robot_slice_review_packet(
+    robot_id: str,
+    request: Request,
+    max_runs: Annotated[int, Query(ge=1, le=100)] = 50,
+    min_successful_canary_runs: Annotated[int, Query(ge=1, le=100)] = 10,
+    max_evidence_runs: Annotated[int, Query(ge=1, le=20)] = 20,
+) -> SliceReviewPacket:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_slice_review_packet(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            max_runs=max_runs,
+            min_successful_canary_runs=min_successful_canary_runs,
+            max_evidence_runs=max_evidence_runs,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt Slice review evidence failed integrity validation",
+        ) from exc
+
+
+@app.get(
+    "/v1/robots/{robot_id}/adapt/slice-runs/{run_id}",
+    response_model=SliceRunDetail,
+)
+def get_robot_slice_run_detail(
+    robot_id: str,
+    run_id: str,
+    request: Request,
+) -> SliceRunDetail:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return build_slice_run_detail(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            run_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Adapt Slice run decision is unavailable",
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Adapt Slice run decision failed integrity validation",
+        ) from exc
+
+
 def _fleet_pipelines(runtime: RobotUseRuntime) -> dict[str, PipelineAssessment]:
     return {
         robot.robot_id: assess_pipeline(
@@ -234,6 +372,24 @@ async def list_fleet_blockers(
         robot_id=robot_id,
         stage=stage,
     )
+
+
+@app.get("/v1/blockers/{blocker_id}", response_model=FleetBlockerDetail)
+async def get_fleet_blocker(blocker_id: str, request: Request) -> FleetBlockerDetail:
+    runtime = get_runtime(request)
+    try:
+        return get_fleet_blocker_detail(
+            runtime.registry.list(),
+            _fleet_pipelines(runtime),
+            blocker_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Fleet blocker is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Fleet blocker evidence failed integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}", response_model=RobotCapability)

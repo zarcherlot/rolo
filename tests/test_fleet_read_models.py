@@ -4,6 +4,7 @@ from rolo.core.models import RobotCapability
 from rolo.fleet_read_models import (
     build_fleet_blocker_collection,
     build_fleet_collection,
+    get_fleet_blocker_detail,
 )
 from rolo.read_models import OverviewState
 from rolo.stages.contracts import (
@@ -89,12 +90,40 @@ def test_blocker_inbox_is_bounded_sanitized_and_evidence_bound() -> None:
         stage=StageName.ADAPT,
     )
 
-    assert blockers.schema_version == "rolo-fleet-blocker-collection/v1"
+    assert blockers.schema_version == "rolo-fleet-blocker-collection/v2"
     assert blockers.total == 1
     assert len(blockers.items) == 1
     blocker = blockers.items[0]
     assert blocker.robot_id == "blocked"
     assert blocker.owner == "adapter_agent"
+    assert blocker.category == "PIPELINE_BLOCKER"
+    assert blocker.classification_basis == "normalized_pipeline_message"
+    assert blocker.resolution_requirement_count == 2
     assert blocker.evidence_ids[0].startswith("ev_")
     assert "C:\\private" not in blocker.model_dump_json()
     assert "artifact:adapt.json" in blocker.message
+
+
+def test_blocker_detail_explains_resolution_without_executing_it() -> None:
+    robots = [_robot("blocked")]
+    pipelines = {"blocked": _pipeline("blocked", StageStatus.BLOCKED)}
+    blocker = build_fleet_blocker_collection(robots, pipelines).items[0]
+
+    detail = get_fleet_blocker_detail(robots, pipelines, blocker.blocker_id)
+
+    assert detail.schema_version == "rolo-fleet-blocker-detail/v1"
+    assert detail.resolution_state == "OPEN"
+    assert detail.expected_stage_statuses == ["READY", "COMPLETE"]
+    assert [item.kind for item in detail.resolution_requirements] == [
+        "FRESH_ASSESSMENT",
+        "VALIDATED_EVIDENCE",
+    ]
+    assert detail.resolution_requirements[1].evidence_id.startswith("ev_")
+    assert detail.canonical_cli_argv == [
+        "robotctl",
+        "pipeline-status",
+        "--robot",
+        "blocked",
+    ]
+    assert detail.contains_secret_payloads is False
+    assert "C:\\private" not in detail.model_dump_json()
