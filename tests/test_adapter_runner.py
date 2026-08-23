@@ -24,7 +24,9 @@ def test_runner_fails_closed_without_os_sandbox(
 
 
 def test_runner_wraps_adapter_argv_with_protected_launcher(tmp_path: Path) -> None:
-    launcher = Path(sys.executable).resolve()
+    launcher = tmp_path / "sandbox-launcher"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o700)
     runner = BoundedAdapterRunner(
         sandbox_launcher=launcher,
         allow_unsandboxed_development=False,
