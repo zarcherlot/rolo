@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from rolo.core.models import DiscoveryReport, DiscoveryStatus, utc_now
 from rolo.stages.adapt.discovery import load_latest_report, load_report
@@ -15,9 +15,33 @@ _MAX_DISCOVERY_RUNS = 200
 _SAFE_TOKEN = re.compile(r"[^A-Za-z0-9._-]+")
 
 
+class DiscoveryHeuristicSummary(BaseModel):
+    """Sanitized advisory projection of the verified heuristic discovery fields."""
+
+    schema_version: Literal["rolo-discovery-heuristic-summary/v1"] = (
+        "rolo-discovery-heuristic-summary/v1"
+    )
+    mode: Literal["disabled", "shadow", "enabled"]
+    status: Literal["AGENT_COMPLETED", "FALLBACK", "DISABLED"]
+    inferred_operation_count: int = Field(ge=0)
+    missing_evidence_count: int = Field(ge=0)
+    influences_release: Literal[False] = False
+
+    @model_validator(mode="after")
+    def require_consistent_state(self) -> DiscoveryHeuristicSummary:
+        if self.mode == "disabled":
+            if self.status != "DISABLED":
+                raise ValueError("disabled heuristic mode requires DISABLED status")
+            if self.inferred_operation_count or self.missing_evidence_count:
+                raise ValueError("disabled heuristic mode cannot report advisory counts")
+        elif self.status == "DISABLED":
+            raise ValueError("active heuristic mode cannot report DISABLED status")
+        return self
+
+
 class DiscoverySnapshotSummary(BaseModel):
-    schema_version: Literal["rolo-discovery-snapshot-summary/v1"] = (
-        "rolo-discovery-snapshot-summary/v1"
+    schema_version: Literal["rolo-discovery-snapshot-summary/v2"] = (
+        "rolo-discovery-snapshot-summary/v2"
     )
     robot_id: str
     discovery_id: str
@@ -35,11 +59,12 @@ class DiscoverySnapshotSummary(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     integrity_status: Literal["verified"] = "verified"
     limitations: list[str] = Field(default_factory=list)
+    heuristic_summary: DiscoveryHeuristicSummary
 
 
 class DiscoverySnapshotCollection(BaseModel):
-    schema_version: Literal["rolo-discovery-snapshot-collection/v1"] = (
-        "rolo-discovery-snapshot-collection/v1"
+    schema_version: Literal["rolo-discovery-snapshot-collection/v2"] = (
+        "rolo-discovery-snapshot-collection/v2"
     )
     robot_id: str
     items: list[DiscoverySnapshotSummary]
@@ -60,6 +85,16 @@ class DiscoverySnapshotCollection(BaseModel):
 def _safe_mode(value: str) -> str:
     normalized = _SAFE_TOKEN.sub("_", value.strip())[:48].strip("_")
     return normalized or "unknown"
+
+
+def _heuristic_summary(report: DiscoveryReport) -> DiscoveryHeuristicSummary:
+    return DiscoveryHeuristicSummary(
+        mode=report.heuristic_mode,
+        status=report.heuristic_status,
+        inferred_operation_count=report.heuristic_inferred_operation_count,
+        missing_evidence_count=report.heuristic_missing_evidence_count,
+        influences_release=False,
+    )
 
 
 def _summary(report: DiscoveryReport, latest_id: str | None) -> DiscoverySnapshotSummary:
@@ -87,6 +122,7 @@ def _summary(report: DiscoveryReport, latest_id: str | None) -> DiscoverySnapsho
             "Discovery coverage does not prove runtime availability, task success, "
             "or physical state."
         ],
+        heuristic_summary=_heuristic_summary(report),
     )
 
 
@@ -125,7 +161,12 @@ def build_discovery_snapshot_collection(
         except (FileNotFoundError, OSError, ValueError):
             excluded += 1
 
-    items = [_summary(report, latest_id) for report in reports]
+    items: list[DiscoverySnapshotSummary] = []
+    for report in reports:
+        try:
+            items.append(_summary(report, latest_id))
+        except ValueError:
+            excluded += 1
     items.sort(key=lambda item: (item.created_at, item.discovery_id), reverse=True)
     total = len(items)
     next_offset = offset + limit if offset + limit < total else None
@@ -140,7 +181,8 @@ def build_discovery_snapshot_collection(
         )
     if excluded:
         limitations.append(
-            f"{excluded} discovery run(s) were excluded because integrity could not be verified."
+            f"{excluded} discovery run(s) were excluded because integrity or the safe "
+            "Web projection could not be verified."
         )
     if truncated:
         limitations.append(

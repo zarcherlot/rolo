@@ -548,8 +548,10 @@ def test_overview_openapi_contract_is_versioned() -> None:
     ]
     assert (
         discovery_history_schema["properties"]["schema_version"]["const"]
-        == "rolo-discovery-snapshot-collection/v1"
+        == "rolo-discovery-snapshot-collection/v2"
     )
+    heuristic_schema = openapi["components"]["schemas"]["DiscoveryHeuristicSummary"]
+    assert heuristic_schema["properties"]["influences_release"]["const"] is False
     fleet_schema = openapi["components"]["schemas"]["FleetCollection"]
     assert fleet_schema["properties"]["schema_version"]["const"] == "rolo-fleet-collection/v1"
     blocker_schema = openapi["components"]["schemas"]["FleetBlockerCollection"]
@@ -611,7 +613,7 @@ def test_discovery_history_has_a_verified_empty_state(
 
     assert response.status_code == 200
     assert response.json()["schema_version"] == (
-        "rolo-discovery-snapshot-collection/v1"
+        "rolo-discovery-snapshot-collection/v2"
     )
     assert response.json()["items"] == []
     assert response.json()["integrity_status"] == "verified"
