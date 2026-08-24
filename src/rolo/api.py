@@ -44,6 +44,9 @@ from rolo.discovery_history_read_models import (
 )
 from rolo.episode_read_models import (
     EPISODE_API_FEATURES,
+    EpisodeCohort,
+    EpisodeCohortConflict,
+    EpisodeCohortWindowDays,
     EpisodeCollection,
     EpisodeCursorError,
     EpisodeDetail,
@@ -51,6 +54,7 @@ from rolo.episode_read_models import (
     EpisodeRevisionConflict,
     EpisodeState,
     EpisodeTimelinePage,
+    build_episode_cohort,
     build_episode_collection,
     build_episode_revision_collection,
     build_episode_timeline_page,
@@ -796,6 +800,43 @@ async def list_robot_episode_revisions(
     if revisions is None:
         raise HTTPException(status_code=404, detail="Unknown Episode")
     return revisions
+
+
+@app.get("/v1/robots/{robot_id}/episode-cohorts", response_model=EpisodeCohort)
+async def get_robot_episode_cohort(
+    robot_id: str,
+    request: Request,
+    reference_episode_id: Annotated[str, Query(min_length=1, max_length=128)],
+    reference_revision: Annotated[int, Query(ge=1)],
+    window_days: Annotated[EpisodeCohortWindowDays, Query()] = (EpisodeCohortWindowDays.DAYS_30),
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> EpisodeCohort:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        cohort = build_episode_cohort(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            reference_episode_id,
+            reference_revision,
+            window_days=int(window_days),
+            limit=limit,
+        )
+    except EpisodeCohortConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except EpisodeRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode cohort failed integrity validation",
+        ) from exc
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Unknown Episode")
+    return cohort
 
 
 @app.get(

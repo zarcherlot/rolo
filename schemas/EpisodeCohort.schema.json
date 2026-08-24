@@ -1,0 +1,337 @@
+{
+  "$defs": {
+    "EpisodeCohortExclusions": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-cohort-exclusions/v1",
+          "default": "rolo-episode-cohort-exclusions/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "running": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Running",
+          "type": "integer"
+        },
+        "mutable": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Mutable",
+          "type": "integer"
+        }
+      },
+      "title": "EpisodeCohortExclusions",
+      "type": "object"
+    },
+    "EpisodeCohortMember": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-cohort-member/v1",
+          "default": "rolo-episode-cohort-member/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "task_label": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Label",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "date-time",
+          "title": "Ended At",
+          "type": "string"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED",
+            "PARTIAL"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/EpisodeOutcome"
+        },
+        "verification": {
+          "$ref": "#/$defs/EpisodeVerification"
+        },
+        "coverage": {
+          "$ref": "#/$defs/EpisodeCoverage"
+        },
+        "immutable": {
+          "const": true,
+          "default": true,
+          "title": "Immutable",
+          "type": "boolean"
+        },
+        "is_current": {
+          "const": true,
+          "default": true,
+          "title": "Is Current",
+          "type": "boolean"
+        },
+        "event_count": {
+          "minimum": 0,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "asset_count": {
+          "minimum": 0,
+          "title": "Asset Count",
+          "type": "integer"
+        },
+        "finding_count": {
+          "minimum": 0,
+          "title": "Finding Count",
+          "type": "integer"
+        },
+        "evidence_count": {
+          "minimum": 0,
+          "title": "Evidence Count",
+          "type": "integer"
+        },
+        "source_kind": {
+          "const": "current_episode_publication",
+          "default": "current_episode_publication",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "robot_id",
+        "episode_id",
+        "revision",
+        "task_label",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "state",
+        "outcome",
+        "verification",
+        "coverage",
+        "event_count",
+        "asset_count",
+        "finding_count",
+        "evidence_count"
+      ],
+      "title": "EpisodeCohortMember",
+      "type": "object"
+    },
+    "EpisodeCoverage": {
+      "enum": [
+        "METADATA_ONLY",
+        "PARTIAL",
+        "COMPLETE"
+      ],
+      "title": "EpisodeCoverage",
+      "type": "string"
+    },
+    "EpisodeOutcome": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeOutcome",
+      "type": "string"
+    },
+    "EpisodeVerification": {
+      "enum": [
+        "VERIFIED",
+        "UNVERIFIED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "EpisodeVerification",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-cohort/v1",
+      "default": "rolo-episode-cohort/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "reference_episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Reference Episode Id",
+      "type": "string"
+    },
+    "reference_revision": {
+      "minimum": 1,
+      "title": "Reference Revision",
+      "type": "integer"
+    },
+    "operation": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "test_case_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Test Case Id",
+      "type": "string"
+    },
+    "expected_behavior_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Behavior Sha256",
+      "type": "string"
+    },
+    "window_days": {
+      "enum": [
+        7,
+        30,
+        90
+      ],
+      "title": "Window Days",
+      "type": "integer"
+    },
+    "window_started_at": {
+      "format": "date-time",
+      "title": "Window Started At",
+      "type": "string"
+    },
+    "window_ended_at": {
+      "format": "date-time",
+      "title": "Window Ended At",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EpisodeCohortMember"
+      },
+      "maxItems": 100,
+      "title": "Items",
+      "type": "array"
+    },
+    "population_count": {
+      "minimum": 0,
+      "title": "Population Count",
+      "type": "integer"
+    },
+    "included_count": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Included Count",
+      "type": "integer"
+    },
+    "excluded_count": {
+      "minimum": 0,
+      "title": "Excluded Count",
+      "type": "integer"
+    },
+    "truncated_count": {
+      "minimum": 0,
+      "title": "Truncated Count",
+      "type": "integer"
+    },
+    "exclusions": {
+      "$ref": "#/$defs/EpisodeCohortExclusions"
+    },
+    "coverage": {
+      "enum": [
+        "COMPLETE",
+        "BOUNDED_PARTIAL"
+      ],
+      "title": "Coverage",
+      "type": "string"
+    },
+    "limit": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "source_kind": {
+      "const": "published_episode_cohort",
+      "default": "published_episode_cohort",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "reference_episode_id",
+    "reference_revision",
+    "operation",
+    "test_case_id",
+    "expected_behavior_sha256",
+    "window_days",
+    "window_started_at",
+    "window_ended_at",
+    "items",
+    "population_count",
+    "included_count",
+    "excluded_count",
+    "truncated_count",
+    "exclusions",
+    "coverage",
+    "limit",
+    "as_of"
+  ],
+  "title": "EpisodeCohort",
+  "type": "object"
+}

@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "EpisodeCoverage": {
+      "enum": [
+        "METADATA_ONLY",
+        "PARTIAL",
+        "COMPLETE"
+      ],
+      "title": "EpisodeCoverage",
+      "type": "string"
+    },
+    "EpisodeOutcome": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeOutcome",
+      "type": "string"
+    },
+    "EpisodeVerification": {
+      "enum": [
+        "VERIFIED",
+        "UNVERIFIED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "EpisodeVerification",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-cohort-member/v1",
+      "default": "rolo-episode-cohort-member/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "task_label": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Label",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "ended_at": {
+      "format": "date-time",
+      "title": "Ended At",
+      "type": "string"
+    },
+    "duration_ms": {
+      "minimum": 0,
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        "PARTIAL"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/EpisodeOutcome"
+    },
+    "verification": {
+      "$ref": "#/$defs/EpisodeVerification"
+    },
+    "coverage": {
+      "$ref": "#/$defs/EpisodeCoverage"
+    },
+    "immutable": {
+      "const": true,
+      "default": true,
+      "title": "Immutable",
+      "type": "boolean"
+    },
+    "is_current": {
+      "const": true,
+      "default": true,
+      "title": "Is Current",
+      "type": "boolean"
+    },
+    "event_count": {
+      "minimum": 0,
+      "title": "Event Count",
+      "type": "integer"
+    },
+    "asset_count": {
+      "minimum": 0,
+      "title": "Asset Count",
+      "type": "integer"
+    },
+    "finding_count": {
+      "minimum": 0,
+      "title": "Finding Count",
+      "type": "integer"
+    },
+    "evidence_count": {
+      "minimum": 0,
+      "title": "Evidence Count",
+      "type": "integer"
+    },
+    "source_kind": {
+      "const": "current_episode_publication",
+      "default": "current_episode_publication",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "revision",
+    "task_label",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+    "state",
+    "outcome",
+    "verification",
+    "coverage",
+    "event_count",
+    "asset_count",
+    "finding_count",
+    "evidence_count"
+  ],
+  "title": "EpisodeCohortMember",
+  "type": "object"
+}

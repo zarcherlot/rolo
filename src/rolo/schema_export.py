@@ -28,6 +28,9 @@ from rolo.core.models import (
 from rolo.episode_projection import CommittedEpisodeRecord
 from rolo.episode_read_models import (
     EpisodeAssetSummary,
+    EpisodeCohort,
+    EpisodeCohortExclusions,
+    EpisodeCohortMember,
     EpisodeCollection,
     EpisodeDetail,
     EpisodeFindingSummary,
@@ -170,6 +173,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     EpisodeTimelinePage,
     EpisodeTimelineEvent,
     EpisodeAssetSummary,
+    EpisodeCohort,
+    EpisodeCohortExclusions,
+    EpisodeCohortMember,
     EpisodeFindingSummary,
     EpisodeRevisionCollection,
     EpisodeRevisionSummary,

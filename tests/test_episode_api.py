@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -16,6 +18,26 @@ def _publish_fixture(artifact_root: Path) -> None:
     target = ArtifactLayout(artifact_root).episode_publication("demo_diff", "ep-nav-001")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(FIXTURE, target)
+
+
+def _publish_cohort_member(artifact_root: Path, episode_id: str) -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    started_at = datetime(2026, 8, 22, 3, tzinfo=timezone.utc)
+    payload["detail"]["episode_id"] = episode_id
+    payload["detail"]["started_at"] = started_at.isoformat().replace("+00:00", "Z")
+    payload["detail"]["ended_at"] = (
+        (started_at + timedelta(seconds=4)).isoformat().replace("+00:00", "Z")
+    )
+    for event in payload["timeline"]:
+        event["episode_id"] = episode_id
+        event["occurred_at"] = (
+            (started_at + timedelta(milliseconds=event["offset_ms"]))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    target = ArtifactLayout(artifact_root).episode_publication("demo_diff", episode_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_episode_api_exposes_empty_collection_without_demo_fallback(
@@ -118,3 +140,44 @@ def test_episode_api_rejects_unknown_robot_invalid_window_and_unknown_episode(
     assert window.status_code == 422
     assert timezone_missing.status_code == 422
     assert episode.status_code == 404
+
+
+def test_episode_cohort_api_is_feature_negotiated_and_revision_pinned(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    _publish_fixture(artifact_root)
+    _publish_cohort_member(artifact_root, "ep-nav-prior")
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
+    get_settings.cache_clear()
+
+    params = {
+        "reference_episode_id": "ep-nav-001",
+        "reference_revision": 1,
+        "window_days": 7,
+    }
+    with TestClient(app) as client:
+        health = client.get("/health")
+        cohort = client.get("/v1/robots/demo_diff/episode-cohorts", params=params)
+        invalid_window = client.get(
+            "/v1/robots/demo_diff/episode-cohorts",
+            params={**params, "window_days": 14},
+        )
+        stale = client.get(
+            "/v1/robots/demo_diff/episode-cohorts",
+            params={**params, "reference_revision": 2},
+        )
+        missing = client.get(
+            "/v1/robots/demo_diff/episode-cohorts",
+            params={**params, "reference_episode_id": "ep-missing"},
+        )
+
+    assert "workbench.episode-cohort-read-model/v1" in health.json()["api_features"]
+    assert cohort.status_code == 200, cohort.text
+    assert cohort.json()["reference_revision"] == 1
+    assert [item["episode_id"] for item in cohort.json()["items"]] == ["ep-nav-prior"]
+    assert invalid_window.status_code == 422
+    assert stale.status_code == 409
+    assert missing.status_code == 404

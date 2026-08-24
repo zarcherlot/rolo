@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -10,11 +10,13 @@ from pydantic import ValidationError
 
 from rolo.episode_read_models import (
     EpisodeAssetSummary,
+    EpisodeCohortConflict,
     EpisodeCursorError,
     EpisodeFindingSummary,
     EpisodeRevisionConflict,
     EpisodeState,
     EpisodeTimelineEvent,
+    build_episode_cohort,
     build_episode_collection,
     build_episode_revision_collection,
     build_episode_timeline_page,
@@ -29,6 +31,51 @@ def _publish_fixture(artifact_root: Path) -> Path:
     target = ArtifactLayout(artifact_root).episode_publication("demo_diff", "ep-nav-001")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(FIXTURE, target)
+    return target
+
+
+def _publish_variant(
+    artifact_root: Path,
+    episode_id: str,
+    started_at: datetime,
+    *,
+    state: str = "COMPLETED",
+    immutable: bool = True,
+    operation: str = "nav.execute",
+    test_case_id: str = "navigation-smoke",
+    expected_behavior: str | None = ("The robot reaches the registered inspection waypoint."),
+) -> Path:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    detail = payload["detail"]
+    detail["episode_id"] = episode_id
+    detail["task_label"] = f"Cohort fixture {episode_id}"
+    detail["started_at"] = started_at.isoformat().replace("+00:00", "Z")
+    detail["operation"] = operation
+    detail["test_case_id"] = test_case_id
+    detail["expected_behavior"] = expected_behavior
+    detail["immutable"] = immutable
+    if state == "RUNNING":
+        detail["state"] = "RUNNING"
+        detail["outcome"] = "UNKNOWN"
+        detail["ended_at"] = None
+    else:
+        detail["state"] = state
+        detail["ended_at"] = (
+            (started_at.replace(microsecond=0) + timedelta(seconds=4))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    detail["as_of"] = (started_at + timedelta(seconds=5)).isoformat().replace("+00:00", "Z")
+    for event in payload["timeline"]:
+        event["episode_id"] = episode_id
+        event["occurred_at"] = (
+            (started_at + timedelta(milliseconds=event["offset_ms"]))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    target = ArtifactLayout(artifact_root).episode_publication("demo_diff", episode_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload), encoding="utf-8")
     return target
 
 
@@ -102,6 +149,136 @@ def test_completed_projection_supports_list_detail_and_revision_pinned_timeline(
     assert second is not None
     assert [event.event_id for event in second.items] == ["evt-outcome"]
     assert second.next_cursor is None
+
+
+def test_episode_cohort_uses_exact_semantics_and_previous_closed_open_window(
+    tmp_path: Path,
+) -> None:
+    _publish_fixture(tmp_path)
+    older = _publish_variant(
+        tmp_path,
+        "ep-nav-older",
+        datetime(2026, 8, 22, 2, tzinfo=timezone.utc),
+    )
+    newer = _publish_variant(
+        tmp_path,
+        "ep-nav-newer",
+        datetime(2026, 8, 23, 2, tzinfo=timezone.utc),
+        expected_behavior=("The robot reaches the registered\n inspection waypoint."),
+    )
+    _publish_variant(
+        tmp_path,
+        "ep-wrong-operation",
+        datetime(2026, 8, 23, 1, tzinfo=timezone.utc),
+        operation="nav.plan",
+    )
+    _publish_variant(
+        tmp_path,
+        "ep-window-start",
+        datetime(2026, 8, 16, 3, tzinfo=timezone.utc),
+    )
+    _publish_variant(
+        tmp_path,
+        "ep-window-end",
+        datetime(2026, 8, 23, 3, tzinfo=timezone.utc),
+    )
+
+    cohort = build_episode_cohort(
+        tmp_path,
+        "demo_diff",
+        "ep-nav-001",
+        1,
+        window_days=7,
+        as_of=datetime(2026, 8, 24, tzinfo=timezone.utc),
+    )
+
+    assert cohort is not None
+    assert cohort.schema_version == "rolo-episode-cohort/v1"
+    assert cohort.window_started_at == datetime(2026, 8, 16, 3, tzinfo=timezone.utc)
+    assert cohort.window_ended_at == datetime(2026, 8, 23, 3, tzinfo=timezone.utc)
+    assert [item.episode_id for item in cohort.items] == [
+        "ep-nav-newer",
+        "ep-nav-older",
+        "ep-window-start",
+    ]
+    assert cohort.population_count == 3
+    assert cohort.excluded_count == 0
+    assert cohort.coverage == "COMPLETE"
+    assert cohort.items[0].duration_ms == 4000
+    assert cohort.items[0].evidence_count == 1
+    assert cohort.expected_behavior_sha256 == (
+        "1cb59232226316086b5aa8a312d039989b3af25dfde4597963f7e806f26b270e"
+    )
+    assert older.is_file() and newer.is_file()
+
+
+def test_episode_cohort_counts_running_mutable_and_truncated_exact_matches(
+    tmp_path: Path,
+) -> None:
+    _publish_fixture(tmp_path)
+    for index in range(3):
+        _publish_variant(
+            tmp_path,
+            f"ep-complete-{index}",
+            datetime(2026, 8, 22, index, tzinfo=timezone.utc),
+        )
+    _publish_variant(
+        tmp_path,
+        "ep-running",
+        datetime(2026, 8, 22, 4, tzinfo=timezone.utc),
+        state="RUNNING",
+        immutable=False,
+    )
+    _publish_variant(
+        tmp_path,
+        "ep-mutable",
+        datetime(2026, 8, 22, 5, tzinfo=timezone.utc),
+        immutable=False,
+    )
+
+    cohort = build_episode_cohort(
+        tmp_path,
+        "demo_diff",
+        "ep-nav-001",
+        1,
+        window_days=7,
+        limit=2,
+    )
+
+    assert cohort is not None
+    assert cohort.population_count == 5
+    assert cohort.included_count == 2
+    assert cohort.excluded_count == 2
+    assert cohort.truncated_count == 1
+    assert cohort.exclusions.running == 1
+    assert cohort.exclusions.mutable == 1
+    assert cohort.coverage == "BOUNDED_PARTIAL"
+    assert cohort.limitations
+
+
+def test_episode_cohort_requires_complete_reference_semantics(tmp_path: Path) -> None:
+    target = _publish_fixture(tmp_path)
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["detail"]["expected_behavior"] = None
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(EpisodeCohortConflict, match="requires operation"):
+        build_episode_cohort(tmp_path, "demo_diff", "ep-nav-001", 1)
+
+
+def test_episode_cohort_rejects_unsafe_member_publication(tmp_path: Path) -> None:
+    _publish_fixture(tmp_path)
+    target = _publish_variant(
+        tmp_path,
+        "ep-unsafe",
+        datetime(2026, 8, 22, tzinfo=timezone.utc),
+    )
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["detail"]["limitations"] = [r"C:\Users\operator\episode.json"]
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsafe public Episode string"):
+        build_episode_cohort(tmp_path, "demo_diff", "ep-nav-001", 1)
 
 
 def test_timeline_rejects_stale_revision_and_unbound_cursor(tmp_path: Path) -> None:

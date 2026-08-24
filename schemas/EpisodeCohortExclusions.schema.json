@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-cohort-exclusions/v1",
+      "default": "rolo-episode-cohort-exclusions/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "running": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Running",
+      "type": "integer"
+    },
+    "mutable": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Mutable",
+      "type": "integer"
+    }
+  },
+  "title": "EpisodeCohortExclusions",
+  "type": "object"
+}

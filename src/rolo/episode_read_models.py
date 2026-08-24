@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime
-from enum import Enum
+import unicodedata
+from datetime import datetime, timedelta
+from enum import Enum, IntEnum
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -25,6 +26,7 @@ from rolo.stages.artifact_paths import ArtifactLayout
 EPISODE_API_FEATURES = (
     "workbench.episode-read-model/v1",
     "workbench.episode-revision-history/v1",
+    "workbench.episode-cohort-read-model/v1",
 )
 
 Identifier = Annotated[
@@ -94,6 +96,12 @@ class EpisodeCoverage(str, Enum):
     METADATA_ONLY = "METADATA_ONLY"
     PARTIAL = "PARTIAL"
     COMPLETE = "COMPLETE"
+
+
+class EpisodeCohortWindowDays(IntEnum):
+    DAYS_7 = 7
+    DAYS_30 = 30
+    DAYS_90 = 90
 
 
 class EpisodeTimelineLane(str, Enum):
@@ -467,6 +475,108 @@ class EpisodeRevisionCollection(EpisodePublicModel):
         return self
 
 
+class EpisodeCohortMember(EpisodePublicModel):
+    schema_version: Literal["rolo-episode-cohort-member/v1"] = "rolo-episode-cohort-member/v1"
+    robot_id: Identifier
+    episode_id: Identifier
+    revision: int = Field(ge=1)
+    task_label: ShortText
+    started_at: AwareDatetime
+    ended_at: AwareDatetime
+    duration_ms: int = Field(ge=0)
+    state: Literal["COMPLETED", "FAILED", "CANCELLED", "PARTIAL"]
+    outcome: EpisodeOutcome
+    verification: EpisodeVerification
+    coverage: EpisodeCoverage
+    immutable: Literal[True] = True
+    is_current: Literal[True] = True
+    event_count: int = Field(ge=0)
+    asset_count: int = Field(ge=0)
+    finding_count: int = Field(ge=0)
+    evidence_count: int = Field(ge=0)
+    source_kind: Literal["current_episode_publication"] = "current_episode_publication"
+    limitations: list[LimitationText] = Field(default_factory=list, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_member(self) -> EpisodeCohortMember:
+        if self.ended_at < self.started_at:
+            raise ValueError("cohort member ended_at must not precede started_at")
+        expected_duration = int((self.ended_at - self.started_at).total_seconds() * 1000)
+        if self.duration_ms != expected_duration:
+            raise ValueError("cohort member duration_ms does not match timestamps")
+        return self
+
+
+class EpisodeCohortExclusions(EpisodePublicModel):
+    schema_version: Literal["rolo-episode-cohort-exclusions/v1"] = (
+        "rolo-episode-cohort-exclusions/v1"
+    )
+    running: int = Field(default=0, ge=0)
+    mutable: int = Field(default=0, ge=0)
+
+
+class EpisodeCohort(EpisodePublicModel):
+    schema_version: Literal["rolo-episode-cohort/v1"] = "rolo-episode-cohort/v1"
+    robot_id: Identifier
+    reference_episode_id: Identifier
+    reference_revision: int = Field(ge=1)
+    operation: Identifier
+    test_case_id: Identifier
+    expected_behavior_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    window_days: Literal[7, 30, 90]
+    window_started_at: AwareDatetime
+    window_ended_at: AwareDatetime
+    items: list[EpisodeCohortMember] = Field(max_length=100)
+    population_count: int = Field(ge=0)
+    included_count: int = Field(ge=0, le=100)
+    excluded_count: int = Field(ge=0)
+    truncated_count: int = Field(ge=0)
+    exclusions: EpisodeCohortExclusions
+    coverage: Literal["COMPLETE", "BOUNDED_PARTIAL"]
+    limit: int = Field(ge=1, le=100)
+    as_of: AwareDatetime
+    source_kind: Literal["published_episode_cohort"] = "published_episode_cohort"
+    limitations: list[LimitationText] = Field(default_factory=list, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_cohort(self) -> EpisodeCohort:
+        if self.window_started_at >= self.window_ended_at:
+            raise ValueError("cohort window must have positive duration")
+        if self.window_ended_at - self.window_started_at != timedelta(days=self.window_days):
+            raise ValueError("cohort window timestamps do not match window_days")
+        if self.included_count != len(self.items):
+            raise ValueError("included_count must match cohort items")
+        if self.excluded_count != self.exclusions.running + self.exclusions.mutable:
+            raise ValueError("excluded_count must match exclusion categories")
+        if self.population_count != (
+            self.included_count + self.excluded_count + self.truncated_count
+        ):
+            raise ValueError("population_count arithmetic does not balance")
+        expected_coverage = "BOUNDED_PARTIAL" if self.truncated_count else "COMPLETE"
+        if self.coverage != expected_coverage:
+            raise ValueError("cohort coverage does not match truncation")
+        if any(item.robot_id != self.robot_id for item in self.items):
+            raise ValueError("cohort member robot_id does not match cohort")
+        identities = [(item.episode_id, item.revision) for item in self.items]
+        if len(set(identities)) != len(identities):
+            raise ValueError("cohort member identity must be unique")
+        if any(item.episode_id == self.reference_episode_id for item in self.items):
+            raise ValueError("reference Episode identity cannot be a cohort member")
+        if any(
+            item.started_at < self.window_started_at or item.started_at >= self.window_ended_at
+            for item in self.items
+        ):
+            raise ValueError("cohort member is outside the derived window")
+        expected_order = sorted(
+            self.items,
+            key=lambda item: (item.started_at, item.episode_id, item.revision),
+            reverse=True,
+        )
+        if self.items != expected_order:
+            raise ValueError("cohort members must be newest-first")
+        return self
+
+
 class EpisodeTimelinePage(EpisodePublicModel):
     schema_version: Literal["rolo-episode-timeline-page/v1"] = (
         "rolo-episode-timeline-page/v1"
@@ -542,6 +652,10 @@ class PublishedEpisodeProjection(EpisodePublicModel):
 
 
 class EpisodeRevisionConflict(ValueError):
+    pass
+
+
+class EpisodeCohortConflict(ValueError):
     pass
 
 
@@ -695,6 +809,122 @@ def get_episode_detail(
         revision=revision,
     )
     return projection.detail if projection is not None else None
+
+
+def _normalized_expected_behavior(value: str) -> str:
+    return unicodedata.normalize("NFC", " ".join(value.split()))
+
+
+def build_episode_cohort(
+    artifact_root: Path,
+    robot_id: str,
+    reference_episode_id: str,
+    reference_revision: int,
+    *,
+    window_days: Literal[7, 30, 90] = 30,
+    limit: int = 100,
+    as_of: datetime | None = None,
+) -> EpisodeCohort | None:
+    reference = get_episode_detail(
+        artifact_root,
+        robot_id,
+        reference_episode_id,
+        revision=reference_revision,
+    )
+    if reference is None:
+        return None
+    if not reference.operation or not reference.test_case_id or not reference.expected_behavior:
+        raise EpisodeCohortConflict(
+            "Episode cohort reference requires operation, test_case_id, and expected_behavior"
+        )
+
+    normalized_expected = _normalized_expected_behavior(reference.expected_behavior)
+    if not normalized_expected:
+        raise EpisodeCohortConflict(
+            "Episode cohort reference requires a non-empty normalized expected_behavior"
+        )
+    window_ended_at = reference.started_at
+    window_started_at = window_ended_at - timedelta(days=window_days)
+    eligible: list[EpisodeCohortMember] = []
+    running = 0
+    mutable = 0
+    for path in _publication_paths(artifact_root, robot_id):
+        projection = _load_projection(path, robot_id, path.stem)
+        detail = projection.detail
+        if detail.episode_id == reference_episode_id:
+            continue
+        if (
+            detail.operation != reference.operation
+            or detail.test_case_id != reference.test_case_id
+            or detail.expected_behavior is None
+            or _normalized_expected_behavior(detail.expected_behavior) != normalized_expected
+        ):
+            continue
+        if not (window_started_at <= detail.started_at < window_ended_at):
+            continue
+        if detail.state == EpisodeState.RUNNING.value:
+            running += 1
+            continue
+        if not detail.immutable:
+            mutable += 1
+            continue
+        if detail.ended_at is None:
+            raise ValueError("terminal cohort member has no ended_at")
+        eligible.append(
+            EpisodeCohortMember(
+                robot_id=robot_id,
+                episode_id=detail.episode_id,
+                revision=detail.revision,
+                task_label=detail.task_label,
+                started_at=detail.started_at,
+                ended_at=detail.ended_at,
+                duration_ms=int((detail.ended_at - detail.started_at).total_seconds() * 1000),
+                state=detail.state,
+                outcome=detail.outcome,
+                verification=detail.verification,
+                coverage=detail.coverage,
+                event_count=detail.event_count,
+                asset_count=detail.asset_count,
+                finding_count=detail.finding_count,
+                evidence_count=len(detail.evidence_ids),
+                limitations=list(detail.limitations),
+            )
+        )
+
+    eligible.sort(
+        key=lambda item: (item.started_at, item.episode_id, item.revision),
+        reverse=True,
+    )
+    returned = eligible[:limit]
+    truncated = len(eligible) - len(returned)
+    excluded = running + mutable
+    limitations = []
+    if truncated:
+        limitations.append(
+            "The exact-match cohort exceeds the returned member limit; "
+            "distributions are bounded partial."
+        )
+    return EpisodeCohort(
+        robot_id=robot_id,
+        reference_episode_id=reference_episode_id,
+        reference_revision=reference_revision,
+        operation=reference.operation,
+        test_case_id=reference.test_case_id,
+        expected_behavior_sha256=sha256(normalized_expected.encode("utf-8")).hexdigest(),
+        window_days=window_days,
+        window_started_at=window_started_at,
+        window_ended_at=window_ended_at,
+        items=returned,
+        population_count=len(eligible) + excluded,
+        included_count=len(returned),
+        excluded_count=excluded,
+        truncated_count=truncated,
+        exclusions=EpisodeCohortExclusions(running=running, mutable=mutable),
+        coverage="BOUNDED_PARTIAL" if truncated else "COMPLETE",
+        limit=limit,
+        as_of=as_of or utc_now(),
+        limitations=limitations,
+    )
 
 
 def _projection_for_revision(
