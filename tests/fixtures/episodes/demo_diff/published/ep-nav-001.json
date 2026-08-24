@@ -1,0 +1,95 @@
+{
+  "schema_version": "rolo-episode-published-projection/v1",
+  "detail": {
+    "schema_version": "rolo-episode-detail/v1",
+    "robot_id": "demo_diff",
+    "episode_id": "ep-nav-001",
+    "revision": 1,
+    "task_label": "Navigate to inspection waypoint",
+    "state": "COMPLETED",
+    "outcome": "SUCCEEDED",
+    "verification": "UNVERIFIED",
+    "coverage": "METADATA_ONLY",
+    "started_at": "2026-08-23T03:00:00Z",
+    "ended_at": "2026-08-23T03:00:04Z",
+    "execution_id": "exec-nav-001",
+    "test_case_id": "navigation-smoke",
+    "lifecycle_run_id": "run-nav-001",
+    "operation": "nav.execute",
+    "event_count": 2,
+    "asset_count": 0,
+    "finding_count": 0,
+    "evidence_ids": [
+      "ev_nav_result"
+    ],
+    "limitations": [
+      "Only bounded event metadata is published in E1."
+    ],
+    "as_of": "2026-08-23T03:00:05Z",
+    "immutable": true,
+    "clock_domain": "robot-monotonic",
+    "synchronization": "SYNCED",
+    "available_lanes": [
+      "COMMAND",
+      "OUTCOME"
+    ],
+    "expected_behavior": "The robot reaches the registered inspection waypoint.",
+    "observed_behavior": "The execution producer reported successful completion.",
+    "assets": [],
+    "findings": []
+  },
+  "timeline": [
+    {
+      "schema_version": "rolo-episode-timeline-event/v1",
+      "robot_id": "demo_diff",
+      "episode_id": "ep-nav-001",
+      "revision": 1,
+      "event_id": "evt-outcome",
+      "sequence": 1,
+      "offset_ms": 3200,
+      "occurred_at": "2026-08-23T03:00:03.200Z",
+      "clock_domain": "robot-monotonic",
+      "synchronization": "SYNCED",
+      "lane": "OUTCOME",
+      "title": "Execution completed",
+      "summary": "The execution producer reported a successful terminal outcome.",
+      "severity": "INFO",
+      "authority": "OBSERVED",
+      "evidence_ids": [
+        "ev_nav_result"
+      ],
+      "asset_ids": [],
+      "related_event_ids": [
+        "evt-command"
+      ],
+      "metrics": {
+        "elapsed_ms": 3200.0
+      },
+      "limitations": [
+        "This outcome has not yet been independently verified."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-timeline-event/v1",
+      "robot_id": "demo_diff",
+      "episode_id": "ep-nav-001",
+      "revision": 1,
+      "event_id": "evt-command",
+      "sequence": 0,
+      "offset_ms": 0,
+      "occurred_at": "2026-08-23T03:00:00Z",
+      "clock_domain": "robot-monotonic",
+      "synchronization": "SYNCED",
+      "lane": "COMMAND",
+      "title": "Navigation intent declared",
+      "summary": "The task declared a bounded navigation intent.",
+      "severity": "INFO",
+      "authority": "DECLARED",
+      "evidence_ids": [],
+      "asset_ids": [],
+      "related_event_ids": [],
+      "metrics": {},
+      "limitations": []
+    }
+  ]
+}

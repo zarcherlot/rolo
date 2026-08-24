@@ -25,6 +25,16 @@ from rolo.core.models import (
     RouteEvidence,
     ToolDescriptor,
 )
+from rolo.episode_projection import CommittedEpisodeRecord
+from rolo.episode_read_models import (
+    EpisodeAssetSummary,
+    EpisodeCollection,
+    EpisodeDetail,
+    EpisodeFindingSummary,
+    EpisodeSummary,
+    EpisodeTimelineEvent,
+    EpisodeTimelinePage,
+)
 from rolo.invocation_policy import (
     ExecutionQuiescenceLease,
     ExecutionQuiescenceRequest,
@@ -152,6 +162,14 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     WikiInsightBundle,
     RoloWikiInsightBundle,
     WikiDiscoveryDiff,
+    EpisodeCollection,
+    EpisodeSummary,
+    EpisodeDetail,
+    EpisodeTimelinePage,
+    EpisodeTimelineEvent,
+    EpisodeAssetSummary,
+    EpisodeFindingSummary,
+    CommittedEpisodeRecord,
 )
 
 

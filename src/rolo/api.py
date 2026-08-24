@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -40,6 +41,18 @@ from rolo.core.models import HealthResponse, HealthState, RobotCapability, Robot
 from rolo.discovery_history_read_models import (
     DiscoverySnapshotCollection,
     build_discovery_snapshot_collection,
+)
+from rolo.episode_read_models import (
+    EPISODE_API_FEATURES,
+    EpisodeCollection,
+    EpisodeCursorError,
+    EpisodeDetail,
+    EpisodeRevisionConflict,
+    EpisodeState,
+    EpisodeTimelinePage,
+    build_episode_collection,
+    build_episode_timeline_page,
+    get_episode_detail,
 )
 from rolo.fleet_read_models import (
     FleetBlockerCollection,
@@ -160,7 +173,7 @@ async def health(request: Request) -> HealthResponse:
         robots=len(runtime.registry),
         robot_use_backend=runtime.robot_use_backend.name,
         openai_key_configured=bool(runtime.settings.openai_api_key),
-        api_features=list(ADAPT_API_FEATURES),
+        api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES],
     )
 
 
@@ -679,6 +692,106 @@ async def get_robot_run(
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown lifecycle run")
     return detail
+
+
+@app.get("/v1/robots/{robot_id}/episodes", response_model=EpisodeCollection)
+async def list_robot_episodes(
+    robot_id: str,
+    request: Request,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    state: Annotated[EpisodeState | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EpisodeCollection:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    for name, value in (("since", since), ("until", until)):
+        if value is not None and value.utcoffset() is None:
+            raise HTTPException(status_code=422, detail=f"{name} must include a timezone")
+    if since is not None and until is not None and since > until:
+        raise HTTPException(status_code=422, detail="since must not be after until")
+    try:
+        return build_episode_collection(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            since=since,
+            until=until,
+            state=state,
+            limit=limit,
+            offset=offset,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode publication failed integrity validation",
+        ) from exc
+
+
+@app.get("/v1/robots/{robot_id}/episodes/{episode_id}", response_model=EpisodeDetail)
+async def get_robot_episode(
+    robot_id: str,
+    episode_id: str,
+    request: Request,
+) -> EpisodeDetail:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        detail = get_episode_detail(runtime.settings.rolo_artifact_dir, robot_id, episode_id)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode publication failed integrity validation",
+        ) from exc
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Unknown Episode")
+    return detail
+
+
+@app.get(
+    "/v1/robots/{robot_id}/episodes/{episode_id}/timeline",
+    response_model=EpisodeTimelinePage,
+)
+async def get_robot_episode_timeline(
+    robot_id: str,
+    episode_id: str,
+    request: Request,
+    revision: Annotated[int, Query(ge=1)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    cursor: Annotated[str | None, Query(max_length=80)] = None,
+) -> EpisodeTimelinePage:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        page = build_episode_timeline_page(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            episode_id,
+            revision=revision,
+            limit=limit,
+            cursor=cursor,
+        )
+    except EpisodeCursorError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except EpisodeRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode publication failed integrity validation",
+        ) from exc
+    if page is None:
+        raise HTTPException(status_code=404, detail="Unknown Episode")
+    return page
 
 
 @app.get(

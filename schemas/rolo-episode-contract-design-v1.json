@@ -1,0 +1,75 @@
+{
+  "schema_version": "rolo-episode-contract-design/v1",
+  "status": "e2-implementation-review",
+  "base_read_model_baseline": "rolo-vis-mvp-read-model-v1",
+  "contracts": {
+    "collection": "rolo-episode-collection/v1",
+    "summary": "rolo-episode-summary/v1",
+    "detail": "rolo-episode-detail/v1",
+    "timeline_page": "rolo-episode-timeline-page/v1",
+    "timeline_event": "rolo-episode-timeline-event/v1",
+    "asset_summary": "rolo-episode-asset-summary/v1",
+    "finding_summary": "rolo-episode-finding-summary/v1"
+  },
+  "endpoints": [
+    "GET /v1/robots/{robot_id}/episodes",
+    "GET /v1/robots/{robot_id}/episodes/{episode_id}",
+    "GET /v1/robots/{robot_id}/episodes/{episode_id}/timeline"
+  ],
+  "implementation": {
+    "health_feature": "workbench.episode-read-model/v1",
+    "publication_schema": "rolo-episode-published-projection/v1",
+    "publication_location": "episodes/{robot_id}/published/{episode_id}.json",
+    "producer_record_schema": "rolo-episode-producer-record/v1",
+    "producer_record_location": "episodes/{robot_id}/records/{episode_id}/revision-{revision}.json",
+    "producer_projection": "implemented-e2",
+    "evidence_integration": "rolo-evidence-record/v1"
+  },
+  "episode_states": ["RUNNING", "COMPLETED", "FAILED", "CANCELLED", "PARTIAL"],
+  "execution_outcomes": ["SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN"],
+  "verification_states": ["VERIFIED", "UNVERIFIED", "NOT_AVAILABLE"],
+  "timeline_lanes": [
+    "COMMAND",
+    "STATE",
+    "TELEMETRY",
+    "OBSERVATION",
+    "ALERT",
+    "AGENT",
+    "CONFIGURATION",
+    "CHECKPOINT",
+    "GATE",
+    "OUTCOME"
+  ],
+  "authorities": ["DECLARED", "OBSERVED", "INFERRED", "HUMAN_CONFIRMED", "VERIFIED"],
+  "synchronization_states": ["SYNCED", "DEGRADED", "UNSYNCED", "UNKNOWN"],
+  "world_kinds": ["PHYSICAL", "SIMULATED", "REPLAYED"],
+  "evidence_kinds": ["RAW", "NORMALIZED", "RENDERED", "GUI_SCREENSHOT"],
+  "finding_kinds": ["OBSERVED_FACT", "CANDIDATE_CAUSE", "HUMAN_CONFIRMATION", "VERIFIED_OUTCOME"],
+  "required_invariants": [
+    "state outcome and verification are independent",
+    "timeline order uses sequence and offset_ms",
+    "timeline pages are pinned to one episode revision",
+    "inferred findings never become observed or verified through confidence",
+    "simulated and replayed assets never prove physical outcome",
+    "public models contain no artifact location or business payload"
+  ],
+  "forbidden_fields": [
+    "artifact_ref",
+    "artifact_path",
+    "local_path",
+    "remote_path",
+    "signed_url",
+    "collector_identity",
+    "credential",
+    "command_payload",
+    "model_prompt",
+    "model_response"
+  ],
+  "deferred": [
+    "asset content delivery",
+    "live streaming",
+    "episode compare",
+    "replay or remediation actions",
+    "observation recollection"
+  ]
+}
