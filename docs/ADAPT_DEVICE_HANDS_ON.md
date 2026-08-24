@@ -1,14 +1,14 @@
 # Adapt real-device hands-on
 
 This procedure starts where repository validation ends. Run it **on the target robot host** (or over
-SSH with the target ROS/device environment sourced). Adapt verifies contract/binding integrity and
+SSH as the target robot application user). Adapt verifies contract/binding integrity and
 that an equivalent route exists. It does not execute write operations or claim behavior, reliability,
 performance, or safety.
 
 ## 1. Prepare the target
 
 ```bash
-git clone https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
@@ -16,18 +16,22 @@ uv sync --frozen
 sudo apt-get install bubblewrap
 
 export ROBOT_ID=your_robot_id
-export ROLO_ARTIFACT_DIR=/var/lib/rolo/artifacts
-export ROLO_OUTPUT_DIR=/var/lib/rolo/adapters
-export CODING_AGENT_EXECUTABLE=codex
-codex login
+codex login --device-auth
 ```
 
-`ROLO_OUTPUT_DIR` must be outside the checkout. Source the same ROS setup and workspace overlays used
-by the robot application before continuing. A BSP and URDF are optional. If a deployment-owned
+The zero-configuration Linux defaults are under `~/.local/state/rolo` and
+`~/.local/share/rolo`; no storage directories or `ROLO_*_DIR` exports are required. Rolo
+automatically sources the single installed ROS base and the project `install` overlay before target
+collection. It never sources shell startup files. Ambiguous candidates fail closed; create
+`~/.config/rolo/config.yaml` with `robotctl config init` and order `ros.setup_files` explicitly.
+
+A BSP and URDF are optional. If a deployment-owned
 read-only hardware provider exists, set `ROLO_HARDWARE_EVIDENCE_PROVIDER` to its executable path.
-Discovery captures the schema-defined, allowlisted non-secret Runtime Context from this shell. The gated release
-reuses that context for adapter `describe` and invocation; changing the ROS domain, RMW selection or
-an admitted overlay path requires rediscovery and a new release.
+Discovery captures the schema-defined, allowlisted non-secret Runtime Context from the resolved
+environment. Setup paths and SHA-256 digests are signed into target evidence. The gated release
+reuses that context for adapter `describe` and invocation; changing a pinned setup file, ROS domain,
+RMW selection, or admitted overlay requires explicit collector rotation/re-enrollment, rediscovery,
+and a new release.
 
 On Linux, Rolo automatically selects `scripts/rolo-adapter-sandbox` when `bubblewrap` is available.
 Full Adapt runs the launcher's `--self-test` and fails before Discovery if the launcher is absent or the
@@ -46,7 +50,6 @@ uv run robotctl adapt start \
   --robot-id "$ROBOT_ID" \
   --project-root /path/to/robot-workspace \
   --urdf /path/to/robot.urdf \
-  --scratch-root /var/tmp/rolo-adapt-work \
   --timeout 1800
 ```
 

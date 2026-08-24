@@ -17,7 +17,8 @@ import secrets
 import stat
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
@@ -34,6 +35,11 @@ from rolo.stages.adapt.active_discovery import (
     run_bounded_help,
 )
 from rolo.stages.adapt.discovery import HardwareProbe, LinuxProbe, RosProbe
+from rolo.stages.adapt.ros_environment import (
+    RosSetupFileRecord,
+    resolve_pinned_ros_environment,
+    verify_pinned_setup_files,
+)
 from rolo.stages.adapt.routes import persist_route_evidence
 
 MAX_BUNDLE_BYTES = 8_000_000
@@ -77,8 +83,10 @@ class CollectorDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[
-        "robot-target-evidence-collector/v1", "robot-target-evidence-collector/v2"
-    ] = "robot-target-evidence-collector/v2"
+        "robot-target-evidence-collector/v1",
+        "robot-target-evidence-collector/v2",
+        "robot-target-evidence-collector/v3",
+    ] = "robot-target-evidence-collector/v3"
     robot_id: str = Field(min_length=1, max_length=128)
     collector_id: str = Field(min_length=1, max_length=128)
     target_host_fingerprint: str = Field(pattern=_SHA256_PATTERN)
@@ -86,6 +94,7 @@ class CollectorDescriptor(BaseModel):
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
     )
+    ros_setup_files: list[RosSetupFileRecord] = Field(default_factory=list, max_length=8)
     created_at: datetime = Field(default_factory=_utc_now)
 
     @model_validator(mode="after")
@@ -94,6 +103,9 @@ class CollectorDescriptor(BaseModel):
         paths = [item.path for item in self.help_executables]
         if identities != sorted(set(identities)) or len(paths) != len(set(paths)):
             raise ValueError("collector help executable allowlist must be unique and sorted")
+        setup_paths = [item.path for item in self.ros_setup_files]
+        if len(setup_paths) != len(setup_paths):
+            raise ValueError("collector ROS setup file pins must be unique")
         return self
 
 
@@ -305,18 +317,21 @@ def initialize_collector(
     state_path: Path,
     secret_path: Path,
     help_executables: Sequence[Path] = (),
+    ros_setup_files: Sequence[RosSetupFileRecord] = (),
 ) -> CollectorDescriptor:
     fingerprint = target_host_fingerprint()
     state_path = state_path.expanduser().resolve()
     if state_path.exists():
         raise ValueError(f"collector state already exists: {state_path}")
     allowlist = _build_help_allowlist(help_executables)
+    verify_pinned_setup_files(ros_setup_files)
     _write_private_secret(secret_path, secrets.token_bytes(32))
     descriptor = CollectorDescriptor(
         robot_id=robot_id,
         collector_id=f"collector-{uuid4().hex}",
         target_host_fingerprint=fingerprint,
         help_executables=allowlist,
+        ros_setup_files=list(ros_setup_files),
     )
     state = CollectorState(
         **descriptor.model_dump(),
@@ -365,6 +380,7 @@ def stage_collector_rotation(
     new_state_path: Path,
     new_secret_path: Path,
     help_executables: Sequence[Path] = (),
+    ros_setup_files: Sequence[RosSetupFileRecord] = (),
 ) -> CollectorDescriptor:
     """Stage parallel collector credentials while preserving the active collector."""
     previous = load_collector_state(previous_state_path)
@@ -375,6 +391,7 @@ def stage_collector_rotation(
         state_path=new_state_path,
         secret_path=new_secret_path,
         help_executables=help_executables,
+        ros_setup_files=ros_setup_files,
     )
     if descriptor.target_host_fingerprint != previous.target_host_fingerprint:
         raise ValueError("staged collector rotation changed target host identity")
@@ -389,6 +406,7 @@ def load_collector_state(path: Path) -> CollectorState:
     if target_host_fingerprint() != state.target_host_fingerprint:
         raise ValueError("collector state belongs to a different target host")
     _load_secret(Path(state.secret_path))
+    verify_pinned_setup_files(state.ros_setup_files)
     return state
 
 
@@ -444,6 +462,7 @@ def ensure_local_deployment(
     robot_id: str,
     config_root: Path,
     help_executables: Sequence[Path] = (),
+    ros_setup_files: Sequence[RosSetupFileRecord] = (),
 ) -> tuple[EvidenceDeploymentConfig, Path]:
     """Idempotently establish the target-local collector used by product journeys."""
     deployment_root = config_root.expanduser().resolve() / "target-evidence"
@@ -466,6 +485,11 @@ def ensure_local_deployment(
                     "local executable help allowlist changed; use collector rotation and "
                     "explicit re-enrollment"
                 )
+        if list(ros_setup_files) != descriptor.ros_setup_files:
+            raise ValueError(
+                "local ROS setup file pins changed; use collector rotation and explicit "
+                "re-enrollment"
+            )
         configured = configure_deployment(
             robot_id=robot_id,
             mode=EvidenceDeploymentMode.LOCAL,
@@ -484,6 +508,7 @@ def ensure_local_deployment(
         state_path=default_state_path,
         secret_path=default_secret_path,
         help_executables=help_executables,
+        ros_setup_files=ros_setup_files,
     )
     deployment = configure_deployment(
         robot_id=robot_id,
@@ -690,19 +715,31 @@ def collect_target_evidence(
     state: CollectorState,
     *,
     now: datetime | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> TargetEvidenceBundle:
     collected_at = now or _utc_now()
     _validate_request(request, state, now=collected_at)
+    ros_environment = resolve_pinned_ros_environment(
+        state.ros_setup_files,
+        environment=environment,
+    )
     collectors = {
         "hw": lambda: HardwareProbe().run(robot_id=state.robot_id),
         "linux": lambda: LinuxProbe().run(),
         "ros": lambda: RosProbe().run(),
     }
-    probes = {
-        layer: persist_route_evidence(collectors[layer]())
-        for layer in request.requested_layers
-    }
-    help_evidence = _collect_executable_help(request, state)
+    with _temporary_environment(ros_environment.environment):
+        probes = {
+            layer: persist_route_evidence(collectors[layer]())
+            for layer in request.requested_layers
+        }
+        help_evidence = _collect_executable_help(request, state)
+    if ros_probe := probes.get("ros"):
+        ros_probe.data["environment_bootstrap"] = ros_environment.model_dump(
+            mode="json",
+            exclude={"environment"},
+        )
+        ros_probe.warnings.extend(ros_environment.warnings)
     base = {
         "schema_version": "robot-target-evidence-bundle/v2",
         "robot_id": state.robot_id,
@@ -724,6 +761,18 @@ def collect_target_evidence(
         payload_sha256=payload_sha256,
         signature_hmac_sha256=signature,
     )
+
+
+@contextmanager
+def _temporary_environment(environment: Mapping[str, str]):
+    previous = dict(os.environ)
+    try:
+        os.environ.clear()
+        os.environ.update(environment)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(previous)
 
 
 def _collect_executable_help(

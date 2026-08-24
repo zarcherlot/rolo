@@ -102,7 +102,7 @@ state, and evidence.
 ### Installation and configuration
 
 ```bash
-git clone https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
@@ -119,6 +119,14 @@ generates the editable Wiki, and—when target-observed routes exist—continues
 Agent, independent gate, State Graph, Tool Catalog, handoff, and release. Use `--discover-only` when
 only the Wiki and discovery evidence are needed. See
 [`ADAPT_SHORT_JOURNEY.md`](ADAPT_SHORT_JOURNEY.md) for boundaries and fallback commands.
+
+Rolo uses user-scoped XDG defaults for configuration, artifacts, and releases, so deployment does
+not require explicit storage environment variables. Before signed target collection it
+automatically sources the single installed `/opt/ros/<distro>/setup.bash` and the project
+`install/local_setup.bash`. Ambiguous distributions or overlays fail closed and must be ordered in
+`~/.config/rolo/config.yaml`. Inspect or create the editable configuration with
+`robotctl config show`, `robotctl config init`, and `robotctl config validate`; see
+[`CONFIGURATION.md`](CONFIGURATION.md).
 
 ### Access the management API
 
