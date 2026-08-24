@@ -18,6 +18,12 @@ from rolo.episode_projection import (
     project_episode_record,
     publish_episode_record,
 )
+from rolo.episode_read_models import (
+    EpisodeRevisionConflict,
+    build_episode_revision_collection,
+    build_episode_timeline_page,
+    get_episode_detail,
+)
 from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.workbench_read_models import (
     build_evidence_collection,
@@ -102,7 +108,9 @@ def test_committed_record_digest_rejects_tampering() -> None:
         CommittedEpisodeRecord.model_validate(payload)
 
 
-def test_publish_is_idempotent_and_committed_revision_is_immutable(tmp_path: Path) -> None:
+def test_publish_is_idempotent_and_each_committed_revision_remains_immutable(
+    tmp_path: Path,
+) -> None:
     record = _record()
     first = publish_episode_record(tmp_path, record)
     second = publish_episode_record(tmp_path, record)
@@ -123,9 +131,49 @@ def test_publish_is_idempotent_and_committed_revision_is_immutable(tmp_path: Pat
     next_payload["parent_revision"] = 1
     next_payload["commit_id"] = "commit-mentorpi-discovery-2"
     next_record = CommittedEpisodeRecord.model_validate(_with_digest(next_payload))
-    with pytest.raises(ValueError, match="immutable Episode publication"):
-        publish_episode_record(tmp_path, next_record)
-    assert not layout.episode_record("mentorpi", record.episode_id, 2).exists()
+    latest = publish_episode_record(tmp_path, next_record)
+
+    assert latest.detail.revision == 2
+    assert layout.episode_record("mentorpi", record.episode_id, 1).is_file()
+    assert layout.episode_record("mentorpi", record.episode_id, 2).is_file()
+    assert get_episode_detail(
+        tmp_path,
+        "mentorpi",
+        record.episode_id,
+        revision=1,
+    ).revision == 1
+    assert get_episode_detail(tmp_path, "mentorpi", record.episode_id).revision == 2
+
+    history = build_episode_revision_collection(
+        tmp_path,
+        "mentorpi",
+        record.episode_id,
+    )
+    assert history is not None
+    assert history.current_revision == 2
+    assert [item.revision for item in history.items] == [2, 1]
+    assert [item.parent_revision for item in history.items] == [1, None]
+    assert [item.is_current for item in history.items] == [True, False]
+
+    historical_timeline = build_episode_timeline_page(
+        tmp_path,
+        "mentorpi",
+        record.episode_id,
+        revision=1,
+    )
+    assert historical_timeline is not None
+    assert historical_timeline.revision == 1
+
+    skipped_payload = _payload()
+    skipped_payload["revision"] = 4
+    skipped_payload["parent_revision"] = 3
+    skipped_payload["commit_id"] = "commit-mentorpi-discovery-4"
+    skipped = CommittedEpisodeRecord.model_validate(_with_digest(skipped_payload))
+    with pytest.raises(ValueError, match="contiguous"):
+        publish_episode_record(tmp_path, skipped)
+
+    with pytest.raises(EpisodeRevisionConflict):
+        get_episode_detail(tmp_path, "mentorpi", record.episode_id, revision=3)
 
 
 def test_episode_evidence_is_resolvable_without_exposing_internal_reference(

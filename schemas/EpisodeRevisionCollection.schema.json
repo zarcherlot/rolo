@@ -1,0 +1,251 @@
+{
+  "$defs": {
+    "EpisodeCoverage": {
+      "enum": [
+        "METADATA_ONLY",
+        "PARTIAL",
+        "COMPLETE"
+      ],
+      "title": "EpisodeCoverage",
+      "type": "string"
+    },
+    "EpisodeOutcome": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeOutcome",
+      "type": "string"
+    },
+    "EpisodeRevisionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-revision-summary/v1",
+          "default": "rolo-episode-revision-summary/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "parent_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Revision"
+        },
+        "committed_at": {
+          "format": "date-time",
+          "title": "Committed At",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/EpisodeState"
+        },
+        "outcome": {
+          "$ref": "#/$defs/EpisodeOutcome"
+        },
+        "verification": {
+          "$ref": "#/$defs/EpisodeVerification"
+        },
+        "coverage": {
+          "$ref": "#/$defs/EpisodeCoverage"
+        },
+        "immutable": {
+          "title": "Immutable",
+          "type": "boolean"
+        },
+        "event_count": {
+          "minimum": 0,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "asset_count": {
+          "minimum": 0,
+          "title": "Asset Count",
+          "type": "integer"
+        },
+        "finding_count": {
+          "minimum": 0,
+          "title": "Finding Count",
+          "type": "integer"
+        },
+        "is_current": {
+          "title": "Is Current",
+          "type": "boolean"
+        },
+        "source_kind": {
+          "enum": [
+            "committed_episode_record",
+            "published_episode_projection"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "robot_id",
+        "episode_id",
+        "revision",
+        "committed_at",
+        "state",
+        "outcome",
+        "verification",
+        "coverage",
+        "immutable",
+        "event_count",
+        "asset_count",
+        "finding_count",
+        "is_current",
+        "source_kind"
+      ],
+      "title": "EpisodeRevisionSummary",
+      "type": "object"
+    },
+    "EpisodeState": {
+      "enum": [
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        "PARTIAL"
+      ],
+      "title": "EpisodeState",
+      "type": "string"
+    },
+    "EpisodeVerification": {
+      "enum": [
+        "VERIFIED",
+        "UNVERIFIED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "EpisodeVerification",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-revision-collection/v1",
+      "default": "rolo-episode-revision-collection/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "current_revision": {
+      "minimum": 1,
+      "title": "Current Revision",
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EpisodeRevisionSummary"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "minimum": 1,
+      "title": "Total",
+      "type": "integer"
+    },
+    "limit": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "next_offset": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Offset"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "source_kind": {
+      "const": "episode_revision_history",
+      "default": "episode_revision_history",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "current_revision",
+    "items",
+    "total",
+    "limit",
+    "offset",
+    "as_of"
+  ],
+  "title": "EpisodeRevisionCollection",
+  "type": "object"
+}

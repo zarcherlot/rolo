@@ -572,9 +572,20 @@ def publish_episode_record(
         if current.detail.revision == record.revision:
             if current.model_dump(mode="json") != projection.model_dump(mode="json"):
                 raise ValueError("published Episode revision has conflicting content")
-        if current.detail.immutable:
-            if current.detail.revision != record.revision:
-                raise ValueError("cannot supersede an immutable Episode publication")
+        if current.detail.revision < record.revision:
+            if record.revision != current.detail.revision + 1:
+                raise ValueError("Episode publication revisions must be contiguous")
+            try:
+                load_committed_episode_record(
+                    artifact_root,
+                    record.robot_id,
+                    record.episode_id,
+                    current.detail.revision,
+                )
+            except FileNotFoundError as exc:
+                raise ValueError(
+                    "cannot supersede a publication without its committed parent revision"
+                ) from exc
     write_committed_episode_record(artifact_root, record)
     if current is not None and current.detail.revision == record.revision:
         return current

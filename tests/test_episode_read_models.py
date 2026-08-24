@@ -16,6 +16,7 @@ from rolo.episode_read_models import (
     EpisodeState,
     EpisodeTimelineEvent,
     build_episode_collection,
+    build_episode_revision_collection,
     build_episode_timeline_page,
     get_episode_detail,
 )
@@ -60,6 +61,11 @@ def test_completed_projection_supports_list_detail_and_revision_pinned_timeline(
         limit=10,
     )
     detail = get_episode_detail(tmp_path, "demo_diff", "ep-nav-001")
+    revisions = build_episode_revision_collection(
+        tmp_path,
+        "demo_diff",
+        "ep-nav-001",
+    )
     first = build_episode_timeline_page(
         tmp_path,
         "demo_diff",
@@ -76,6 +82,11 @@ def test_completed_projection_supports_list_detail_and_revision_pinned_timeline(
     assert detail.immutable is True
     assert detail.outcome == "SUCCEEDED"
     assert detail.verification == "UNVERIFIED"
+    assert revisions is not None
+    assert revisions.current_revision == 1
+    assert [item.revision for item in revisions.items] == [1]
+    assert revisions.items[0].source_kind == "published_episode_projection"
+    assert revisions.limitations
     assert first is not None
     assert [event.event_id for event in first.items] == ["evt-command"]
     assert first.next_cursor is not None
@@ -96,6 +107,13 @@ def test_completed_projection_supports_list_detail_and_revision_pinned_timeline(
 def test_timeline_rejects_stale_revision_and_unbound_cursor(tmp_path: Path) -> None:
     _publish_fixture(tmp_path)
 
+    with pytest.raises(EpisodeRevisionConflict):
+        get_episode_detail(
+            tmp_path,
+            "demo_diff",
+            "ep-nav-001",
+            revision=2,
+        )
     with pytest.raises(EpisodeRevisionConflict):
         build_episode_timeline_page(
             tmp_path,

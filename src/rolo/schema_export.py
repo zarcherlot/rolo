@@ -31,6 +31,8 @@ from rolo.episode_read_models import (
     EpisodeCollection,
     EpisodeDetail,
     EpisodeFindingSummary,
+    EpisodeRevisionCollection,
+    EpisodeRevisionSummary,
     EpisodeSummary,
     EpisodeTimelineEvent,
     EpisodeTimelinePage,
@@ -169,6 +171,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     EpisodeTimelineEvent,
     EpisodeAssetSummary,
     EpisodeFindingSummary,
+    EpisodeRevisionCollection,
+    EpisodeRevisionSummary,
     CommittedEpisodeRecord,
 )
 

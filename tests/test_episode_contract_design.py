@@ -9,6 +9,11 @@ def _design() -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _revision_contract() -> str:
+    path = Path(__file__).parents[1] / "docs" / "EPISODE_REVISION_HISTORY_CONTRACT.md"
+    return path.read_text(encoding="utf-8")
+
+
 def test_episode_contract_design_is_versioned_and_baseline_relative() -> None:
     design = _design()
     assert design["schema_version"] == "rolo-episode-contract-design/v1"
@@ -83,3 +88,13 @@ def test_episode_e1_publishes_only_a_sanitized_server_owned_projection() -> None
         "producer_projection": "implemented-e2",
         "evidence_integration": "rolo-evidence-record/v1",
     }
+
+
+def test_episode_revision_history_is_feature_negotiated_and_read_only() -> None:
+    contract = _revision_contract()
+    assert "workbench.episode-revision-history/v1" in contract
+    assert "rolo-episode-revision-collection/v1" in contract
+    assert "rolo-episode-revision-summary/v1" in contract
+    assert "?revision={revision}" in contract
+    assert "Deltas remain neutral `right - left` facts" in contract
+    assert "adds no replay, recollection, export, remediation" in contract
