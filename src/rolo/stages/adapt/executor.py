@@ -497,6 +497,9 @@ class CodexAdaptExecutor:
                 environment.setdefault("CODEX_HOME", str(codex_home))
         environment["ROLO_AGENT_TOOL"] = str(agent_tool)
         environment["ROLO_AGENT_DISCOVERY_ID"] = plan.source_discovery_id
+        # Agent-authored tests and advisory describe must not leave bytecode
+        # directories carrying a child sandbox ACL into workspace cleanup.
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         return environment
 
     def _install_agent_tool_launcher(

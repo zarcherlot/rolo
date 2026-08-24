@@ -357,6 +357,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert isinstance(environment, dict)
     assert "CODEX_API_KEY" not in environment
     assert environment["ROLO_AGENT_DISCOVERY_ID"] == plan.source_discovery_id
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert Path(environment["ROLO_AGENT_TOOL"]).is_file()
     assert "rolo_agent_inspection_tool.py" in Path(environment["ROLO_AGENT_TOOL"]).read_text(
         encoding="utf-8"

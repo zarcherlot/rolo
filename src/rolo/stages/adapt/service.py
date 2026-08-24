@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from rolo.adapter_runtime import load_current_release
@@ -29,6 +32,22 @@ from rolo.stages.adapt.operation_registry import (
 )
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
+
+
+@contextmanager
+def _temporary_agent_workspace(*, prefix: str, parent: Path | None) -> Iterator[str]:
+    """Create an ephemeral workspace without letting Windows sandbox ACLs mask the run."""
+    if os.name != "nt":
+        with tempfile.TemporaryDirectory(prefix=prefix, dir=parent) as workspace:
+            yield workspace
+        return
+    workspace = tempfile.mkdtemp(prefix=prefix, dir=parent)
+    try:
+        yield workspace
+    finally:
+        # The workspace is never an authority boundary: all accepted files were
+        # already reconstructed from the hashed result before this point.
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 def coding_agent_config(settings: Settings) -> AdapterAgentConfig:
@@ -153,13 +172,9 @@ class AdaptRunService:
                 pass
             else:
                 raise ValueError("Adapter Agent scratch root must be outside the rolo source tree")
-        with tempfile.TemporaryDirectory(
+        with _temporary_agent_workspace(
             prefix=f"rolo-adapt-{robot_id}-",
-            dir=temporary_parent,
-            # Codex workspace-write can leave Windows sandbox ACLs on bytecode
-            # caches. Cleanup must never override the Agent or independent Gate
-            # result; the scratch directory remains non-authoritative.
-            ignore_cleanup_errors=os.name == "nt",
+            parent=temporary_parent,
         ) as temporary_workspace:
             workspace = Path(temporary_workspace)
             dependency, agent_run, agent_run_path = AdaptExecutionService(
