@@ -14,6 +14,11 @@ def _revision_contract() -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _cohort_contract() -> str:
+    path = Path(__file__).parents[1] / "docs" / "EPISODE_COHORT_READ_MODEL_CONTRACT.md"
+    return path.read_text(encoding="utf-8")
+
+
 def test_episode_contract_design_is_versioned_and_baseline_relative() -> None:
     design = _design()
     assert design["schema_version"] == "rolo-episode-contract-design/v1"
@@ -98,3 +103,15 @@ def test_episode_revision_history_is_feature_negotiated_and_read_only() -> None:
     assert "?revision={revision}" in contract
     assert "Deltas remain neutral `right - left` facts" in contract
     assert "adds no replay, recollection, export, remediation" in contract
+
+
+def test_episode_cohort_is_exact_revision_pinned_and_descriptive_only() -> None:
+    contract = _cohort_contract()
+    assert "workbench.episode-cohort-read-model/v1" in contract
+    assert "rolo-episode-cohort/v1" in contract
+    assert "rolo-episode-cohort-member/v1" in contract
+    assert "reference_revision" in contract
+    assert "closed-open" in contract
+    assert "descriptive values" in contract
+    assert "No aggregate score" in contract
+    assert "raw artifact" in contract

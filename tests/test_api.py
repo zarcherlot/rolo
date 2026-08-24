@@ -56,6 +56,7 @@ def test_health_and_robot_registry() -> None:
         "workbench.blocker-detail/v1",
         "workbench.episode-read-model/v1",
         "workbench.episode-revision-history/v1",
+        "workbench.episode-cohort-read-model/v1",
     ]
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
