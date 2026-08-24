@@ -68,12 +68,19 @@ def add_path(paths: set[Path], raw: str | None, *, file_ok: bool = False) -> Non
         paths.add(resolved)
 
 
+def add_system_path(paths: set[Path], raw: str, *, file_ok: bool = False) -> None:
+    """Keep canonical loader paths such as /lib64 visible at their original names."""
+    candidate = Path(raw)
+    if candidate.is_dir() or (file_ok and candidate.is_file()):
+        paths.add(candidate)
+
+
 def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
     paths: set[Path] = {cwd}
     for raw in SYSTEM_DIRECTORIES:
-        add_path(paths, raw)
+        add_system_path(paths, raw)
     for raw in SYSTEM_FILES:
-        add_path(paths, raw, file_ok=True)
+        add_system_path(paths, raw, file_ok=True)
     requested_executable = Path(command[0])
     if not requested_executable.is_absolute():
         located = shutil.which(command[0])
@@ -151,7 +158,7 @@ def main() -> int:
         launch = base_launch(bubblewrap)
         self_test_paths: set[Path] = set()
         for raw in SYSTEM_DIRECTORIES:
-            add_path(self_test_paths, raw)
+            add_system_path(self_test_paths, raw)
         ordered_self_test_paths = sorted(
             self_test_paths, key=lambda value: (len(value.parts), str(value))
         )
