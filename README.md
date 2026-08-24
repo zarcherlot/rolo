@@ -107,7 +107,9 @@ uv run robotctl config init
 uv run robotctl config validate
 ```
 
-完整配置说明见 [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。
+完整目标机部署、两种证据采集模式、验收与故障处理见
+[`Rolo 目标机部署与 Adapt 操作手册`](docs/TARGET_DEVICE_OPERATION_MANUAL_ZH.md)；配置字段说明见
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。
 
 上述一条命令适用于 Rolo 与机器人工程运行在同一目标机的模式。控制器与目标机分离时，
 descriptor、secret 和 SSH host-key 必须独立置备，按

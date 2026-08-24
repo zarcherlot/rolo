@@ -6,6 +6,7 @@
 
 - [最高开发准则](DEVELOPMENT_PRINCIPLES.md)：所有代码、测试、文档和发布的最高验收规则；
 - [10 分钟 Quickstart](QUICKSTART_10_MIN.md)：从干净 checkout 安装并跑通离线 Demo；
+- [目标机部署与 Adapt 操作手册](TARGET_DEVICE_OPERATION_MANUAL_ZH.md)：固定版本部署、本地或远程证据采集、完整 Adapt、验收与故障处理；
 - [ROLO 白皮书](ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
 - [三阶段架构](ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
