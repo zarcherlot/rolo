@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -155,6 +156,10 @@ class AdaptRunService:
         with tempfile.TemporaryDirectory(
             prefix=f"rolo-adapt-{robot_id}-",
             dir=temporary_parent,
+            # Codex workspace-write can leave Windows sandbox ACLs on bytecode
+            # caches. Cleanup must never override the Agent or independent Gate
+            # result; the scratch directory remains non-authoritative.
+            ignore_cleanup_errors=os.name == "nt",
         ) as temporary_workspace:
             workspace = Path(temporary_workspace)
             dependency, agent_run, agent_run_path = AdaptExecutionService(

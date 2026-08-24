@@ -168,9 +168,11 @@ def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
         deferred not in task["operations"] for task in compact_plan["tasks"]
     )
     assert "authoritative bundle operation set" in prompt
-    assert "Run handoff pack only once" in prompt
+    assert "If it fails, fix only the reported error" in prompt
+    assert "At the first success" in prompt
     assert "immediately return the required final JSON" in prompt
     assert "manually clean the workspace" in prompt
+    assert "exactly a mapping from every bundle operation name" in prompt
 
 
 def test_agent_workspace_instructions_prevent_recursive_inventory_and_rework(
@@ -190,7 +192,8 @@ def test_agent_workspace_instructions_prevent_recursive_inventory_and_rework(
     instructions = (workspace / "AGENTS.md").read_text(encoding="utf-8")
     assert "Do not inventory the directory" in instructions
     assert "run `rg --files`" in instructions
-    assert "run `adapt handoff pack` once" in instructions
+    assert "A failed pack may be rerun" in instructions
+    assert "At the first success" in instructions
     assert "without speculative revisions" in instructions
 
 

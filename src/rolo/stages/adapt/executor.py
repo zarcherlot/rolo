@@ -645,9 +645,10 @@ class CodexAdaptExecutor:
             "directory before every shell command.\n"
             "- Do not inventory the directory, run `rg --files`, recurse above it, or inspect "
             "the drive root. Start with the supplied rolo-agent-tool and the compact plan.\n"
-            "- Run focused adapter tests, then run `adapt handoff pack` once. When it succeeds, "
-            "return its outputs and files immediately without speculative revisions, another "
-            "pack, or manual cleanup. The workspace is ephemeral.\n",
+            "- Run focused adapter tests, then run `adapt handoff pack`. A failed pack may be "
+            "rerun only after fixing its reported error. At the first success, return its outputs "
+            "and files immediately without speculative revisions, another pack, or manual "
+            "cleanup. The workspace is ephemeral.\n",
             encoding="utf-8",
         )
         return launcher.resolve()
@@ -830,7 +831,10 @@ class CodexAdaptExecutor:
             "unregistered and must not block otherwise eligible operations. For every bundle "
             "operation, copy contract_version and contract_sha256 exactly from "
             "the operation contract returned by the read-only inspection tool. "
-            "The executable must support `describe` and bounded `invoke` commands. When "
+            "The executable must support `describe` and bounded `invoke` commands. `describe` "
+            "must emit a JSON object whose `operations` value is exactly a mapping from every "
+            "bundle operation name to its manifest entrypoint, with no missing or extra "
+            "operations. When "
             "handoff_ready is true, outputs "
             "must name workspace-relative final files for all four outputs. Return only the JSON "
             "object required by the supplied output schema. Before authoring each artifact, query "
@@ -843,8 +847,9 @@ class CodexAdaptExecutor:
             "the inspection snapshot, or other intermediate files. Generate the exact outputs and "
             "files objects by running the supplied `adapt handoff pack` command with all four "
             "output path options; copy its JSON fields without manually recreating base64 or "
-            "hashes. Run handoff pack only once, after targeted validation. If it succeeds, copy "
-            "its JSON fields and immediately return the required final JSON; do not make "
+            "hashes. Run handoff pack after targeted validation. If it fails, fix only the "
+            "reported error, rerun focused validation, and retry the pack. At the first success, "
+            "copy its JSON fields and immediately return the required final JSON; do not make "
             "speculative revisions, rerun tests, pack again, or manually clean the workspace. "
             "The temporary workspace is destroyed by rolo after the independent gate captures "
             "the structured payload. The pack command verifies paths, file counts, sizes, "
