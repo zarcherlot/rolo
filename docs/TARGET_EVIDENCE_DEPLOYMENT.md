@@ -43,6 +43,7 @@ ROS/workspace environment. The product journey defaults to local signed evidence
 git clone https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
+# Install the target distribution's bubblewrap package for the full Agent/gate journey.
 uv run robotctl adapt start \
   --robot-id wheeltec \
   --project-root /path/to/robot-workspace \

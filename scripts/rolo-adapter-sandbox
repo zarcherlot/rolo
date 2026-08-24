@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Linux bubblewrap launcher for generated Rolo adapters.
+
+Contract: rolo-adapter-sandbox --cwd RELEASE_ROOT -- ADAPTER_ARGV...
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+from pathlib import Path
+
+
+PATH_ENVIRONMENT = (
+    "AMENT_PREFIX_PATH",
+    "CMAKE_PREFIX_PATH",
+    "COLCON_PREFIX_PATH",
+    "LD_LIBRARY_PATH",
+    "PYTHONPATH",
+)
+SYSTEM_DIRECTORIES = ("/usr", "/bin", "/lib", "/lib64")
+SYSTEM_FILES = (
+    "/etc/group",
+    "/etc/hosts",
+    "/etc/ld.so.cache",
+    "/etc/nsswitch.conf",
+    "/etc/passwd",
+    "/etc/resolv.conf",
+)
+
+
+def fail(message: str) -> int:
+    print(f"rolo-adapter-sandbox: {message}", file=sys.stderr)
+    return 2
+
+
+def parse(arguments: list[str]) -> tuple[Path, list[str]]:
+    if len(arguments) < 4 or arguments[0] != "--cwd" or "--" not in arguments:
+        raise ValueError("expected --cwd RELEASE_ROOT -- ADAPTER_ARGV...")
+    separator = arguments.index("--")
+    if separator != 2 or separator + 1 >= len(arguments):
+        raise ValueError("expected exactly one --cwd before the adapter command")
+    cwd = Path(arguments[1]).expanduser().resolve(strict=True)
+    if not cwd.is_dir():
+        raise ValueError("release root is not a directory")
+    command = arguments[separator + 1 :]
+    if any(not value or "\x00" in value for value in command):
+        raise ValueError("adapter argv contains an invalid value")
+    return cwd, command
+
+
+def add_path(paths: set[Path], raw: str | None, *, file_ok: bool = False) -> None:
+    if not raw:
+        return
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute() or not candidate.exists():
+        return
+    resolved = candidate.resolve()
+    if resolved.is_dir() or (file_ok and resolved.is_file()):
+        paths.add(resolved)
+
+
+def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
+    paths: set[Path] = {cwd}
+    for raw in SYSTEM_DIRECTORIES:
+        add_path(paths, raw)
+    for raw in SYSTEM_FILES:
+        add_path(paths, raw, file_ok=True)
+    requested_executable = Path(command[0])
+    if not requested_executable.is_absolute():
+        located = shutil.which(command[0])
+        if located is None:
+            raise ValueError(f"adapter executable is unavailable: {command[0]}")
+        requested_executable = Path(located)
+    requested_executable = requested_executable.absolute()
+    add_path(paths, str(requested_executable.parent))
+    for parent in requested_executable.parents:
+        if (parent / "pyvenv.cfg").is_file():
+            add_path(paths, str(parent))
+            break
+    executable = requested_executable.resolve(strict=True)
+    add_path(paths, str(executable.parent))
+    for name in PATH_ENVIRONMENT:
+        for raw in os.environ.get(name, "").split(os.pathsep):
+            add_path(paths, raw)
+    add_path(paths, os.environ.get("FASTRTPS_DEFAULT_PROFILES_FILE"), file_ok=True)
+    return sorted(paths, key=lambda value: (len(value.parts), str(value)))
+
+
+def writable_paths() -> list[Path]:
+    paths: set[Path] = set()
+    for name in ("HOME", "TMP", "TEMP"):
+        add_path(paths, os.environ.get(name))
+    return sorted(paths, key=lambda value: (len(value.parts), str(value)))
+
+
+def main() -> int:
+    if sys.platform != "linux":
+        return fail("the bundled production launcher requires Linux")
+    bubblewrap = shutil.which("bwrap")
+    if bubblewrap is None:
+        return fail("bubblewrap is required; install the target distribution's bubblewrap package")
+    try:
+        cwd, command = parse(sys.argv[1:])
+        readonly = readonly_paths(cwd, command)
+        writable = writable_paths()
+    except (OSError, ValueError) as exc:
+        return fail(str(exc))
+    launch = [
+        bubblewrap,
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+    ]
+    if os.environ.get("ROLO_ADAPTER_SANDBOX_NETWORK", "isolated") == "host":
+        launch.append("--share-net")
+    launch.extend(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
+    writable_set = set(writable)
+    for path in readonly:
+        if path not in writable_set:
+            launch.extend(["--ro-bind", str(path), str(path)])
+    for path in writable:
+        launch.extend(["--bind", str(path), str(path)])
+    launch.extend(["--chdir", str(cwd), "--", *command])
+    os.execv(bubblewrap, launch)
+    return 127
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

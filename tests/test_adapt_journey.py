@@ -190,6 +190,25 @@ def test_adapt_start_collects_and_binds_fresh_local_target_evidence(
     assert (config_root / "target-evidence/signed_robot.json").is_file()
     assert (config_root / "target-evidence/signed_robot-collector.json").is_file()
 
+    acceptance = runner.invoke(
+        app,
+        ["adapt", "acceptance-pack", "--robot", "signed_robot"],
+        env=env,
+    )
+    get_settings.cache_clear()
+    assert acceptance.exit_code == 0, acceptance.output
+    acceptance_payload = json.loads(acceptance.output)
+    pack = acceptance_payload["pack"]
+    assert pack["schema_version"] == "robot-adapt-acceptance-pack/v1"
+    assert pack["status"] == "INCOMPLETE"
+    assert pack["registry"]["operation_count"] == 294
+    assert (
+        pack["target_evidence"]["bundle_payload_sha256"]
+        == second_payload["target_evidence"]["bundle_payload_sha256"]
+    )
+    assert Path(acceptance_payload["artifact"]).is_file()
+    assert len(acceptance_payload["sha256"]) == 64
+
 
 def test_adapt_start_remote_mode_requires_a_pinned_deployment(tmp_path: Path) -> None:
     project = _project(tmp_path)
@@ -351,6 +370,40 @@ def test_adapt_start_returns_an_actionable_blocker_without_runtime_routes(
     assert payload["wiki"].endswith("robot_wiki.md")
     assert "target-observed" in payload["blockers"][0]
     assert payload["next_steps"][0] == "robotctl adapt status --robot blocked_robot"
+
+
+def test_full_adapt_blocks_before_discovery_when_production_sandbox_is_invalid(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "adapt",
+            "start",
+            "--robot",
+            "sandbox_blocked_robot",
+            "--project-root",
+            str(project),
+            "--active-probe",
+            "none",
+        ],
+        env={
+            "ROLO_CONFIG_DIR": str(tmp_path / "config"),
+            "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+            "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+            "ROLO_ADAPTER_UNSANDBOXED_DEV": "false",
+            "ROLO_ADAPTER_SANDBOX_LAUNCHER": str(tmp_path / "missing-launcher"),
+        },
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output)
+    assert payload["status"] == "BLOCKED"
+    assert payload["discovery_id"] is None
+    assert "sandbox launcher is invalid" in payload["blockers"][0]
 
 
 def test_adapt_start_reports_the_gate_handoff_and_release(

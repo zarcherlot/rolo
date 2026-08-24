@@ -10,6 +10,7 @@ from rolo.commands.discovery import configured_discovery_service
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.runtime import create_runtime
+from rolo.stages.adapt.acceptance import write_adapt_acceptance_pack
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.journey import AdaptJourneyService, detect_project_evidence
 from rolo.stages.adapt.service import (
@@ -280,6 +281,37 @@ def adapt_slice_observability(
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(report)
+
+
+@adapt_stage_app.command("acceptance-pack")
+def adapt_acceptance_pack(
+    robot: Annotated[str, typer.Option("--robot")],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Optional destination for the secret-free Adapt acceptance JSON",
+        ),
+    ] = None,
+) -> None:
+    """Export a secret-free, digest-bound snapshot for real-device Adapt review."""
+    settings = get_settings()
+    try:
+        pack, path, digest = write_adapt_acceptance_pack(
+            settings.rolo_artifact_dir,
+            settings.rolo_output_dir,
+            robot,
+            output,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "pack": pack.model_dump(mode="json"),
+            "artifact": str(path),
+            "sha256": digest,
+        }
+    )
 
 
 @diagnose_stage_app.command("status")

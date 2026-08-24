@@ -100,8 +100,9 @@ stage packages.
    Graph, conformance, passed-gate, and freshness checks used by runtime loading. A rejected
    candidate cannot replace the existing current release.
 9. The Adapter Agent queries a bounded workspace-local snapshot and exact artifact Schemas. Its
-   deterministic handoff pack validates paths and hashes without executing generated code, returns
-   only final file payloads in a structured result, and removes Agent-created workspace files. Rolo
+   deterministic handoff pack validates paths and hashes, runs only an advisory bounded `describe`
+   inside the Agent sandbox (never `invoke`), returns only final file payloads in a structured result,
+   and removes Agent-created workspace files. Rolo
    reconstructs and gates the
    snapshot without trusting Agent filesystem access.
 10. Diagnose validates the full adapt handoff; Verify validates a structured diagnosis handoff.

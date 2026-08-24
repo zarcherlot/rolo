@@ -204,7 +204,10 @@ class AdaptJourneyService:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
             robot_id=robot_id
         )
-        doctor = build_doctor_report(self.settings)
+        doctor = build_doctor_report(
+            self.settings,
+            require_adapter_sandbox=run_agent,
+        )
         display_host = (
             "127.0.0.1" if self.settings.rolo_host in {"0.0.0.0", "::"} else self.settings.rolo_host
         )

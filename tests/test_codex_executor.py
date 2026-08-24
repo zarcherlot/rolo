@@ -566,6 +566,28 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
     assert rejected.returncode == 2
     assert "describe preflight does not match" in rejected.stderr
 
+    (workspace / "adapter.py").write_text(
+        "import sys\n"
+        "if sys.argv[1] == 'describe':\n"
+        "    print('x' * 250_000)\n",
+        encoding="utf-8",
+    )
+    oversized_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
+    manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
+    manifest["package_sha256"] = oversized_sha
+    manifest["files"][0]["sha256"] = oversized_sha
+    (workspace / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    output_limited = subprocess.run(
+        pack_command,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert output_limited.returncode == 2
+    assert "describe preflight exceeded its output limit" in output_limited.stderr
+
 
 def test_codex_executor_passes_key_only_in_child_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -57,3 +57,16 @@ jobs:
           LEROBOT_ROOT: ${{ github.workspace }}/.ci/lerobot
           LEROBOT_INFO: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-info
         run: uv run pytest -q tests/test_lerobot_e2e.py
+
+  production-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      - run: sudo apt-get update
+      - run: sudo apt-get install --yes bubblewrap
+      - run: uv sync --locked --dev --python 3.12
+      - run: uv run pytest -q tests/test_production_sandbox.py

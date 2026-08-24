@@ -6,13 +6,18 @@ from pathlib import Path
 
 from rolo import __version__
 from rolo.core.config import Settings, get_settings
+from rolo.invocation_policy import validate_protected_file
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.dependencies import CodexDependencyAdapter
 from rolo.stages.adapt.service import coding_agent_config
 from rolo.stages.diagnose.robot_use import create_robot_use_backend
 
 
-def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
+def build_doctor_report(
+    settings: Settings | None = None,
+    *,
+    require_adapter_sandbox: bool = False,
+) -> dict[str, object]:
     """Assess local runtime prerequisites without mutating the target software stack."""
     settings = settings or get_settings()
     errors: list[str] = []
@@ -71,12 +76,25 @@ def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
         )
     elif sandbox_launcher is None:
         adapter_sandbox = "NOT_CONFIGURED"
-        warnings.append(
+        message = (
             "ROLO_ADAPTER_SANDBOX_LAUNCHER is not configured; generated adapter execution "
             "will fail closed"
         )
+        (errors if require_adapter_sandbox else warnings).append(message)
     else:
-        adapter_sandbox = "CONFIGURED"
+        try:
+            protected_launcher = validate_protected_file(
+                sandbox_launcher,
+                label="adapter sandbox launcher",
+            )
+            if sys.platform != "win32" and not protected_launcher.stat().st_mode & 0o111:
+                raise ValueError("adapter sandbox launcher must be executable")
+        except (OSError, ValueError) as exc:
+            adapter_sandbox = "INVALID"
+            message = f"adapter sandbox launcher is invalid: {exc}"
+            (errors if require_adapter_sandbox else warnings).append(message)
+        else:
+            adapter_sandbox = "CONFIGURED"
 
     if backend == "openai":
         if not settings.openai_api_key:
@@ -99,6 +117,7 @@ def build_doctor_report(settings: Settings | None = None) -> dict[str, object]:
         "adapter_sandbox": {
             "status": adapter_sandbox,
             "launcher": str(sandbox_launcher) if sandbox_launcher is not None else None,
+            "required": require_adapter_sandbox,
         },
         "local_visual_detection": False,
         "optional_tools": optional_tools,
