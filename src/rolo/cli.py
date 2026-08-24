@@ -12,6 +12,7 @@ from rolo.commands.canonical import (
     state_app,
     tool_app,
 )
+from rolo.commands.configuration import config_app
 from rolo.commands.discovery import discover_app
 from rolo.commands.lifecycle import (
     adapt_stage_app,
@@ -39,6 +40,7 @@ app.add_typer(ros_app, name="ros")
 app.add_typer(application_app, name="app")
 app.add_typer(state_app, name="state")
 app.add_typer(target_evidence_app, name="target-evidence")
+app.add_typer(config_app, name="config")
 
 
 if __name__ == "__main__":

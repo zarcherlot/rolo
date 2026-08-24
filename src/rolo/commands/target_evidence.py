@@ -9,6 +9,7 @@ import typer
 
 from rolo.commands.common import emit
 from rolo.core.config import get_settings
+from rolo.stages.adapt.ros_environment import select_ros_setup_files
 from rolo.stages.adapt.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
@@ -57,14 +58,33 @@ def collector_init(
             help="Exact target executable permitted for bounded --help evidence; repeatable",
         ),
     ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option("--project-root", help="Target workspace used for ROS overlay detection"),
+    ] = None,
+    ros_setup: Annotated[
+        list[Path] | None,
+        typer.Option("--ros-setup", help="Approved ROS setup file; repeat in source order"),
+    ] = None,
 ) -> None:
     """Initialize the target-side collector and print its pinned identity."""
     try:
+        settings = get_settings()
+        install_roots = (
+            [project_root.expanduser().resolve() / "install"] if project_root is not None else []
+        )
+        _, ros_setup_files = select_ros_setup_files(
+            auto_source=settings.ros_auto_source,
+            configured=ros_setup or settings.ros_setup_files,
+            project_root=project_root,
+            install_roots=install_roots,
+        )
         descriptor = initialize_collector(
             robot_id=robot_id,
             state_path=config,
             secret_path=secret_file,
             help_executables=allow_executable or (),
+            ros_setup_files=ros_setup_files,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -99,15 +119,31 @@ def collector_rotate(
             help="Exact executable permitted by the replacement collector; repeatable",
         ),
     ] = None,
+    project_root: Annotated[Path | None, typer.Option("--project-root")] = None,
+    ros_setup: Annotated[
+        list[Path] | None,
+        typer.Option("--ros-setup", help="Approved replacement setup file; repeatable"),
+    ] = None,
 ) -> None:
     """Stage rotated target credentials without overwriting the active collector."""
     try:
+        settings = get_settings()
+        install_roots = (
+            [project_root.expanduser().resolve() / "install"] if project_root is not None else []
+        )
+        _, ros_setup_files = select_ros_setup_files(
+            auto_source=settings.ros_auto_source,
+            configured=ros_setup or settings.ros_setup_files,
+            project_root=project_root,
+            install_roots=install_roots,
+        )
         descriptor = stage_collector_rotation(
             previous_state_path=previous_config,
             expected_collector_id=expected_collector_id,
             new_state_path=config,
             new_secret_path=secret_file,
             help_executables=allow_executable or (),
+            ros_setup_files=ros_setup_files,
         )
         descriptor_out.parent.mkdir(parents=True, exist_ok=True)
         descriptor_out.write_text(

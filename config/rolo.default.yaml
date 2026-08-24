@@ -1,0 +1,19 @@
+schema_version: rolo-config/v1
+
+storage:
+  config_dir: ~/.local/state/rolo/config
+  artifact_dir: ~/.local/share/rolo/artifacts
+  output_dir: ~/.local/share/rolo/output
+  # null uses a securely generated system temporary directory that is deleted after the Agent run.
+  scratch_dir: null
+
+agent:
+  provider: codex
+  executable: codex
+  timeout_s: 1800
+
+ros:
+  auto_source: true
+  setup_files: []
+  domain_id: null
+  rmw_implementation: null

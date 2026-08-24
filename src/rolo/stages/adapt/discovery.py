@@ -133,8 +133,13 @@ def _cached_read_text(path: Path, cache: dict[Path, str | None], limit: int) -> 
     return cache[path]
 
 
-def _run(args: Sequence[str], *, timeout_s: float = 8.0) -> dict[str, Any]:
-    executable = shutil.which(args[0])
+def _run(
+    args: Sequence[str],
+    *,
+    timeout_s: float = 8.0,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    executable = shutil.which(args[0], path=environment.get("PATH") if environment else None)
     if executable is None and not Path(args[0]).is_file():
         return {"available": False, "argv": list(args), "error": "executable not found"}
     try:
@@ -146,6 +151,7 @@ def _run(args: Sequence[str], *, timeout_s: float = 8.0) -> dict[str, Any]:
             encoding="utf-8",
             errors="replace",
             timeout=timeout_s,
+            env=dict(environment) if environment is not None else None,
         )
     except subprocess.TimeoutExpired:
         return {"available": True, "argv": list(args), "error": "timeout"}
@@ -438,6 +444,9 @@ class HardwareProbe:
 
 
 class LinuxProbe:
+    def __init__(self, *, environment: Mapping[str, str] | None = None) -> None:
+        self.environment = dict(os.environ if environment is None else environment)
+
     def run(self) -> ProbeResult:
         os_release = _parse_os_release()
         data: dict[str, Any] = {
@@ -449,7 +458,7 @@ class LinuxProbe:
                 "hostname": platform.node(),
                 "os_release": os_release,
             },
-            "environment": admitted_runtime_environment(os.environ),
+            "environment": admitted_runtime_environment(self.environment),
             "executables": {},
             "processes": [],
         }
@@ -464,7 +473,7 @@ class LinuxProbe:
             "gcc": ["gcc", "--version"],
         }
         for name, command in executable_checks.items():
-            result = _run(command, timeout_s=5)
+            result = _run(command, timeout_s=5, environment=self.environment)
             succeeded = result.get("returncode") == 0
             data["executables"][name] = {
                 "path": shutil.which(command[0]),
@@ -483,7 +492,10 @@ class LinuxProbe:
                 )
 
         if platform.system() == "Linux":
-            processes = _run(["ps", "-eo", "pid=,ppid=,stat=,comm="])
+            processes = _run(
+                ["ps", "-eo", "pid=,ppid=,stat=,comm="],
+                environment=self.environment,
+            )
             if processes.get("returncode") == 0:
                 data["processes"] = processes["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
         else:
@@ -533,7 +545,7 @@ class RosProbe:
 
     def _run_ros(self, args: Sequence[str]) -> dict[str, Any]:
         if shutil.which("ros2"):
-            direct = _run(["ros2", *args], timeout_s=10)
+            direct = _run(["ros2", *args], timeout_s=10, environment=self.environment)
             if direct.get("returncode") == 0:
                 return direct
             if self.environment.get("CODEX_SANDBOX_NETWORK_DISABLED") == "1":
@@ -546,7 +558,11 @@ class RosProbe:
                 "unset PYTHONHOME PYTHONPATH VIRTUAL_ENV; "
                 f"source {shlex.quote(str(setup))} && ros2 {shlex.join(args)}"
             )
-            fallback = _run(["bash", "--noprofile", "--norc", "-c", command], timeout_s=10)
+            fallback = _run(
+                ["bash", "--noprofile", "--norc", "-c", command],
+                timeout_s=10,
+                environment=self.environment,
+            )
             fallback["execution_context"] = "clean_ros_base_setup"
             if direct is not None:
                 fallback["attempts"] = [

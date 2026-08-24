@@ -14,7 +14,8 @@ Discovery 只消费带目标绑定的 Hardware、Linux 和 ROS probes。
 
 ## 产品用户：一条命令
 
-安装 ROLO 后，在机器人本体上 source 正常使用的 ROS 环境和 workspace overlay，然后运行：
+安装 Rolo 后，以机器人应用用户直接运行；Rolo 会在签名证据采集前自动加载唯一的 ROS
+基础环境和 `project-root/install` overlay：
 
 ```bash
 robotctl adapt start \

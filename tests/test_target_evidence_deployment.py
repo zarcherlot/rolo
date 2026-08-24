@@ -21,6 +21,7 @@ from rolo.stages.adapt.active_discovery import (
     HelpProbeStatus,
 )
 from rolo.stages.adapt.discovery import DiscoveryService, _DeterministicR0ProbeDispatcher
+from rolo.stages.adapt.ros_environment import select_ros_setup_files
 from rolo.stages.adapt.software_relevance import SoftwareDiscoveryPolicy
 from rolo.stages.adapt.target_evidence import (
     EvidenceDeploymentMode,
@@ -99,6 +100,53 @@ def test_local_bundle_is_target_bound_signed_and_read_only(
     assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (
         bundle.payload_sha256
     )
+
+
+def test_collector_pins_and_signs_ros_environment_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64
+    )
+    setup = tmp_path / "install/setup.bash"
+    setup.parent.mkdir(parents=True)
+    setup.write_text("# pinned overlay\n", encoding="utf-8")
+    _, setup_records = select_ros_setup_files(
+        auto_source=True,
+        configured=[setup],
+        project_root=None,
+        environment={},
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.ros_environment._source_setup_files",
+        lambda records, environment: {**environment, "ROS_DISTRO": "humble"},
+    )
+    _stub_probes(monkeypatch)
+    state_path = tmp_path / "collector.json"
+    secret_path = tmp_path / "collector.key"
+    descriptor = initialize_collector(
+        robot_id="wheeltec",
+        state_path=state_path,
+        secret_path=secret_path,
+        ros_setup_files=setup_records,
+    )
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.LOCAL,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        local_collector_state_path=state_path,
+    )
+    request = new_request("wheeltec")
+
+    bundle = collect_target_evidence(request, load_collector_state(state_path))
+    verify_evidence_bundle(bundle, deployment=deployment, request=request)
+
+    bootstrap = bundle.probes["ros"].data["environment_bootstrap"]
+    assert bootstrap["setup_files"][0]["path"] == str(setup.resolve())
+    assert bootstrap["setup_files"][0]["sha256"] == setup_records[0].sha256
 
 
 def test_allowlisted_target_help_is_signed_verified_and_merged_into_discovery(

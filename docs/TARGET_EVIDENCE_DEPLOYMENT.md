@@ -36,11 +36,12 @@ stable machine identity, host name, OS, and architecture. Raw machine IDs are ne
 
 ## Mode A: Rolo runs on the target
 
-Clone the source baseline on the target, install the locked environment, and source the robot's
-ROS/workspace environment. The product journey defaults to local signed evidence:
+Clone the immutable source baseline on the target and install the locked environment. Rolo
+automatically resolves and pins the robot's ROS/workspace setup. The product journey defaults to
+local signed evidence:
 
 ```bash
-git clone https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 # Install the target distribution's bubblewrap package for the full Agent/gate journey.
@@ -70,11 +71,18 @@ On the target:
 ```bash
 uv run robotctl target-evidence collector-init \
   --robot-id wheeltec \
+  --project-root /path/to/robot-workspace \
   --config /etc/rolo/target-evidence-collector.json \
   --secret-file /etc/rolo/target-evidence-collector.key \
   --descriptor-out ./wheeltec-collector.json \
   --allow-executable /opt/robot/bin/wheeltec_driver
 ```
+
+`collector-init` sources nothing during enrollment, but resolves each approved base/overlay setup
+path and pins its SHA-256 in collector descriptor v3. Every collection verifies those pins before
+sourcing the files and signs the bootstrap evidence into the bundle. Use repeated `--ros-setup`
+options when automatic selection is ambiguous. A changed setup file requires collector rotation and
+explicit controller re-enrollment; it never falls back to an unpinned shell environment.
 
 Provision the descriptor through the configuration channel, the secret through a separate secrets
 channel, and the SSH host key through an independently verified `known_hosts` file. Use a dedicated
@@ -119,6 +127,7 @@ secret; it does not overwrite or remove the active collector:
 robotctl target-evidence collector-rotate \
   --previous-config /etc/rolo/target-evidence-collector.json \
   --expected-collector-id collector-OLD \
+  --project-root /path/to/robot-workspace \
   --config /etc/rolo/target-evidence-collector-next.json \
   --secret-file /etc/rolo/target-evidence-collector-next.key \
   --descriptor-out ./wheeltec-collector-next.json \
@@ -152,6 +161,8 @@ digests, modes, reason, and timestamp—never secret bytes. Collect and verify a
 new pin before retiring the old collector through the operator's normal secrets-management process.
 Rolo does not delete the old state or secret automatically. Rotation creates a fresh executable
 allowlist, so repeat every still-approved `--allow-executable`; omitted entries are revoked.
+It also creates fresh ROS setup pins, so repeat `--project-root` or every explicit `--ros-setup` in
+source order.
 
 ## Source baseline contents
 
