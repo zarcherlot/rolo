@@ -226,27 +226,34 @@ robot_wiki.md
 │   ├── Discovery status, mode, compatibility, and key evidence boundaries
 │   └── Evidence-backed, low/medium-confidence heuristic findings pending verification
 ├── Changes since the previous discovery
-│   └── Platform, ROS, application, device, operation-candidate, and unknown changes
+│   └── Platform, runtime, application, device, operation-candidate, and unknown changes
+├── Target host and software stack
+│   ├── Target OS release, kernel, CPU architecture, admitted environment keys, and process snapshot
+│   ├── Project packages, languages, build systems, entries, dependencies, protocols, and revision
+│   └── Program origin, entry/help/hash evidence, plus host tool versions
 ├── Startup and health checks
-│   └── Launch entries, argument defaults, includes, startup order, shutdown, and health gaps
+│   └── Program entries, arguments, startup order, shutdown, health, and runtime-instance evidence
 ├── Hardware and robot specifications
 │   ├── Compute platform, CPU architecture, and drive model
 │   ├── URDF structure, geometry, and key safety specifications
 │   └── Physical device candidates, internal pipeline endpoints, unmerged endpoints, and buses
-├── Host and software stack
-│   ├── Operating system and configuration sources/candidates for ROS, RMW, and Domain ID
-│   └── Tool availability and version evidence
-├── Applications and startup topology
-│   ├── pyproject/setuptools/CMake entries, launch evidence, and risks
-│   └── Python/C++ ROS interfaces attributed by source file/target, plus unattributed candidates
-├── ROS and communication topology
-│   └── Live graph and edge-bounded static candidate graph
+├── Applications and startup relationships
+│   ├── pyproject/setuptools/CMake entries, startup declarations, and risks
+│   └── Per-program CLI, network, IPC, hardware-bus, and optional middleware interfaces
+├── Runtime and communication interfaces
+│   ├── CLI routes, network protocols, IPC, and hardware communication
+│   └── ROS distribution, RMW, Domain, and topology only when target or static evidence exists
 ├── Engineering operation candidates
 │   └── Only candidates supported by this discovery, without duplicating the full registry
 ├── Dependencies, differences, and unknowns
 │   └── Acquisition-method-grouped gaps, dependencies, and compatibility differences
 └── Chief engineer maintenance guidance and automatic-discovery appendix
 ```
+
+The Wiki does not assume ROS as the target environment. Without ROS evidence it is organized
+around the observed host and Application/CLI software stack. ROS-specific facts and unknowns are
+shown only when a target probe, project declaration, executable interface, or operation route makes
+ROS relevant.
 
 See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
 [`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,

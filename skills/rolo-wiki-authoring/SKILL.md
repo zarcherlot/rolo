@@ -26,6 +26,12 @@ Do not restate deterministic tables. Deduplicate equivalent insights and preserv
 reported unknown text. Add the author skill version to Agent-authored items and bundle provenance with
 skill version, model ID, and hashes of all input artifacts used.
 
+Organize reasoning around the observed target software stack: operating system, runtime, application
+packages, entrypoints, dependencies, CLI/API routes, protocols, IPC, device interfaces, and running
+process evidence. Treat ROS as one optional middleware. Discuss its distribution, RMW, Domain, graph,
+or missing runtime evidence only when `system_profile.ros_relevant` is true; an unavailable ROS probe
+on a non-ROS target is not a defect or a review requirement.
+
 ## Authority and fallback
 
 Never overwrite the deterministic fact skeleton, resolve a machine unknown, promote an Operation,

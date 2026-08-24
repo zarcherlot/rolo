@@ -442,7 +442,7 @@ def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Pa
     assert manifest["producer"]["version"]
     assert wiki_path.is_file()
     wiki = wiki_path.read_text(encoding="utf-8")
-    assert "## 应用程序与启动拓扑" in wiki
+    assert "## 应用程序与启动关系" in wiki
     assert "节点=navigator" in wiki
     assert "条件=if:enabled" in wiki
     assert "状态=`STATIC_UNVERIFIED`" in wiki
@@ -709,7 +709,8 @@ def test_discovery_and_product_registry_cli(
     assert catalog.exit_code == 2
     assert review.exit_code == 0, review.output
     assert "# 机器人 Wiki：demo_diff" in review.output
-    assert "## ROS 与通信拓扑" in review.output
+    assert "## 运行时与通信接口" in review.output
+    assert "### ROS 运行时与拓扑" in review.output
 
 
 def test_product_registry_conservatively_classifies_motion_operations() -> None:

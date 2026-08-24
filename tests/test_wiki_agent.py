@@ -94,10 +94,10 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
-    assert bundle.findings[0].author_skill_version == "1.0.0"
+    assert bundle.findings[0].author_skill_version == "1.1.0"
     assert bundle.unknown_assessments[0].source == "ADAPT_AGENT_SKILL"
-    assert bundle.unknown_assessments[0].author_skill_version == "1.0.0"
-    assert bundle.provenance.skill_version == "1.0.0"
+    assert bundle.unknown_assessments[0].author_skill_version == "1.1.0"
+    assert bundle.provenance.skill_version == "1.1.0"
     assert "TRUSTED OUTPUT BINDINGS" in str(captured["input"])
     assert "allowed_evidence_refs" in str(captured["input"])
     assert "allowed_unknown_assessments" in str(captured["input"])

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ExecutableDiscovery
 from rolo.stages.adapt.agent_contracts import AgentArtifactProvenance
+from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
@@ -273,7 +274,7 @@ def infer_builtin_wiki_insights(
     findings: list[WikiHeuristicFinding] = []
     ros_probe = report.probes.get("ros")
     ros_data = ros_probe.data if ros_probe else {}
-    if not ros_data.get("nodes"):
+    if ros_evidence_relevant(report, active) and not ros_data.get("nodes"):
         findings.append(
             WikiHeuristicFinding(
                 category="ARCHITECTURE",

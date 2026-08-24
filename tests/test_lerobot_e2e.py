@@ -78,6 +78,15 @@ def test_lerobot_cli_to_rolo_discovery_e2e(tmp_path: Path) -> None:
     persisted = load_latest_report(artifact_root, "demo_diff")
     assert persisted.discovery_id == report.discovery_id
     assert persisted.review_ref.endswith("/robot_wiki.md")
+    wiki = (artifact.parent / "robot_wiki.md").read_text(encoding="utf-8")
+    assert "## 目标主机与软件栈" in wiki
+    assert "lerobot | python | python/pyproject" in wiki
+    assert "## 运行时与通信接口" in wiki
+    assert "lerobot-info" in wiki
+    assert "### ROS 运行时与拓扑" not in wiki
+    assert "ROS 发行版" not in wiki
+    assert "ROS_RUNTIME_GRAPH" not in wiki
+    assert "ROS" not in wiki
 
     application_probe = report.probes["application"]
     assert application_probe.status in {"SUCCEEDED", "DEGRADED"}

@@ -17,6 +17,7 @@ from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
+from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 from rolo.stages.adapt.wiki_insights import (
     RoloWikiHeuristicFinding,
     RoloWikiInsightBundle,
@@ -28,7 +29,7 @@ MAX_AGENT_CONTEXT_CHARS = 40_000
 MAX_AGENT_STRING_CHARS = 1_000
 MAX_CONTEXT_EXECUTABLES = 24
 MAX_AGENT_EVIDENCE_REFS = 512
-WIKI_SKILL_VERSION = "1.0.0"
+WIKI_SKILL_VERSION = "1.1.0"
 
 
 def _toml_string(value: str) -> str:
@@ -159,7 +160,10 @@ def _selected_context(
 ) -> dict[str, Any]:
     """Whitelist useful evidence instead of exposing entire artifacts or secrets."""
     probes: dict[str, Any] = {}
+    ros_relevant = ros_evidence_relevant(report, active)
     for name in ("hw", "linux", "ros", "application"):
+        if name == "ros" and not ros_relevant:
+            continue
         probe = report.probes.get(name)
         if probe is None:
             continue
@@ -176,7 +180,9 @@ def _selected_context(
         elif name == "linux":
             selected = {
                 "host": data.get("host", {}),
+                "environment": data.get("environment", {}),
                 "executables": data.get("executables", {}),
+                "processes": _bounded(data.get("processes", []), 30),
             }
         elif name == "ros":
             selected = {
@@ -201,8 +207,20 @@ def _selected_context(
                 "projects": [
                     {
                         "packages": _bounded(item.get("packages", []), 30),
+                        "root": item.get("root"),
+                        "source_revision": item.get("source_revision"),
+                        "languages": _bounded(item.get("languages", []), 12),
+                        "build_systems": _bounded(item.get("build_systems", []), 12),
+                        "build_targets": _bounded(item.get("build_targets", []), 20),
                         "entrypoints": _bounded(item.get("entrypoints", []), 20),
                         "launch_files": _bounded(item.get("launch_files", []), 20),
+                        "declared_dependencies": _bounded(
+                            item.get("declared_dependencies", []), 40
+                        ),
+                        "dependency_declarations": _bounded(
+                            item.get("dependency_declarations", []), 40
+                        ),
+                        "protocols": _bounded(item.get("protocols", []), 20),
                         "ros_interfaces": _bounded(item.get("ros_interfaces", []), 30),
                     }
                     for item in _bounded(data.get("projects", []), 12)
@@ -263,22 +281,30 @@ def _selected_context(
                     "remappings": _bounded(item.launch_analysis.remappings, 12),
                 },
                 "communication": {
-                    "ros": {
-                        role: _bounded(ros.get(role, []), 15)
-                        for role in (
-                            "publishers",
-                            "subscribers",
-                            "services",
-                            "clients",
-                            "actions",
-                            "nodes",
-                            "remappings",
-                        )
-                    },
                     "network": {
                         key: _bounded(item.communication.network.get(key, []), 12)
                         for key in ("protocols", "listen_endpoints", "remote_endpoints")
                     },
+                    "ipc": {
+                        key: _bounded(value, 12)
+                        for key, value in item.communication.ipc.items()
+                    },
+                    "hardware_bus": {
+                        key: _bounded(value, 12)
+                        for key, value in item.communication.hardware_bus.items()
+                    },
+                },
+                "invocation": {
+                    "entrypoint": item.invocation.entrypoint,
+                    "arguments": _bounded(item.invocation.arguments, 20),
+                    "subcommands": _bounded(item.invocation.subcommands, 20),
+                    "required_environment_keys": sorted(
+                        item.invocation.required_environment
+                    )[:20],
+                    "startup_sequence": _bounded(item.invocation.startup_sequence, 12),
+                    "shutdown_method": item.invocation.shutdown_method,
+                    "health_check": item.invocation.health_check,
+                    "help_probe": item.invocation.help_probe.model_dump(mode="json"),
                 },
                 "safety": item.safety,
                 "dependencies": {
@@ -286,11 +312,36 @@ def _selected_context(
                 },
             }
         )
+        if ros_relevant:
+            executables[-1]["communication"]["ros"] = {
+                role: _bounded(ros.get(role, []), 15)
+                for role in (
+                    "publishers",
+                    "subscribers",
+                    "services",
+                    "clients",
+                    "actions",
+                    "nodes",
+                    "remappings",
+                )
+            }
     return {
         "robot_id": report.robot_id,
         "discovery_id": report.discovery_id,
         "status": report.status.value,
         "platform": report.platform,
+        "system_profile": {
+            "middleware_mode": "ROS_RELEVANT" if ros_relevant else "NON_ROS_APPLICATION",
+            "ros_relevant": ros_relevant,
+            "interpretation": (
+                "Describe ROS only where target or static evidence supports it."
+                if ros_relevant
+                else (
+                    "Describe the observed host, runtime, application, CLI/API, protocol, "
+                    "and device stack; missing ROS is not a defect."
+                )
+            ),
+        },
         "compatibility": report.capability_manifest.get("compatibility", {}),
         "expected_profile": report.capability_manifest.get("expected_profile", {}),
         "probes": probes,

@@ -9,6 +9,8 @@ from typing import Any
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ExecutableDiscovery
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.routes import probe_routes
+from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff, build_wiki_discovery_diff
 from rolo.stages.adapt.wiki_insights import (
     WikiInsightBundle,
@@ -195,6 +197,10 @@ def _application_score(executable: ExecutableDiscovery) -> int:
         score += 60
     if executable.invocation.entrypoint:
         score += 30
+    if executable.communication.network.get("protocols"):
+        score += 20
+    if executable.communication.ipc or executable.communication.hardware_bus:
+        score += 20
     if any(executable.communication.ros.get(role) for role in ("publishers", "subscribers")):
         score += 20
     if executable.communication.ros.get("services") or executable.communication.ros.get("actions"):
@@ -274,15 +280,22 @@ def _critical_unknowns(
     expected: dict[str, Any],
     geometry: dict[str, Any],
     ros_data: dict[str, Any],
+    *,
+    ros_relevant: bool,
 ) -> list[str]:
     values = {
         "底盘驱动模型": expected.get("platform", {}).get("drive_model"),
         "最大线速度": geometry.get("hard_max_linear_velocity_mps"),
         "最大角速度": geometry.get("hard_max_angular_velocity_radps"),
-        "ROS 发行版": ros_data.get("ros_distro"),
-        "RMW": ros_data.get("rmw"),
-        "ROS Domain ID": ros_data.get("domain_id"),
     }
+    if ros_relevant:
+        values.update(
+            {
+                "ROS 发行版": ros_data.get("ros_distro"),
+                "RMW": ros_data.get("rmw"),
+                "ROS Domain ID": ros_data.get("domain_id"),
+            }
+        )
     return [name for name, value in values.items() if _is_missing(value)]
 
 
@@ -352,6 +365,8 @@ def _append_hardware_details(
     urdf_hardware: dict[str, Any],
     reconciliation: dict[str, Any],
     hardware_data: dict[str, Any],
+    *,
+    ros_relevant: bool,
 ) -> None:
     unresolved_semantics = (
         expected.get("features", {})
@@ -486,13 +501,156 @@ def _append_hardware_details(
             "### 控制与仿真声明",
             "",
             f"- Transmissions：{_named(urdf_hardware.get('transmissions', []), limit=20)}",
-            f"- ros2_control：{_named(urdf_hardware.get('ros2_control', []), limit=20)}",
+        ]
+    )
+    if ros_relevant or urdf_hardware.get("ros2_control"):
+        lines.append(
+            f"- ros2_control：{_named(urdf_hardware.get('ros2_control', []), limit=20)}"
+        )
+    lines.extend(
+        [
             f"- Gazebo：{_named(urdf_hardware.get('gazebo', []), limit=20)}",
             f"- 主机设备节点：{len(hardware_data.get('devices', []))} 个（原始清单见机器报告）",
             f"- 硬件总线：{_items(hardware_data.get('buses', {}), limit=20)}",
             "",
         ]
     )
+
+
+def _append_target_software_stack(
+    lines: list[str],
+    report: DiscoveryReport,
+    applications: list[ExecutableDiscovery],
+    *,
+    ros_relevant: bool,
+) -> None:
+    """Describe the observed target and application stack without assuming middleware."""
+    linux = report.probes.get("linux")
+    application = report.probes.get("application")
+    linux_data = linux.data if linux else {}
+    host = linux_data.get("host", {})
+    os_release = host.get("os_release", {})
+    software = linux_data.get("executables", {})
+    projects = application.data.get("projects", []) if application else []
+    processes = linux_data.get("processes", [])
+    environment = linux_data.get("environment", {})
+    os_name = (
+        os_release.get("PRETTY_NAME")
+        or os_release.get("NAME")
+        or " ".join(
+            str(value)
+            for value in (host.get("system"), host.get("release"))
+            if value
+        )
+    )
+    lines.extend(
+        [
+            "## 目标主机与软件栈",
+            "",
+            "> 本节按目标主机 probe 与源码/制品声明分别陈述，不预设操作系统或中间件。",
+            "",
+            "### 目标主机",
+            "",
+            "| 项目 | 发现值 | 证据状态 |",
+            "|---|---|---|",
+            f"| 主机名 | {_text(host.get('hostname'))} | "
+            f"{_text(linux.status.value if linux else 'NOT_PROBED')} |",
+            f"| 操作系统 | {_text(os_name)} | 目标主机观测 |",
+            f"| 内核 | {_text(host.get('version') or host.get('release'))} | 目标主机观测 |",
+            f"| CPU 架构 | {_text(host.get('architecture'))} | 目标主机观测 |",
+            f"| 已准入运行环境键 | {_items(sorted(environment), limit=20)} | "
+            "仅列键名，不披露值 |",
+            f"| 进程快照 | {len(processes)} 项 | 只读、时点观测 |",
+            f"| 进程样本 | {_items(processes, limit=8)} | 仅进程名，不含命令参数 |",
+            "",
+            "### 工程与应用软件",
+            "",
+            "| 工程根目录 | 包 | 语言 | 构建系统 | 入口 | 源码版本 |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    if projects:
+        for project in projects[:20]:
+            if not isinstance(project, dict):
+                continue
+            entrypoints = [
+                item.get("name") or item.get("target")
+                for item in project.get("entrypoints", [])
+                if isinstance(item, dict)
+            ]
+            lines.append(
+                f"| {_text(project.get('root'))} | "
+                f"{_items(project.get('packages', []), limit=8)} | "
+                f"{_items(project.get('languages', []), limit=8)} | "
+                f"{_items(project.get('build_systems', []), limit=8)} | "
+                f"{_items(entrypoints, limit=8)} | "
+                f"{_text(project.get('source_revision'))} |"
+            )
+    else:
+        lines.append("| 未提供源码工程 | 未获取 | 未获取 | 未获取 | 未获取 | 未获取 |")
+    dependency_names = sorted(
+        {
+            str(name)
+            for project in projects
+            if isinstance(project, dict)
+            for name in project.get("declared_dependencies", [])
+        }
+    )
+    project_protocols = sorted(
+        {
+            str(protocol)
+            for project in projects
+            if isinstance(project, dict)
+            for protocol in project.get("protocols", [])
+        }
+    )
+    lines.extend(
+        [
+            "",
+            f"- 声明依赖：{_items(dependency_names, limit=20)}",
+            f"- 源码声明协议：{_items(project_protocols, limit=20)}",
+            "",
+            "### 程序与入口证据",
+            "",
+            "| 程序 | 来源 | 入口/路径 | Help 探测 | 哈希 |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    if applications:
+        for executable in applications[:30]:
+            help_probe = executable.invocation.help_probe
+            lines.append(
+                f"| `{_text(executable.name)}` | {_text(executable.origin)} | "
+                f"{_text(executable.invocation.entrypoint or executable.path)} | "
+                f"{_text(help_probe.status.value)} | {_text(executable.sha256)} |"
+            )
+    else:
+        lines.append("| 未识别到程序入口 | 未获取 | 未获取 | 未执行 | 未获取 |")
+    lines.extend(
+        [
+            "",
+            "### 主机工具证据",
+            "",
+            "| 工具 | 状态 | 路径 | 版本证据 |",
+            "|---|---:|---|---|",
+        ]
+    )
+    visible_tools = [
+        (name, metadata)
+        for name, metadata in sorted(software.items())
+        if metadata.get("available") or (ros_relevant and name in {"ros2", "colcon"})
+    ]
+    if visible_tools:
+        for name, metadata in visible_tools:
+            lines.append(
+                f"| {_text(name)} | "
+                f"{'available' if metadata.get('available') else 'unavailable'} | "
+                f"{_text(metadata.get('path'))} | "
+                f"{_items(metadata.get('version_output', []), limit=2)} |"
+            )
+    else:
+        lines.append("| 未获取可用工具证据 | unknown | 未获取 | 未获取 |")
+    lines.append("")
 
 
 def render_discovery_review_markdown(
@@ -505,21 +663,23 @@ def render_discovery_review_markdown(
 ) -> str:
     """Render a concise engineer-facing Wiki; machine reports retain exhaustive evidence."""
     hardware = report.probes.get("hw")
-    linux = report.probes.get("linux")
     ros = report.probes.get("ros")
     hardware_data = hardware.data if hardware else {}
-    linux_data = linux.data if linux else {}
     ros_data = ros.data if ros else {}
-    host = linux_data.get("host", {})
     expected = report.capability_manifest.get("expected_profile", {})
     compatibility = report.capability_manifest.get("compatibility", {})
-    software = linux_data.get("executables", {})
     geometry = expected.get("geometry", {})
     features = expected.get("features", {})
     urdf_structure = features.get("urdf_structure", {})
     urdf_hardware = features.get("urdf_hardware", {})
     reconciliation = report.capability_manifest.get("hardware_reconciliation", {})
-    critical_unknowns = _critical_unknowns(expected, geometry, ros_data)
+    ros_relevant = ros_evidence_relevant(report, active)
+    critical_unknowns = _critical_unknowns(
+        expected,
+        geometry,
+        ros_data,
+        ros_relevant=ros_relevant,
+    )
     insights = merge_wiki_insights(report, active, insight_bundle)
     applications, support_artifacts = _primary_applications(active.executables)
     discovery_diff = build_wiki_discovery_diff(
@@ -545,8 +705,8 @@ def render_discovery_review_markdown(
         f"`{_text(active.discovery_mode.confidence.value)}` |",
         f"| 兼容性判断 | {_text(_compatibility_text(compatibility, critical_unknowns))} |",
         f"| 工程应用/辅助产物 | {len(applications)} / {len(support_artifacts)} |",
-        f"| 在线 ROS 图 | {len(ros_data.get('nodes', []))} 节点、"
-        f"{len(ros_data.get('topics', []))} Topics |",
+        f"| 目标软件形态 | "
+        f"{'ROS 相关软件栈' if ros_relevant else 'Application/CLI 软件栈（无中间件证据）'} |",
         f"| 待确认/警告 | {len(active.unknowns)} / {len(active.warnings)} |",
         "",
         "### 当前证据边界",
@@ -581,6 +741,13 @@ def render_discovery_review_markdown(
 
     _append_discovery_diff(lines, discovery_diff)
 
+    _append_target_software_stack(
+        lines,
+        report,
+        applications,
+        ros_relevant=ros_relevant,
+    )
+
     startup_entries = [
         item.name for item in applications if item.launch_analysis.available
     ]
@@ -609,7 +776,14 @@ def render_discovery_review_markdown(
             f"| 启动顺序 | {_items(startup_steps, limit=8)} | 待确认 |",
             f"| 停止方式 | {_items(shutdown_methods, limit=8)} | 待确认 |",
             f"| 健康检查 | {_items(health_checks, limit=8)} | 待确认 |",
-            f"| 在线节点 | {_items(ros_data.get('nodes', []), limit=12)} | 运行时观测 |",
+            (
+                f"| 在线 ROS 节点 | {_items(ros_data.get('nodes', []), limit=12)} | "
+                "运行时观测 |"
+                if ros_relevant
+                else f"| 已识别程序入口 | "
+                f"{_items([item.name for item in applications], limit=12)} | "
+                "声明/静态证据；运行实例待目标主机确认 |"
+            ),
             "",
         ]
     )
@@ -622,39 +796,16 @@ def render_discovery_review_markdown(
         urdf_hardware,
         reconciliation,
         hardware_data,
+        ros_relevant=ros_relevant,
     )
 
     lines.extend(
         [
-            "## 主机与软件栈",
             "",
-            "| 项目 | 发现值 |",
-            "|---|---|",
-            f"| 主机名 | {_text(host.get('hostname'))} |",
-            f"| 操作系统 | {_text(host.get('system'))} {_text(host.get('release'))} |",
-            f"| ROS 发行版 | {_text(ros_data.get('ros_distro'))} |",
-            f"| RMW | {_text(ros_data.get('rmw'))} |",
-            f"| ROS Domain ID | {_text(ros_data.get('domain_id'))} |",
-            "",
-            "### 可用工具",
-            "",
-            "| 工具 | 状态 | 版本证据 |",
-            "|---|---:|---|",
-        ]
-    )
-    for name, metadata in sorted(software.items()):
-        lines.append(
-            f"| {_text(name)} | {'available' if metadata.get('available') else 'unavailable'} | "
-            f"{_items(metadata.get('version_output', []), limit=2)} |"
-        )
-
-    lines.extend(
-        [
-            "",
-            "## 应用程序与启动拓扑",
+            "## 应用程序与启动关系",
             "",
             "> 只在正文列出有 launch、显式入口、源码入口或通信证据的工程应用。",
-            "> 构建 hook、CMake 探测文件和 ROSIDL 生成库已从正文降级为统计，不视为机器人应用。",
+            "> 构建 hook、CMake 探测文件和中间件生成库已从正文降级为统计，不视为机器人应用。",
             "",
         ]
     )
@@ -684,11 +835,27 @@ def render_discovery_review_markdown(
                 if launch.available
                 else f"入口={_text(executable.invocation.entrypoint or executable.path)}"
             )
-            interface = (
-                f"出={_items(outgoing, limit=4)}；入={_items(incoming, limit=4)}"
-                if outgoing or incoming
-                else "未发现 ROS 接口"
-            )
+            protocols = executable.communication.network.get("protocols", [])
+            endpoints = [
+                *executable.communication.network.get("listen_endpoints", []),
+                *executable.communication.network.get("remote_endpoints", []),
+            ]
+            interface_parts = []
+            if outgoing or incoming:
+                interface_parts.append(
+                    f"ROS 出={_items(outgoing, limit=4)}；入={_items(incoming, limit=4)}"
+                )
+            if protocols or endpoints:
+                interface_parts.append(
+                    f"网络={_items(protocols, limit=4)}；端点={_items(endpoints, limit=4)}"
+                )
+            if executable.communication.ipc:
+                interface_parts.append(f"IPC={_items(executable.communication.ipc, limit=4)}")
+            if executable.communication.hardware_bus:
+                interface_parts.append(
+                    f"硬件总线={_items(executable.communication.hardware_bus, limit=4)}"
+                )
+            interface = "；".join(interface_parts) or "未发现可归属的运行时通信接口"
             lines.append(
                 f"| `{_text(executable.name)}` | {launch_evidence} | {interface} | "
                 f"{_text(_application_risk(executable))} | "
@@ -741,59 +908,120 @@ def render_discovery_review_markdown(
             ]
         )
 
+    cli_routes = _unique(
+        [
+            route
+            for layer in ("application", "linux")
+            if (probe := report.probes.get(layer)) is not None
+            for route in probe_routes(probe)
+            if route.kind == "cli"
+        ]
+        + [
+            route
+            for candidate in report.operation_candidates
+            for route in candidate.route_evidence
+            if route.kind == "cli"
+        ]
+    )
+    network_protocols = sorted(
+        {
+            str(protocol)
+            for executable in applications
+            for protocol in executable.communication.network.get("protocols", [])
+        }
+    )
+    ipc_kinds = sorted(
+        {
+            str(kind)
+            for executable in applications
+            for kind, value in executable.communication.ipc.items()
+            if value
+        }
+    )
+    hardware_buses = sorted(
+        {
+            str(kind)
+            for executable in applications
+            for kind, value in executable.communication.hardware_bus.items()
+            if value
+        }
+    )
     lines.extend(
         [
-            "## ROS 与通信拓扑",
+            "## 运行时与通信接口",
             "",
-            f"- 在线节点：{_items(ros_data.get('nodes', []), limit=20)}",
-            f"- Topics：{_items(ros_data.get('topics', []), limit=20)}",
-            f"- Services：{_items(ros_data.get('services', []), limit=20)}",
-            f"- Actions：{_items(ros_data.get('actions', []), limit=20)}",
+            f"- CLI 路由：{_items([route.endpoint for route in cli_routes], limit=20)}",
+            f"- 网络协议：{_items(network_protocols, limit=20)}",
+            f"- IPC 机制：{_items(ipc_kinds, limit=20)}",
+            f"- 硬件通信：{_items(hardware_buses, limit=20)}",
             "",
         ]
     )
-    if not ros_data.get("nodes"):
+    if ros_relevant:
         lines.extend(
             [
-                "> 本次没有在线节点证据；以下关系若存在，仅为静态候选，不代表真实运行拓扑。",
+                "### ROS 运行时与拓扑",
+                "",
+                f"- 发行版：{_text(ros_data.get('ros_distro'))}",
+                f"- RMW：{_text(ros_data.get('rmw'))}",
+                f"- Domain ID：{_text(ros_data.get('domain_id'))}",
+                f"- 在线节点：{_items(ros_data.get('nodes', []), limit=20)}",
+                f"- Topics：{_items(ros_data.get('topics', []), limit=20)}",
+                f"- Services：{_items(ros_data.get('services', []), limit=20)}",
+                f"- Actions：{_items(ros_data.get('actions', []), limit=20)}",
                 "",
             ]
         )
-    graph_lines: list[str] = ["```mermaid", "flowchart LR"]
-    edge_count = 0
-    topic_ids: dict[str, str] = {}
-    declared_topics: set[str] = set()
-    for index, executable in enumerate(applications):
-        outgoing, incoming = _ros_interfaces(executable)
-        if not outgoing and not incoming:
-            continue
-        source = f"exe{index}"
-        graph_lines.append(f'  {source}["{_mermaid_label(executable.name)}"]')
-        for role, names in (("publishers", outgoing), ("subscribers", incoming)):
-            for name in names:
-                if edge_count >= MAX_STATIC_GRAPH_EDGES:
-                    break
-                target = topic_ids.setdefault(name, f"topic{len(topic_ids)}")
-                if name not in declared_topics:
-                    graph_lines.append(f'  {target}(("{_mermaid_label(name)}"))')
-                    declared_topics.add(name)
-                graph_lines.append(
-                    f"  {source} --> {target}"
-                    if role == "publishers"
-                    else f"  {target} -.-> {source}"
-                )
-                edge_count += 1
-    if edge_count:
-        lines.extend([*graph_lines, "```", ""])
-        if edge_count >= MAX_STATIC_GRAPH_EDGES:
+        if not ros_data.get("nodes"):
             lines.extend(
                 [
-                    f"> 静态图已限制为 {MAX_STATIC_GRAPH_EDGES} 条去重边；完整候选见机器报告。",
+                    "> 本次没有在线节点证据；以下关系若存在，仅为静态候选，不代表真实运行拓扑。",
                     "",
                 ]
             )
+        graph_lines: list[str] = ["```mermaid", "flowchart LR"]
+        edge_count = 0
+        topic_ids: dict[str, str] = {}
+        declared_topics: set[str] = set()
+        for index, executable in enumerate(applications):
+            outgoing, incoming = _ros_interfaces(executable)
+            if not outgoing and not incoming:
+                continue
+            source = f"exe{index}"
+            graph_lines.append(f'  {source}["{_mermaid_label(executable.name)}"]')
+            for role, names in (("publishers", outgoing), ("subscribers", incoming)):
+                for name in names:
+                    if edge_count >= MAX_STATIC_GRAPH_EDGES:
+                        break
+                    target = topic_ids.setdefault(name, f"topic{len(topic_ids)}")
+                    if name not in declared_topics:
+                        graph_lines.append(f'  {target}(("{_mermaid_label(name)}"))')
+                        declared_topics.add(name)
+                    graph_lines.append(
+                        f"  {source} --> {target}"
+                        if role == "publishers"
+                        else f"  {target} -.-> {source}"
+                    )
+                    edge_count += 1
+        if edge_count:
+            lines.extend([*graph_lines, "```", ""])
+            if edge_count >= MAX_STATIC_GRAPH_EDGES:
+                lines.extend(
+                    [
+                        f"> 静态图已限制为 {MAX_STATIC_GRAPH_EDGES} 条去重边；完整候选见机器报告。",
+                        "",
+                    ]
+                )
+        else:
+            lines.extend(["没有足够证据生成有意义的程序—接口关系图。", ""])
     else:
-        lines.extend(["没有足够证据生成有意义的程序—接口关系图。", ""])
+        lines.extend(
+            [
+                "> 本次没有观测到可归属的中间件运行时；按目标主机的 Application/CLI、"
+                "网络、IPC 和设备接口组织。",
+                "",
+            ]
+        )
 
     _append_operation_catalog(lines, report)
 
@@ -852,7 +1080,11 @@ def render_discovery_review_markdown(
             "## 总工维护建议",
             "",
             "1. 启动、停止、健康检查、急停和失联行为。",
-            "2. ROS 发行版/RMW/Domain、启动顺序和在线节点基线。",
+            (
+                "2. ROS 发行版/RMW/Domain、启动顺序和在线节点基线。"
+                if ros_relevant
+                else "2. 目标主机软件版本、CLI/API/协议、启动顺序和运行实例基线。"
+            ),
             "3. 物理设备与 `/dev/*`、驱动、固件和标定文件的映射。",
             "4. 速度/负载/关节安全限制及其来源和验证日期。",
             "5. 版本基线、日志位置、已知故障、负责人和恢复步骤。",

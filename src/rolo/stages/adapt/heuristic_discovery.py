@@ -37,6 +37,7 @@ from rolo.stages.adapt.proposal_orchestration import (
 )
 from rolo.stages.adapt.skill_contracts import AdaptDiscoveryPlan, DiscoveryRemainingBudget
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 
 DISCOVERY_SKILL_NAME = "rolo-adapt-discovery"
 DISCOVERY_SKILL_VERSION = "1.0.0"
@@ -542,6 +543,7 @@ def derive_evidence_gaps(
             )
         )
 
+    ros_relevant = ros_evidence_relevant(report, active)
     runtime_observed = (
         report.probes.get("ros") is not None and report.probes["ros"].status == "SUCCEEDED"
     )
@@ -558,7 +560,7 @@ def derive_evidence_gaps(
             "device IDs.",
             "TARGET_HOST",
         )
-    if not runtime_observed:
+    if ros_relevant and not runtime_observed:
         add(
             EvidenceGapCode.ROS_RUNTIME_GRAPH,
             "target:ros-graph",
@@ -606,21 +608,33 @@ def derive_evidence_gaps(
     routes = [
         route for candidate in report.operation_candidates for route in candidate.route_evidence
     ]
-    if routes and any(not route.provider_id for route in routes):
+    missing_provider_routes = [route for route in routes if not route.provider_id]
+    if missing_provider_routes:
+        provider_context = (
+            "RUNTIME_ROS"
+            if any(route.kind.startswith("ros_") for route in missing_provider_routes)
+            else "TARGET_HOST"
+        )
         add(
             EvidenceGapCode.ROUTE_PROVIDER_IDENTITY,
             "routes:provider",
             "At least one declared route lacks an observed provider identity.",
-            "Observe the target runtime provider/node/process for each proposed route.",
-            "RUNTIME_ROS",
+            "Observe the target runtime provider, process, or device for each proposed route.",
+            provider_context,
         )
-    if routes and any(not route.interface_schema_sha256 for route in routes):
+    missing_schema_routes = [route for route in routes if not route.interface_schema_sha256]
+    if missing_schema_routes:
+        schema_context = (
+            "RUNTIME_ROS"
+            if any(route.kind.startswith("ros_") for route in missing_schema_routes)
+            else "TARGET_HOST"
+        )
         add(
             EvidenceGapCode.INTERFACE_SCHEMA,
             "routes:interface-schema",
             "At least one route lacks a verified interface schema digest.",
             "Resolve the target interface type and hash its canonical schema.",
-            "RUNTIME_ROS",
+            schema_context,
         )
     if routes and any(not route.runtime_revision for route in routes):
         add(

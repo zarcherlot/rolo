@@ -6,9 +6,11 @@
 ## 1. 部署与环境
 
 - 部署 `main` 的固定 commit，记录 commit SHA；不要直接部署未提交工作区。
-- 使用机器人应用实际运行用户；Rolo 自动加载 ROS setup 和 workspace overlay，歧义时按
-  `~/.config/rolo/config.yaml` 显式排序。
-- 确认 `ROS_DISTRO`、`RMW_IMPLEMENTATION`、`ROS_DOMAIN_ID` 是否显式配置；未配置也要记录。
+- 使用机器人应用实际运行用户；Rolo 先采集目标操作系统、内核、架构、应用入口、依赖、
+  协议和进程证据。
+- 若工程或目标主机确实使用 ROS，Rolo 才自动加载 ROS setup 和 workspace overlay；歧义时按
+  `~/.config/rolo/config.yaml` 显式排序，并记录 `ROS_DISTRO`、`RMW_IMPLEMENTATION`、
+  `ROS_DOMAIN_ID` 的配置来源。非 ROS 主机无需补造这些配置。
 - 默认用户级制品和 release 目录位于源码目录之外；如有覆盖配置，仍须保持该边界。
 - 启发式 skill 默认开启；验证前先完成 `codex login`，并可显式设置：
 
@@ -64,10 +66,13 @@ uv run robotctl adapt discover review --robot "$ROBOT_ID"
 
 检查：
 
+- “目标主机与软件栈”与实际操作系统发行版、内核、架构、工具、工程包、入口和依赖一致；
+- 非 ROS 工程没有 ROS 专节或“缺少 ROS 图”的缺口，而是展示 CLI/API、网络、IPC 或硬件接口；
 - ROS distro、RMW、Domain ID 的值及来源与实际环境一致；安装候选没有被写成运行事实；
 - 在线 Node/Topic/Service/Action 与 `ros2 ... list` 的同一时刻结果一致；
 - 静态接口与在线图不一致时仍保留“静态未验证”，没有自动提升为已验证；
-- `wiki_diff.json` 以第一次 discovery 为基线，主要变化集中在 ROS 在线图；
+- `wiki_diff.json` 以第一次 discovery 为基线；ROS 工程主要核对在线图，非 ROS 工程主要核对
+  程序版本、运行实例、CLI/API/协议和设备接口变化；
 - `wiki_insights.json` 中 Agent 结论均为 `ADAPT_AGENT_SKILL`、LOW/MEDIUM，并包含依据和验证方式；
 - Agent 对 Unknown 的检视必须出现在 `unknown_assessments`，逐字引用现有 Unknown，给出证据分类和下一步；它不得删除 Unknown、修改 probe 状态或让 operation 通过门禁；
 - Agent 不可用或输出无效时 discovery 仍成功，`wiki_generation.json` 记录回退原因。

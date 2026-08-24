@@ -14,6 +14,7 @@
 | 6 | 在 Wiki 中给出与上一份可验证 discovery 的工程字段差异 | 已实现 | 平台、ROS、应用、硬件、操作候选和 unknown 集合差异 |
 | 7 | 以 Adapt Agent skill 生成有依据、低/中置信度且明确未验证的洞察 | 已实现，默认开启 | 严格 JSON schema、只读 sandbox、失败回退确定性规则 |
 | 9 | 补齐 setuptools、CMake Python 安装入口与 C++ ROS 2 模板接口归属 | 已实现 | 字面量与符号表达式分层，注释接口排除，未归属项显式展示 |
+| 10 | 按实际目标软件栈组织 Wiki，ROS 仅在有证据时出现 | 已实现 | 非 ROS Application/CLI 夹具不生成 ROS 缺口或专节 |
 
 ## 低优先级留存
 
@@ -33,7 +34,7 @@
 
 ## 远程设备迭代项
 
-- 在正确 ROS 环境启动机器人后，核对静态接口归属和在线节点/Topic 的差异。
+- ROS 目标在正确环境启动后核对静态接口与在线图；非 ROS 目标核对 CLI/API、协议、进程和设备接口。
 - 用 udev、media graph、VID/PID、序列号和业务配置验证设备端点归并。
 - 审核 Agent skill 的推断是否改变工程师下一步动作，删除泛化或重复建议。
 - 累积多次 discovery，校准差异噪声和未来 Wiki 质量门禁阈值。

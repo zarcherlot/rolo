@@ -1,5 +1,11 @@
 <!-- insight-provider: deterministic -->
 <!-- insight-fallback: none -->
+> **归档样例说明**：本文是 2026-08-19 由旧版模板生成的 Wheeltec ROS 2 源码专项快照，
+> 保留用于追溯，不能代表当前 Wiki 的通用内容骨架。Wheeltec 工程本身存在 package、launch、
+> ROS API 与 route 证据，因此本文的 ROS 内容属于工程证据，而不是默认假设。当前生成器会先
+> 描述目标主机、运行时和 Application/CLI 软件栈；没有 ROS 证据时不会生成 ROS 专节、ROS
+> 关键未知项或 ROS 图采集要求。当前结构见[中文 README](../../README.md#第一阶段自主适配)。
+
 # 机器人 Wiki：wheeltec_validation
 
 > 面向接手、启动和排障的工程视图。完整原始观测保留在同次发现的机器 JSON 中。

@@ -270,6 +270,36 @@ def test_static_source_gaps_do_not_treat_developer_host_as_target() -> None:
     assert all("RELEASE" in gap.blocks for gap in gaps)
 
 
+def test_non_ros_cli_source_does_not_request_a_ros_runtime_graph() -> None:
+    report = _report().model_copy(
+        update={
+            "operation_candidates": [
+                OperationCandidate(
+                    operation="app.runtime.info",
+                    route_evidence=[
+                        RouteEvidence(
+                            resource_id="cli:lerobot-info",
+                            kind="cli",
+                            endpoint="lerobot-info",
+                            evidence_origin="DECLARED_STATIC",
+                            source="pyproject:lerobot-info",
+                        )
+                    ],
+                )
+            ]
+        }
+    )
+
+    gaps = derive_evidence_gaps(report, _active())
+    codes = {gap.code for gap in gaps}
+
+    assert EvidenceGapCode.ROS_RUNTIME_GRAPH not in codes
+    provider = next(gap for gap in gaps if gap.code == EvidenceGapCode.ROUTE_PROVIDER_IDENTITY)
+    schema = next(gap for gap in gaps if gap.code == EvidenceGapCode.INTERFACE_SCHEMA)
+    assert provider.collection_context == "TARGET_HOST"
+    assert schema.collection_context == "TARGET_HOST"
+
+
 def test_shadow_orchestrator_persists_agent_output_and_missing_evidence(
     tmp_path: Path,
 ) -> None:

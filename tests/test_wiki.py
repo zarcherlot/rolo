@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rolo.core.models import DiscoveryReport, DiscoveryStatus, OperationCandidate, ProbeResult
+from rolo.core.models import (
+    DiscoveryReport,
+    DiscoveryStatus,
+    OperationCandidate,
+    ProbeResult,
+    RouteEvidence,
+)
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.agent_contracts import AgentArtifactProvenance
 from rolo.stages.adapt.review import render_discovery_review_markdown
@@ -11,6 +17,7 @@ from rolo.stages.adapt.wiki import (
     WikiNarrative,
     generate_robot_wiki,
 )
+from rolo.stages.adapt.wiki_agent import _selected_context
 from rolo.stages.adapt.wiki_diff import build_wiki_discovery_diff
 from rolo.stages.adapt.wiki_insights import (
     RoloWikiHeuristicFinding,
@@ -265,6 +272,181 @@ def test_engineer_wiki_filters_noise_deduplicates_and_marks_uncertainty() -> Non
     assert "未归属静态接口：1 项" in wiki
     assert "### 未归属的静态接口" in wiki
     assert "<symbol:diagnostic_topic>" in wiki
+
+
+def _non_ros_review_inputs() -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
+    now = datetime.now(timezone.utc)
+    report = DiscoveryReport(
+        discovery_id="disc-cli",
+        robot_id="cli-robot",
+        status=DiscoveryStatus.PARTIAL,
+        platform={},
+        capability_manifest={
+            "expected_profile": {
+                "platform": {"compute": "x86_64", "drive_model": "unresolved"},
+                "geometry": {},
+                "features": {
+                    "enrollment": {"unresolved_semantics": []},
+                    "urdf_structure": {"links": [], "joints": []},
+                    "urdf_hardware": {},
+                },
+            },
+            "compatibility": {"status": "MATCH", "mismatches": []},
+            "hardware_reconciliation": {"effective": []},
+        },
+        probes={
+            "hw": ProbeResult(
+                layer="hw",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={"compute_platform": "industrial_pc", "architecture": "x86_64"},
+            ),
+            "linux": ProbeResult(
+                layer="linux",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "host": {
+                        "hostname": "edge-a",
+                        "system": "Linux",
+                        "release": "6.8",
+                        "version": "6.8.0-64-generic",
+                        "architecture": "x86_64",
+                        "os_release": {"PRETTY_NAME": "Ubuntu 24.04.2 LTS"},
+                    },
+                    "environment": {"PATH": "/usr/local/bin:/usr/bin"},
+                    "executables": {
+                        "python3": {
+                            "available": True,
+                            "path": "/usr/bin/python3",
+                            "version_output": ["Python 3.12.3"],
+                        },
+                        "ros2": {"available": False, "version_output": []},
+                    },
+                    "processes": [{"pid": 42, "command": "lerobot-control"}],
+                },
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "projects": [
+                        {
+                            "root": "/opt/lerobot",
+                            "packages": ["lerobot"],
+                            "languages": ["python"],
+                            "build_systems": ["python/pyproject"],
+                            "entrypoints": [
+                                {
+                                    "name": "lerobot-info",
+                                    "target": "lerobot.scripts.lerobot_info:main",
+                                    "source": "pyproject",
+                                }
+                            ],
+                            "declared_dependencies": ["numpy", "torch"],
+                            "dependency_declarations": [
+                                {"name": "numpy", "ecosystem": "python"}
+                            ],
+                            "protocols": ["HTTP"],
+                            "source_revision": "1" * 40,
+                        }
+                    ]
+                },
+            ),
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.UNAVAILABLE,
+                data={
+                    "ros_distro": None,
+                    "ros_distro_source": "NOT_FOUND",
+                    "installed_distros": [],
+                    "domain_id": "0",
+                    "domain_id_source": "ROS_DEFAULT",
+                    "rmw": None,
+                    "rmw_candidates": [],
+                    "nodes": [],
+                    "topics": [],
+                    "services": [],
+                    "actions": [],
+                },
+            ),
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.runtime.info",
+                route_evidence=[
+                    RouteEvidence(
+                        resource_id="cli:lerobot-info",
+                        kind="cli",
+                        endpoint="lerobot-info",
+                        evidence_origin="DECLARED_STATIC",
+                        source="pyproject:/opt/lerobot/pyproject.toml",
+                    )
+                ],
+            )
+        ],
+        created_at=now,
+    )
+    active = ActiveDiscoveryReport.model_validate(
+        {
+            "discovery_id": "disc-cli",
+            "robot_id": "cli-robot",
+            "technical_status": "PARTIAL",
+            "discovery_mode": {
+                    "level": "SOURCE_FIRST",
+                "confidence": "LOW",
+                "reason": "source and target inventory",
+            },
+            "inputs": {},
+            "coverage": {},
+            "executables": [
+                {
+                    "executable_id": "exe-info",
+                    "name": "lerobot-info",
+                    "origin": "SOURCE_DECLARED",
+                    "path": "/usr/local/bin/lerobot-info",
+                    "invocation": {"entrypoint": "lerobot-info"},
+                    "communication": {
+                        "network": {"protocols": ["HTTP"]},
+                        "confidence": "MEDIUM",
+                    },
+                }
+            ],
+            "dependency_summary": {},
+            "unknowns": [],
+            "warnings": [],
+            "created_at": now,
+        }
+    )
+    return report, active
+
+
+def test_non_ros_wiki_is_organized_around_the_observed_target_software_stack() -> None:
+    report, active = _non_ros_review_inputs()
+
+    wiki = render_discovery_review_markdown(report, active)
+    context = _selected_context(report, active)
+
+    assert "## 目标主机与软件栈" in wiki
+    assert "Ubuntu 24.04.2 LTS" in wiki
+    assert "x86_64" in wiki
+    assert "lerobot | python | python/pyproject" in wiki
+    assert "numpy, torch" in wiki
+    assert "## 运行时与通信接口" in wiki
+    assert any(
+        line.startswith("- CLI 路由：") and "lerobot-info" in line
+        for line in wiki.splitlines()
+    )
+    assert "网络协议：HTTP" in wiki
+    assert "### ROS 运行时与拓扑" not in wiki
+    assert "ROS 发行版" not in wiki
+    assert "在线 ROS 图" not in wiki
+    assert "RMW" not in wiki
+    assert "ROS" not in wiki
+    assert "目标主机软件版本、CLI/API/协议" in wiki
+    assert "ros" not in context["probes"]
+    assert context["system_profile"]["middleware_mode"] == "NON_ROS_APPLICATION"
+    assert context["probes"]["application"]["data"]["projects"][0]["languages"] == [
+        "python"
+    ]
 
 
 def test_external_wiki_insights_are_bounded_to_the_same_discovery() -> None:
