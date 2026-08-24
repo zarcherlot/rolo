@@ -12,6 +12,9 @@ git clone https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
+# Debian/Ubuntu 示例；其他发行版安装其 bubblewrap 软件包
+sudo apt-get install bubblewrap
+
 export ROBOT_ID=your_robot_id
 export ROLO_ARTIFACT_DIR=/var/lib/rolo/artifacts
 export ROLO_OUTPUT_DIR=/var/lib/rolo/adapters
@@ -25,6 +28,13 @@ read-only hardware provider exists, set `ROLO_HARDWARE_EVIDENCE_PROVIDER` to its
 Discovery captures the schema-defined, allowlisted non-secret Runtime Context from this shell. The gated release
 reuses that context for adapter `describe` and invocation; changing the ROS domain, RMW selection or
 an admitted overlay path requires rediscovery and a new release.
+
+On Linux, Rolo automatically selects `scripts/rolo-adapter-sandbox` when `bubblewrap` is available.
+Full Adapt runs the launcher's `--self-test` and fails before Discovery if the launcher is absent or the
+kernel cannot create the required namespaces. The bundled launcher exposes an empty sandbox HOME/TMP,
+not the host directories. A deployment-owned launcher may
+override it through `ROLO_ADAPTER_SANDBOX_LAUNCHER`. Keep sandbox networking isolated for Adapt
+`describe`; configure host ROS/DDS networking only when a later, authorized runtime invocation requires it.
 
 ## 2. Run the complete signed Adapt journey
 
@@ -96,6 +106,8 @@ uv run robotctl adapt operations list --robot "$ROBOT_ID" --registration REGISTE
 uv run robotctl tool catalog --robot "$ROBOT_ID"
 uv run robotctl state graph snapshot --robot "$ROBOT_ID"
 uv run robotctl tool schema OPERATION --robot "$ROBOT_ID"
+uv run robotctl adapt acceptance-pack --robot "$ROBOT_ID" \
+  --output ./rolo-adapt-acceptance.json
 ```
 
 Accept the hands-on run when:
@@ -118,6 +130,8 @@ normal safety process.
 
 ## 4. Evidence to return
 
-Return the discovery ID, Adapt run/release ID, output from `adapt status` and `operations summary`,
-the eligible/deferred operation lists, and any gate error. Do not return credentials, invocation
-payloads, or private source archives.
+Return `rolo-adapt-acceptance.json` and its command-reported SHA-256. It contains the source revision,
+Registry identity/count, target evidence digest, discovery status, eligible/deferred Operations and
+validated gate/release identity, but no credentials, invocation payloads, private source archives or
+raw probe payloads. If pack creation is unavailable during recovery, return the discovery ID, Adapt
+run/release ID, `adapt status`, `operations summary`, eligible/deferred lists and any gate error.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -15,6 +16,13 @@ def _default_output_dir() -> Path:
         return Path(os.environ["LOCALAPPDATA"]) / "rolo" / "output"
     data_home = os.environ.get("XDG_DATA_HOME")
     return (Path(data_home) if data_home else Path.home() / ".local" / "share") / "rolo" / "output"
+
+
+def _default_adapter_sandbox_launcher() -> Path | None:
+    if os.name != "posix" or shutil.which("bwrap") is None:
+        return None
+    candidate = Path(__file__).resolve().parents[3] / "scripts" / "rolo-adapter-sandbox"
+    return candidate if candidate.is_file() else None
 
 
 class Settings(BaseSettings):
@@ -35,7 +43,9 @@ class Settings(BaseSettings):
     rolo_r3_authorizer: Path | None = None
     rolo_quiescence_provider: Path | None = None
     rolo_hardware_evidence_provider: Path | None = None
-    rolo_adapter_sandbox_launcher: Path | None = None
+    rolo_adapter_sandbox_launcher: Path | None = Field(
+        default_factory=_default_adapter_sandbox_launcher
+    )
     rolo_adapter_unsandboxed_dev: bool = False
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080

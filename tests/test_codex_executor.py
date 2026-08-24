@@ -168,6 +168,33 @@ def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
         deferred not in task["operations"] for task in compact_plan["tasks"]
     )
     assert "authoritative bundle operation set" in prompt
+    assert "If it fails, fix only the reported error" in prompt
+    assert "At the first success" in prompt
+    assert "immediately return the required final JSON" in prompt
+    assert "manually clean the workspace" in prompt
+    assert "exactly a mapping from every bundle operation name" in prompt
+
+
+def test_agent_workspace_instructions_prevent_recursive_inventory_and_rework(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, evidence)
+
+    CodexAdaptExecutor(ArtifactStore(artifact_root))._install_agent_tool_launcher(
+        workspace, plan
+    )
+
+    instructions = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Do not inventory the directory" in instructions
+    assert "run `rg --files`" in instructions
+    assert "A failed pack may be rerun" in instructions
+    assert "At the first success" in instructions
+    assert "without speculative revisions" in instructions
 
 
 def test_explicit_canary_narrows_compact_focus_but_not_current_task_authority(
@@ -330,6 +357,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert isinstance(environment, dict)
     assert "CODEX_API_KEY" not in environment
     assert environment["ROLO_AGENT_DISCOVERY_ID"] == plan.source_discovery_id
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert Path(environment["ROLO_AGENT_TOOL"]).is_file()
     assert "rolo_agent_inspection_tool.py" in Path(environment["ROLO_AGENT_TOOL"]).read_text(
         encoding="utf-8"
@@ -565,6 +593,28 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
 
     assert rejected.returncode == 2
     assert "describe preflight does not match" in rejected.stderr
+
+    (workspace / "adapter.py").write_text(
+        "import sys\n"
+        "if sys.argv[1] == 'describe':\n"
+        "    print('x' * 250_000)\n",
+        encoding="utf-8",
+    )
+    oversized_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
+    manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
+    manifest["package_sha256"] = oversized_sha
+    manifest["files"][0]["sha256"] = oversized_sha
+    (workspace / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    output_limited = subprocess.run(
+        pack_command,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert output_limited.returncode == 2
+    assert "describe preflight exceeded its output limit" in output_limited.stderr
 
 
 def test_codex_executor_passes_key_only_in_child_environment(

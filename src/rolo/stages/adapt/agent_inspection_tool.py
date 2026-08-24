@@ -6,8 +6,10 @@ import base64
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 import zlib
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,85 @@ MAX_OPERATION_LIST_LIMIT = 50
 DEFAULT_OPERATION_LIST_LIMIT = 20
 MAX_BATCH_INSPECT = 8
 MAX_QUERY_RESPONSE_BYTES = 16 * 1024
+MAX_DESCRIBE_OUTPUT_BYTES = 200_000
+DESCRIBE_TIMEOUT_S = 10.0
+
+
+def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
+def _bounded_describe(command: list[str], *, cwd: Path, environment: dict[str, str]) -> str:
+    """Run advisory describe inside the Agent sandbox with bounded resources."""
+    options: dict[str, Any] = {
+        "cwd": cwd,
+        "env": environment,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+    }
+    if os.name == "nt":
+        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        options["start_new_session"] = True
+    process = subprocess.Popen(command, **options)
+    stdout = bytearray()
+    stderr = bytearray()
+    output_limited = threading.Event()
+
+    def drain(stream: Any, target: bytearray) -> None:
+        while True:
+            chunk = stream.read(16 * 1024)
+            if not chunk:
+                return
+            remaining = MAX_DESCRIBE_OUTPUT_BYTES - len(target)
+            if remaining > 0:
+                target.extend(chunk[:remaining])
+            if len(chunk) > remaining:
+                output_limited.set()
+                _terminate_process_tree(process)
+                return
+
+    readers = [
+        threading.Thread(target=drain, args=(process.stdout, stdout), daemon=True),
+        threading.Thread(target=drain, args=(process.stderr, stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    try:
+        returncode = process.wait(timeout=DESCRIBE_TIMEOUT_S)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_process_tree(process)
+        process.wait(timeout=5)
+        raise ValueError("adapter describe preflight timed out") from exc
+    finally:
+        for reader in readers:
+            reader.join(timeout=2)
+    if output_limited.is_set():
+        raise ValueError("adapter describe preflight exceeded its output limit")
+    stderr_text = stderr.decode("utf-8", errors="replace")
+    if returncode != 0:
+        raise ValueError(f"adapter describe preflight failed: {stderr_text[:1000]}")
+    return stdout.decode("utf-8", errors="replace")
 
 
 def _take_option(arguments: list[str], name: str) -> str | None:
@@ -165,23 +246,15 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
         )
     }
     try:
-        completed = subprocess.run(
+        describe_output = _bounded_describe(
             command,
             cwd=package_path.parent,
-            env=environment,
-            capture_output=True,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
+            environment=environment,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except OSError as exc:
         raise ValueError(f"adapter describe preflight could not complete: {exc}") from exc
-    if completed.returncode != 0:
-        raise ValueError(f"adapter describe preflight failed: {completed.stderr[:1000]}")
     try:
-        described = json.loads(completed.stdout)
+        described = json.loads(describe_output)
     except json.JSONDecodeError as exc:
         raise ValueError("adapter describe preflight returned invalid JSON") from exc
     if not isinstance(described, dict) or described.get("operations") != expected_operations:

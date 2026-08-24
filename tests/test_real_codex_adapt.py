@@ -1,7 +1,6 @@
 import os
 import shutil
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -48,22 +47,44 @@ def test_real_codex_builds_and_passes_a_route_presence_adapter(tmp_path: Path) -
     )
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
-    with patch("rolo.stages.adapt.discovery.RosProbe.run", return_value=ros_probe):
-        DiscoveryService(ArtifactStore(artifact_root)).run(
-            robot=registry.get("demo_diff"),
-            urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
-            active_inputs=ActiveDiscoveryInputs(
-                source_roots=[source_root],
-                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+    binding = {
+        "robot_id": "demo_diff",
+        "collector_id": "collector-real-codex-test",
+        "target_host_fingerprint": "f" * 64,
+        "bundle_payload_sha256": "a" * 64,
+        "access": "READ_ONLY",
+        "deployment_mode": "local",
+    }
+    DiscoveryService(ArtifactStore(artifact_root)).run(
+        robot=registry.get("demo_diff"),
+        urdf_path=Path("tests/fixtures/profiles/differential_drive.urdf"),
+        active_inputs=ActiveDiscoveryInputs(
+            source_roots=[source_root],
+            active_probe=ActiveProbeMode.RUNTIME_READONLY,
+        ),
+        target_probes={
+            "hw": ProbeResult(
+                layer="hw",
+                status="SUCCEEDED",
+                data={"components": [], "target_evidence": binding},
             ),
-        )
+            "linux": ProbeResult(
+                layer="linux",
+                status="SUCCEEDED",
+                data={"target_evidence": binding},
+            ),
+            "ros": ros_probe.model_copy(
+                update={"data": {**ros_probe.data, "target_evidence": binding}}
+            ),
+        },
+    )
     settings = Settings(
         rolo_artifact_dir=artifact_root,
         rolo_output_dir=tmp_path / "adapter-output",
         coding_agent_executable=executable,
         coding_agent_auto_install=False,
         coding_agent_require_auth=False,
-        coding_agent_timeout_s=900,
+        coding_agent_timeout_s=1800,
         wiki_polish_enabled=False,
     )
     service = AdaptRunService(ArtifactStore(artifact_root), settings)
@@ -73,7 +94,7 @@ def test_real_codex_builds_and_passes_a_route_presence_adapter(tmp_path: Path) -
     summary, summary_path = service.run(
         robot_id="demo_diff",
         scratch_root=tmp_path / "agent-scratch",
-        timeout_s=900,
+        timeout_s=1800,
     )
 
     assert summary_path.is_file()

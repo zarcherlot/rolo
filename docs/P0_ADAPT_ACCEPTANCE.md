@@ -52,11 +52,12 @@ any failure leaves the prior current release unchanged. Runtime uses this same v
 
 The real Agent handoff uses `robot-adapter-agent-result/v2`. Exact artifact Schemas are queried from
 the workspace-local inspection snapshot rather than guessed. A deterministic `adapt handoff pack`
-preflight verifies paths and bundle hashes without executing generated code, encodes only final files,
-and rejects path escape,
-symlinks, duplicates, more than 256 files, files over 2 MiB, or an Agent response over 8 MiB. Rolo
-then rechecks base64, hashes, identities, operation coverage and larger product limits, and executes
-the package `describe` command only through the bounded generated-code runner while
+preflight verifies paths and bundle hashes, runs only a bounded advisory `describe` inside the Agent
+sandbox, encodes only final files, and rejects path escape,
+symlinks, duplicates, more than 256 files, files over 2 MiB, or an Agent response over 8 MiB. This
+first execution never runs `invoke`, grants `VERIFIED`, or authorizes publication. Rolo then rechecks
+base64, hashes, identities, operation coverage and larger product limits, and independently executes
+the package `describe` command through the protected generated-code runner while
 rebuilding its frozen snapshot. Workspace file paths are not trusted as the handoff authority.
 
 ## Acceptance paths
