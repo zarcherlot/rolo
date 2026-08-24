@@ -31,7 +31,7 @@ def test_bundled_production_sandbox_runs_describe_without_host_file_access(
         "(home / 'sandbox-write.txt').write_text('ok', encoding='utf-8')\n"
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': {'app.demo': 'adapter.py'}, "
-        "'host_secret_visible': visible}))\n",
+        "'host_secret_visible': visible, 'sandbox_home': str(home)}))\n",
         encoding="utf-8",
     )
     launcher = Path(__file__).resolve().parents[1] / "scripts" / "rolo-adapter-sandbox"
@@ -49,3 +49,4 @@ def test_bundled_production_sandbox_runs_describe_without_host_file_access(
     described = json.loads(completed.stdout)
     assert described["operations"] == {"app.demo": "adapter.py"}
     assert described["host_secret_visible"] is False
+    assert described["sandbox_home"] == "/home/rolo"

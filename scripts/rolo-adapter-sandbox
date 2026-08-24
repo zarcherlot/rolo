@@ -88,11 +88,35 @@ def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
     return sorted(paths, key=lambda value: (len(value.parts), str(value)))
 
 
-def writable_paths() -> list[Path]:
-    paths: set[Path] = set()
-    for name in ("HOME", "TMP", "TEMP"):
-        add_path(paths, os.environ.get(name))
-    return sorted(paths, key=lambda value: (len(value.parts), str(value)))
+def base_launch(bubblewrap: str) -> list[str]:
+    return [
+        bubblewrap,
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--dir",
+        "/home",
+        "--dir",
+        "/home/rolo",
+        "--setenv",
+        "HOME",
+        "/home/rolo",
+        "--setenv",
+        "TMPDIR",
+        "/tmp",
+        "--setenv",
+        "TMP",
+        "/tmp",
+        "--setenv",
+        "TEMP",
+        "/tmp",
+    ]
 
 
 def main() -> int:
@@ -101,27 +125,31 @@ def main() -> int:
     bubblewrap = shutil.which("bwrap")
     if bubblewrap is None:
         return fail("bubblewrap is required; install the target distribution's bubblewrap package")
+    if sys.argv[1:] == ["--self-test"]:
+        true_executable = shutil.which("true")
+        if true_executable is None:
+            return fail("sandbox self-test requires the system true executable")
+        launch = base_launch(bubblewrap)
+        self_test_paths: set[Path] = set()
+        for raw in SYSTEM_DIRECTORIES:
+            add_path(self_test_paths, raw)
+        for path in sorted(self_test_paths, key=lambda value: (len(value.parts), str(value))):
+            launch.extend(["--ro-bind", str(path), str(path)])
+        os.execv(
+            bubblewrap,
+            [*launch, "--chdir", "/", "--", str(Path(true_executable).resolve())],
+        )
+        return 127
     try:
         cwd, command = parse(sys.argv[1:])
         readonly = readonly_paths(cwd, command)
-        writable = writable_paths()
     except (OSError, ValueError) as exc:
         return fail(str(exc))
-    launch = [
-        bubblewrap,
-        "--die-with-parent",
-        "--new-session",
-        "--unshare-all",
-    ]
+    launch = base_launch(bubblewrap)
     if os.environ.get("ROLO_ADAPTER_SANDBOX_NETWORK", "isolated") == "host":
         launch.append("--share-net")
-    launch.extend(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
-    writable_set = set(writable)
     for path in readonly:
-        if path not in writable_set:
-            launch.extend(["--ro-bind", str(path), str(path)])
-    for path in writable:
-        launch.extend(["--bind", str(path), str(path)])
+        launch.extend(["--ro-bind", str(path), str(path)])
     launch.extend(["--chdir", str(cwd), "--", *command])
     os.execv(bubblewrap, launch)
     return 127

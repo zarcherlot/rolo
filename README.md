@@ -174,7 +174,9 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 生成 Adapter 的 `describe` 和 `invoke` 默认失败关闭。Linux 源码部署在安装 `bubblewrap` 后会
 自动使用仓库自带的受保护目标侧启动器；Rolo 按
 `launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...` 调用它。默认隔离网络且只挂载 release、Python/
-ROS 运行路径和私有临时目录；需要 ROS/DDS host 网络的正式调用必须由部署者显式设置
+ROS 运行路径，并在沙箱内创建空的 HOME/TMP；不会挂载宿主 HOME/TMP。目标内核还必须允许
+创建 user/mount/network 等 namespace，完整 `adapt start` 会通过启动器 `--self-test` 实测，
+不能创建时在 Discovery 前失败。需要 ROS/DDS host 网络的正式调用必须由部署者显式设置
 `ROLO_ADAPTER_SANDBOX_NETWORK=host` 并配合目标网络策略。也可以覆盖为部署自有启动器：
 
 ```bash

@@ -30,7 +30,9 @@ reuses that context for adapter `describe` and invocation; changing the ROS doma
 an admitted overlay path requires rediscovery and a new release.
 
 On Linux, Rolo automatically selects `scripts/rolo-adapter-sandbox` when `bubblewrap` is available.
-Full Adapt fails before Discovery if no protected launcher is available. A deployment-owned launcher may
+Full Adapt runs the launcher's `--self-test` and fails before Discovery if the launcher is absent or the
+kernel cannot create the required namespaces. The bundled launcher exposes an empty sandbox HOME/TMP,
+not the host directories. A deployment-owned launcher may
 override it through `ROLO_ADAPTER_SANDBOX_LAUNCHER`. Keep sandbox networking isolated for Adapt
 `describe`; configure host ROS/DDS networking only when a later, authorized runtime invocation requires it.
 

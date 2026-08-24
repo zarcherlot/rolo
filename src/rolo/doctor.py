@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +12,27 @@ from rolo.runtime import create_runtime
 from rolo.stages.adapt.dependencies import CodexDependencyAdapter
 from rolo.stages.adapt.service import coding_agent_config
 from rolo.stages.diagnose.robot_use import create_robot_use_backend
+
+
+def _probe_adapter_sandbox(launcher: Path) -> None:
+    if sys.platform == "win32":
+        return
+    try:
+        completed = subprocess.run(
+            [str(launcher), "--self-test"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"sandbox self-test could not complete: {exc}") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()[:1000] or f"exit {completed.returncode}"
+        raise ValueError(f"sandbox self-test failed: {detail}")
 
 
 def build_doctor_report(
@@ -89,6 +111,7 @@ def build_doctor_report(
             )
             if sys.platform != "win32" and not protected_launcher.stat().st_mode & 0o111:
                 raise ValueError("adapter sandbox launcher must be executable")
+            _probe_adapter_sandbox(protected_launcher)
         except (OSError, ValueError) as exc:
             adapter_sandbox = "INVALID"
             message = f"adapter sandbox launcher is invalid: {exc}"
