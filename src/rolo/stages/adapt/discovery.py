@@ -53,6 +53,10 @@ from rolo.stages.adapt.active_discovery import (
     InvocationAnalysis,
     render_active_discovery_markdown,
 )
+from rolo.stages.adapt.application_cli_mapping import (
+    ApplicationCliRouteProvider,
+    canonical_executable_name,
+)
 from rolo.stages.adapt.discovery_status import (
     aggregate_probe_status,
     derive_discovery_status,
@@ -197,8 +201,7 @@ def _ros_failure_class(result: Mapping[str, Any], *, codex_network_sandboxed: bo
         str(result.get(key) or "") for key in ("error", "stderr", "stdout")
     ).casefold()
     if result.get("returncode") == 2 and any(
-        marker in detail
-        for marker in ("unrecognized arguments", "invalid choice", "usage:")
+        marker in detail for marker in ("unrecognized arguments", "invalid choice", "usage:")
     ):
         return "CLI_ARGUMENT_UNSUPPORTED"
     if not result.get("available"):
@@ -276,10 +279,7 @@ def _merge_hardware_provider(
             "error": str(exc),
         }
         return
-    merged = {
-        (str(item.get("kind")), str(item.get("name"))): item
-        for item in data["components"]
-    }
+    merged = {(str(item.get("kind")), str(item.get("name"))): item for item in data["components"]}
     for component in evidence.components:
         merged[(component.kind, component.name)] = component.model_dump(mode="json")
     data["components"] = list(merged.values())
@@ -298,8 +298,7 @@ def _assign_hardware_resource_ids(data: dict[str, Any]) -> None:
             continue
         if provider_id := component.get("provider_id"):
             identity = (
-                f"hardware_provider:{provider_id}:"
-                f"{component.get('kind')}:{component.get('name')}"
+                f"hardware_provider:{provider_id}:{component.get('kind')}:{component.get('name')}"
             )
         elif path := component.get("path"):
             identity = f"hardware_path:{path}"
@@ -523,9 +522,7 @@ class RosProbe:
         os_version = _parse_os_release().get("VERSION_ID")
         preferred = [self.environment.get("ROS_DISTRO"), UBUNTU_ROS_DEFAULTS.get(os_version)]
         if self.ros_root.is_dir():
-            preferred.extend(
-                sorted(path.name for path in self.ros_root.iterdir() if path.is_dir())
-            )
+            preferred.extend(sorted(path.name for path in self.ros_root.iterdir() if path.is_dir()))
         for distro in dict.fromkeys(item for item in preferred if item):
             setup = self.ros_root / distro / "setup.bash"
             if setup.is_file():
@@ -591,11 +588,7 @@ class RosProbe:
         data: dict[str, Any] = {
             "ros_distro": configured_distro or (setup.parent.name if setup else None),
             "ros_distro_source": (
-                "ENVIRONMENT"
-                if configured_distro
-                else "SETUP_PATH"
-                if setup
-                else "NOT_FOUND"
+                "ENVIRONMENT" if configured_distro else "SETUP_PATH" if setup else "NOT_FOUND"
             ),
             "installed_distros": installed_distros,
             "domain_id": configured_domain or "0",
@@ -817,9 +810,7 @@ def _setup_py_entrypoints(path: Path, root: Path) -> list[dict[str, Any]]:
         if not isinstance(node, ast.Call):
             continue
         function_name = (
-            node.func.id
-            if isinstance(node.func, ast.Name)
-            else getattr(node.func, "attr", None)
+            node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
         )
         if function_name != "setup":
             continue
@@ -880,11 +871,11 @@ def _cmake_without_comments(text: str) -> str:
 
 
 def _cmake_source_file(root: Path, cmake_path: Path, token: str) -> str:
-    candidate = (cmake_path.parent / token.strip('"\'')).resolve()
+    candidate = (cmake_path.parent / token.strip("\"'")).resolve()
     try:
         return candidate.relative_to(root).as_posix()
     except ValueError:
-        return token.strip('"\'')
+        return token.strip("\"'")
 
 
 def _cmake_program_entrypoints(text: str, path: Path, root: Path) -> list[dict[str, Any]]:
@@ -1297,9 +1288,7 @@ class ApplicationProbe:
                                 {
                                     _cmake_source_file(root, path, token)
                                     for token in re.split(r"\s+", body)
-                                    if token.lower().endswith(
-                                        (".c", ".cc", ".cpp", ".cxx")
-                                    )
+                                    if token.lower().endswith((".c", ".cc", ".cpp", ".cxx"))
                                 }
                             ),
                         }
@@ -1354,11 +1343,18 @@ class ApplicationProbe:
             status = DiscoveryStatus.PARTIAL if warnings else DiscoveryStatus.SUCCEEDED
         else:
             status = DiscoveryStatus.UNAVAILABLE
+        declared_routes = ApplicationCliRouteProvider().declared_routes(projects)
         return ApplicationScanResult(
             probe=ProbeResult(
                 layer="application",
                 status=status,
-                data={"projects": projects},
+                data={
+                    "projects": projects,
+                    "route_evidence": [
+                        route.model_dump(mode="json")
+                        for route in sorted(declared_routes, key=lambda item: item.resource_id)
+                    ],
+                },
                 warnings=warnings,
             ),
             evidence_text=evidence_text,
@@ -1434,7 +1430,28 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "runtime_revision": runtime_revision,
                     "semantic_rule_id": rule.rule_id,
                     "operations": list(rule.operations),
+                    "route_kind": "ros_topic",
+                    "resource_id": f"ros_topic:{topic}",
+                    "provider_id": None,
+                    "interface_schema_sha256": None,
+                    "observed": source == "live_ros_graph",
                 }
+
+    application_probe = probes.get(
+        "application",
+        ProbeResult(layer="application", status="UNAVAILABLE", data={}),
+    )
+    linux_probe = probes.get(
+        "linux",
+        ProbeResult(layer="linux", status="UNAVAILABLE", data={}),
+    )
+    bindings.update(
+        ApplicationCliRouteProvider().semantic_bindings(
+            application_probe,
+            linux_probe,
+            occupied_semantic_uris=set(bindings),
+        )
+    )
     return bindings
 
 
@@ -1799,18 +1816,27 @@ def _build_operation_candidates(
 
     def route(semantic_uri: str) -> RouteEvidence:
         binding = bindings[semantic_uri]
-        endpoint = _ros_entity_name(str(binding["binding"]))
-        observed = binding.get("evidence") == "live_ros_graph"
-        limitations = [
-            "ROS interface schema digest was not collected",
-            "ROS publisher/provider identity was not collected",
-        ]
+        kind = str(binding.get("route_kind", "ros_topic"))
+        endpoint = str(binding["binding"])
+        if kind.startswith("ros_"):
+            endpoint = _ros_entity_name(endpoint)
+            limitations = [
+                "ROS interface schema digest was not collected",
+                "ROS publisher/provider identity was not collected",
+            ]
+        else:
+            limitations = [
+                "CLI self-description does not prove Operation result semantics",
+                "Generated Adapter must pass independent contract conformance",
+            ]
+        observed = bool(binding.get("observed", False))
         return RouteEvidence(
-            resource_id=f"ros_topic:{endpoint}",
-            kind="ros_topic",
+            resource_id=str(binding.get("resource_id", f"{kind}:{endpoint}")),
+            kind=kind,
             endpoint=endpoint,
             interface_type=binding.get("interface_type"),
-            provider_id=None,
+            interface_schema_sha256=binding.get("interface_schema_sha256"),
+            provider_id=binding.get("provider_id"),
             runtime_revision=binding.get("runtime_revision"),
             observed_at=binding.get("observed_at"),
             evidence_origin=("OBSERVED_RUNTIME" if observed else "DECLARED_STATIC"),
@@ -1833,7 +1859,7 @@ def _build_operation_candidates(
                 route_evidence=[route(semantic_uri) for semantic_uri in semantic_uris],
                 limitations=[
                     "Rule-derived applicability requires target-runtime interface, provider, "
-                    "QoS, and semantic validation",
+                    "and semantic validation",
                     "Requires adapter generation and independent conformance",
                 ],
             )
@@ -1855,6 +1881,11 @@ def _bind_candidate_evidence_ids(
             for interface in executable.communication.ros.get(role, []):
                 if isinstance(interface, dict) and interface.get("name"):
                     endpoints.add(_ros_entity_name(str(interface["name"])))
+        endpoints.add(executable.name)
+        endpoints.add(canonical_executable_name(executable.name))
+        if executable.path:
+            endpoints.add(executable.path)
+            endpoints.add(canonical_executable_name(executable.path))
         executable_endpoints[executable.executable_id] = endpoints
 
     hardware_components = [
@@ -1864,14 +1895,17 @@ def _bind_candidate_evidence_ids(
     ]
     bound: list[OperationCandidate] = []
     for candidate in candidates:
-        route_endpoints = {_ros_entity_name(route.endpoint) for route in candidate.route_evidence}
+        route_endpoints = {
+            (_ros_entity_name(route.endpoint) if route.kind.startswith("ros_") else route.endpoint)
+            for route in candidate.route_evidence
+        }
         route_providers = {
             route.provider_id for route in candidate.route_evidence if route.provider_id
         }
         executable_ids = sorted(
             executable_id
             for executable_id, endpoints in executable_endpoints.items()
-            if endpoints & route_endpoints
+            if endpoints & route_endpoints or executable_id in route_providers
         )
         hardware_resource_ids = sorted(
             str(component["resource_id"])
@@ -1916,15 +1950,13 @@ def _merge_target_executable_help(
             continue
         help_probe = help_probe.model_copy(
             update={
-                "output_ref": (
-                    f"target-evidence:{bundle_digest}#executable-help/{executable_id}"
-                ),
+                "output_ref": (f"target-evidence:{bundle_digest}#executable-help/{executable_id}"),
                 "usage": list(raw.get("usage", [])),
                 "parameters": list(raw.get("parameters", [])),
                 "subcommands": list(raw.get("subcommands", [])),
             }
         )
-        target_name = Path(target_path).name
+        target_name = canonical_executable_name(target_path)
         matching = next(
             (
                 executable
@@ -2141,8 +2173,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
         self, report: DiscoveryReport, active: ActiveDiscoveryReport
     ) -> tuple[DiscoveryReport, ActiveDiscoveryReport]:
         if not any(
-            active.inputs.get(name)
-            for name in ("build_roots", "install_roots", "executables")
+            active.inputs.get(name) for name in ("build_roots", "install_roots", "executables")
         ):
             raise RuntimeError("build/install query requires caller-supplied artifact roots")
         return self._refresh_application(report, active)
@@ -2155,8 +2186,7 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
         if inputs.active_probe not in {ActiveProbeMode.HELP, ActiveProbeMode.RUNTIME_READONLY}:
             raise RuntimeError("help query was not authorized at installation/run time")
         if not any(
-            active.inputs.get(name)
-            for name in ("executables", "build_roots", "install_roots")
+            active.inputs.get(name) for name in ("executables", "build_roots", "install_roots")
         ):
             raise RuntimeError("help query requires caller-supplied executable evidence")
         return self._refresh_application(report, active)
@@ -2194,10 +2224,7 @@ class DiscoveryService:
                 active_probe=ActiveProbeMode.NONE,
             )
         active_inputs = active_inputs.resolved()
-        if (
-            active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY
-            and target_probes is None
-        ):
+        if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY and target_probes is None:
             raise ValueError(
                 "runtime-readonly discovery requires a verified target evidence bundle"
             )

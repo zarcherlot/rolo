@@ -40,6 +40,12 @@ rolo 不把“命令成功返回”视为任务完成。每次执行都应留下
 当前产品共定义 **294 个操作**：
 [`docs/CANONICAL_OPERATIONS.md`](docs/CANONICAL_OPERATIONS.md)。
 
+ROS 不是 Adapt 的前置条件。对于 LeRobot 等非 ROS 工程，Rolo 从 Python console scripts 和
+目标机固定的 CLI 自描述证据建立通用 Application Route；源码声明不能冒充运行时观测，只有
+source/target 路由精确相交并通过 Adapter 独立门禁后才能进入 `VERIFIED` Tool Catalog。设计、
+安全边界和 LeRobot 首次采集命令见
+[`docs/NON_ROS_ADAPTATION.md`](docs/NON_ROS_ADAPTATION.md)。
+
 ### 主动发现
 
 首次配置时，rolo 为唯一 `robot_id` 建立一份可持续维护的**机器人 Wiki**。它把计算平台、

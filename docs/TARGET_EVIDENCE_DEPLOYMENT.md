@@ -66,6 +66,14 @@ Clone the same commit and run `uv sync --frozen` on both systems. The target nee
 The controller runs Discovery and the complete `rolo-adapt-discovery`,
 `rolo-operation-mapping`, and `rolo-wiki-authoring` chain.
 
+For a non-ROS application, omit ROS setup paths and allowlist only reviewed application CLIs.
+After signature verification, the controller deterministically derives `cli` Route Evidence from
+successful target-side help records. A source manifest declaration with the same canonical entrypoint
+name is also required before a product semantic rule can create an Operation candidate. Missing ROS
+therefore does not block application discovery, while source-only or failed-help routes remain
+unverified. See [NON_ROS_ADAPTATION.md](NON_ROS_ADAPTATION.md) for the LeRobot example and exact
+release boundary.
+
 On the target:
 
 ```bash

@@ -359,6 +359,15 @@ probe into text, accept substring matches, trust an Agent-authored runtime claim
 operations. Whether an invocation later succeeds, produces the correct result, is reliable, or is
 physically safe belongs to Diagnosis.
 
+Application CLI routes use the same rule. A structured source manifest contributes only a
+`DECLARED_STATIC cli:<canonical-name>` route. A successful, allowlisted target `--help` record is
+verified from the signed bundle and then projected by the controller into observed name and absolute
+path routes carrying executable, interface-schema and runtime-revision identities. Deterministic
+semantic mapping requires the declared and observed canonical name to match exactly. Substrings,
+documentation commands, an Agent claim, a controller-local binary, or failed self-description never
+satisfy route availability. The complete non-ROS design is documented in
+[NON_ROS_ADAPTATION.md](NON_ROS_ADAPTATION.md).
+
 ## Acceptance criteria
 
 Tests must prove that:

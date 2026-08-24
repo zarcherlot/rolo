@@ -28,19 +28,21 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
-from rolo.core.models import ProbeResult
+from rolo.core.models import DiscoveryStatus, ProbeResult
 from rolo.stages.adapt.active_discovery import (
     HelpProbeResult,
+    HelpProbeStatus,
     _extract_help_summary,
     run_bounded_help,
 )
+from rolo.stages.adapt.application_cli_mapping import ApplicationCliRouteProvider
 from rolo.stages.adapt.discovery import HardwareProbe, LinuxProbe, RosProbe
 from rolo.stages.adapt.ros_environment import (
     RosSetupFileRecord,
     resolve_pinned_ros_environment,
     verify_pinned_setup_files,
 )
-from rolo.stages.adapt.routes import persist_route_evidence
+from rolo.stages.adapt.routes import persist_route_evidence, probe_routes
 
 MAX_BUNDLE_BYTES = 8_000_000
 MAX_CLOCK_SKEW = timedelta(minutes=2)
@@ -196,9 +198,7 @@ class TargetEvidenceRequest(BaseModel):
     def validate_window_and_layers(self) -> TargetEvidenceRequest:
         if len(set(self.requested_layers)) != len(self.requested_layers):
             raise ValueError("requested_layers must be unique")
-        if self.requested_executable_help_ids != sorted(
-            set(self.requested_executable_help_ids)
-        ):
+        if self.requested_executable_help_ids != sorted(set(self.requested_executable_help_ids)):
             raise ValueError("requested executable help IDs must be unique and sorted")
         if any(
             re.fullmatch(r"target-exe-[0-9a-f]{24}", executable_id) is None
@@ -475,9 +475,7 @@ def ensure_local_deployment(
             raise ValueError("existing target evidence deployment is not local")
         state_path = Path(deployment.local_collector_state_path or "")
         state = load_collector_state(state_path)
-        descriptor = CollectorDescriptor.model_validate(
-            state.model_dump(exclude={"secret_path"})
-        )
+        descriptor = CollectorDescriptor.model_validate(state.model_dump(exclude={"secret_path"}))
         if help_executables:
             requested_allowlist = _build_help_allowlist(help_executables)
             if requested_allowlist != descriptor.help_executables:
@@ -534,9 +532,7 @@ def _build_deployment_config(
     transition_id: str | None = None,
 ) -> EvidenceDeploymentConfig:
     verification_secret_path = verification_secret_path.expanduser().resolve()
-    verification_secret_sha256 = hashlib.sha256(
-        _load_secret(verification_secret_path)
-    ).hexdigest()
+    verification_secret_sha256 = hashlib.sha256(_load_secret(verification_secret_path)).hexdigest()
     resolved_local_state = (
         local_collector_state_path.expanduser().resolve()
         if local_collector_state_path is not None
@@ -649,13 +645,9 @@ def reenroll_deployment(
         reason=reason.strip(),
         previous_collector_id=previous.collector.collector_id,
         new_collector_id=proposed.collector.collector_id,
-        previous_target_host_fingerprint=(
-            previous.collector.target_host_fingerprint
-        ),
+        previous_target_host_fingerprint=(previous.collector.target_host_fingerprint),
         new_target_host_fingerprint=proposed.collector.target_host_fingerprint,
-        previous_verification_secret_sha256=(
-            previous.verification_secret_sha256
-        ),
+        previous_verification_secret_sha256=(previous.verification_secret_sha256),
         new_verification_secret_sha256=proposed.verification_secret_sha256,
         previous_mode=previous.mode,
         new_mode=proposed.mode,
@@ -730,8 +722,7 @@ def collect_target_evidence(
     }
     with _temporary_environment(ros_environment.environment):
         probes = {
-            layer: persist_route_evidence(collectors[layer]())
-            for layer in request.requested_layers
+            layer: persist_route_evidence(collectors[layer]()) for layer in request.requested_layers
         }
         help_evidence = _collect_executable_help(request, state)
     if ros_probe := probes.get("ros"):
@@ -814,6 +805,41 @@ def _collect_executable_help(
     return evidence
 
 
+def bind_target_executable_routes(
+    probe: ProbeResult,
+    records: Sequence[TargetExecutableHelpEvidence],
+    *,
+    bundle_payload_sha256: str,
+    observed_at: datetime,
+) -> ProbeResult:
+    """Derive application CLI routes from already verified target help evidence.
+
+    The derivation happens on the controller after bundle signature validation.
+    It therefore does not trust a collector-supplied route assertion and remains
+    compatible with older v2 bundles that contain help evidence but no CLI route.
+    """
+    existing = {route.resource_id: route for route in probe_routes(probe)}
+    for route in ApplicationCliRouteProvider().observed_routes(
+        records,
+        bundle_payload_sha256=bundle_payload_sha256,
+        observed_at=observed_at,
+    ):
+        existing[route.resource_id] = route
+    data = dict(probe.data)
+    data["route_evidence"] = [
+        route.model_dump(mode="json")
+        for route in sorted(existing.values(), key=lambda item: item.resource_id)
+    ]
+    status = probe.status
+    if (
+        records
+        and any(item.help_probe.status == HelpProbeStatus.SUCCEEDED for item in records)
+        and status not in {DiscoveryStatus.SUCCEEDED, DiscoveryStatus.PARTIAL}
+    ):
+        status = DiscoveryStatus.PARTIAL
+    return probe.model_copy(update={"status": status, "data": data})
+
+
 def verify_evidence_bundle(
     bundle: TargetEvidenceBundle,
     *,
@@ -852,26 +878,16 @@ def verify_evidence_bundle(
     allowed_help = {item.executable_id: item for item in descriptor.help_executables}
     for item in bundle.executable_help:
         allowed = allowed_help.get(item.executable_id)
-        if (
-            allowed is None
-            or item.path != allowed.path
-            or item.executable_sha256 != allowed.sha256
-        ):
+        if allowed is None or item.path != allowed.path or item.executable_sha256 != allowed.sha256:
             raise ValueError("evidence bundle executable help is outside the pinned allowlist")
-        if hashlib.sha256(item.output_text.encode("utf-8")).hexdigest() != (
-            item.output_sha256
-        ):
+        if hashlib.sha256(item.output_text.encode("utf-8")).hexdigest() != (item.output_sha256):
             raise ValueError("evidence bundle executable help output hash mismatch")
     base = bundle.model_dump(mode="json", exclude={"payload_sha256", "signature_hmac_sha256"})
     actual_payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
     if not hmac.compare_digest(actual_payload_sha256, bundle.payload_sha256):
         raise ValueError("evidence bundle payload hash mismatch")
-    verification_secret = _load_secret(
-        secret_path or Path(deployment.verification_secret_path)
-    )
-    if hashlib.sha256(verification_secret).hexdigest() != (
-        deployment.verification_secret_sha256
-    ):
+    verification_secret = _load_secret(secret_path or Path(deployment.verification_secret_path))
+    if hashlib.sha256(verification_secret).hexdigest() != (deployment.verification_secret_sha256):
         raise ValueError("collector verification secret differs from its pinned digest")
     expected_signature = hmac.new(
         verification_secret,
@@ -898,7 +914,15 @@ def verify_evidence_bundle(
                 item.model_dump(mode="json") for item in bundle.executable_help
             ]
         data["target_evidence"] = target_binding
-        bound[layer] = probe.model_copy(update={"data": data})
+        verified_probe = probe.model_copy(update={"data": data})
+        if layer == "linux":
+            verified_probe = bind_target_executable_routes(
+                verified_probe,
+                bundle.executable_help,
+                bundle_payload_sha256=bundle.payload_sha256,
+                observed_at=bundle.collected_at,
+            )
+        bound[layer] = verified_probe
     return bound
 
 

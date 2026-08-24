@@ -32,7 +32,7 @@ from rolo.stages.adapt.operation_registry import (
     CanonicalOperationDefinition,
     CanonicalOperationRegistry,
 )
-from rolo.stages.adapt.routes import observed_probe_routes
+from rolo.stages.adapt.routes import probe_routes
 
 MAX_MAPPING_CONTEXT_CHARS = 200_000
 MAPPING_SKILL_NAME = "rolo-operation-mapping"
@@ -166,9 +166,7 @@ class DiscoverySkillRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["rolo-discovery-skill-request/v1"] = (
-        "rolo-discovery-skill-request/v1"
-    )
+    schema_version: Literal["rolo-discovery-skill-request/v1"] = "rolo-discovery-skill-request/v1"
     robot_id: str
     discovery_id: str
     target_fingerprint_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -260,32 +258,25 @@ def build_discovery_skill_request(
         route_resources[route.resource_id] = max((previous, route), key=rank)
 
     for probe in report.probes.values():
-        for route in observed_probe_routes(probe):
+        for route in probe_routes(probe):
             record_route(route)
             evidence_refs.add(route.source)
     for candidate in report.operation_candidates:
         if candidate.operation in deterministic_bindings:
-            raise ValueError(
-                f"duplicate deterministic Operation candidate: {candidate.operation}"
-            )
+            raise ValueError(f"duplicate deterministic Operation candidate: {candidate.operation}")
         evidence_refs.update(candidate.evidence)
         executable_ids.update(candidate.executable_ids)
         hardware_resource_ids.update(candidate.hardware_resource_ids)
         for route in candidate.route_evidence:
             record_route(route)
             evidence_refs.add(route.source)
-        route_resource_ids = sorted(
-            route.resource_id for route in candidate.route_evidence
-        )
+        route_resource_ids = sorted(route.resource_id for route in candidate.route_evidence)
         deterministic_bindings[candidate.operation] = ProposalBindingSet(
             evidence_refs=sorted(
                 {
                     *candidate.evidence,
                     *(route.source for route in candidate.route_evidence),
-                    *(
-                        route_resources[resource_id].source
-                        for resource_id in route_resource_ids
-                    ),
+                    *(route_resources[resource_id].source for resource_id in route_resource_ids),
                 }
             ),
             route_resource_ids=route_resource_ids,
@@ -614,9 +605,7 @@ class CodexOperationMappingProvider:
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
         }
-        environment = {
-            key: value for key, value in os.environ.items() if key.upper() in allowed
-        }
+        environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
         if "HOME" not in environment and environment.get("USERPROFILE"):
             environment["HOME"] = environment["USERPROFILE"]
         if "CODEX_HOME" not in environment and environment.get("HOME"):
@@ -687,18 +676,14 @@ class CodexOperationMappingProvider:
                 raise RuntimeError("Operation mapping Agent did not produce a final message")
             bundle = OperationProposalBundle.model_validate(
                 _resolve_provider_evidence_aliases(
-                    _normalize_provider_bundle(
-                        json.loads(output.read_text(encoding="utf-8"))
-                    ),
+                    _normalize_provider_bundle(json.loads(output.read_text(encoding="utf-8"))),
                     aliases,
                 )
             )
             if self.model:
                 bundle = bundle.model_copy(
                     update={
-                        "provenance": bundle.provenance.model_copy(
-                            update={"model_id": self.model}
-                        )
+                        "provenance": bundle.provenance.model_copy(update={"model_id": self.model})
                     }
                 )
             return bundle
@@ -919,8 +904,7 @@ class ProposalValidator:
             operation=proposal.operation,
             evidence=list(proposal.evidence_refs),
             route_evidence=[
-                evidence.route_resources[resource_id]
-                for resource_id in proposal.route_resource_ids
+                evidence.route_resources[resource_id] for resource_id in proposal.route_resource_ids
             ],
             executable_ids=list(proposal.executable_ids),
             hardware_resource_ids=list(proposal.hardware_resource_ids),

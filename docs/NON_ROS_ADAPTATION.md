@@ -1,0 +1,107 @@
+# 非 ROS 工程适配设计
+
+Rolo 的产品语义是 Canonical Operation，不是 ROS Topic。ROS 只是运行时 Route Provider
+之一。没有 ROS 的 Python/C++ 工程仍可进入 Adapt；缺少 ROS 时，ROS Probe 返回
+`UNAVAILABLE`，Application、Linux、Hardware 和启发式 Agent 继续工作。
+
+## 处理链路
+
+```text
+源码 manifest 中的 console script
+        │  DECLARED_STATIC
+        ▼
+ApplicationCliRouteProvider
+        │
+        ├── 源码入口：cli:<canonical-name>
+        └── 目标证据：cli:<canonical-name> + cli:<absolute-path>
+                           │ OBSERVED_RUNTIME
+                           ▼
+              通用、数据驱动的语义规则
+                           │
+                           ▼
+              DISCOVERED_UNVERIFIED Operation
+                           │
+                           ▼
+             Adapter 生成 + 独立 Conformance Gate
+                           │
+                           ▼
+                  VERIFIED Tool Catalog
+```
+
+源码侧只读取结构化 manifest，例如 `pyproject.toml [project.scripts]`，不会执行入口。每个
+入口形成 `DECLARED_STATIC` 的 `cli` Route；它可以供启发式 Agent 引用，但不能满足
+Operation eligibility。
+
+目标侧 collector 只对 enrollment 时显式允许并固定了绝对路径和 SHA-256 的可执行文件运行
+有界 `--help`。签名 bundle 验证通过后，控制端从原始 help evidence 重新推导 Route，而不是
+信任 collector 自报的映射：
+
+- canonical CLI name 和目标绝对路径；
+- executable ID 和 executable SHA-256；
+- 从 usage、parameters、subcommands 规范化计算的 interface schema SHA-256；
+- target bundle digest 和 observation time。
+
+只有源码声明的 canonical name 与目标机观测 name 精确相交，且 help 成功、Provider ID、
+executable hash 和 interface schema 都齐全时，确定性语义规则才会运行。规则存放在
+`src/rolo/stages/adapt/application_cli_operation_rules.yaml`，只能引用活动 Registry 中的
+Operation，不允许出现仓库或厂商专属 Operation。
+
+## Gate 边界
+
+CLI name 和 `--help` 只能证明“目标机存在这个自描述入口”，不能证明命令结果正确。规则输出
+仍是 `DISCOVERED_UNVERIFIED`；独立 Gate 还必须验证：
+
+1. Candidate Route 与不可变 Linux Probe 中的 target Route 精确一致；
+2. Candidate 绑定 exact executable ID，release fingerprint 绑定其 SHA-256；
+3. Adapter Bundle 覆盖且只覆盖 eligible Operation；
+4. `describe` 返回完整、与产品契约一致的 schema、风险和调用元数据；
+5. write/运动 Operation 继续经过 Runtime policy、外部授权和物理 interlock。
+
+Gate 不通过就不会生成 `VERIFIED` Catalog。`--help` 失败、入口只存在于源码、目标可执行文件
+变化、source/target name 不一致时，只保留证据和缺口。
+
+## LeRobot 当前边界
+
+LeRobot 使用普通 Python console scripts，因此不需要专用 Provider：
+
+- `lerobot-find-cameras` 可通过通用 camera inventory 规则映射到 `app.camera.list`；
+- `lerobot-info` 是环境诊断，不等同于 robot status/health，不映射 Operation；
+- `lerobot-record`、`lerobot-rollout`、`lerobot-train`、`lerobot-teleoperate` 的生命周期、取消、
+  数据和物理风险语义与现有 Operation 不能自动等同，当前只报告为未映射能力；
+- 数据集采集和策略推理只有在至少两个独立工程出现相同通用语义缺口、并完成 contract、风险、
+  Provider 和验证设计后，才能通过独立 Registry RFC 新增，禁止创建 `lerobot.*` Operation。
+
+## 目标机首次采集
+
+第一次建立本地 collector 时，应同时固定待观察的入口。不要先建立空 allowlist 再直接修改；
+已存在 collector 的 allowlist 变化必须走 rotation/re-enrollment。
+
+```bash
+uv run robotctl adapt start \
+  --robot-id lerobot-host \
+  --project-root /path/to/lerobot \
+  --allow-executable "$(command -v lerobot-find-cameras)" \
+  --allow-executable "$(command -v lerobot-info)" \
+  --discover-only
+```
+
+先保留 `--discover-only` 检查目标证据。`lerobot-find-cameras --help` 若因依赖、设备权限或入口
+初始化失败，会被记录为 help failure，不会降级为可信 Route。确认 Wiki、route evidence、
+Operation eligibility 和缺口符合预期后，移除 `--discover-only` 重跑完整 Agent/Gate 链。
+
+远程模式使用同样的两个 `--allow-executable` 初始化目标 collector；控制器无需且不得运行目标
+LeRobot 二进制，完整置备方式见 [TARGET_EVIDENCE_DEPLOYMENT.md](TARGET_EVIDENCE_DEPLOYMENT.md)。
+
+## 真机结果回传
+
+保留并回传以下文件，不要回传 collector secret、Codex credential 或 SSH private key：
+
+- `adapt start` 的 Journey JSON 输出；
+- 本次新鲜的 target evidence bundle；
+- discovery `report.json`、`active_discovery_report.json` 和 `robot_wiki.md`；
+- `robotctl adapt operations summary --robot lerobot-host` 输出；
+- 如果继续完整链，Adapter run、gate report、handoff 和失败日志。
+
+重点检查 `cli:lerobot-find-cameras` 是否同时具有 static declaration 和 observed target route、
+两者 executable/interface identity 是否完整，以及 `app.camera.list` 是 eligible、deferred 还是
+因 help/dependency 失败而缺失。

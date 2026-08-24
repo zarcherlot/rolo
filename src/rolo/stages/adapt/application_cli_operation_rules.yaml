@@ -1,0 +1,33 @@
+schema_version: rolo-application-cli-operation-rules/v1
+rules:
+  - rule_id: camera_inspection_cli
+    executable_token_groups:
+      - [camera, cameras]
+      - [describe, inspect]
+    excluded_tokens: [calibrate, calibration, capture, record, stream]
+    semantic_uri: semantic://sensor/camera/inspection
+    operations: [app.camera.inspect]
+
+  - rule_id: camera_inventory_cli
+    executable_token_groups:
+      - [camera, cameras]
+      - [discover, enumerate, find, list]
+    excluded_tokens: [calibrate, calibration, capture, record, stream]
+    semantic_uri: semantic://sensor/camera/inventory
+    operations: [app.camera.list]
+
+  - rule_id: robot_health_cli
+    executable_token_groups:
+      - [health]
+      - [robot]
+    excluded_tokens: [set, start, stop]
+    semantic_uri: semantic://application/robot/health
+    operations: [app.robot.health]
+
+  - rule_id: robot_status_cli
+    executable_token_groups:
+      - [robot]
+      - [state, status]
+    excluded_tokens: [set, start, stop]
+    semantic_uri: semantic://application/robot/status
+    operations: [app.robot.status]

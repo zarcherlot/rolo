@@ -97,9 +97,7 @@ def test_local_bundle_is_target_bound_signed_and_read_only(
     assert set(probes) == {"hw", "linux", "ros"}
     assert probes["hw"].data["target_evidence"]["target_host_fingerprint"] == "a" * 64
     assert probes["hw"].data["target_evidence"]["deployment_mode"] == "local"
-    assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (
-        bundle.payload_sha256
-    )
+    assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (bundle.payload_sha256)
 
 
 def test_collector_pins_and_signs_ros_environment_bootstrap(
@@ -179,15 +177,22 @@ def test_allowlisted_target_help_is_signed_verified_and_merged_into_discovery(
 
     assert bundle.executable_help[0].help_probe.status == HelpProbeStatus.SUCCEEDED
     assert bundle.executable_help[0].usage
-    assert probes["linux"].data["target_evidence"]["executable_help"][0][
-        "executable_id"
-    ] == executable_id
+    assert (
+        probes["linux"].data["target_evidence"]["executable_help"][0]["executable_id"]
+        == executable_id
+    )
+    application_routes = [
+        item
+        for item in probes["linux"].data["route_evidence"]
+        if item.get("interface_type") == "application/cli"
+    ]
+    assert application_routes
+    assert all(item["provider_id"] == executable_id for item in application_routes)
+    assert all(item["evidence_origin"] == "OBSERVED_RUNTIME" for item in application_routes)
 
     source = tmp_path / "source"
     source.mkdir()
-    (source / "driver.py").write_text(
-        'create_publisher(Twist, "/cmd_vel", 10)\n', encoding="utf-8"
-    )
+    (source / "driver.py").write_text('create_publisher(Twist, "/cmd_vel", 10)\n', encoding="utf-8")
     registry = RobotRegistry(Path("tests/fixtures/robots"))
     registry.load()
     artifact_root = tmp_path / "artifacts"
@@ -308,9 +313,7 @@ def test_target_help_cli_enrollment_and_collection_handoff(
     assert collected.exit_code == 0, collected.output
     payload = json.loads(collected.output)
     assert payload["status"] == "VERIFIED"
-    assert payload["executable_help"] == [
-        {"executable_id": executable_id, "status": "SUCCEEDED"}
-    ]
+    assert payload["executable_help"] == [{"executable_id": executable_id, "status": "SUCCEEDED"}]
 
 
 @pytest.mark.parametrize(
@@ -375,9 +378,7 @@ def test_expired_request_is_rejected_before_any_probe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, state_path, _ = _collector(tmp_path, monkeypatch)
-    request = new_request(
-        "wheeltec", now=datetime.now(timezone.utc) - timedelta(minutes=10)
-    )
+    request = new_request("wheeltec", now=datetime.now(timezone.utc) - timedelta(minutes=10))
 
     with pytest.raises(ValueError, match="expired"):
         collect_target_evidence(request, load_collector_state(state_path))
@@ -730,9 +731,7 @@ def test_rotation_and_reenrollment_cli_preserve_explicit_handoff(
     assert reenrolled.exit_code == 0, reenrolled.output
     payload = json.loads(reenrolled.output)
     assert payload["status"] == "TARGET_EVIDENCE_REENROLLED"
-    assert payload["deployment"]["collector"]["collector_id"] == replacement[
-        "collector_id"
-    ]
+    assert payload["deployment"]["collector"]["collector_id"] == replacement["collector_id"]
     assert Path(payload["transition_path"]).is_file()
 
 
@@ -762,8 +761,9 @@ def test_local_init_is_idempotent_and_preserves_collector_pin(
     assert repeated.exit_code == 0, repeated.output
     first_payload = json.loads(first.output)
     repeated_payload = json.loads(repeated.output)
-    assert first_payload["target_evidence"]["collector"] == (
-        repeated_payload["target_evidence"]["collector"]
+    assert (
+        first_payload["target_evidence"]["collector"]
+        == (repeated_payload["target_evidence"]["collector"])
     )
     assert repeated_payload["registration"]["status"] == "ALREADY_REGISTERED"
 
@@ -783,9 +783,7 @@ def test_discovery_uses_bound_target_probes_not_controller_host(
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
-    (source / "driver.py").write_text(
-        'create_publisher(Twist, "/cmd_vel", 10)\n', encoding="utf-8"
-    )
+    (source / "driver.py").write_text('create_publisher(Twist, "/cmd_vel", 10)\n', encoding="utf-8")
     target_binding = {
         "schema_version": "robot-target-evidence-binding/v1",
         "robot_id": "demo_diff",
@@ -881,9 +879,7 @@ def test_runtime_discovery_requires_verified_target_evidence(
     with pytest.raises(ValueError, match="verified target evidence bundle"):
         DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
             robot=registry.get("demo_diff"),
-            active_inputs=ActiveDiscoveryInputs(
-                active_probe=ActiveProbeMode.RUNTIME_READONLY
-            ),
+            active_inputs=ActiveDiscoveryInputs(active_probe=ActiveProbeMode.RUNTIME_READONLY),
         )
 
 

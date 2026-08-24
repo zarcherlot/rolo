@@ -18,6 +18,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_latest_report
+from rolo.stages.adapt.routes import probe_routes
 
 pytestmark = [
     pytest.mark.lerobot,
@@ -86,6 +87,14 @@ def test_lerobot_cli_to_rolo_discovery_e2e(tmp_path: Path) -> None:
     assert "lerobot" in project["packages"]
     assert project["entrypoints"]
 
+    declared_cli_routes = {route.resource_id: route for route in probe_routes(application_probe)}
+    assert "cli:lerobot-info" in declared_cli_routes
+    assert "cli:lerobot-find-cameras" in declared_cli_routes
+    assert all(not route.observed for route in declared_cli_routes.values())
+
     # A source checkout may produce candidates, but it cannot prove target
     # runtime route availability or publish a verified Tool Catalog.
     assert all(candidate.status != "VERIFIED" for candidate in report.operation_candidates)
+    assert "app.camera.list" not in {
+        candidate.operation for candidate in report.operation_candidates
+    }

@@ -111,15 +111,22 @@ def legacy_probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
     return routes
 
 
-def observed_probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
+def probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
+    """Return every structured route, including static declarations.
+
+    Legacy probe payloads only describe runtime observations, so their
+    normalized routes remain observed.  Keeping this broader reader separate
+    from :func:`observed_probe_routes` lets the mapping Agent reference static
+    application entrypoints without allowing them to satisfy a runtime gate.
+    """
     structured = probe.data.get("route_evidence", [])
     if structured:
-        return [
-            route
-            for item in structured
-            if (route := RouteEvidence.model_validate(item)).observed
-        ]
+        return [RouteEvidence.model_validate(item) for item in structured]
     return legacy_probe_routes(probe)
+
+
+def observed_probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
+    return [route for route in probe_routes(probe) if route.observed]
 
 
 def persist_route_evidence(probe: ProbeResult) -> ProbeResult:
@@ -128,9 +135,7 @@ def persist_route_evidence(probe: ProbeResult) -> ProbeResult:
         observed_probe_routes(probe)
         return probe
     data = dict(probe.data)
-    data["route_evidence"] = [
-        route.model_dump(mode="json") for route in legacy_probe_routes(probe)
-    ]
+    data["route_evidence"] = [route.model_dump(mode="json") for route in legacy_probe_routes(probe)]
     return probe.model_copy(update={"data": data})
 
 
@@ -153,9 +158,7 @@ def _route_matches(expected: RouteEvidence, observed: RouteEvidence) -> bool:
     return True
 
 
-def candidate_route_observed(
-    candidate: OperationCandidate, probes: dict[str, ProbeResult]
-) -> bool:
+def candidate_route_observed(candidate: OperationCandidate, probes: dict[str, ProbeResult]) -> bool:
     """Require one exact v2 route match against target-observed probe evidence."""
     for route in candidate.route_evidence:
         probe = probes.get(ROUTE_PROBE_LAYER[route.kind])
