@@ -1,0 +1,300 @@
+{
+  "schema_version": "rolo-episode-producer-record/v1",
+  "robot_id": "mentorpi",
+  "episode_id": "ep-discovery-20260820",
+  "revision": 1,
+  "parent_revision": null,
+  "commit_id": "commit-mentorpi-discovery-1",
+  "committed": true,
+  "committed_at": "2026-08-20T11:57:05Z",
+  "producer": "adapt.discovery",
+  "task_label": "Inspect MentorPi ROS 2 runtime",
+  "state": "PARTIAL",
+  "outcome": "UNKNOWN",
+  "verification": "UNVERIFIED",
+  "coverage": "COMPLETE",
+  "started_at": "2026-08-20T11:57:00Z",
+  "ended_at": "2026-08-20T11:57:03Z",
+  "immutable": true,
+  "execution_id": "disc-20260820T115700-f8f2b8ec",
+  "test_case_id": "mentorpi-ros-discovery",
+  "lifecycle_run_id": null,
+  "operation": "ros.graph.inspect",
+  "clock_domain": "host-wall-clock",
+  "synchronization": "DEGRADED",
+  "expected_behavior": "The ROS 2 runtime publishes a bounded graph of nodes, topics, services, and actions.",
+  "observed_behavior": "The ROS 2 environment was detected, but runtime graph CLI probes were unavailable.",
+  "evidence_refs": [
+    "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/report.json"
+  ],
+  "events": [
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-query-declared",
+      "sequence": 0,
+      "offset_ms": 0,
+      "occurred_at": "2026-08-20T11:57:00Z",
+      "duration_ms": null,
+      "clock_domain": "host-wall-clock",
+      "synchronization": "DEGRADED",
+      "lane": "COMMAND",
+      "public_title": "ROS graph inspection declared",
+      "public_summary": "The discovery stage declared bounded ROS 2 graph inspection.",
+      "severity": "INFO",
+      "authority": "DECLARED",
+      "evidence_refs": [],
+      "asset_ids": [],
+      "related_event_ids": [],
+      "metrics": {},
+      "raw_payload": {
+        "command": ["ros2", "node", "list"],
+        "environment": {
+          "ROS_DOMAIN_ID": "0"
+        }
+      },
+      "limitations": []
+    },
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-environment-observed",
+      "sequence": 1,
+      "offset_ms": 700,
+      "occurred_at": "2026-08-20T11:57:00.700Z",
+      "duration_ms": null,
+      "clock_domain": "host-wall-clock",
+      "synchronization": "DEGRADED",
+      "lane": "STATE",
+      "public_title": "ROS environment detected",
+      "public_summary": "ROS 2 Humble and installed RMW candidates were observed, without runtime selection proof.",
+      "severity": "WARNING",
+      "authority": "OBSERVED",
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "asset_ids": [],
+      "related_event_ids": ["evt-query-declared"],
+      "metrics": {
+        "rmw_candidate_count": 13.0
+      },
+      "raw_payload": {
+        "installed_distro": "humble",
+        "domain_id": "0"
+      },
+      "limitations": [
+        "Installed middleware candidates are not runtime selection evidence."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-cli-unavailable",
+      "sequence": 2,
+      "offset_ms": 1500,
+      "occurred_at": "2026-08-20T11:57:01.500Z",
+      "duration_ms": 500,
+      "clock_domain": "host-wall-clock",
+      "synchronization": "DEGRADED",
+      "lane": "ALERT",
+      "public_title": "ROS graph CLI unavailable",
+      "public_summary": "Node, topic, service, and action graph probes did not return runtime observations.",
+      "severity": "ERROR",
+      "authority": "OBSERVED",
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "asset_ids": [],
+      "related_event_ids": ["evt-query-declared"],
+      "metrics": {
+        "failed_probe_count": 4.0
+      },
+      "raw_payload": {
+        "stderr": "failed",
+        "attempted_interfaces": ["node", "topic", "service", "action"]
+      },
+      "limitations": [
+        "The failure does not distinguish daemon, middleware, transport, or sandbox causes."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-camera-missing",
+      "sequence": 3,
+      "offset_ms": 2100,
+      "occurred_at": "2026-08-20T11:57:02.100Z",
+      "duration_ms": null,
+      "clock_domain": "camera-clock",
+      "synchronization": "UNKNOWN",
+      "lane": "OBSERVATION",
+      "public_title": "Camera observation requested",
+      "public_summary": "A front camera observation was requested for runtime corroboration.",
+      "severity": "WARNING",
+      "authority": "OBSERVED",
+      "evidence_refs": [],
+      "asset_ids": ["asset-front-camera"],
+      "related_event_ids": ["evt-cli-unavailable"],
+      "metrics": {},
+      "raw_payload": {
+        "requested_topic": "/camera/image_raw"
+      },
+      "limitations": [
+        "No camera frame or synchronized capture timestamp was committed."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-agent-cause",
+      "sequence": 4,
+      "offset_ms": 2600,
+      "occurred_at": "2026-08-20T11:57:02.600Z",
+      "duration_ms": null,
+      "clock_domain": "host-wall-clock",
+      "synchronization": "DEGRADED",
+      "lane": "AGENT",
+      "public_title": "Runtime availability cause proposed",
+      "public_summary": "A disabled daemon, middleware mismatch, transport isolation, or sandbox restriction may explain the missing graph.",
+      "severity": "WARNING",
+      "authority": "INFERRED",
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "asset_ids": [],
+      "related_event_ids": ["evt-cli-unavailable"],
+      "metrics": {
+        "confidence": 0.65
+      },
+      "raw_payload": {
+        "model_prompt": "withheld",
+        "candidate_causes": ["daemon", "middleware", "transport", "sandbox"]
+      },
+      "limitations": [
+        "This is an advisory inference and does not establish root cause."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-event/v1",
+      "event_id": "evt-partial-outcome",
+      "sequence": 5,
+      "offset_ms": 3000,
+      "occurred_at": "2026-08-20T11:57:03Z",
+      "duration_ms": null,
+      "clock_domain": "host-wall-clock",
+      "synchronization": "DEGRADED",
+      "lane": "OUTCOME",
+      "public_title": "Discovery completed with partial coverage",
+      "public_summary": "Static environment metadata was retained while runtime ROS graph evidence remained unavailable.",
+      "severity": "WARNING",
+      "authority": "OBSERVED",
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/report.json"
+      ],
+      "asset_ids": [],
+      "related_event_ids": ["evt-cli-unavailable", "evt-camera-missing"],
+      "metrics": {
+        "runtime_graph_item_count": 0.0
+      },
+      "raw_payload": {
+        "discovery_status": "PARTIAL"
+      },
+      "limitations": [
+        "Static environment detection does not prove a live ROS graph."
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "schema_version": "rolo-episode-producer-asset/v1",
+      "asset_id": "asset-front-camera",
+      "modality": "camera",
+      "public_source_label": "Front camera",
+      "captured_at": "2026-08-20T11:57:02.100Z",
+      "offset_ms": 2100,
+      "world_kind": "PHYSICAL",
+      "evidence_kind": "RAW",
+      "frame": "front-camera",
+      "clock_domain": "camera-clock",
+      "synchronization": "UNKNOWN",
+      "media_type": "image/jpeg",
+      "byte_count": null,
+      "digest": null,
+      "data_classification": "INTERNAL",
+      "availability": "MISSING",
+      "artifact_ref": null,
+      "limitations": [
+        "The camera stream was not available to the bounded discovery session."
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "schema_version": "rolo-episode-producer-finding/v1",
+      "finding_id": "finding-cli-fact",
+      "kind": "OBSERVED_FACT",
+      "public_title": "Runtime graph probes unavailable",
+      "public_summary": "All four bounded ROS graph CLI probes failed to return runtime observations.",
+      "start_offset_ms": 1000,
+      "end_offset_ms": 2000,
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "asset_ids": [],
+      "contradicting_evidence_refs": [],
+      "confidence": 1.0,
+      "verification": "UNVERIFIED",
+      "raw_analysis": {
+        "failed_probes": 4
+      },
+      "limitations": [
+        "Probe failure is observed; its root cause is not established."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-finding/v1",
+      "finding_id": "finding-runtime-cause",
+      "kind": "CANDIDATE_CAUSE",
+      "public_title": "ROS runtime visibility may be restricted",
+      "public_summary": "Daemon state, middleware selection, transport isolation, or sandbox restrictions are candidate causes.",
+      "start_offset_ms": 1500,
+      "end_offset_ms": 3000,
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "asset_ids": [],
+      "contradicting_evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/linux.json"
+      ],
+      "confidence": 0.65,
+      "verification": "UNVERIFIED",
+      "raw_analysis": {
+        "candidate_count": 4,
+        "model_response": "withheld"
+      },
+      "limitations": [
+        "The available evidence cannot distinguish among the proposed causes."
+      ]
+    },
+    {
+      "schema_version": "rolo-episode-producer-finding/v1",
+      "finding_id": "finding-camera-cause",
+      "kind": "CANDIDATE_CAUSE",
+      "public_title": "Camera transport may be unavailable",
+      "public_summary": "The missing camera observation may reflect transport or permission limits.",
+      "start_offset_ms": 2100,
+      "end_offset_ms": 3000,
+      "evidence_refs": [],
+      "asset_ids": ["asset-front-camera"],
+      "contradicting_evidence_refs": [],
+      "confidence": 0.4,
+      "verification": "UNVERIFIED",
+      "raw_analysis": {
+        "requested_topic": "/camera/image_raw"
+      },
+      "limitations": [
+        "No supporting camera evidence was committed."
+      ]
+    }
+  ],
+  "limitations": [
+    "The producer did not provide a synchronized robot monotonic clock.",
+    "Runtime graph and camera evidence are incomplete."
+  ],
+  "content_sha256": "5eb670833d5117d068fb34fcfea30fd8435054a614b8b1b305e410bb3371a770"
+}

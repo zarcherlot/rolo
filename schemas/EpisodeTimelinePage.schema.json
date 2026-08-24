@@ -1,0 +1,295 @@
+{
+  "$defs": {
+    "EpisodeAuthority": {
+      "enum": [
+        "DECLARED",
+        "OBSERVED",
+        "INFERRED",
+        "HUMAN_CONFIRMED",
+        "VERIFIED"
+      ],
+      "title": "EpisodeAuthority",
+      "type": "string"
+    },
+    "EpisodeSeverity": {
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
+      "title": "EpisodeSeverity",
+      "type": "string"
+    },
+    "EpisodeSynchronization": {
+      "enum": [
+        "SYNCED",
+        "DEGRADED",
+        "UNSYNCED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeSynchronization",
+      "type": "string"
+    },
+    "EpisodeTimelineEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-timeline-event/v1",
+          "default": "rolo-episode-timeline-event/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "event_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "offset_ms": {
+          "minimum": 0,
+          "title": "Offset Ms",
+          "type": "integer"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "clock_domain": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Clock Domain",
+          "type": "string"
+        },
+        "synchronization": {
+          "$ref": "#/$defs/EpisodeSynchronization"
+        },
+        "lane": {
+          "$ref": "#/$defs/EpisodeTimelineLane"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/EpisodeSeverity"
+        },
+        "authority": {
+          "$ref": "#/$defs/EpisodeAuthority"
+        },
+        "evidence_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "asset_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Asset Ids",
+          "type": "array"
+        },
+        "related_event_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Related Event Ids",
+          "type": "array"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "maxProperties": 32,
+          "title": "Metrics",
+          "type": "object"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "robot_id",
+        "episode_id",
+        "revision",
+        "event_id",
+        "sequence",
+        "offset_ms",
+        "occurred_at",
+        "clock_domain",
+        "synchronization",
+        "lane",
+        "title",
+        "summary",
+        "severity",
+        "authority"
+      ],
+      "title": "EpisodeTimelineEvent",
+      "type": "object"
+    },
+    "EpisodeTimelineLane": {
+      "enum": [
+        "COMMAND",
+        "STATE",
+        "TELEMETRY",
+        "OBSERVATION",
+        "ALERT",
+        "AGENT",
+        "CONFIGURATION",
+        "CHECKPOINT",
+        "GATE",
+        "OUTCOME"
+      ],
+      "title": "EpisodeTimelineLane",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-timeline-page/v1",
+      "default": "rolo-episode-timeline-page/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EpisodeTimelineEvent"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "limit": {
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "maxLength": 80,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Cursor"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "immutable": {
+      "title": "Immutable",
+      "type": "boolean"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "revision",
+    "items",
+    "limit",
+    "as_of",
+    "immutable"
+  ],
+  "title": "EpisodeTimelinePage",
+  "type": "object"
+}

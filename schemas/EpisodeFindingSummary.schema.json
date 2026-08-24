@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "EpisodeAuthority": {
+      "enum": [
+        "DECLARED",
+        "OBSERVED",
+        "INFERRED",
+        "HUMAN_CONFIRMED",
+        "VERIFIED"
+      ],
+      "title": "EpisodeAuthority",
+      "type": "string"
+    },
+    "EpisodeFindingKind": {
+      "enum": [
+        "OBSERVED_FACT",
+        "CANDIDATE_CAUSE",
+        "HUMAN_CONFIRMATION",
+        "VERIFIED_OUTCOME"
+      ],
+      "title": "EpisodeFindingKind",
+      "type": "string"
+    },
+    "EpisodeVerification": {
+      "enum": [
+        "VERIFIED",
+        "UNVERIFIED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "EpisodeVerification",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-finding-summary/v1",
+      "default": "rolo-episode-finding-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "finding_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Finding Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/EpisodeFindingKind"
+    },
+    "authority": {
+      "$ref": "#/$defs/EpisodeAuthority"
+    },
+    "title": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "start_offset_ms": {
+      "minimum": 0,
+      "title": "Start Offset Ms",
+      "type": "integer"
+    },
+    "end_offset_ms": {
+      "minimum": 0,
+      "title": "End Offset Ms",
+      "type": "integer"
+    },
+    "supporting_evidence_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Supporting Evidence Ids",
+      "type": "array"
+    },
+    "supporting_asset_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Supporting Asset Ids",
+      "type": "array"
+    },
+    "contradicting_evidence_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Contradicting Evidence Ids",
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    },
+    "verification": {
+      "$ref": "#/$defs/EpisodeVerification"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "revision",
+    "finding_id",
+    "kind",
+    "authority",
+    "title",
+    "summary",
+    "start_offset_ms",
+    "end_offset_ms",
+    "verification"
+  ],
+  "title": "EpisodeFindingSummary",
+  "type": "object"
+}

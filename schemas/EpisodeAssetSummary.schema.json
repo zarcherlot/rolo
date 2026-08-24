@@ -1,0 +1,205 @@
+{
+  "$defs": {
+    "EpisodeAssetAvailability": {
+      "enum": [
+        "AVAILABLE",
+        "MISSING",
+        "REDACTED"
+      ],
+      "title": "EpisodeAssetAvailability",
+      "type": "string"
+    },
+    "EpisodeEvidenceKind": {
+      "enum": [
+        "RAW",
+        "NORMALIZED",
+        "RENDERED",
+        "GUI_SCREENSHOT"
+      ],
+      "title": "EpisodeEvidenceKind",
+      "type": "string"
+    },
+    "EpisodeSynchronization": {
+      "enum": [
+        "SYNCED",
+        "DEGRADED",
+        "UNSYNCED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeSynchronization",
+      "type": "string"
+    },
+    "EpisodeWorldKind": {
+      "enum": [
+        "PHYSICAL",
+        "SIMULATED",
+        "REPLAYED"
+      ],
+      "title": "EpisodeWorldKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-asset-summary/v1",
+      "default": "rolo-episode-asset-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "asset_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "modality": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Modality",
+      "type": "string"
+    },
+    "source_label": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Source Label",
+      "type": "string"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    },
+    "offset_ms": {
+      "minimum": 0,
+      "title": "Offset Ms",
+      "type": "integer"
+    },
+    "world_kind": {
+      "$ref": "#/$defs/EpisodeWorldKind"
+    },
+    "evidence_kind": {
+      "$ref": "#/$defs/EpisodeEvidenceKind"
+    },
+    "frame": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frame"
+    },
+    "clock_domain": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Clock Domain",
+      "type": "string"
+    },
+    "synchronization": {
+      "$ref": "#/$defs/EpisodeSynchronization"
+    },
+    "media_type": {
+      "pattern": "^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$",
+      "title": "Media Type",
+      "type": "string"
+    },
+    "byte_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Byte Count"
+    },
+    "digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Digest"
+    },
+    "data_classification": {
+      "enum": [
+        "PUBLIC",
+        "INTERNAL",
+        "SENSITIVE",
+        "SECRET"
+      ],
+      "title": "Data Classification",
+      "type": "string"
+    },
+    "evidence_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Id"
+    },
+    "availability": {
+      "$ref": "#/$defs/EpisodeAssetAvailability"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "revision",
+    "asset_id",
+    "modality",
+    "source_label",
+    "captured_at",
+    "offset_ms",
+    "world_kind",
+    "evidence_kind",
+    "clock_domain",
+    "synchronization",
+    "media_type",
+    "data_classification",
+    "availability"
+  ],
+  "title": "EpisodeAssetSummary",
+  "type": "object"
+}

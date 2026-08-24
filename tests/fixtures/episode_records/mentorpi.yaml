@@ -1,0 +1,23 @@
+schema_version: robot-capability/v1
+robot_id: mentorpi
+adapter: unbound
+platform:
+  architecture: auto_discover
+  compute: auto_discover
+  os: auto_discover
+  ros_distro: auto_discover
+  drive_model: unresolved
+geometry: {}
+sensors: {}
+features:
+  enrollment:
+    identity_status: REGISTERED
+    urdf_status: NOT_DISCOVERED
+    semantic_status: UNRESOLVED
+    motion_safety_status: UNAPPROVED
+    bindings_verified: false
+    calibration_verified: false
+  robot_use:
+    supported: true
+    local_visual_detection: false
+    safety_authority: none

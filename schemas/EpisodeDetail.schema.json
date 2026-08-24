@@ -1,0 +1,652 @@
+{
+  "$defs": {
+    "EpisodeAssetAvailability": {
+      "enum": [
+        "AVAILABLE",
+        "MISSING",
+        "REDACTED"
+      ],
+      "title": "EpisodeAssetAvailability",
+      "type": "string"
+    },
+    "EpisodeAssetSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-asset-summary/v1",
+          "default": "rolo-episode-asset-summary/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "asset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "modality": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Modality",
+          "type": "string"
+        },
+        "source_label": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Label",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "offset_ms": {
+          "minimum": 0,
+          "title": "Offset Ms",
+          "type": "integer"
+        },
+        "world_kind": {
+          "$ref": "#/$defs/EpisodeWorldKind"
+        },
+        "evidence_kind": {
+          "$ref": "#/$defs/EpisodeEvidenceKind"
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame"
+        },
+        "clock_domain": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Clock Domain",
+          "type": "string"
+        },
+        "synchronization": {
+          "$ref": "#/$defs/EpisodeSynchronization"
+        },
+        "media_type": {
+          "pattern": "^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "byte_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Byte Count"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "data_classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "SENSITIVE",
+            "SECRET"
+          ],
+          "title": "Data Classification",
+          "type": "string"
+        },
+        "evidence_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Id"
+        },
+        "availability": {
+          "$ref": "#/$defs/EpisodeAssetAvailability"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "robot_id",
+        "episode_id",
+        "revision",
+        "asset_id",
+        "modality",
+        "source_label",
+        "captured_at",
+        "offset_ms",
+        "world_kind",
+        "evidence_kind",
+        "clock_domain",
+        "synchronization",
+        "media_type",
+        "data_classification",
+        "availability"
+      ],
+      "title": "EpisodeAssetSummary",
+      "type": "object"
+    },
+    "EpisodeAuthority": {
+      "enum": [
+        "DECLARED",
+        "OBSERVED",
+        "INFERRED",
+        "HUMAN_CONFIRMED",
+        "VERIFIED"
+      ],
+      "title": "EpisodeAuthority",
+      "type": "string"
+    },
+    "EpisodeCoverage": {
+      "enum": [
+        "METADATA_ONLY",
+        "PARTIAL",
+        "COMPLETE"
+      ],
+      "title": "EpisodeCoverage",
+      "type": "string"
+    },
+    "EpisodeEvidenceKind": {
+      "enum": [
+        "RAW",
+        "NORMALIZED",
+        "RENDERED",
+        "GUI_SCREENSHOT"
+      ],
+      "title": "EpisodeEvidenceKind",
+      "type": "string"
+    },
+    "EpisodeFindingKind": {
+      "enum": [
+        "OBSERVED_FACT",
+        "CANDIDATE_CAUSE",
+        "HUMAN_CONFIRMATION",
+        "VERIFIED_OUTCOME"
+      ],
+      "title": "EpisodeFindingKind",
+      "type": "string"
+    },
+    "EpisodeFindingSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-episode-finding-summary/v1",
+          "default": "rolo-episode-finding-summary/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "finding_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/EpisodeFindingKind"
+        },
+        "authority": {
+          "$ref": "#/$defs/EpisodeAuthority"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "start_offset_ms": {
+          "minimum": 0,
+          "title": "Start Offset Ms",
+          "type": "integer"
+        },
+        "end_offset_ms": {
+          "minimum": 0,
+          "title": "End Offset Ms",
+          "type": "integer"
+        },
+        "supporting_evidence_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Supporting Evidence Ids",
+          "type": "array"
+        },
+        "supporting_asset_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Supporting Asset Ids",
+          "type": "array"
+        },
+        "contradicting_evidence_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Contradicting Evidence Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "verification": {
+          "$ref": "#/$defs/EpisodeVerification"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "robot_id",
+        "episode_id",
+        "revision",
+        "finding_id",
+        "kind",
+        "authority",
+        "title",
+        "summary",
+        "start_offset_ms",
+        "end_offset_ms",
+        "verification"
+      ],
+      "title": "EpisodeFindingSummary",
+      "type": "object"
+    },
+    "EpisodeOutcome": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeOutcome",
+      "type": "string"
+    },
+    "EpisodeState": {
+      "enum": [
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        "PARTIAL"
+      ],
+      "title": "EpisodeState",
+      "type": "string"
+    },
+    "EpisodeSynchronization": {
+      "enum": [
+        "SYNCED",
+        "DEGRADED",
+        "UNSYNCED",
+        "UNKNOWN"
+      ],
+      "title": "EpisodeSynchronization",
+      "type": "string"
+    },
+    "EpisodeTimelineLane": {
+      "enum": [
+        "COMMAND",
+        "STATE",
+        "TELEMETRY",
+        "OBSERVATION",
+        "ALERT",
+        "AGENT",
+        "CONFIGURATION",
+        "CHECKPOINT",
+        "GATE",
+        "OUTCOME"
+      ],
+      "title": "EpisodeTimelineLane",
+      "type": "string"
+    },
+    "EpisodeVerification": {
+      "enum": [
+        "VERIFIED",
+        "UNVERIFIED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "EpisodeVerification",
+      "type": "string"
+    },
+    "EpisodeWorldKind": {
+      "enum": [
+        "PHYSICAL",
+        "SIMULATED",
+        "REPLAYED"
+      ],
+      "title": "EpisodeWorldKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-episode-detail/v1",
+      "default": "rolo-episode-detail/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Episode Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "task_label": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Label",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/EpisodeState"
+    },
+    "outcome": {
+      "$ref": "#/$defs/EpisodeOutcome"
+    },
+    "verification": {
+      "$ref": "#/$defs/EpisodeVerification"
+    },
+    "coverage": {
+      "$ref": "#/$defs/EpisodeCoverage"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "execution_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Id"
+    },
+    "test_case_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Test Case Id"
+    },
+    "lifecycle_run_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Lifecycle Run Id"
+    },
+    "operation": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation"
+    },
+    "event_count": {
+      "minimum": 0,
+      "title": "Event Count",
+      "type": "integer"
+    },
+    "asset_count": {
+      "minimum": 0,
+      "title": "Asset Count",
+      "type": "integer"
+    },
+    "finding_count": {
+      "minimum": 0,
+      "title": "Finding Count",
+      "type": "integer"
+    },
+    "evidence_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "source_kind": {
+      "const": "published_episode_projection",
+      "default": "published_episode_projection",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "immutable": {
+      "title": "Immutable",
+      "type": "boolean"
+    },
+    "clock_domain": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Clock Domain",
+      "type": "string"
+    },
+    "synchronization": {
+      "$ref": "#/$defs/EpisodeSynchronization"
+    },
+    "available_lanes": {
+      "items": {
+        "$ref": "#/$defs/EpisodeTimelineLane"
+      },
+      "maxItems": 10,
+      "title": "Available Lanes",
+      "type": "array"
+    },
+    "expected_behavior": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Behavior"
+    },
+    "observed_behavior": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Behavior"
+    },
+    "assets": {
+      "items": {
+        "$ref": "#/$defs/EpisodeAssetSummary"
+      },
+      "maxItems": 1000,
+      "title": "Assets",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/EpisodeFindingSummary"
+      },
+      "maxItems": 1000,
+      "title": "Findings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "episode_id",
+    "revision",
+    "task_label",
+    "state",
+    "outcome",
+    "verification",
+    "coverage",
+    "started_at",
+    "event_count",
+    "asset_count",
+    "finding_count",
+    "as_of",
+    "immutable",
+    "clock_domain",
+    "synchronization"
+  ],
+  "title": "EpisodeDetail",
+  "type": "object"
+}

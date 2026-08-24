@@ -31,9 +31,16 @@ def interprocess_lock(
             os.fsync(descriptor)
         except (FileExistsError, PermissionError) as exc:
             # Windows may report a sharing violation as PermissionError while another process
-            # owns the lock file. A missing path is a real permission failure and must propagate.
+            # owns the lock file. The owner may remove it before exists()/stat(), so a missing
+            # path is also retried within the same bounded deadline instead of being mistaken
+            # for a permanent ACL failure.
             if isinstance(exc, PermissionError) and not lock_path.exists():
-                raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"timed out waiting for artifact lock: {target}"
+                    ) from None
+                time.sleep(0.02)
+                continue
             try:
                 stale = time.time() - lock_path.stat().st_mtime > stale_after_s
             except FileNotFoundError:
@@ -59,12 +66,20 @@ def interprocess_lock(
             pass
 
 
-def atomic_write_text(path: Path, value: str, *, acquire_lock: bool = True) -> None:
+def atomic_write_text(
+    path: Path,
+    value: str,
+    *,
+    acquire_lock: bool = True,
+    require_absent: bool = False,
+) -> None:
     """Durably replace one file through a unique same-directory temporary."""
     path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     def write() -> None:
+        if require_absent and path.exists():
+            raise FileExistsError(path)
         # Keep the sibling name short enough for Windows MAX_PATH while retaining 48 bits of
         # per-write uniqueness. The exclusive create still detects the improbable collision.
         temporary = path.with_name(f".t{uuid4().hex[:12]}")
