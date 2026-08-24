@@ -1,5 +1,8 @@
 # Adapt real-device hands-on
 
+Chinese operators should use the complete
+[`Rolo 目标机部署与 Adapt 操作手册`](TARGET_DEVICE_OPERATION_MANUAL_ZH.md).
+
 This procedure starts where repository validation ends. Run it **on the target robot host** (or over
 SSH as the target robot application user). Adapt verifies contract/binding integrity and
 that an equivalent route exists. It does not execute write operations or claim behavior, reliability,
