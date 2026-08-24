@@ -168,6 +168,30 @@ def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
         deferred not in task["operations"] for task in compact_plan["tasks"]
     )
     assert "authoritative bundle operation set" in prompt
+    assert "Run handoff pack only once" in prompt
+    assert "immediately return the required final JSON" in prompt
+    assert "manually clean the workspace" in prompt
+
+
+def test_agent_workspace_instructions_prevent_recursive_inventory_and_rework(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, evidence)
+
+    CodexAdaptExecutor(ArtifactStore(artifact_root))._install_agent_tool_launcher(
+        workspace, plan
+    )
+
+    instructions = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Do not inventory the directory" in instructions
+    assert "run `rg --files`" in instructions
+    assert "run `adapt handoff pack` once" in instructions
+    assert "without speculative revisions" in instructions
 
 
 def test_explicit_canary_narrows_compact_focus_but_not_current_task_authority(

@@ -639,6 +639,17 @@ class CodexAdaptExecutor:
                 encoding="utf-8",
             )
             launcher.chmod(0o700)
+        (workspace / "AGENTS.md").write_text(
+            "# Rolo Stage 1 adapter workspace\n\n"
+            "- Work only in this directory. On Windows, explicitly Set-Location to this "
+            "directory before every shell command.\n"
+            "- Do not inventory the directory, run `rg --files`, recurse above it, or inspect "
+            "the drive root. Start with the supplied rolo-agent-tool and the compact plan.\n"
+            "- Run focused adapter tests, then run `adapt handoff pack` once. When it succeeds, "
+            "return its outputs and files immediately without speculative revisions, another "
+            "pack, or manual cleanup. The workspace is ephemeral.\n",
+            encoding="utf-8",
+        )
         return launcher.resolve()
 
     def _slice_activation_decision(
@@ -793,9 +804,10 @@ class CodexAdaptExecutor:
             "You are the Stage 1 Adapter Agent for rolo. The supplied workspace is a new, "
             "isolated adapter project outside the rolo source tree. Work only inside it and "
             "implement the approved plan below. Never edit or add files to the rolo product "
-            "repository. On Windows, explicitly set the shell location to the absolute "
-            "agent_tool.workspace_root before inspecting or writing files; do not enumerate the "
-            "drive root. The supplied inspection command and its bounded snapshot are local to "
+            "repository. Your first shell command, and every later Windows shell command, must "
+            "explicitly set the location to the absolute agent_tool.workspace_root. Never run "
+            "`rg --files`, a recursive directory inventory, or any command against the drive "
+            "root. The supplied inspection command and its bounded snapshot are local to "
             "that workspace and require no access to the rolo source tree or original artifact "
             "directory. Do not include rolo-agent-tool, rolo_agent_inspection_tool.py, or "
             "any rolo-agent inspection helper or data file in the adapter bundle. Start from "
@@ -818,8 +830,8 @@ class CodexAdaptExecutor:
             "unregistered and must not block otherwise eligible operations. For every bundle "
             "operation, copy contract_version and contract_sha256 exactly from "
             "the operation contract returned by the read-only inspection tool. "
-            "The executable must support `describe` and bounded `invoke` commands. Remove build "
-            "caches and temporary files before completion. When handoff_ready is true, outputs "
+            "The executable must support `describe` and bounded `invoke` commands. When "
+            "handoff_ready is true, outputs "
             "must name workspace-relative final files for all four outputs. Return only the JSON "
             "object required by the supplied output schema. Before authoring each artifact, query "
             "the exact AdapterBundleManifest, StateGraphBaseline, and AdapterConformanceReport "
@@ -831,18 +843,19 @@ class CodexAdaptExecutor:
             "the inspection snapshot, or other intermediate files. Generate the exact outputs and "
             "files objects by running the supplied `adapt handoff pack` command with all four "
             "output path options; copy its JSON fields without manually recreating base64 or "
-            "hashes. The pack command verifies paths, file counts, sizes, identities and bundle "
+            "hashes. Run handoff pack only once, after targeted validation. If it succeeds, copy "
+            "its JSON fields and immediately return the required final JSON; do not make "
+            "speculative revisions, rerun tests, pack again, or manually clean the workspace. "
+            "The temporary workspace is destroyed by rolo after the independent gate captures "
+            "the structured payload. The pack command verifies paths, file counts, sizes, "
+            "identities and bundle "
             "hashes, then runs only the advisory `describe` command inside this Agent sandbox "
             "with a timeout, bounded output, reduced environment, and process-tree cleanup. It "
             "never runs `invoke` and cannot confer VERIFIED or release authority. Rolo "
             "reconstructs these "
             "payloads in its own permission domain before independent validation; filesystem "
-            "paths alone are not a handoff. After all payloads and hashes are captured for the "
-            "final JSON, remove every file and directory you created, including adapter outputs "
-            "and tests, from the workspace. Leave only the supplied rolo-agent inspection "
-            "helper and data files. The structured files array is the authoritative handoff and "
-            "output "
-            "paths need not remain on disk.\n\n"
+            "paths alone are not a handoff. The structured files array is the authoritative "
+            "handoff; workspace paths are temporary and need not be cleaned or preserved.\n\n"
             "Semantic candidates are unverified diagnostic inputs. Never encode them as hard "
             "motion safety limits without explicit validation and approval.\n\n"
             "Treat operation data_classification as binding policy metadata. Do not copy "
