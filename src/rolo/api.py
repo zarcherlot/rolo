@@ -47,10 +47,12 @@ from rolo.episode_read_models import (
     EpisodeCollection,
     EpisodeCursorError,
     EpisodeDetail,
+    EpisodeRevisionCollection,
     EpisodeRevisionConflict,
     EpisodeState,
     EpisodeTimelinePage,
     build_episode_collection,
+    build_episode_revision_collection,
     build_episode_timeline_page,
     get_episode_detail,
 )
@@ -736,6 +738,7 @@ async def get_robot_episode(
     robot_id: str,
     episode_id: str,
     request: Request,
+    revision: Annotated[int | None, Query(ge=1)] = None,
 ) -> EpisodeDetail:
     runtime = get_runtime(request)
     try:
@@ -743,7 +746,14 @@ async def get_robot_episode(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
-        detail = get_episode_detail(runtime.settings.rolo_artifact_dir, robot_id, episode_id)
+        detail = get_episode_detail(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            episode_id,
+            revision=revision,
+        )
+    except EpisodeRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (OSError, ValueError) as exc:
         raise HTTPException(
             status_code=409,
@@ -752,6 +762,40 @@ async def get_robot_episode(
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown Episode")
     return detail
+
+
+@app.get(
+    "/v1/robots/{robot_id}/episodes/{episode_id}/revisions",
+    response_model=EpisodeRevisionCollection,
+)
+async def list_robot_episode_revisions(
+    robot_id: str,
+    episode_id: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EpisodeRevisionCollection:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        revisions = build_episode_revision_collection(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            episode_id,
+            limit=limit,
+            offset=offset,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode revision history failed integrity validation",
+        ) from exc
+    if revisions is None:
+        raise HTTPException(status_code=404, detail="Unknown Episode")
+    return revisions
 
 
 @app.get(

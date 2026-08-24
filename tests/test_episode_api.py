@@ -51,12 +51,23 @@ def test_episode_api_reads_completed_projection_and_pins_timeline_revision(
             params={"state": "COMPLETED", "limit": 10},
         )
         detail = client.get("/v1/robots/demo_diff/episodes/ep-nav-001")
+        pinned_detail = client.get(
+            "/v1/robots/demo_diff/episodes/ep-nav-001",
+            params={"revision": 1},
+        )
+        revisions = client.get(
+            "/v1/robots/demo_diff/episodes/ep-nav-001/revisions",
+        )
         first = client.get(
             "/v1/robots/demo_diff/episodes/ep-nav-001/timeline",
             params={"revision": 1, "limit": 1},
         )
         stale = client.get(
             "/v1/robots/demo_diff/episodes/ep-nav-001/timeline",
+            params={"revision": 2},
+        )
+        stale_detail = client.get(
+            "/v1/robots/demo_diff/episodes/ep-nav-001",
             params={"revision": 2},
         )
         invalid_cursor = client.get(
@@ -68,10 +79,16 @@ def test_episode_api_reads_completed_projection_and_pins_timeline_revision(
     assert collection.json()["total"] == 1
     assert detail.status_code == 200
     assert detail.json()["immutable"] is True
+    assert pinned_detail.status_code == 200
+    assert pinned_detail.json()["revision"] == 1
+    assert revisions.status_code == 200
+    assert revisions.json()["current_revision"] == 1
+    assert revisions.json()["items"][0]["source_kind"] == "published_episode_projection"
     assert first.status_code == 200
     assert first.json()["items"][0]["event_id"] == "evt-command"
     assert first.json()["next_cursor"].startswith("epcur_")
     assert stale.status_code == 409
+    assert stale_detail.status_code == 409
     assert invalid_cursor.status_code == 422
 
 

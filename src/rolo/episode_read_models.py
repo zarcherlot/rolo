@@ -22,7 +22,10 @@ from pydantic import (
 from rolo.core.models import utc_now
 from rolo.stages.artifact_paths import ArtifactLayout
 
-EPISODE_API_FEATURES = ("workbench.episode-read-model/v1",)
+EPISODE_API_FEATURES = (
+    "workbench.episode-read-model/v1",
+    "workbench.episode-revision-history/v1",
+)
 
 Identifier = Annotated[
     str,
@@ -401,6 +404,69 @@ class EpisodeCollection(EpisodePublicModel):
         return self
 
 
+class EpisodeRevisionSummary(EpisodePublicModel):
+    schema_version: Literal["rolo-episode-revision-summary/v1"] = (
+        "rolo-episode-revision-summary/v1"
+    )
+    robot_id: Identifier
+    episode_id: Identifier
+    revision: int = Field(ge=1)
+    parent_revision: int | None = Field(default=None, ge=1)
+    committed_at: AwareDatetime
+    state: EpisodeState
+    outcome: EpisodeOutcome
+    verification: EpisodeVerification
+    coverage: EpisodeCoverage
+    immutable: bool
+    event_count: int = Field(ge=0)
+    asset_count: int = Field(ge=0)
+    finding_count: int = Field(ge=0)
+    is_current: bool
+    source_kind: Literal[
+        "committed_episode_record", "published_episode_projection"
+    ]
+    limitations: list[LimitationText] = Field(default_factory=list, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> EpisodeRevisionSummary:
+        if self.source_kind == "committed_episode_record":
+            if self.revision == 1 and self.parent_revision is not None:
+                raise ValueError("revision 1 cannot have parent_revision")
+            if self.revision > 1 and self.parent_revision != self.revision - 1:
+                raise ValueError("committed revision must reference its immediate parent")
+        return self
+
+
+class EpisodeRevisionCollection(EpisodePublicModel):
+    schema_version: Literal["rolo-episode-revision-collection/v1"] = (
+        "rolo-episode-revision-collection/v1"
+    )
+    robot_id: Identifier
+    episode_id: Identifier
+    current_revision: int = Field(ge=1)
+    items: list[EpisodeRevisionSummary]
+    total: int = Field(ge=1)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+    next_offset: int | None = Field(default=None, ge=1)
+    as_of: AwareDatetime
+    source_kind: Literal["episode_revision_history"] = "episode_revision_history"
+    limitations: list[LimitationText] = Field(default_factory=list, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_collection(self) -> EpisodeRevisionCollection:
+        if len(self.items) > self.total:
+            raise ValueError("revision collection items cannot exceed total")
+        if any(
+            item.robot_id != self.robot_id or item.episode_id != self.episode_id
+            for item in self.items
+        ):
+            raise ValueError("revision collection item identity does not match collection")
+        if sum(item.is_current for item in self.items) > 1:
+            raise ValueError("revision collection page cannot contain multiple current revisions")
+        return self
+
+
 class EpisodeTimelinePage(EpisodePublicModel):
     schema_version: Literal["rolo-episode-timeline-page/v1"] = (
         "rolo-episode-timeline-page/v1"
@@ -619,9 +685,160 @@ def get_episode_detail(
     artifact_root: Path,
     robot_id: str,
     episode_id: str,
+    *,
+    revision: int | None = None,
 ) -> EpisodeDetail | None:
-    projection = _projection_for(artifact_root, robot_id, episode_id)
+    projection = _projection_for_revision(
+        artifact_root,
+        robot_id,
+        episode_id,
+        revision=revision,
+    )
     return projection.detail if projection is not None else None
+
+
+def _projection_for_revision(
+    artifact_root: Path,
+    robot_id: str,
+    episode_id: str,
+    *,
+    revision: int | None,
+) -> PublishedEpisodeProjection | None:
+    current = _projection_for(artifact_root, robot_id, episode_id)
+    if current is None:
+        return None
+    if revision is None or revision == current.detail.revision:
+        return current
+    if revision > current.detail.revision:
+        raise EpisodeRevisionConflict("Episode revision is not available")
+    try:
+        from rolo.episode_projection import (
+            load_committed_episode_record,
+            project_episode_record,
+        )
+
+        record = load_committed_episode_record(
+            artifact_root,
+            robot_id,
+            episode_id,
+            revision,
+        )
+    except FileNotFoundError as exc:
+        raise EpisodeRevisionConflict("Episode revision is not available") from exc
+    return project_episode_record(record)
+
+
+def build_episode_revision_collection(
+    artifact_root: Path,
+    robot_id: str,
+    episode_id: str,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> EpisodeRevisionCollection | None:
+    current = _projection_for(artifact_root, robot_id, episode_id)
+    if current is None:
+        return None
+
+    from rolo.episode_projection import (
+        load_committed_episode_record,
+        project_episode_record,
+    )
+
+    records_root = ArtifactLayout(artifact_root).episode_records(robot_id, episode_id)
+    _validate_publication_root(artifact_root, records_root)
+    revisions: list[EpisodeRevisionSummary] = []
+    limitations: list[str] = []
+    if not records_root.is_dir():
+        detail = current.detail
+        revisions.append(
+            EpisodeRevisionSummary(
+                robot_id=robot_id,
+                episode_id=episode_id,
+                revision=detail.revision,
+                parent_revision=None,
+                committed_at=detail.as_of,
+                state=detail.state,
+                outcome=detail.outcome,
+                verification=detail.verification,
+                coverage=detail.coverage,
+                immutable=detail.immutable,
+                event_count=detail.event_count,
+                asset_count=detail.asset_count,
+                finding_count=detail.finding_count,
+                is_current=True,
+                source_kind="published_episode_projection",
+                limitations=[
+                    "Historical committed records are unavailable; only the current "
+                    "published revision is readable."
+                ],
+            )
+        )
+        limitations.append(
+            "Revision history is limited to the current independently published projection."
+        )
+    else:
+        paths = list(records_root.iterdir())
+        if len(paths) > 1_000:
+            raise ValueError("Episode revision count exceeds the bounded read-model limit")
+        available: set[int] = set()
+        for path in paths:
+            match = re.fullmatch(r"revision-([1-9][0-9]*)\.json", path.name)
+            if match is None or path.is_symlink() or not path.is_file():
+                raise ValueError("unsafe Episode revision record path")
+            available.add(int(match.group(1)))
+        expected = set(range(1, current.detail.revision + 1))
+        if available != expected:
+            raise ValueError(
+                "Episode revision history is incomplete or exceeds current publication"
+            )
+        for revision in sorted(available, reverse=True):
+            record = load_committed_episode_record(
+                artifact_root,
+                robot_id,
+                episode_id,
+                revision,
+            )
+            projection = (
+                current
+                if revision == current.detail.revision
+                else project_episode_record(record)
+            )
+            detail = projection.detail
+            revisions.append(
+                EpisodeRevisionSummary(
+                    robot_id=robot_id,
+                    episode_id=episode_id,
+                    revision=revision,
+                    parent_revision=record.parent_revision,
+                    committed_at=record.committed_at,
+                    state=detail.state,
+                    outcome=detail.outcome,
+                    verification=detail.verification,
+                    coverage=detail.coverage,
+                    immutable=detail.immutable,
+                    event_count=detail.event_count,
+                    asset_count=detail.asset_count,
+                    finding_count=detail.finding_count,
+                    is_current=revision == current.detail.revision,
+                    source_kind="committed_episode_record",
+                    limitations=list(detail.limitations),
+                )
+            )
+
+    total = len(revisions)
+    return EpisodeRevisionCollection(
+        robot_id=robot_id,
+        episode_id=episode_id,
+        current_revision=current.detail.revision,
+        items=revisions[offset : offset + limit],
+        total=total,
+        limit=limit,
+        offset=offset,
+        next_offset=offset + limit if offset + limit < total else None,
+        as_of=current.detail.as_of,
+        limitations=limitations,
+    )
 
 
 def _cursor_for(robot_id: str, episode_id: str, revision: int, offset: int) -> str:
@@ -638,11 +855,14 @@ def build_episode_timeline_page(
     limit: int = 100,
     cursor: str | None = None,
 ) -> EpisodeTimelinePage | None:
-    projection = _projection_for(artifact_root, robot_id, episode_id)
+    projection = _projection_for_revision(
+        artifact_root,
+        robot_id,
+        episode_id,
+        revision=revision,
+    )
     if projection is None:
         return None
-    if projection.detail.revision != revision:
-        raise EpisodeRevisionConflict("Episode revision is no longer available")
     events = sorted(projection.timeline, key=lambda item: item.sequence)
     start = 0
     if cursor is not None:
