@@ -28,6 +28,13 @@ SYSTEM_FILES = (
     "/etc/passwd",
     "/etc/resolv.conf",
 )
+BASE_DIRECTORIES = {
+    Path("/dev"),
+    Path("/home"),
+    Path("/home/rolo"),
+    Path("/proc"),
+    Path("/tmp"),
+}
 
 
 def fail(message: str) -> int:
@@ -119,6 +126,18 @@ def base_launch(bubblewrap: str) -> list[str]:
     ]
 
 
+def add_mount_parent_directories(launch: list[str], paths: list[Path]) -> None:
+    """Create empty destinations for deep, selectively mounted host paths."""
+    parents: set[Path] = set()
+    for path in paths:
+        for parent in path.parents:
+            if parent == Path("/") or parent in BASE_DIRECTORIES:
+                continue
+            parents.add(parent)
+    for parent in sorted(parents, key=lambda value: (len(value.parts), str(value))):
+        launch.extend(["--dir", str(parent)])
+
+
 def main() -> int:
     if sys.platform != "linux":
         return fail("the bundled production launcher requires Linux")
@@ -133,7 +152,11 @@ def main() -> int:
         self_test_paths: set[Path] = set()
         for raw in SYSTEM_DIRECTORIES:
             add_path(self_test_paths, raw)
-        for path in sorted(self_test_paths, key=lambda value: (len(value.parts), str(value))):
+        ordered_self_test_paths = sorted(
+            self_test_paths, key=lambda value: (len(value.parts), str(value))
+        )
+        add_mount_parent_directories(launch, ordered_self_test_paths)
+        for path in ordered_self_test_paths:
             launch.extend(["--ro-bind", str(path), str(path)])
         os.execv(
             bubblewrap,
@@ -148,6 +171,7 @@ def main() -> int:
     launch = base_launch(bubblewrap)
     if os.environ.get("ROLO_ADAPTER_SANDBOX_NETWORK", "isolated") == "host":
         launch.append("--share-net")
+    add_mount_parent_directories(launch, readonly)
     for path in readonly:
         launch.extend(["--ro-bind", str(path), str(path)])
     launch.extend(["--chdir", str(cwd), "--", *command])
