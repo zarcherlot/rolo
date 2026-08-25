@@ -22,4 +22,5 @@ BP/
 /.validation-*/
 /.pytest-*/
 /.codex-pytest-*/
+/.worktrees/
 /.tmp/

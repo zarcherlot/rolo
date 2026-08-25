@@ -1,4 +1,4 @@
-# Rolo configuration and automatic ROS bootstrap
+# Rolo configuration and optional ROS bootstrap
 
 Rolo runs without a configuration file. Linux defaults follow XDG and remain outside the Git
 checkout:
@@ -28,7 +28,9 @@ settings. A complete template is checked in at [`../config/rolo.default.yaml`](.
 
 ## ROS setup resolution
 
-Before signed target evidence collection, local mode resolves setup files in this order:
+Non-ROS projects need no ROS setup and continue with host, Application/CLI, protocol, process, and
+device-interface evidence. When the target or project is ROS-relevant, before signed target evidence
+collection local mode resolves setup files in this order:
 
 1. explicitly configured `ros.setup_files`;
 2. the single `/opt/ros/<distro>/setup.bash`, using inherited `ROS_DISTRO` when available;

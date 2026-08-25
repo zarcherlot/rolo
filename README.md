@@ -84,7 +84,7 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 ### 安装与配置
 
 ```bash
-git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
@@ -102,10 +102,12 @@ release。Codex 首次认证是独立的人工安全门；尚未认证
 时，以运行 Rolo 的同一操作系统用户执行一次 `codex login --device-auth`。
 
 Rolo 默认把配置、证据和发布分别保存到用户级 XDG 目录，不需要创建 `/var/lib/rolo` 或设置
-`ROLO_ARTIFACT_DIR`/`ROLO_OUTPUT_DIR`。它会在目标证据采集前自动选择唯一的
-`/opt/ros/<distro>/setup.bash` 和 `<project-root>/install/local_setup.bash`，不需要人工
-`source`。多个 ROS 发行版或多个 overlay 不会被猜测，而是失败关闭并要求在
-`~/.config/rolo/config.yaml` 明确顺序。查看、生成和验证配置：
+`ROLO_ARTIFACT_DIR`/`ROLO_OUTPUT_DIR`。对于存在 ROS 证据的目标，它会在目标证据采集前
+自动选择唯一的 `/opt/ros/<distro>/setup.bash` 和
+`<project-root>/install/local_setup.bash`，不需要人工 `source`。多个 ROS 发行版或多个
+overlay 不会被猜测，而是失败关闭并要求在 `~/.config/rolo/config.yaml` 明确顺序。非 ROS
+目标不需要 ROS setup；Rolo 直接采集主机、Application/CLI、协议、进程和设备接口证据。
+查看、生成和验证配置：
 
 ```bash
 uv run robotctl config show
@@ -171,8 +173,10 @@ uv run robotctl adapt start \
 识别常规 `build`、`install`、`docs` 和 `launch`，并把工程根目录作为源码补充。若只需要
 Discovery 与 Wiki，可增加 `--discover-only`。默认 `--evidence-mode local`，签名 bundle 的
 collector ID、目标指纹、payload digest 和路径会写入 Journey v2 输出。
-自动加载的 ROS setup 文件路径和 SHA-256 同时写入签名目标证据；文件变化后旧 collector
-会失败关闭，需要按部署文档显式轮换和重新 enrollment。
+若目标使用 ROS，自动加载的 setup 文件路径和 SHA-256 同时写入签名目标证据；文件变化后
+旧 collector 会失败关闭，需要按部署文档显式轮换和重新 enrollment。非 ROS 工程可在首次
+enrollment 时通过 `--allow-executable` 固定经人工审核的 Application CLI，由签名的有界
+`--help` 证据建立目标 Route；源码声明本身不能升级为运行时事实。
 
 Rolo 开发者和现场排障仍可使用同一套底层服务的细粒度命令：
 

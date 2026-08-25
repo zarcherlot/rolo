@@ -7,15 +7,15 @@
 release 发布编排为一次操作，同时保留原有细粒度命令供 ROLO 开发调试使用。
 
 默认本地模式还会幂等建立 target evidence collector、采集并验证新鲜 v2 签名 bundle，
-Discovery 只消费带目标绑定的 Hardware、Linux 和 ROS probes。
+Discovery 只消费带目标绑定的 Hardware、Linux、Application 和可选 ROS probes。
 
 该入口不会扩大权限：运行时探测仍然只读，URDF 不会自动猜测，Adapter Agent 不拥有
 门禁或发布权限，物理执行结果也不在 Adapt 阶段判定。
 
 ## 产品用户：一条命令
 
-安装 Rolo 后，以机器人应用用户直接运行；Rolo 会在签名证据采集前自动加载唯一的 ROS
-基础环境和 `project-root/install` overlay：
+安装 Rolo 后，以机器人应用用户直接运行。存在 ROS 证据时，Rolo 会在签名证据采集前自动
+加载唯一的 ROS 基础环境和 `project-root/install` overlay；非 ROS 工程不要求 ROS setup：
 
 ```bash
 robotctl adapt start \

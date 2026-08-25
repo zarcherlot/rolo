@@ -1,8 +1,8 @@
 # Rolo 目标机部署与 Adapt 操作手册
 
-版本：`v0.1.0-rc.1`
+版本：`v0.1.0-rc.2`
 
-适用范围：Linux/ROS 机器人目标机
+适用范围：Linux 机器人或机器人应用目标机；ROS 为可选 Middleware
 
 本手册用于在真实机器人目标机上部署 Rolo 并运行 Adapt。Adapt 负责采集签名证据、发现
 机器人接口、生成 Wiki 和 Adapter、执行独立门禁，并发布 State Graph、Tool Catalog、handoff
@@ -32,7 +32,7 @@ Rolo 支持两种显式模式，两者生成相同格式的签名目标证据。
 
 - Linux，推荐 Ubuntu/Debian；
 - Git 和 `uv`；
-- 已安装的 ROS 发行版；
+- 机器人工程所需的运行时；使用 ROS 的目标应安装对应 ROS 发行版，非 ROS 目标无需安装 ROS；
 - 机器人工程源码；
 - 完整 Agent 链使用的 Codex CLI；
 - 完整 Gate 使用的 `bubblewrap` 和可用的 Linux namespace。
@@ -50,12 +50,12 @@ Rolo 不需要安装 wheel，也不要求预先创建配置、制品、输出或
 ### 2.2 获取固定版本
 
 ```bash
-git clone --branch v0.1.0-rc.1 --depth 1 \
+git clone --branch v0.1.0-rc.2 --depth 1 \
   https://github.com/zarcherlot/rolo.git
 cd rolo
 ```
 
-该命令固定获取已经通过远端 CI 的 `v0.1.0-rc.1`，不会随 `main` 后续变化。
+该命令固定获取已经通过远端 CI 和真实 Agent 验收的 `v0.1.0-rc.2`，不会随 `main` 后续变化。
 
 ### 2.3 安装锁定依赖和生产沙箱
 
@@ -113,9 +113,13 @@ uv run robotctl config validate
 `config init` 不会覆盖已经存在的文件。配置优先级为：命令行、环境变量、用户 YAML、`.env`、
 内置默认值。
 
-### 2.6 ROS 环境自动加载
+### 2.6 目标运行环境与可选 ROS 自动加载
 
-通常不需要手工执行任何 `source`。Rolo 按以下顺序解析 setup 文件：
+非 ROS 工程无需配置或补造 ROS 环境。Rolo 直接采集目标操作系统、工程入口、依赖、CLI/API、
+协议、进程和设备接口，并把 ROS Probe 的不可用记录为不适用边界，而不是工程缺陷。
+
+目标或工程存在 ROS 证据时，通常不需要手工执行任何 `source`。Rolo 按以下顺序解析 setup
+文件：
 
 1. `~/.config/rolo/config.yaml` 中明确配置的 `ros.setup_files`；
 2. 继承的 `ROS_DISTRO` 对应的 ROS base，或唯一的 `/opt/ros/<distro>/setup.bash`；
@@ -180,12 +184,30 @@ uv run robotctl adapt start \
 
 `--urdf` 可以省略。缺失的硬件规格会标记为未知，不会被启发式输出冒充为确定事实。
 
+非 ROS Application/CLI 工程首次运行时，只固定已经人工审核的目标可执行文件。建议先只生成
+Discovery 与 Wiki：
+
+```bash
+uv run robotctl adapt start \
+  --robot-id lerobot-host \
+  --project-root /home/robot/lerobot \
+  --allow-executable "$(command -v lerobot-find-cameras)" \
+  --allow-executable "$(command -v lerobot-info)" \
+  --discover-only \
+  --timeout 1800
+```
+
+`--allow-executable` 会在 Collector enrollment 时固定绝对路径和 SHA-256，只允许采集有界
+`--help` 证据，不会执行实际业务子命令。确认 Wiki、Route 和缺口后，移除
+`--discover-only` 重跑完整 Agent/Gate 链。已存在 Collector 若要改变 allowlist，必须执行
+显式 rotation/re-enrollment，不能静默扩大采集面。
+
 这一条产品命令会自动：
 
 1. 准备用户级运行目录；
 2. 注册或复用机器人身份和本地 Collector；
-3. 解析、固定并加载 ROS 环境；
-4. 采集并验证 Hardware、Linux 和 ROS 签名证据；
+3. 解析并固定目标运行环境；仅在 ROS 相关时加载 ROS setup；
+4. 采集并验证 Hardware、Linux、Application 及可选 ROS 签名证据；
 5. 有界扫描机器人工程源码；
 6. 运行启发式自主发现、Operation 映射和 Wiki 编写技能；
 7. 启动真实 Adapter Agent 并冻结结构化代码输出；
@@ -261,7 +283,7 @@ Discovery 为 `PARTIAL` 不一定失败。缺失证据与本次目标 Operation 
 访问权限。
 
 ```bash
-git clone --branch v0.1.0-rc.1 --depth 1 \
+git clone --branch v0.1.0-rc.2 --depth 1 \
   https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
@@ -278,14 +300,14 @@ uv run robotctl target-evidence collector-init \
   --descriptor-out ./wheeltec-collector.json
 ```
 
-自动 ROS 选择存在歧义时，按真实加载顺序重复传入：
+使用 ROS 且自动选择存在歧义时，按真实加载顺序重复传入：
 
 ```bash
 --ros-setup /opt/ros/humble/setup.bash \
 --ros-setup /home/robot/wheeltec_ws/install/local_setup.bash
 ```
 
-需要采集某个已审核程序的受限 `--help` 时，可增加：
+ROS 或非 ROS 目标需要采集某个已审核程序的受限 `--help` 时，可增加：
 
 ```bash
 --allow-executable /opt/robot/bin/wheeltec_driver
@@ -335,6 +357,9 @@ uv run robotctl adapt start \
 保留本次运行的 `ros.json`，检查 `command_diagnostics`。它会区分继承环境的尝试和干净
 base setup 重试，并保留有界退出码与 stderr。Probe 不可用不能解释成“ROS 图为空”。
 
+非 ROS 目标没有 ROS setup 或 ROS 图属于正常状态，不应执行本节排障，也不应为了通过检查而
+安装 ROS；应转而核对 Application/CLI、协议、进程和设备接口证据。
+
 ### 5.3 Adapt 返回 `BLOCKED`
 
 ```bash
@@ -344,8 +369,8 @@ uv run robotctl adapt operations list --robot wheeltec --applicability OBSERVED
 uv run robotctl adapt run --robot wheeltec --dry-run
 ```
 
-重点核查真实 ROS Topic/Service/Action、设备或 CLI 路由、工程根路径、ROS setup、证据时效、
-目标指纹和签名。
+重点核查目标软件栈实际使用的路由：ROS 目标检查 Topic/Service/Action 与 setup，非 ROS 目标
+检查 CLI/API、协议、进程和设备接口；两者都要核对工程根路径、证据时效、目标指纹和签名。
 
 ### 5.4 生产沙箱自检失败
 

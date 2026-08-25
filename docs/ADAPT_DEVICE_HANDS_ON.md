@@ -11,7 +11,7 @@ performance, or safety.
 ## 1. Prepare the target
 
 ```bash
-git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
@@ -25,8 +25,11 @@ codex login --device-auth
 The zero-configuration Linux defaults are under `~/.local/state/rolo` and
 `~/.local/share/rolo`; no storage directories or `ROLO_*_DIR` exports are required. Rolo
 automatically sources the single installed ROS base and the project `install` overlay before target
-collection. It never sources shell startup files. Ambiguous candidates fail closed; create
-`~/.config/rolo/config.yaml` with `robotctl config init` and order `ros.setup_files` explicitly.
+collection only when the target or project is ROS-relevant. It never sources shell startup files.
+Ambiguous ROS candidates fail closed; create `~/.config/rolo/config.yaml` with
+`robotctl config init` and order `ros.setup_files` explicitly. A non-ROS target needs no ROS setup;
+enroll only reviewed Application CLIs with `--allow-executable` when bounded target-side
+self-description is required.
 
 A BSP and URDF are optional. If a deployment-owned
 read-only hardware provider exists, set `ROLO_HARDWARE_EVIDENCE_PROVIDER` to its executable path.
@@ -57,8 +60,8 @@ uv run robotctl adapt start \
 ```
 
 The command idempotently enrolls the robot and local collector, creates a fresh signed target
-evidence bundle, binds its Hardware/Linux/ROS probes to Discovery, runs the three heuristic Agent
-skills, generates the Wiki, starts the real Adapter Agent, freezes its output, and publishes only
+evidence bundle, binds its Hardware/Linux/Application and optional ROS probes to Discovery, runs the
+three heuristic Agent skills, generates the Wiki, starts the real Adapter Agent, freezes its output, and publishes only
 after the independent gate passes. Its `robot-adapt-journey/v2` output must contain non-empty
 `target_evidence.collector_id`, target fingerprint, bundle digest, gate, handoff, and release ID.
 

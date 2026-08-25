@@ -192,6 +192,8 @@ SOURCE = SUPPORTING_ONLY
 
 源码只用于补充缺口，不能覆盖更高优先级证据。Discovery 不执行新发现的程序、launch 文件或 README 命令，不安装依赖，不枚举无关主机软件包。运行时探针仅限已运行系统上的有界只读观察。
 
+当前 `main` 还提供受 Schema 约束的启发式 Discovery、Operation Mapping 与 Wiki Agent。它们只读取有界上下文并生成候选计划、Operation proposal 或 Wiki 洞察；确定性 Validator 负责证据引用、Registry 适用性和状态转换，Agent 结果只能保持为 `DISCOVERED_UNVERIFIED`，不能自行影响 release。对缺口发起的第二轮 Probe 也必须经过确定性、只读且有预算的调度，不允许模型任意执行命令。
+
 ### 5.2 Robot Wiki
 
 Robot Wiki 是每台机器人可持续维护的工程知识入口，覆盖硬件、Linux、Middleware、Application、启动拓扑、接口、依赖、能力候选、差异和未知项。它应明确标注证据来源、置信度与验证方法。
@@ -261,6 +263,8 @@ Adapter 把稳定的 Canonical Operation 映射到目标机器人的 ROS、CLI�
 
 Adapter Agent 只提交候选实现和本地静态检查结果。它不拥有产品 Registry、契约、安全策略、Tool Catalog、State Graph 或发布索引，也不能通过修改自己的输出宣布通过门禁。
 
+Agent 与下游工具通过受信 Tool Session Gateway 获得最小、带作用域和时效的工具会话。Gateway 校验调用方、operation、风险、数据分类、目标机器人和会话描述符；没有受信签发、越权或过期的请求必须失败关闭。该机制约束软件调用面，不构成物理安全授权。
+
 ### 5.9 Independent Gate
 
 独立门禁至少验证：
@@ -291,9 +295,15 @@ State Graph 用于回答“当前处于什么状态、允许哪些转换、哪�
 
 ### 5.13 Adapt 短旅程
 
-参考实现提供 `robotctl adapt start` 作为一站式产品入口，将身份注册、环境检查、有界工程证据识别、只读发现、Wiki、Adapter Agent、独立门禁、handoff 和 release 编排为同一旅程。该入口复用既有服务与制品，不创建第二套契约或授权模型。
+参考实现提供 `robotctl adapt start` 作为一站式产品入口，将身份注册、环境检查、有界工程证据识别、签名目标证据、只读发现、Wiki、Adapter Agent、独立门禁、handoff 和 release 编排为同一旅程。该入口复用既有服务与制品，不创建第二套契约或授权模型。
 
-短旅程不扩大权限：URDF 仍需显式选择，运行时探测默认只读，缺少目标运行时 route 时返回结构化阻塞，Adapter Agent 仍不能批准门禁或发布。`--discover-only` 可以只完成发现与 Wiki；细粒度命令继续作为工程调试入口。
+默认本地模式会幂等建立或复用 Collector，为每次 Journey 生成新 nonce，采集并验证带 robot ID、Collector ID、目标指纹、时间、新鲜度、payload digest 和 HMAC 的目标证据；远端模式要求预先固定 Collector 身份、验证密钥和 SSH host key，采集或验签失败时不得退回控制器探针。Journey v2 只把验证后的 Hardware、Linux、Application 与可选 Middleware probe 交给 Discovery，并记录证据摘要和制品路径。
+
+本地 Journey 还会确定性解析目标运行环境。ROS 相关目标优先使用操作员显式配置，否则只接受唯一的 `/opt/ros/<distro>/setup.bash` 和唯一工程 overlay；存在多个候选时失败关闭。被选 setup 文件的解析路径和 SHA-256 在 Collector enrollment 时固定，并写入签名目标证据；采集通过 `bash --noprofile --norc` 加载它们，只接纳有界运行环境。文件缺失或摘要变化必须重新轮换或注册 Collector，远端模式在目标侧执行相同流程，不能以控制器环境代替。非 ROS 目标不解析 ROS setup，而以主机、Application/CLI、协议、进程和设备接口证据继续发现。
+
+短旅程不扩大权限：URDF 仍需显式选择，运行时探测默认只读，缺少目标运行时 route 时返回结构化阻塞，Adapter Agent 仍不能批准门禁或发布。可选目标侧 `--help` 证据只允许注册时固定路径和摘要、经人工审查并显式 allowlist 的可执行文件；第三方 `--help` 不能被假定为天然无副作用。`--discover-only` 可以只完成证据、发现与 Wiki；细粒度命令继续作为工程调试入口。
+
+完整短旅程在运行 Agent 时必须先通过 Adapter 生产沙箱自检；Linux 源码部署可在存在 `bubblewrap` 时自动选择仓库内置 launcher，默认隔离网络，只读挂载 release 与获准的运行路径，并提供空的 HOME/TMP。需要 ROS/DDS 主机网络时必须由部署方显式开启并承担目标网络策略；`--discover-only` 不执行 Adapter，因而只报告沙箱告警。Agent handoff pack 只在 Agent workspace 内对 `describe` 做有超时、输出上限、去秘密环境和进程树清理的建议性预检，从不执行 `invoke`；独立 Gate 随后仍须在生产沙箱中重新验证，前一次结果不能授予 `VERIFIED` 或 release 权限。
 
 ## 6. 证据模型
 
@@ -335,7 +345,7 @@ Episode 是一次运行的完整证据切片，目标上应包含：
 - observed facts、candidate causes 和证据冲突；
 - 修改、回滚、测试、判定和最终 outcome。
 
-当前参考实现已经具备部分 episode/evidence 控制面 operation，但完整 Episode 模型和可视化工作台仍是演进方向。
+当前参考实现已在控制面提供只读 Episode 契约族：有界 collection、detail、revision 固定的 timeline、asset metadata、finding summary、不可覆盖的 producer record、sanitized projection 与统一 Evidence ID 映射。公开模型严格分离事实、推断、人工确认和正式验证，不把模拟或回放资产当作物理结果证明，也不暴露原始 payload、制品位置、主机路径、凭据或模型 prompt/response。媒体内容交付、live stream、Episode compare、replay、recollection、remediation 与完整可视化工作台仍是演进方向。
 
 ## 7. 风险、安全与授权
 
@@ -458,7 +468,7 @@ ROLO 控制面拥有 Registry、Contract、门禁、Catalog、State Graph、策�
 
 ## 11. 当前实现成熟度
 
-截至本白皮书日期，参考实现处于 `0.1.0` 开发阶段。PR #8 已把此前的远端集成基线合入 `main`；进入 `main` 只表示参考实现已经具备相应代码、Schema 和测试，不等于形成生产 release、完成真机验证、获得安全认证或成为行业标准。
+截至本白皮书日期，参考实现已在 `main` 形成 `v0.1.0-rc.2` release candidate 基线。PR #8 至 PR #16 以及后续主线提交已把 Registry Core、Capability/Provider 基线、Adapt 启发式 Agent、签名目标证据链、运行边界加固、pre-device Adapt closeout、目标部署简化、中文目标机操作手册、Episode 只读模型及 revision/cohort 扩展、非 ROS Application/CLI Route 和软件栈中立 Wiki 合入 `main`；release candidate 和进入 `main` 只表示参考实现已经具备相应代码、Schema 与自动化测试，不等于形成生产 release、完成真机验证、获得安全认证或成为行业标准。
 
 ### 已形成闭环
 
@@ -471,6 +481,7 @@ ROLO 控制面拥有 Registry、Contract、门禁、Catalog、State Graph、策�
 - 通用调用入口、摘要校验、目标指纹和分级授权基础；
 - SENSITIVE、R2、R3、quiescence 和无 payload 审计边界；
 - `robot_use` v1 的基础语义监督接口。
+- Episode collection/detail/timeline/asset/finding、revision history 与 cohort 只读模型，不可覆盖的 producer revision、控制面安全投影与 Evidence ID 映射；公开响应保持 lifecycle、outcome、verification、authority、world kind 和证据限制分离。
 
 ### 已进入 `main`、仍保持受限或只读
 
@@ -479,15 +490,25 @@ ROLO 控制面拥有 Registry、Contract、门禁、Catalog、State Graph、策�
 - Provider Host、Provider-neutral conformance kit、release-neutral shadow artifact；
 - 默认关闭且可自动回退的 Slice canary，以及只读稳定性报告、API 和人工评审门槛；
 - 面向 Robot Wiki、拓扑、Capability、Lifecycle、Blocker 和 Discovery history 的只读模型及 API；
-- 将注册、检查、发现、Wiki、Agent、门禁、handoff 与 release 串联起来的 `robotctl adapt start` 短旅程。
+- 将注册、检查、签名目标证据、发现、Wiki、Agent、门禁、handoff 与 release 串联起来的 `robotctl adapt start` 短旅程；
+- 启发式 Discovery/Operation Mapping/Wiki Agent、确定性二轮只读 Probe 和受信 Tool Session Gateway；Agent 候选仍为 `DISCOVERED_UNVERIFIED` 且不拥有 release 权限；
+- 本机或固定远端 Collector 的签名目标证据部署、两阶段 Collector 轮换/重注册审计，以及 Journey v2 中的证据摘要；远端模式绑定目标身份、nonce、新鲜度、摘要、HMAC 和固定 SSH 主机密钥，失败时不回退控制器探针；
+- Registry 校验的数据化语义规则和可选目标侧 `--help` 证据；语义规则只形成静态适用性提示，`--help` 只允许人工审查并显式 allowlist 的可执行文件，静态源码与 Agent 验收不能替代目标运行时证据；
+- Python 3.10–3.13 CI、10 分钟离线 Quickstart 和可选 LeRobot 源码发现验收；该验收不连接真机、不执行运动，也不证明 LeRobot 设备能力、跨厂商互操作或物理安全。
+- `rolo-vis-mvp-readonly/2026-08` Web 只读模型基线：冻结 Capability collection/summary/detail v2、inferred binding v1、Discovery collection/summary v3、heuristic summary v1 和 target evidence summary v1；Web 响应不提供写端点、原始制品、主机路径、Collector 身份、目标主机指纹或 bundle 摘要，启发式推断仍保持 release-neutral，不能建立适用性、可用性、注册或 release 状态。
+- 细粒度 `runtime-readonly` Discovery 强制使用已验签目标证据；生成 Adapter 默认经受保护的外部 OS sandbox launcher 执行且缺少 launcher 时失败关闭，调用生命周期只记录内容摘要与结果状态；制品写入和 release 激活增加进程间锁、原子替换与 compare-and-swap，非 loopback API 增加 Bearer token 门禁和请求体上限，CI 依赖固定到明确版本。`ROLO_ADAPTER_UNSANDBOXED_DEV=1` 仅是测试和离线演示逃生口，外部 launcher 的具体隔离强度仍由部署实现和独立验证决定。
+- Linux `bubblewrap` 生产 launcher、自检门禁及独立 CI：默认隔离网络和宿主 HOME/TMP，仅选择性只读挂载 release、系统加载器、Python/ROS 运行路径；Agent workspace 的建议性 `describe` 预检受时间、输出、环境和进程树边界约束，Rolo Gate 仍在生产沙箱中重复验证；
+- `robot-adapt-acceptance-pack/v1` 无秘密验收快照，绑定源码 revision、Registry/Contract 摘要、目标证据、Discovery、eligible/deferred Operation、Gate、handoff 与 release digest，供真机 Adapt 评审交接。该包不包含原始 probe payload、凭据或调用 payload，也不证明 operation 行为、可靠性、性能或物理安全。
+- 用户级 XDG 状态、制品和 release 默认目录，可编辑且严格校验的 `rolo-config/v1` YAML，以及 `config show/init/validate`；配置优先级保持 CLI/构造参数、环境变量、用户 YAML、`.env`、内置默认值的确定顺序，运行目录拒绝符号链接并在 POSIX 上检查当前用户所有权；
+- 可选 ROS base/overlay bootstrap 与签名固定：只有目标或工程存在 ROS 相关证据时才选择唯一候选，通过无 profile/rc 的有界 shell 加载，限制可接纳环境大小和路径数量，并把 setup 路径、摘要和 bootstrap 记录绑定到目标证据；ROS 候选歧义、文件缺失或摘要变化均失败关闭。非 ROS 目标不要求 ROS setup，继续以操作系统、Application/CLI、协议、进程和设备接口为证据主线。
 
-这些能力保持当前 294 Operation、Contract、Linux/ROS、Bundle、Catalog 和 release 权威边界不变。Provider 默认不进入生产 Catalog，Slice 不扩大执行权限，稳定性报告不能自动改变灰度配置，短旅程也不能绕过独立门禁。
+这些能力保持当前 294 Operation、Contract、目标软件栈 Route、Bundle、Catalog 和 release 权威边界不变。Provider 默认不进入生产 Catalog，Slice 不扩大执行权限，稳定性报告不能自动改变灰度配置，短旅程也不能绕过独立门禁。
 
 ### 正在演进
 
 - 真机、跨厂商和非 ROS Adapter 的规模化验证；
 - Diagnose 的完整事务、调参和自动回归闭环；
-- 多源 Observation Bundle、有限补充观察和 Episode 模型；
+- 多源 Observation Bundle、有限补充观察，以及 Episode 媒体内容、live stream、compare、replay、recollection、export 和 remediation；
 - Verify Agent、正式用例生成和证据包；
 - Web 工程工作台、Stack Map、Capability Explorer 和 Episode Studio；
 - 从内部参考规范走向多实现互操作规范。

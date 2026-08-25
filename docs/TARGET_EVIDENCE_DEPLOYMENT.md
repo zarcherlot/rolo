@@ -37,11 +37,11 @@ stable machine identity, host name, OS, and architecture. Raw machine IDs are ne
 ## Mode A: Rolo runs on the target
 
 Clone the immutable source baseline on the target and install the locked environment. Rolo
-automatically resolves and pins the robot's ROS/workspace setup. The product journey defaults to
-local signed evidence:
+automatically resolves and pins the robot's ROS/workspace setup when ROS is relevant; non-ROS
+targets require no ROS setup. The product journey defaults to local signed evidence:
 
 ```bash
-git clone --branch v0.1.0-rc.1 --depth 1 https://github.com/zarcherlot/rolo.git
+git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 # Install the target distribution's bubblewrap package for the full Agent/gate journey.
