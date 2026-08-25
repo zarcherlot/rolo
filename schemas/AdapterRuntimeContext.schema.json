@@ -193,6 +193,18 @@
       ],
       "default": null,
       "title": "Pythonpath"
+    },
+    "PATH": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Path"
     }
   },
   "title": "AdapterRuntimeContext",

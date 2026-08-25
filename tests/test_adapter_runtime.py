@@ -7,7 +7,12 @@ import pytest
 from typer.testing import CliRunner
 
 from rolo.adapter_runner import AdapterProcessResult
-from rolo.adapter_runtime import activate_release, invoke_adapter, publish_release
+from rolo.adapter_runtime import (
+    activate_release,
+    invoke_adapter,
+    probe_adapter_package,
+    publish_release,
+)
 from rolo.cli import app
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
@@ -59,6 +64,64 @@ def _target_report() -> DiscoveryReport:
     )
 
 
+def test_package_probe_runs_describe_without_crossing_invoke_boundary(
+    tmp_path: Path,
+) -> None:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.list"
+    )
+    package = tmp_path / "adapter.py"
+    package.write_text("# protocol probe fixture\n", encoding="utf-8")
+    manifest = AdapterBundleManifest(
+        bundle_id="camera-list",
+        bundle_version="1.0.0",
+        robot_id="demo",
+        discovery_id="disc-1",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        files=[
+            {
+                "path": package.name,
+                "sha256": sha256_file(package),
+                "role": "ENTRYPOINT",
+            }
+        ],
+        operations=[
+            {
+                "operation": definition.operation,
+                "entrypoint": "camera_list",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
+    )
+
+    class DescribeOnlyRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del kwargs
+            self.commands.append(command)
+            if command[-1] == "describe":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {"operations": {definition.operation: "camera_list"}}
+                    ),
+                    stderr="",
+                )
+            raise AssertionError("promotion must not execute adapter invoke")
+
+    runner = DescribeOnlyRunner()
+    probe_adapter_package(package, manifest, runner=runner)
+
+    assert len(runner.commands) == 1
+    assert runner.commands[0][-1] == "describe"
+
+
 @pytest.fixture(autouse=True)
 def _latest_target_report(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -94,6 +157,11 @@ def _publish_demo_release(
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': OPS}))\n"
         "elif sys.argv[1] == 'invoke':\n"
+        "    args = dict(zip(sys.argv[2::2], sys.argv[3::2]))\n"
+        "    operation = args.get('--operation')\n"
+        "    if operation not in OPS or args.get('--entrypoint') != OPS[operation]:\n"
+        "        print(json.dumps({'error': {'code': 'INVALID_INPUT'}}))\n"
+        "        raise SystemExit(1)\n"
         "    payload = json.load(sys.stdin)\n"
         "    print(json.dumps(result(payload)))\n",
         encoding="utf-8",

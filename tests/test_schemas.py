@@ -45,6 +45,7 @@ def test_runtime_context_schema_is_explicit_and_secret_closed() -> None:
     assert schema["additionalProperties"] is False
     assert "ROS_DOMAIN_ID" in schema["properties"]
     assert "AMENT_PREFIX_PATH" in schema["properties"]
+    assert "PATH" in schema["properties"]
     assert "OPENAI_API_KEY" not in schema["properties"]
 
 

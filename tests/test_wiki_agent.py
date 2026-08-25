@@ -78,6 +78,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
 
     monkeypatch.setattr("rolo.stages.adapt.wiki_agent.shutil.which", lambda _: "codex")
     monkeypatch.setattr("rolo.stages.adapt.wiki_agent.subprocess.run", fake_run)
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:7897")
     report, active = _review_inputs()
     provider = CodexWikiInsightProvider(
         skill_path=skill,
@@ -105,6 +106,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+    assert environment["HTTPS_PROXY"] == "http://proxy.example:7897"
 
 
 def test_wiki_evidence_allowlist_is_bounded_and_prefers_addressable_parents() -> None:

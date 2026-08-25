@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rolo.core.models import DiscoveryReport, ProbeResult
+from rolo.core.models import DiscoveryReport, OperationCandidate, ProbeResult, RouteEvidence
 from rolo.stages.adapt.active_discovery import HelpProbeResult, HelpProbeStatus
 from rolo.stages.adapt.application_cli_mapping import (
     load_application_cli_operation_rules,
@@ -28,6 +28,7 @@ from rolo.stages.adapt.target_evidence import (
     TargetExecutableHelpEvidence,
     bind_target_executable_routes,
 )
+from rolo.stages.adapt.target_fingerprint import runtime_environment_from_report
 
 NOW = datetime(2026, 8, 24, tzinfo=timezone.utc)
 
@@ -73,6 +74,167 @@ def _bound_linux(record: TargetExecutableHelpEvidence) -> ProbeResult:
         bundle_payload_sha256="c" * 64,
         observed_at=NOW,
     )
+
+
+def test_target_runtime_path_is_derived_from_observed_cli_directory(
+    tmp_path: Path,
+) -> None:
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+    executable = target_bin / "generic-find-cameras"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    linux_probe = _bound_linux(_help_record(str(executable)))
+    report = DiscoveryReport(
+        discovery_id="disc-cli-path",
+        robot_id="demo",
+        status="SUCCEEDED",
+        platform={},
+        capability_manifest={},
+        probes={"linux": linux_probe},
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.list",
+                evidence=[str(executable)],
+                route_evidence=probe_routes(linux_probe),
+            )
+        ],
+    )
+
+    assert runtime_environment_from_report(report) == {
+        "PATH": str(target_bin.resolve())
+    }
+
+
+def test_target_runtime_path_is_scoped_to_selected_operations(tmp_path: Path) -> None:
+    selected_bin = tmp_path / "selected/bin"
+    unrelated_bin = tmp_path / "unrelated/bin"
+    selected_bin.mkdir(parents=True)
+    unrelated_bin.mkdir(parents=True)
+    selected = selected_bin / "camera-list"
+    unrelated = unrelated_bin / "camera-record"
+    selected.write_text("#!/bin/sh\n", encoding="utf-8")
+    unrelated.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def candidate(operation: str, endpoint: Path) -> OperationCandidate:
+        return OperationCandidate(
+            operation=operation,
+            evidence=[str(endpoint)],
+            route_evidence=[
+                RouteEvidence(
+                    resource_id=f"cli:{endpoint}",
+                    kind="cli",
+                    endpoint=str(endpoint),
+                    evidence_origin="OBSERVED_RUNTIME",
+                    source="target-help:test",
+                )
+            ],
+        )
+
+    report = DiscoveryReport(
+        discovery_id="disc-cli-scope",
+        robot_id="demo",
+        status="SUCCEEDED",
+        platform={},
+        capability_manifest={},
+        probes={},
+        operation_candidates=[
+            candidate("app.camera.list", selected),
+            candidate("app.camera.snapshot", unrelated),
+        ],
+    )
+
+    assert runtime_environment_from_report(
+        report,
+        operations={"app.camera.list"},
+    ) == {"PATH": str(selected_bin.resolve())}
+
+
+def test_editable_python_root_is_explicit_in_runtime_context(tmp_path: Path) -> None:
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+    (target_bin.parent / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    site_packages = target_bin.parent / "lib/python3.12/site-packages"
+    site_packages.mkdir(parents=True)
+    editable_source = tmp_path / "lerobot"
+    editable_source.mkdir()
+    (editable_source / "pyproject.toml").write_text(
+        "[project]\nname='lerobot'\nversion='0.0.0'\n",
+        encoding="utf-8",
+    )
+    (site_packages / "lerobot.pth").write_text(str(editable_source), encoding="utf-8")
+    executable = target_bin / "lerobot-find-cameras"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    route = RouteEvidence(
+        resource_id=f"cli:{executable}",
+        kind="cli",
+        endpoint=str(executable),
+        evidence_origin="OBSERVED_RUNTIME",
+        source="target-help:test",
+    )
+    report = DiscoveryReport(
+        discovery_id="disc-editable-runtime",
+        robot_id="demo",
+        status="SUCCEEDED",
+        platform={},
+        capability_manifest={},
+        probes={},
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.list",
+                evidence=[str(executable)],
+                route_evidence=[route],
+            )
+        ],
+    )
+
+    assert runtime_environment_from_report(report) == {
+        "PATH": str(target_bin.resolve()),
+        "PYTHONPATH": str(editable_source.resolve()),
+    }
+
+
+def test_editable_python_root_rejects_home_or_ancestor_mounts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+    (target_bin.parent / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+    site_packages = target_bin.parent / "lib/python3.12/site-packages"
+    site_packages.mkdir(parents=True)
+    broad_home = tmp_path / "home"
+    broad_home.mkdir()
+    (broad_home / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (site_packages / "unsafe.pth").write_text(str(broad_home), encoding="utf-8")
+    executable = target_bin / "lerobot-find-cameras"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: broad_home)
+    route = RouteEvidence(
+        resource_id=f"cli:{executable}",
+        kind="cli",
+        endpoint=str(executable),
+        evidence_origin="OBSERVED_RUNTIME",
+        source="target-help:test",
+    )
+    report = DiscoveryReport(
+        discovery_id="disc-unsafe-editable-runtime",
+        robot_id="demo",
+        status="SUCCEEDED",
+        platform={},
+        capability_manifest={},
+        probes={},
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.list",
+                evidence=[str(executable)],
+                route_evidence=[route],
+            )
+        ],
+    )
+
+    assert runtime_environment_from_report(report) == {
+        "PATH": str(target_bin.resolve())
+    }
 
 
 def test_source_manifest_declares_cli_route_without_observing_it(tmp_path: Path) -> None:

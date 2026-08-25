@@ -211,8 +211,14 @@ uv run robotctl adapt run --robot "$ROBOT_ID" --scratch-root /path/outside/rolo
 Generated adapter `describe` and `invoke` execution fails closed unless a protected target-side OS
 sandbox launcher is configured. Rolo calls it as
 `launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...`; the deployment launcher owns service-identity,
-filesystem, device, and network isolation. Set `ROLO_ADAPTER_SANDBOX_LAUNCHER` to that protected
-executable. `ROLO_ADAPTER_UNSANDBOXED_DEV=1` is restricted to tests and offline demos. A non-loopback
+filesystem, device, and network isolation. The bundled Linux launcher mounts only the release,
+Operation-scoped target CLI paths, explicit Python dependencies, and admitted ROS paths; it does not
+scan the controller PATH or expand arbitrary `.pth` mounts. Promotion runs `describe` only and never
+uses `invoke` as a conformance probe. Set `ROLO_ADAPTER_SANDBOX_LAUNCHER` to that protected executable.
+The default 4 GiB virtual-address and 128 process/thread ceilings can be adjusted through
+`ROLO_ADAPTER_MAX_ADDRESS_SPACE_BYTES` and `ROLO_ADAPTER_MAX_PROCESSES` without weakening the
+independent CPU, wall-clock, file, and output limits. `ROLO_ADAPTER_UNSANDBOXED_DEV=1` is restricted
+to tests and offline demos. A non-loopback
 `ROLO_HOST` additionally requires a high-entropy `ROLO_API_TOKEN` and Bearer authentication.
 
 The Wiki heuristic Agent skill is enabled by default and runs in a read-only sandbox. If it is

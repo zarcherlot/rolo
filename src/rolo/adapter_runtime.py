@@ -489,7 +489,12 @@ def probe_adapter_package(
     runner: AdapterRunner | None = None,
     runtime_environment: Mapping[str, str] | None = None,
 ) -> None:
-    """Require the generated package to self-describe exactly the declared entrypoints."""
+    """Require the generated package to self-describe declared entrypoints.
+
+    Promotion intentionally never executes ``invoke``.  Runtime ABI behavior is
+    covered by deterministic conformance fixtures; only an authorized runtime
+    request may cross the invocation boundary.
+    """
     completed = (runner or BoundedAdapterRunner()).run(
         adapter_command(package_path) + ["describe"],
         cwd=package_path.parent,

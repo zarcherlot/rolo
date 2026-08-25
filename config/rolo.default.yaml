@@ -17,3 +17,8 @@ ros:
   setup_files: []
   domain_id: null
   rmw_implementation: null
+
+adapter_runtime:
+  # ML-backed CLIs reserve large virtual mappings; resident memory remains deployment-owned.
+  max_address_space_bytes: 4294967296
+  max_processes: 128

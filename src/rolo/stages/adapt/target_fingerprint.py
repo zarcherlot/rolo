@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
@@ -90,16 +91,121 @@ def _hardware_components(
     )
 
 
-def runtime_environment_from_report(report: DiscoveryReport) -> dict[str, str]:
+def _selected_cli_directories(
+    report: DiscoveryReport,
+    operations: Collection[str] | None,
+) -> list[Path]:
+    requested = (
+        set(operations)
+        if operations is not None
+        else {candidate.operation for candidate in report.operation_candidates}
+    )
+    directories: list[Path] = []
+    for candidate in report.operation_candidates:
+        if candidate.operation not in requested:
+            continue
+        for route in candidate.route_evidence:
+            if route.kind != "cli":
+                continue
+            endpoint = Path(route.endpoint).expanduser()
+            try:
+                available = endpoint.is_absolute() and endpoint.is_file()
+            except OSError:
+                available = False
+            if not available:
+                continue
+            try:
+                parent = endpoint.resolve().parent
+            except OSError:
+                continue
+            if parent not in directories:
+                directories.append(parent)
+    return sorted(directories, key=str)
+
+
+def _editable_python_roots(executable_directories: Collection[Path]) -> list[Path]:
+    """Return bounded project roots explicitly referenced by selected virtualenvs."""
+    roots: list[Path] = []
+    for executable_directory in executable_directories:
+        virtualenv: Path | None = None
+        for parent in (executable_directory, *executable_directory.parents):
+            if (parent / "pyvenv.cfg").is_file():
+                virtualenv = parent
+                break
+        if virtualenv is None:
+            continue
+        for site_packages in virtualenv.glob("lib/python*/site-packages"):
+            if not site_packages.is_dir():
+                continue
+            for pth in sorted(site_packages.glob("*.pth")):
+                try:
+                    lines = pth.read_text(encoding="utf-8").splitlines()
+                except OSError:
+                    continue
+                for line in lines:
+                    value = line.strip()
+                    if not value or value.startswith("#") or value.startswith("import "):
+                        continue
+                    referenced = Path(value).expanduser()
+                    if not referenced.is_absolute():
+                        referenced = site_packages / referenced
+                    try:
+                        root = referenced.resolve(strict=True)
+                    except OSError:
+                        continue
+                    if not root.is_dir():
+                        continue
+                    try:
+                        home = Path.home().resolve()
+                    except OSError:
+                        home = Path.home()
+                    if root == home or root in home.parents:
+                        continue
+                    project_markers = ("pyproject.toml", "setup.py", "setup.cfg")
+                    marker_found = False
+                    for candidate in (root, *list(root.parents)[:3]):
+                        if candidate == virtualenv or virtualenv in candidate.parents:
+                            break
+                        if any((candidate / marker).is_file() for marker in project_markers):
+                            marker_found = True
+                            break
+                    if marker_found and root not in roots:
+                        roots.append(root)
+    return sorted(roots, key=str)
+
+
+def runtime_environment_from_report(
+    report: DiscoveryReport,
+    *,
+    operations: Collection[str] | None = None,
+) -> dict[str, str]:
     """Return the canonical non-secret runtime context captured by discovery."""
+    source: dict[str, str] = {}
     for layer, field in (("ros", "runtime_environment"), ("linux", "environment")):
         probe = report.probes.get(layer)
         raw = probe.data.get(field, {}) if probe is not None else {}
         if isinstance(raw, Mapping) and raw:
-            return admitted_runtime_environment(
-                {str(name): str(value) for name, value in raw.items()}
-            )
-    return {}
+            source = {str(name): str(value) for name, value in raw.items()}
+            break
+    # Never reuse PATH captured by an older report or a generic controller probe.
+    # The executable path below is rebuilt only from the selected CLI bindings.
+    source.pop("PATH", None)
+
+    # Application CLI adapters execute the exact target-observed entrypoints.
+    # Preserve only existing absolute parent directories, then let the runtime
+    # context validator canonicalize and bound the final PATH.  This keeps an
+    # isolated virtualenv available without inheriting an arbitrary controller
+    # service PATH into the release.
+    executable_directories = _selected_cli_directories(report, operations)
+    if executable_directories:
+        source["PATH"] = os.pathsep.join(str(path) for path in executable_directories)
+        editable_roots = _editable_python_roots(executable_directories)
+        if editable_roots:
+            existing = source.get("PYTHONPATH", "")
+            source["PYTHONPATH"] = os.pathsep.join(
+                [*(str(path) for path in editable_roots), existing]
+            ).strip(os.pathsep)
+    return admitted_runtime_environment(source, include_executable_path=True)
 
 
 def target_fingerprint_payload(
@@ -158,7 +264,10 @@ def target_fingerprint_payload(
         "robot_id": report.robot_id,
         "operation_scope": sorted(requested),
         "platform": report.platform,
-        "runtime_environment": runtime_environment_from_report(report),
+        "runtime_environment": runtime_environment_from_report(
+            report,
+            operations=requested,
+        ),
         "candidates": candidates,
         "observed_routes": observed_routes,
         "hardware_components": _hardware_components(

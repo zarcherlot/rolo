@@ -14,9 +14,12 @@ def test_runner_fails_closed_without_os_sandbox(
 ) -> None:
     monkeypatch.delenv("ROLO_ADAPTER_UNSANDBOXED_DEV", raising=False)
     monkeypatch.delenv("ROLO_ADAPTER_SANDBOX_LAUNCHER", raising=False)
+    runner = BoundedAdapterRunner()
+    runner.sandbox_launcher = None
+    runner.allow_unsandboxed_development = False
 
     with pytest.raises(RuntimeError, match="requires ROLO_ADAPTER_SANDBOX_LAUNCHER"):
-        BoundedAdapterRunner().run(
+        runner.run(
             [sys.executable, "-c", "print('must not execute')"],
             cwd=tmp_path,
             timeout_s=5,
@@ -48,7 +51,10 @@ def test_runner_sanitizes_environment_and_private_home(
     tmp_path: Path, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("ROLO_TEST_SECRET_TOKEN", "must-not-leak")
-    result = BoundedAdapterRunner().run(
+    runner = BoundedAdapterRunner()
+    runner.sandbox_launcher = None
+    runner.allow_unsandboxed_development = True
+    result = runner.run(
         [
             sys.executable,
             "-c",
@@ -158,6 +164,53 @@ def test_runtime_context_drops_missing_and_relative_overlay_paths(tmp_path: Path
     )
 
     assert runtime == {}
+
+
+def test_runtime_context_admits_only_available_absolute_executable_paths(
+    tmp_path: Path,
+) -> None:
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+
+    runtime = admitted_runtime_environment(
+        {
+            "PATH": os.pathsep.join(
+                ["relative-bin", str(tmp_path / "missing-bin"), str(target_bin)]
+            )
+        },
+        include_executable_path=True,
+    )
+
+    assert runtime == {"PATH": str(target_bin.resolve())}
+
+
+def test_generic_runtime_capture_ignores_inherited_executable_path(tmp_path: Path) -> None:
+    target_bin = tmp_path / "target-bin"
+    target_bin.mkdir()
+
+    assert admitted_runtime_environment({"PATH": str(target_bin)}) == {}
+
+
+def test_runtime_context_drops_permission_denied_path_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    denied = tmp_path / "denied"
+    available = tmp_path / "available"
+    available.mkdir()
+    original_exists = Path.exists
+
+    def permission_aware_exists(path: Path) -> bool:
+        if path == denied:
+            raise PermissionError("denied for regression coverage")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", permission_aware_exists)
+
+    assert admitted_runtime_environment(
+        {"PATH": os.pathsep.join([str(denied), str(available)])},
+        include_executable_path=True,
+    ) == {"PATH": str(available.resolve())}
 
 
 def test_runtime_context_canonicalizes_fastdds_profile_file(tmp_path: Path) -> None:

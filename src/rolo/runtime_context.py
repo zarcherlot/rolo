@@ -29,11 +29,22 @@ def _path_list(name: str, value: str, *, drop_unavailable: bool) -> str | None:
         if any(character in item for character in ("\x00", "\r", "\n")):
             raise ValueError(f"runtime path contains control characters: {name}")
         candidate = Path(item).expanduser()
-        if not candidate.is_absolute() or not candidate.exists():
+        try:
+            available = candidate.is_absolute() and candidate.exists()
+        except OSError:
+            available = False
+        if not available:
             if drop_unavailable:
                 continue
             raise ValueError(f"runtime path is not an available absolute path: {name}")
-        resolved = str(candidate.resolve())
+        try:
+            resolved = str(candidate.resolve())
+        except OSError as exc:
+            if drop_unavailable:
+                continue
+            raise ValueError(
+                f"runtime path is not an available absolute path: {name}"
+            ) from exc
         if resolved not in paths:
             paths.append(resolved)
         if len(paths) > _MAX_PATHS:
@@ -79,6 +90,7 @@ class AdapterRuntimeContext(BaseModel):
     dyld_library_path: str | None = Field(default=None, alias="DYLD_LIBRARY_PATH")
     ld_library_path: str | None = Field(default=None, alias="LD_LIBRARY_PATH")
     pythonpath: str | None = Field(default=None, alias="PYTHONPATH")
+    executable_path: str | None = Field(default=None, alias="PATH")
 
     @field_validator(
         "cyclonedds_uri",
@@ -106,6 +118,7 @@ class AdapterRuntimeContext(BaseModel):
         "dyld_library_path",
         "ld_library_path",
         "pythonpath",
+        "executable_path",
     )
     @classmethod
     def validate_path_list(cls, value: str | None, info: ValidationInfo) -> str | None:
@@ -123,12 +136,19 @@ class AdapterRuntimeContext(BaseModel):
         )
 
     @classmethod
-    def capture(cls, source: Mapping[str, str]) -> AdapterRuntimeContext:
+    def capture(
+        cls,
+        source: Mapping[str, str],
+        *,
+        include_executable_path: bool = False,
+    ) -> AdapterRuntimeContext:
         """Capture known keys; unavailable overlay paths are intentionally omitted."""
         values: dict[str, str] = {}
         for field in cls.model_fields.values():
             name = field.alias
             if name is None or (raw := source.get(name)) is None:
+                continue
+            if name == "PATH" and not include_executable_path:
                 continue
             if not isinstance(raw, str):
                 raise ValueError(f"invalid runtime environment value for {name}")
@@ -146,6 +166,13 @@ class AdapterRuntimeContext(BaseModel):
         return self.model_dump(by_alias=True, exclude_none=True)
 
 
-def admitted_runtime_environment(source: Mapping[str, str]) -> dict[str, str]:
+def admitted_runtime_environment(
+    source: Mapping[str, str],
+    *,
+    include_executable_path: bool = False,
+) -> dict[str, str]:
     """Compatibility API returning Runtime Context with environment-style keys."""
-    return AdapterRuntimeContext.capture(source).as_environment()
+    return AdapterRuntimeContext.capture(
+        source,
+        include_executable_path=include_executable_path,
+    ).as_environment()

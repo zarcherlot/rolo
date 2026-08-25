@@ -604,8 +604,16 @@ class CodexOperationMappingProvider:
             "CODEX_HOME",
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
         }
-        environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+        environment = {
+            key.upper(): value
+            for key, value in os.environ.items()
+            if key.upper() in allowed
+        }
         if "HOME" not in environment and environment.get("USERPROFILE"):
             environment["HOME"] = environment["USERPROFILE"]
         if "CODEX_HOME" not in environment and environment.get("HOME"):

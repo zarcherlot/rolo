@@ -115,6 +115,11 @@ def _prepare_promotion(
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': OPERATIONS}))\n"
         "elif sys.argv[1] == 'invoke':\n"
+        "    args = dict(zip(sys.argv[2::2], sys.argv[3::2]))\n"
+        "    operation = args.get('--operation')\n"
+        "    if operation not in OPERATIONS or args.get('--entrypoint') != OPERATIONS[operation]:\n"
+        "        print(json.dumps({'error': {'code': 'INVALID_INPUT'}}))\n"
+        "        raise SystemExit(1)\n"
         "    print(json.dumps({'status': 'SUCCEEDED'}))\n",
         encoding="utf-8",
     )

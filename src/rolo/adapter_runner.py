@@ -49,6 +49,7 @@ _INHERITED_ENVIRONMENT = {
     "SYSTEMROOT",
     "WINDIR",
 }
+_SANDBOX_TARGET_PATH = "_ROLO_ADAPTER_TARGET_PATH"
 
 def sanitized_adapter_environment(
     private_home: Path,
@@ -71,7 +72,20 @@ def sanitized_adapter_environment(
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
-    environment.update(admitted_runtime_environment(runtime_environment or {}))
+    admitted = admitted_runtime_environment(
+        runtime_environment or {},
+        include_executable_path=True,
+    )
+    target_path = admitted.pop("PATH", None)
+    if target_path:
+        environment[_SANDBOX_TARGET_PATH] = target_path
+        inherited_path = environment.get("PATH")
+        environment["PATH"] = (
+            os.pathsep.join([target_path, inherited_path])
+            if inherited_path
+            else target_path
+        )
+    environment.update(admitted)
     return environment
 
 
@@ -88,6 +102,8 @@ class BoundedAdapterRunner:
         *,
         sandbox_launcher: Path | None = None,
         allow_unsandboxed_development: bool | None = None,
+        max_address_space_bytes: int | None = None,
+        max_processes: int | None = None,
     ) -> None:
         from rolo.core.config import get_settings
 
@@ -96,6 +112,20 @@ class BoundedAdapterRunner:
         if allow_unsandboxed_development is None:
             allow_unsandboxed_development = settings.rolo_adapter_unsandboxed_dev
         self.allow_unsandboxed_development = allow_unsandboxed_development
+        self.max_address_space_bytes = (
+            max_address_space_bytes
+            if max_address_space_bytes is not None
+            else settings.rolo_adapter_max_address_space_bytes
+        )
+        self.max_processes = (
+            max_processes
+            if max_processes is not None
+            else settings.rolo_adapter_max_processes
+        )
+        if self.max_address_space_bytes < 512 * 1024 * 1024:
+            raise ValueError("adapter address-space limit must be at least 512 MiB")
+        if self.max_processes < 16:
+            raise ValueError("adapter process limit must be at least 16")
 
     def run(
         self,
@@ -215,8 +245,7 @@ class BoundedAdapterRunner:
             raise RuntimeError("adapter sandbox launcher must be executable")
         return [str(launcher), "--cwd", str(cwd), "--", *command]
 
-    @staticmethod
-    def _platform_process_options(timeout_s: float) -> dict[str, object]:
+    def _platform_process_options(self, timeout_s: float) -> dict[str, object]:
         if os.name == "nt":
             return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
 
@@ -230,9 +259,15 @@ class BoundedAdapterRunner:
                 resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
                 resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
                 if hasattr(resource, "RLIMIT_NPROC"):
-                    resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+                    resource.setrlimit(
+                        resource.RLIMIT_NPROC,
+                        (self.max_processes,) * 2,
+                    )
                 if hasattr(resource, "RLIMIT_AS"):
-                    resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024,) * 2)
+                    resource.setrlimit(
+                        resource.RLIMIT_AS,
+                        (self.max_address_space_bytes,) * 2,
+                    )
             except (ImportError, OSError, ValueError):
                 pass
 
