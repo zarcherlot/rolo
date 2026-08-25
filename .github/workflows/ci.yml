@@ -55,7 +55,7 @@ jobs:
             fi
           done
       - run: uv sync --locked --dev --python 3.12
-      - name: Prepare real editable LeRobot camera CLI without the ML stack
+      - name: Prepare real editable LeRobot camera CLI with minimal runtime dependencies
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
           LEROBOT_COMMIT: "7427f31801f944f5ec9ce53cda02862ce7d1638b"
@@ -67,10 +67,19 @@ jobs:
           test "$(git -C .ci/lerobot rev-parse HEAD)" = "$LEROBOT_COMMIT"
           uv venv .ci/lerobot-venv --python 3.12
           uv pip install --python .ci/lerobot-venv/bin/python --no-deps -e .ci/lerobot
+          # The pinned LeRobot package imports torch unconditionally from
+          # lerobot.utils, even for lerobot-find-cameras --help. Use the CPU
+          # wheel index so this acceptance test does not pull a CUDA runtime.
+          uv pip install --python .ci/lerobot-venv/bin/python \
+            --index-url https://download.pytorch.org/whl/cpu \
+            "torch==2.7.1"
           uv pip install --python .ci/lerobot-venv/bin/python \
             "numpy>=2.0.0,<2.3.0" \
             "opencv-python-headless>=4.9.0,<4.14.0" \
-            "Pillow>=10.0.0,<13.0.0"
+            "Pillow>=10.0.0,<13.0.0" \
+            "draccus>=0.11.6,<0.12.0" \
+            "huggingface-hub>=1.6.0,<2.0.0" \
+            "packaging>=24.2,<26.0"
       - name: Run real LeRobot discovery and production-sandbox acceptance
         env:
           ROLO_RUN_LEROBOT_E2E: "1"
