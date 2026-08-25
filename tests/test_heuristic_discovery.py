@@ -541,7 +541,7 @@ def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert provider._environment()["HOME"] == str(tmp_path)
     assert provider._environment()["CODEX_HOME"] == str(codex_home)
-    assert provider._environment()["https_proxy"] == "http://proxy.example:7897"
+    assert provider._environment()["HTTPS_PROXY"] == "http://proxy.example:7897"
 
 
 def test_discovery_service_wires_heuristic_artifacts_into_report_wiki_and_plan_inputs(

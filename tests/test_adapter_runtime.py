@@ -64,7 +64,7 @@ def _target_report() -> DiscoveryReport:
     )
 
 
-def test_package_probe_rejects_adapter_missing_runtime_entrypoint_argument(
+def test_package_probe_runs_describe_without_crossing_invoke_boundary(
     tmp_path: Path,
 ) -> None:
     definition = next(
@@ -113,23 +113,13 @@ def test_package_probe_rejects_adapter_missing_runtime_entrypoint_argument(
                     ),
                     stderr="",
                 )
-            return AdapterProcessResult(
-                returncode=2,
-                stdout="",
-                stderr="adapter.py: error: unrecognized arguments: --entrypoint camera_list",
-            )
+            raise AssertionError("promotion must not execute adapter invoke")
 
     runner = DescribeOnlyRunner()
-    with pytest.raises(ValueError, match="invoke ABI probe did not return a JSON error"):
-        probe_adapter_package(package, manifest, runner=runner)
+    probe_adapter_package(package, manifest, runner=runner)
 
-    assert runner.commands[1][-5:] == [
-        "invoke",
-        "--operation",
-        "__rolo_protocol_probe_invalid_operation__",
-        "--entrypoint",
-        "__rolo_protocol_probe_invalid_entrypoint__",
-    ]
+    assert len(runner.commands) == 1
+    assert runner.commands[0][-1] == "describe"
 
 
 @pytest.fixture(autouse=True)
@@ -167,6 +157,11 @@ def _publish_demo_release(
         "if sys.argv[1] == 'describe':\n"
         "    print(json.dumps({'operations': OPS}))\n"
         "elif sys.argv[1] == 'invoke':\n"
+        "    args = dict(zip(sys.argv[2::2], sys.argv[3::2]))\n"
+        "    operation = args.get('--operation')\n"
+        "    if operation not in OPS or args.get('--entrypoint') != OPS[operation]:\n"
+        "        print(json.dumps({'error': {'code': 'INVALID_INPUT'}}))\n"
+        "        raise SystemExit(1)\n"
         "    payload = json.load(sys.stdin)\n"
         "    print(json.dumps(result(payload)))\n",
         encoding="utf-8",

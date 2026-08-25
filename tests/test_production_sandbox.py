@@ -112,7 +112,10 @@ def test_bundled_production_sandbox_mounts_only_observed_path_directories(
         [sys.executable, str(package)],
         cwd=release,
         timeout_s=10,
-        runtime_environment={"PATH": str(target_bin)},
+        runtime_environment={
+            "PATH": str(target_bin),
+            "PYTHONPATH": str(editable_source),
+        },
     )
 
     assert completed.returncode == 0, completed.stderr

@@ -12,13 +12,13 @@ import sys
 from pathlib import Path
 
 PATH_ENVIRONMENT = (
-    "PATH",
     "AMENT_PREFIX_PATH",
     "CMAKE_PREFIX_PATH",
     "COLCON_PREFIX_PATH",
     "LD_LIBRARY_PATH",
     "PYTHONPATH",
 )
+TARGET_PATH_ENVIRONMENT = "_ROLO_ADAPTER_TARGET_PATH"
 SYSTEM_DIRECTORIES = ("/usr", "/bin", "/lib", "/lib64")
 SYSTEM_FILES = (
     "/etc/group",
@@ -82,29 +82,13 @@ def add_virtual_environment(paths: set[Path], raw: str) -> None:
     for parent in (candidate, *candidate.parents):
         if (parent / "pyvenv.cfg").is_file():
             add_path(paths, str(parent))
-            for site_packages in parent.glob("lib/python*/site-packages"):
-                if not site_packages.is_dir():
-                    continue
-                for pth in sorted(site_packages.glob("*.pth")):
-                    try:
-                        lines = pth.read_text(encoding="utf-8").splitlines()
-                    except OSError:
-                        continue
-                    for line in lines:
-                        value = line.strip()
-                        if not value or value.startswith("#") or value.startswith("import "):
-                            continue
-                        referenced = Path(value).expanduser()
-                        if not referenced.is_absolute():
-                            referenced = site_packages / referenced
-                        add_path(paths, str(referenced))
             return
 
 
-def path_interpreter_alias_mounts() -> list[tuple[Path, Path]]:
+def path_interpreter_alias_mounts(runtime_path: str) -> list[tuple[Path, Path]]:
     """Map version-manager Python roots to lexical venv shebang targets."""
     mounts: set[tuple[Path, Path]] = set()
-    for raw in os.environ.get("PATH", "").split(os.pathsep):
+    for raw in runtime_path.split(os.pathsep):
         candidate = Path(raw).expanduser()
         if not candidate.is_absolute() or not candidate.is_dir():
             continue
@@ -125,7 +109,7 @@ def path_interpreter_alias_mounts() -> list[tuple[Path, Path]]:
     return sorted(mounts, key=lambda item: (len(item[1].parts), str(item[1])))
 
 
-def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
+def readonly_paths(cwd: Path, command: list[str], runtime_path: str) -> list[Path]:
     paths: set[Path] = {cwd}
     for raw in SYSTEM_DIRECTORIES:
         add_system_path(paths, raw)
@@ -148,8 +132,9 @@ def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
     for name in PATH_ENVIRONMENT:
         for raw in os.environ.get(name, "").split(os.pathsep):
             add_path(paths, raw)
-            if name == "PATH":
-                add_virtual_environment(paths, raw)
+    for raw in runtime_path.split(os.pathsep):
+        add_path(paths, raw)
+        add_virtual_environment(paths, raw)
     add_path(paths, os.environ.get("FASTRTPS_DEFAULT_PROFILES_FILE"), file_ok=True)
     return sorted(paths, key=lambda value: (len(value.parts), str(value)))
 
@@ -224,13 +209,14 @@ def main() -> int:
         return 127
     try:
         cwd, command = parse(sys.argv[1:])
-        readonly = readonly_paths(cwd, command)
+        runtime_path = os.environ.pop(TARGET_PATH_ENVIRONMENT, "")
+        readonly = readonly_paths(cwd, command, runtime_path)
     except (OSError, ValueError) as exc:
         return fail(str(exc))
     launch = base_launch(bubblewrap)
     if os.environ.get("ROLO_ADAPTER_SANDBOX_NETWORK", "isolated") == "host":
         launch.append("--share-net")
-    alias_mounts = path_interpreter_alias_mounts()
+    alias_mounts = path_interpreter_alias_mounts(runtime_path)
     add_mount_parent_directories(
         launch,
         [*readonly, *(destination for _, destination in alias_mounts)],

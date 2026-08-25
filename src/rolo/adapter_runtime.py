@@ -489,15 +489,13 @@ def probe_adapter_package(
     runner: AdapterRunner | None = None,
     runtime_environment: Mapping[str, str] | None = None,
 ) -> None:
-    """Require the package to implement the exact runtime RPC argv contract.
+    """Require the generated package to self-describe declared entrypoints.
 
-    The invoke probe uses an operation and entrypoint that cannot be present in
-    the bundle.  A conforming adapter must reject that binding before touching
-    a target route, while still proving that it accepts the same argv shape the
-    production runtime uses.
+    Promotion intentionally never executes ``invoke``.  Runtime ABI behavior is
+    covered by deterministic conformance fixtures; only an authorized runtime
+    request may cross the invocation boundary.
     """
-    effective_runner = runner or BoundedAdapterRunner()
-    completed = effective_runner.run(
+    completed = (runner or BoundedAdapterRunner()).run(
         adapter_command(package_path) + ["describe"],
         cwd=package_path.parent,
         timeout_s=timeout_s,
@@ -521,41 +519,6 @@ def probe_adapter_package(
     expected = {item.operation: item.entrypoint for item in manifest.operations}
     if not isinstance(described, dict) or described.get("operations") != expected:
         raise ValueError("adapter package describe does not match its bundle manifest")
-
-    invalid_operation = "__rolo_protocol_probe_invalid_operation__"
-    invalid_entrypoint = "__rolo_protocol_probe_invalid_entrypoint__"
-    if invalid_operation in expected or invalid_entrypoint in expected.values():
-        raise ValueError("adapter bundle collides with reserved protocol probe identifiers")
-    invoked = effective_runner.run(
-        adapter_command(package_path)
-        + [
-            "invoke",
-            "--operation",
-            invalid_operation,
-            "--entrypoint",
-            invalid_entrypoint,
-        ],
-        stdin="{}",
-        cwd=package_path.parent,
-        timeout_s=timeout_s,
-        max_stdout_bytes=200_000,
-        max_stderr_bytes=200_000,
-        runtime_environment=runtime_environment,
-    )
-    if invoked.timed_out:
-        raise ValueError("adapter package invoke ABI probe timed out")
-    if invoked.output_limited:
-        raise ValueError("adapter package invoke ABI probe exceeded its output limit")
-    if invoked.returncode == 0:
-        raise ValueError("adapter package accepted an unknown invoke binding")
-    try:
-        rejected = json.loads(invoked.stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            "adapter package invoke ABI probe did not return a JSON error"
-        ) from exc
-    if not isinstance(rejected, dict) or not isinstance(rejected.get("error"), dict):
-        raise ValueError("adapter package invoke ABI probe did not return a JSON error")
 
 
 def publish_release(

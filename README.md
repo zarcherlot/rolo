@@ -200,8 +200,9 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 
 生成 Adapter 的 `describe` 和 `invoke` 默认失败关闭。Linux 源码部署在安装 `bubblewrap` 后会
 自动使用仓库自带的受保护目标侧启动器；Rolo 按
-`launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...` 调用它。默认隔离网络且只挂载 release、Python/
-ROS 运行路径，并在沙箱内创建空的 HOME/TMP；不会挂载宿主 HOME/TMP。目标内核还必须允许
+`launcher --cwd RELEASE_ROOT -- ADAPTER_ARGV...` 调用它。默认隔离网络且只挂载 release、当前
+Bundle Operation 证据绑定的目标 CLI/显式 Python 依赖和 ROS 运行路径，并在沙箱内创建空的
+HOME/TMP；不会扫描控制器 PATH、隐式扩张 `.pth` 或挂载宿主 HOME/TMP。目标内核还必须允许
 创建 user/mount/network 等 namespace，完整 `adapt start` 会通过启动器 `--self-test` 实测，
 不能创建时在 Discovery 前失败。需要 ROS/DDS host 网络的正式调用必须由部署者显式设置
 `ROLO_ADAPTER_SANDBOX_NETWORK=host` 并配合目标网络策略。也可以覆盖为部署自有启动器：
@@ -214,6 +215,10 @@ export ROLO_ADAPTER_SANDBOX_LAUNCHER=/usr/local/libexec/rolo-adapter-sandbox
 会在 Codex workspace 沙箱内执行一次有超时、输出上限和进程树清理的非权威 `describe`，从不
 执行 `invoke`；Rolo 独立 Gate 随后仍通过上述目标侧生产沙箱重复 `describe`，前一次结果不能
 授予 `VERIFIED` 或发布权限。
+
+Adapter 默认使用 4 GiB 虚拟地址空间和 128 个进程/线程上限，以容纳 LeRobot 等 ML-backed
+CLI 的有界 import；CPU、时限、文件、输出和进程树限制仍独立生效。部署可通过
+`ROLO_ADAPTER_MAX_ADDRESS_SPACE_BYTES` 与 `ROLO_ADAPTER_MAX_PROCESSES` 下调或调整该预算。
 
 `ROLO_ADAPTER_UNSANDBOXED_DEV=1` 仅允许单元测试和离线 Demo，禁止用于目标机器。
 控制面保持默认回环监听；若设置 `ROLO_HOST=0.0.0.0` 或其他非回环地址，还必须设置高熵

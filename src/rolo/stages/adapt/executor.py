@@ -843,7 +843,7 @@ class CodexAdaptExecutor:
             "one JSON object containing an `error` object on stdout. `describe` "
             "must emit a JSON object whose `operations` value is exactly a mapping from every "
             "bundle operation name to its manifest entrypoint, with no missing or extra "
-            "operations. When "
+            "operations. "
             "A generated adapter and its release directory are read-only at runtime. For a "
             "read-only Operation whose target CLI defaults to writing output, recording samples, "
             "or warming up hardware, use its inspected help contract to redirect unavoidable "

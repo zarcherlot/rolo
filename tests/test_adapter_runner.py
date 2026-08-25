@@ -177,10 +177,40 @@ def test_runtime_context_admits_only_available_absolute_executable_paths(
             "PATH": os.pathsep.join(
                 ["relative-bin", str(tmp_path / "missing-bin"), str(target_bin)]
             )
-        }
+        },
+        include_executable_path=True,
     )
 
     assert runtime == {"PATH": str(target_bin.resolve())}
+
+
+def test_generic_runtime_capture_ignores_inherited_executable_path(tmp_path: Path) -> None:
+    target_bin = tmp_path / "target-bin"
+    target_bin.mkdir()
+
+    assert admitted_runtime_environment({"PATH": str(target_bin)}) == {}
+
+
+def test_runtime_context_drops_permission_denied_path_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    denied = tmp_path / "denied"
+    available = tmp_path / "available"
+    available.mkdir()
+    original_exists = Path.exists
+
+    def permission_aware_exists(path: Path) -> bool:
+        if path == denied:
+            raise PermissionError("denied for regression coverage")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", permission_aware_exists)
+
+    assert admitted_runtime_environment(
+        {"PATH": os.pathsep.join([str(denied), str(available)])},
+        include_executable_path=True,
+    ) == {"PATH": str(available.resolve())}
 
 
 def test_runtime_context_canonicalizes_fastdds_profile_file(tmp_path: Path) -> None:

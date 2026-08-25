@@ -54,11 +54,25 @@ CLI name 和 `--help` 只能证明“目标机存在这个自描述入口”，�
 1. Candidate Route 与不可变 Linux Probe 中的 target Route 精确一致；
 2. Candidate 绑定 exact executable ID，release fingerprint 绑定其 SHA-256；
 3. Adapter Bundle 覆盖且只覆盖 eligible Operation；
-4. `describe` 返回完整、与产品契约一致的 schema、风险和调用元数据；
+4. `describe` 返回与 Bundle 完全一致的 Operation 到 entrypoint 映射；
 5. write/运动 Operation 继续经过 Runtime policy、外部授权和物理 interlock。
 
 Gate 不通过就不会生成 `VERIFIED` Catalog。`--help` 失败、入口只存在于源码、目标可执行文件
 变化、source/target name 不一致时，只保留证据和缺口。
+
+Promotion 只执行 `describe`，不使用 `invoke` 探测 ABI。`invoke` 只允许在 Tool Catalog、策略、
+授权、目标指纹和输入 Schema 全部通过后由正式 Runtime 发起。
+
+## Python CLI 运行路径
+
+目标 CLI 的 PATH 只从当前 Bundle Operation 引用的绝对 CLI Route 生成，不继承控制器完整
+PATH，也不包含其他已发现但与本次 Bundle 无关的入口。若选中 CLI 位于虚拟环境，Rolo 会把
+该虚拟环境加入只读挂载。editable install 的 `.pth` 仅在指向具有 `pyproject.toml`、`setup.py`
+或 `setup.cfg` 的有界工程目录时转成显式 `PYTHONPATH`；bubblewrap 不会自行读取 `.pth` 并扩张
+宿主挂载范围。
+
+这些 PATH/PYTHONPATH 值进入 Runtime Context、release manifest 和目标指纹。路径缺失、无权
+访问或不属于当前 Operation 时不会进入运行环境；严格加载已发布 release 时路径漂移会失败关闭。
 
 ## LeRobot 当前边界
 

@@ -25,6 +25,8 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     assert settings.wiki_insights_agent_enabled is True
     assert settings.adapt_heuristic_agent_mode == "shadow"
     assert settings.adapt_heuristic_agent_provider_enabled is True
+    assert settings.rolo_adapter_max_address_space_bytes == 4 * 1024 * 1024 * 1024
+    assert settings.rolo_adapter_max_processes == 128
 
 
 def test_user_yaml_is_loaded_below_environment_precedence(
@@ -47,6 +49,9 @@ ros:
     - /opt/ros/humble/setup.bash
   domain_id: '7'
   rmw_implementation: rmw_cyclonedds_cpp
+adapter_runtime:
+  max_address_space_bytes: 2147483648
+  max_processes: 64
 """,
         encoding="utf-8",
     )
@@ -62,6 +67,8 @@ ros:
     assert settings.ros_auto_source is False
     assert settings.ros_setup_files == [Path("/opt/ros/humble/setup.bash")]
     assert settings.ros_domain_id == "7"
+    assert settings.rolo_adapter_max_address_space_bytes == 2 * 1024 * 1024 * 1024
+    assert settings.rolo_adapter_max_processes == 64
 
 
 def test_base_runtime_does_not_require_optional_robot_use_backend() -> None:

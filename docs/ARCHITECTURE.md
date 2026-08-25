@@ -118,11 +118,15 @@ atomic `robots/<robot>/current.json` and calls the hash-verified adapter through
  additionally requires a protected deployment-owned OS sandbox launcher. Without one, execution
  fails closed; the explicit unsandboxed development switch is limited to tests and offline demos.
  The launcher owns least-privilege service identity, filesystem and device allowlists, network policy,
- and platform-specific containment.
+ and platform-specific containment. Promotion executes only `describe`; `invoke` is reserved for an
+ authorized runtime request and never used as a conformance probe.
 
 Discovery records only the explicit `AdapterRuntimeContext` contract: allowlisted, non-secret ROS
 and middleware fields such as ROS domain, RMW implementation, profile file and existing overlay
-paths. Unknown fields are forbidden in a release, while missing optional fields remain absent. The
+paths. Application PATH entries are derived only from CLI routes used by the selected Bundle
+Operations. Editable Python roots are resolved from those virtualenvs into explicit `PYTHONPATH`
+entries; the launcher never scans inherited PATH or follows arbitrary `.pth` mounts. Unknown fields
+are forbidden in a release, while missing optional fields remain absent. The
 gate binds its canonical form into release v2 and
 the target fingerprint; `describe` and invocation receive that same context through the bounded
 runner. Credentials and unrelated host environment variables are never admitted. Runtime catalog,

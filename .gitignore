@@ -24,3 +24,4 @@ BP/
 /.codex-pytest-*/
 /.worktrees/
 /.tmp/
+/.ci/

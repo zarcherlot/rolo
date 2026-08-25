@@ -10,15 +10,24 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from rolo.adapter_runner import BoundedAdapterRunner
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.models import (
+    DiscoveryReport,
+    DiscoveryStatus,
+    OperationCandidate,
+    RouteEvidence,
+)
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService, load_latest_report
 from rolo.stages.adapt.routes import probe_routes
+from rolo.stages.adapt.target_fingerprint import runtime_environment_from_report
 
 pytestmark = [
     pytest.mark.lerobot,
@@ -43,6 +52,16 @@ def _lerobot_info_executable() -> str:
     executable = os.environ.get("LEROBOT_INFO") or shutil.which("lerobot-info")
     if not executable:
         pytest.fail("lerobot-info is not installed; install LeRobot in the integration environment")
+    return executable
+
+
+def _lerobot_find_cameras_executable() -> Path:
+    raw = os.environ.get("LEROBOT_FIND_CAMERAS") or shutil.which("lerobot-find-cameras")
+    if not raw:
+        pytest.fail("lerobot-find-cameras is unavailable in the integration environment")
+    executable = Path(raw).expanduser().resolve()
+    if not executable.is_file():
+        pytest.fail(f"lerobot-find-cameras is not an executable file: {executable}")
     return executable
 
 
@@ -107,3 +126,74 @@ def test_lerobot_cli_to_rolo_discovery_e2e(tmp_path: Path) -> None:
     assert "app.camera.list" not in {
         candidate.operation for candidate in report.operation_candidates
     }
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or shutil.which("bwrap") is None,
+    reason="the LeRobot runtime acceptance requires Linux bubblewrap",
+)
+def test_lerobot_editable_cli_runs_in_production_sandbox(tmp_path: Path) -> None:
+    """Bind one real editable LeRobot CLI to a scoped, sandboxed runtime context."""
+    root = _lerobot_root()
+    find_cameras = _lerobot_find_cameras_executable()
+    help_run = subprocess.run(
+        [str(find_cameras), "--help"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert help_run.returncode == 0, help_run.stderr[-4_000:]
+    assert "camera" in help_run.stdout.casefold()
+
+    route = RouteEvidence(
+        resource_id=f"cli:{find_cameras}",
+        kind="cli",
+        endpoint=str(find_cameras),
+        evidence_origin="OBSERVED_RUNTIME",
+        source="lerobot-e2e:verified-help",
+    )
+    report = DiscoveryReport(
+        discovery_id="lerobot-runtime-e2e",
+        robot_id="demo_diff",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={},
+        capability_manifest={},
+        probes={},
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.list",
+                evidence=[str(find_cameras)],
+                route_evidence=[route],
+            )
+        ],
+    )
+    runtime = runtime_environment_from_report(
+        report,
+        operations={"app.camera.list"},
+    )
+    assert runtime["PATH"] == str(find_cameras.parent)
+    assert "PYTHONPATH" in runtime
+    editable_paths = map(Path, runtime["PYTHONPATH"].split(os.pathsep))
+    assert all(root == path or root in path.parents for path in editable_paths)
+
+    release = tmp_path / "release"
+    release.mkdir()
+    launcher = Path(__file__).resolve().parents[1] / "scripts" / "rolo-adapter-sandbox"
+    completed = BoundedAdapterRunner(
+        sandbox_launcher=launcher,
+        allow_unsandboxed_development=False,
+    ).run(
+        [str(find_cameras), "--help"],
+        cwd=release,
+        timeout_s=60,
+        max_stdout_bytes=200_000,
+        max_stderr_bytes=200_000,
+        runtime_environment=runtime,
+    )
+
+    assert completed.returncode == 0, completed.stderr[-4_000:]
+    assert completed.timed_out is False
+    assert completed.output_limited is False
+    assert "camera" in completed.stdout.casefold()

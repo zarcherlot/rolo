@@ -186,9 +186,12 @@ LeRobot 当前要求 Python 3.12+，并包含 PyTorch 等重量级依赖，因�
 export ROLO_RUN_LEROBOT_E2E=1
 export LEROBOT_ROOT=/path/to/lerobot
 export LEROBOT_INFO=/path/to/lerobot/.venv/bin/lerobot-info  # 可选；默认从 PATH 查找
+export LEROBOT_FIND_CAMERAS=/path/to/lerobot/.venv/bin/lerobot-find-cameras
 uv run pytest tests/test_lerobot_e2e.py -q
 ```
 
 该测试实际运行 `lerobot-info`，再让 rolo 对 LeRobot 源码执行有界 Discovery，并校验生成的
-Wiki、manifest、应用工程证据和“源码发现不能升级为 VERIFIED 能力”的边界。它不连接真机、
+Wiki、manifest、应用工程证据和“源码发现不能升级为 VERIFIED 能力”的边界。在 Linux 且安装
+`bubblewrap` 时，还会将真实 editable `lerobot-find-cameras --help` 放入生产沙箱，验证
+Operation-scoped PATH、显式 PYTHONPATH 和虚拟环境 shebang。它不连接真机、不枚举摄像头、
 不执行运动、不上传数据。

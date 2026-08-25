@@ -441,7 +441,6 @@ class AdapterPromotionService:
             checks.append("frozen output hashes and schemas")
 
             discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
-            runtime_environment = runtime_environment_from_report(discovery)
             identified_outputs = (
                 (graph, "State Graph"),
                 (conformance, "conformance report"),
@@ -462,6 +461,10 @@ class AdapterPromotionService:
             expected_bundle_operations = required_adapter_agent_conformance_operations(discovery)
             if not expected_bundle_operations:
                 raise ValueError("no target-observed adapter operations are eligible for promotion")
+            runtime_environment = runtime_environment_from_report(
+                discovery,
+                operations=expected_bundle_operations,
+            )
             bundle_entries = {item.operation: item for item in bundle.operations}
             if set(bundle_entries) != expected_bundle_operations:
                 raise ValueError(
@@ -472,7 +475,7 @@ class AdapterPromotionService:
                 bundle,
                 runtime_environment=runtime_environment,
             )
-            checks.append("adapter package describe, invoke ABI, and entrypoint binding")
+            checks.append("adapter package describe and entrypoint binding")
             actual = {item.operation: item for item in conformance.operations}
             if (
                 len(actual) != len(conformance.operations)

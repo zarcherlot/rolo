@@ -79,6 +79,10 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
         "domain_id": "ros_domain_id",
         "rmw_implementation": "ros_rmw_implementation",
     },
+    "adapter_runtime": {
+        "max_address_space_bytes": "rolo_adapter_max_address_space_bytes",
+        "max_processes": "rolo_adapter_max_processes",
+    },
 }
 
 
@@ -146,6 +150,12 @@ class Settings(BaseSettings):
         default_factory=_default_adapter_sandbox_launcher
     )
     rolo_adapter_unsandboxed_dev: bool = False
+    rolo_adapter_max_address_space_bytes: int = Field(
+        default=4 * 1024 * 1024 * 1024,
+        ge=512 * 1024 * 1024,
+        le=16 * 1024 * 1024 * 1024,
+    )
+    rolo_adapter_max_processes: int = Field(default=128, ge=16, le=512)
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     rolo_api_token: str | None = None

@@ -38,8 +38,24 @@ jobs:
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
         with:
           enable-cache: true
+      - run: sudo apt-get update
+      - run: sudo apt-get install --yes bubblewrap
+      - name: Enable namespace prerequisites on the ephemeral CI runner
+        run: |
+          if [ -e /proc/sys/kernel/unprivileged_userns_clone ]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          for kind in cgroup ipc mnt net pid time user uts; do
+            key="user.max_${kind}_namespaces"
+            if sysctl -n "$key" >/dev/null 2>&1; then
+              sudo sysctl -w "$key=15000"
+            fi
+          done
       - run: uv sync --locked --dev --python 3.12
-      - name: Prepare real LeRobot CLI without the optional ML stack
+      - name: Prepare real editable LeRobot camera CLI without the ML stack
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
           LEROBOT_COMMIT: "7427f31801f944f5ec9ce53cda02862ce7d1638b"
@@ -51,11 +67,16 @@ jobs:
           test "$(git -C .ci/lerobot rev-parse HEAD)" = "$LEROBOT_COMMIT"
           uv venv .ci/lerobot-venv --python 3.12
           uv pip install --python .ci/lerobot-venv/bin/python --no-deps -e .ci/lerobot
-      - name: Run real LeRobot source-discovery acceptance
+          uv pip install --python .ci/lerobot-venv/bin/python \
+            "numpy>=2.0.0,<2.3.0" \
+            "opencv-python-headless>=4.9.0,<4.14.0" \
+            "Pillow>=10.0.0,<13.0.0"
+      - name: Run real LeRobot discovery and production-sandbox acceptance
         env:
           ROLO_RUN_LEROBOT_E2E: "1"
           LEROBOT_ROOT: ${{ github.workspace }}/.ci/lerobot
           LEROBOT_INFO: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-info
+          LEROBOT_FIND_CAMERAS: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-find-cameras
         run: uv run pytest -q tests/test_lerobot_e2e.py
 
   production-sandbox:
