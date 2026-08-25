@@ -79,6 +79,7 @@ class AdapterRuntimeContext(BaseModel):
     dyld_library_path: str | None = Field(default=None, alias="DYLD_LIBRARY_PATH")
     ld_library_path: str | None = Field(default=None, alias="LD_LIBRARY_PATH")
     pythonpath: str | None = Field(default=None, alias="PYTHONPATH")
+    executable_path: str | None = Field(default=None, alias="PATH")
 
     @field_validator(
         "cyclonedds_uri",
@@ -106,6 +107,7 @@ class AdapterRuntimeContext(BaseModel):
         "dyld_library_path",
         "ld_library_path",
         "pythonpath",
+        "executable_path",
     )
     @classmethod
     def validate_path_list(cls, value: str | None, info: ValidationInfo) -> str | None:

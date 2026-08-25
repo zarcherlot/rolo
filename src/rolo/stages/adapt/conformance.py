@@ -472,7 +472,7 @@ class AdapterPromotionService:
                 bundle,
                 runtime_environment=runtime_environment,
             )
-            checks.append("adapter package describe and entrypoint binding")
+            checks.append("adapter package describe, invoke ABI, and entrypoint binding")
             actual = {item.operation: item for item in conformance.operations}
             if (
                 len(actual) != len(conformance.operations)

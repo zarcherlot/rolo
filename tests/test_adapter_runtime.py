@@ -7,7 +7,12 @@ import pytest
 from typer.testing import CliRunner
 
 from rolo.adapter_runner import AdapterProcessResult
-from rolo.adapter_runtime import activate_release, invoke_adapter, publish_release
+from rolo.adapter_runtime import (
+    activate_release,
+    invoke_adapter,
+    probe_adapter_package,
+    publish_release,
+)
 from rolo.cli import app
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
@@ -57,6 +62,74 @@ def _target_report() -> DiscoveryReport:
             )
         ],
     )
+
+
+def test_package_probe_rejects_adapter_missing_runtime_entrypoint_argument(
+    tmp_path: Path,
+) -> None:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.list"
+    )
+    package = tmp_path / "adapter.py"
+    package.write_text("# protocol probe fixture\n", encoding="utf-8")
+    manifest = AdapterBundleManifest(
+        bundle_id="camera-list",
+        bundle_version="1.0.0",
+        robot_id="demo",
+        discovery_id="disc-1",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        files=[
+            {
+                "path": package.name,
+                "sha256": sha256_file(package),
+                "role": "ENTRYPOINT",
+            }
+        ],
+        operations=[
+            {
+                "operation": definition.operation,
+                "entrypoint": "camera_list",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
+    )
+
+    class DescribeOnlyRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del kwargs
+            self.commands.append(command)
+            if command[-1] == "describe":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {"operations": {definition.operation: "camera_list"}}
+                    ),
+                    stderr="",
+                )
+            return AdapterProcessResult(
+                returncode=2,
+                stdout="",
+                stderr="adapter.py: error: unrecognized arguments: --entrypoint camera_list",
+            )
+
+    runner = DescribeOnlyRunner()
+    with pytest.raises(ValueError, match="invoke ABI probe did not return a JSON error"):
+        probe_adapter_package(package, manifest, runner=runner)
+
+    assert runner.commands[1][-5:] == [
+        "invoke",
+        "--operation",
+        "__rolo_protocol_probe_invalid_operation__",
+        "--entrypoint",
+        "__rolo_protocol_probe_invalid_entrypoint__",
+    ]
 
 
 @pytest.fixture(autouse=True)

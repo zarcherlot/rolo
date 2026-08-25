@@ -28,6 +28,7 @@ from rolo.stages.adapt.target_evidence import (
     TargetExecutableHelpEvidence,
     bind_target_executable_routes,
 )
+from rolo.stages.adapt.target_fingerprint import runtime_environment_from_report
 
 NOW = datetime(2026, 8, 24, tzinfo=timezone.utc)
 
@@ -73,6 +74,27 @@ def _bound_linux(record: TargetExecutableHelpEvidence) -> ProbeResult:
         bundle_payload_sha256="c" * 64,
         observed_at=NOW,
     )
+
+
+def test_target_runtime_path_is_derived_from_observed_cli_directory(
+    tmp_path: Path,
+) -> None:
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+    executable = target_bin / "generic-find-cameras"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    report = DiscoveryReport(
+        discovery_id="disc-cli-path",
+        robot_id="demo",
+        status="SUCCEEDED",
+        platform={},
+        capability_manifest={},
+        probes={"linux": _bound_linux(_help_record(str(executable)))},
+    )
+
+    assert runtime_environment_from_report(report) == {
+        "PATH": str(target_bin.resolve())
+    }
 
 
 def test_source_manifest_declares_cli_route_without_observing_it(tmp_path: Path) -> None:

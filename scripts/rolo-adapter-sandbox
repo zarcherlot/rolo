@@ -11,8 +11,8 @@ import shutil
 import sys
 from pathlib import Path
 
-
 PATH_ENVIRONMENT = (
+    "PATH",
     "AMENT_PREFIX_PATH",
     "CMAKE_PREFIX_PATH",
     "COLCON_PREFIX_PATH",
@@ -75,6 +75,56 @@ def add_system_path(paths: set[Path], raw: str, *, file_ok: bool = False) -> Non
         paths.add(candidate)
 
 
+def add_virtual_environment(paths: set[Path], raw: str) -> None:
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute() or not candidate.is_dir():
+        return
+    for parent in (candidate, *candidate.parents):
+        if (parent / "pyvenv.cfg").is_file():
+            add_path(paths, str(parent))
+            for site_packages in parent.glob("lib/python*/site-packages"):
+                if not site_packages.is_dir():
+                    continue
+                for pth in sorted(site_packages.glob("*.pth")):
+                    try:
+                        lines = pth.read_text(encoding="utf-8").splitlines()
+                    except OSError:
+                        continue
+                    for line in lines:
+                        value = line.strip()
+                        if not value or value.startswith("#") or value.startswith("import "):
+                            continue
+                        referenced = Path(value).expanduser()
+                        if not referenced.is_absolute():
+                            referenced = site_packages / referenced
+                        add_path(paths, str(referenced))
+            return
+
+
+def path_interpreter_alias_mounts() -> list[tuple[Path, Path]]:
+    """Map version-manager Python roots to lexical venv shebang targets."""
+    mounts: set[tuple[Path, Path]] = set()
+    for raw in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute() or not candidate.is_dir():
+            continue
+        for name in ("python", "python3"):
+            interpreter = candidate / name
+            if not interpreter.is_symlink():
+                continue
+            target = Path(os.readlink(interpreter))
+            if not target.is_absolute():
+                target = interpreter.parent / target
+            lexical_root = target.absolute().parent.parent
+            try:
+                source_root = lexical_root.resolve(strict=True)
+            except OSError:
+                continue
+            if source_root.is_dir() and lexical_root != source_root:
+                mounts.add((source_root, lexical_root))
+    return sorted(mounts, key=lambda item: (len(item[1].parts), str(item[1])))
+
+
 def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
     paths: set[Path] = {cwd}
     for raw in SYSTEM_DIRECTORIES:
@@ -98,6 +148,8 @@ def readonly_paths(cwd: Path, command: list[str]) -> list[Path]:
     for name in PATH_ENVIRONMENT:
         for raw in os.environ.get(name, "").split(os.pathsep):
             add_path(paths, raw)
+            if name == "PATH":
+                add_virtual_environment(paths, raw)
     add_path(paths, os.environ.get("FASTRTPS_DEFAULT_PROFILES_FILE"), file_ok=True)
     return sorted(paths, key=lambda value: (len(value.parts), str(value)))
 
@@ -178,9 +230,15 @@ def main() -> int:
     launch = base_launch(bubblewrap)
     if os.environ.get("ROLO_ADAPTER_SANDBOX_NETWORK", "isolated") == "host":
         launch.append("--share-net")
-    add_mount_parent_directories(launch, readonly)
+    alias_mounts = path_interpreter_alias_mounts()
+    add_mount_parent_directories(
+        launch,
+        [*readonly, *(destination for _, destination in alias_mounts)],
+    )
     for path in readonly:
         launch.extend(["--ro-bind", str(path), str(path)])
+    for source, destination in alias_mounts:
+        launch.extend(["--ro-bind", str(source), str(destination)])
     launch.extend(["--chdir", str(cwd), "--", *command])
     os.execv(bubblewrap, launch)
     return 127

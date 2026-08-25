@@ -93,6 +93,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         "rolo.stages.adapt.proposal_orchestration.subprocess.run",
         fake_run,
     )
+    monkeypatch.setenv("ALL_PROXY", "http://proxy.example:7897")
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
         mapping_skill_path=mapping_skill,
@@ -132,6 +133,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
+    assert environment["ALL_PROXY"] == "http://proxy.example:7897"
 
 
 def test_mapping_schema_binds_each_operation_to_its_own_evidence(

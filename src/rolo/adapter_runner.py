@@ -50,6 +50,13 @@ _INHERITED_ENVIRONMENT = {
     "WINDIR",
 }
 
+# ML-backed robot CLIs commonly reserve multi-gigabyte virtual mappings while
+# keeping a much smaller resident set.  Four GiB admits LeRobot's bounded
+# camera inventory import path without relaxing CPU, process, file, output, or
+# wall-clock limits.
+_ADAPTER_MAX_ADDRESS_SPACE_BYTES = 4 * 1024 * 1024 * 1024
+_ADAPTER_MAX_PROCESSES_AND_THREADS = 128
+
 def sanitized_adapter_environment(
     private_home: Path,
     runtime_environment: Mapping[str, str] | None = None,
@@ -71,7 +78,16 @@ def sanitized_adapter_environment(
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
-    environment.update(admitted_runtime_environment(runtime_environment or {}))
+    admitted = admitted_runtime_environment(runtime_environment or {})
+    target_path = admitted.pop("PATH", None)
+    if target_path:
+        inherited_path = environment.get("PATH")
+        environment["PATH"] = (
+            os.pathsep.join([target_path, inherited_path])
+            if inherited_path
+            else target_path
+        )
+    environment.update(admitted)
     return environment
 
 
@@ -230,9 +246,15 @@ class BoundedAdapterRunner:
                 resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
                 resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
                 if hasattr(resource, "RLIMIT_NPROC"):
-                    resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+                    resource.setrlimit(
+                        resource.RLIMIT_NPROC,
+                        (_ADAPTER_MAX_PROCESSES_AND_THREADS,) * 2,
+                    )
                 if hasattr(resource, "RLIMIT_AS"):
-                    resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024,) * 2)
+                    resource.setrlimit(
+                        resource.RLIMIT_AS,
+                        (_ADAPTER_MAX_ADDRESS_SPACE_BYTES,) * 2,
+                    )
             except (ImportError, OSError, ValueError):
                 pass
 

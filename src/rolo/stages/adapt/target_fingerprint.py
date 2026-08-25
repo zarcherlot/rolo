@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
@@ -92,14 +93,33 @@ def _hardware_components(
 
 def runtime_environment_from_report(report: DiscoveryReport) -> dict[str, str]:
     """Return the canonical non-secret runtime context captured by discovery."""
+    source: dict[str, str] = {}
     for layer, field in (("ros", "runtime_environment"), ("linux", "environment")):
         probe = report.probes.get(layer)
         raw = probe.data.get(field, {}) if probe is not None else {}
         if isinstance(raw, Mapping) and raw:
-            return admitted_runtime_environment(
-                {str(name): str(value) for name, value in raw.items()}
-            )
-    return {}
+            source = {str(name): str(value) for name, value in raw.items()}
+            break
+
+    # Application CLI adapters execute the exact target-observed entrypoints.
+    # Preserve only existing absolute parent directories, then let the runtime
+    # context validator canonicalize and bound the final PATH.  This keeps an
+    # isolated virtualenv available without inheriting an arbitrary controller
+    # service PATH into the release.
+    executable_directories: list[str] = []
+    for probe in report.probes.values():
+        for route in observed_probe_routes(probe):
+            if route.kind != "cli":
+                continue
+            endpoint = Path(route.endpoint).expanduser()
+            if not endpoint.is_absolute() or not endpoint.is_file():
+                continue
+            parent = str(endpoint.resolve().parent)
+            if parent not in executable_directories:
+                executable_directories.append(parent)
+    if executable_directories:
+        source["PATH"] = os.pathsep.join(sorted(executable_directories))
+    return admitted_runtime_environment(source)
 
 
 def target_fingerprint_payload(
