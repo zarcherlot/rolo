@@ -82,6 +82,26 @@ def add_virtual_environment(paths: set[Path], raw: str) -> None:
     for parent in (candidate, *candidate.parents):
         if (parent / "pyvenv.cfg").is_file():
             add_path(paths, str(parent))
+            bin_directory = parent / "bin"
+            for name in ("python", "python3"):
+                interpreter = bin_directory / name
+                if not interpreter.exists():
+                    continue
+                interpreter_paths = {interpreter}
+                if interpreter.is_symlink():
+                    target = Path(os.readlink(interpreter))
+                    if not target.is_absolute():
+                        target = interpreter.parent / target
+                    interpreter_paths.add(target.absolute())
+                try:
+                    interpreter_paths.add(interpreter.resolve(strict=True))
+                except OSError:
+                    continue
+                for executable in interpreter_paths:
+                    add_path(paths, str(executable.parent))
+                    prefix = executable.parent.parent
+                    add_path(paths, str(prefix / "lib"))
+                    add_path(paths, str(prefix / "lib64"))
             return
 
 

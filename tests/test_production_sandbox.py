@@ -121,3 +121,43 @@ def test_bundled_production_sandbox_mounts_only_observed_path_directories(
     assert completed.returncode == 0, completed.stderr
     result = json.loads(completed.stdout)
     assert result == {"stdout": "observed-target", "host_secret_visible": False}
+
+
+def test_bundled_production_sandbox_runs_selected_virtualenv_cli_directly(
+    tmp_path: Path,
+) -> None:
+    release = tmp_path / "release"
+    release.mkdir()
+    base_python_bin = tmp_path / "managed-python/bin"
+    base_python_bin.mkdir(parents=True)
+    (base_python_bin / "python").symlink_to(Path(sys.executable).resolve())
+    target_bin = tmp_path / "target-venv/bin"
+    target_bin.mkdir(parents=True)
+    (target_bin.parent / "pyvenv.cfg").write_text(
+        f"home = {base_python_bin}\n"
+        "include-system-site-packages = false\n"
+        f"version = {sys.version_info.major}.{sys.version_info.minor}\n",
+        encoding="utf-8",
+    )
+    (target_bin / "python").symlink_to(base_python_bin / "python")
+    target = target_bin / "observed-cli"
+    target.write_text(
+        f"#!{target_bin / 'python'}\n"
+        "print('direct-observed-target', end='')\n",
+        encoding="utf-8",
+    )
+    target.chmod(0o755)
+    launcher = Path(__file__).resolve().parents[1] / "scripts" / "rolo-adapter-sandbox"
+
+    completed = BoundedAdapterRunner(
+        sandbox_launcher=launcher,
+        allow_unsandboxed_development=False,
+    ).run(
+        [str(target), "--help"],
+        cwd=release,
+        timeout_s=10,
+        runtime_environment={"PATH": str(target_bin)},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "direct-observed-target"
