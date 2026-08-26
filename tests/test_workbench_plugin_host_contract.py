@@ -20,7 +20,7 @@ def _contract() -> str:
 def test_e23a_freezes_robot_owned_same_origin_routes_without_replacing_root_api() -> None:
     design = _design()
     assert design["schema_version"] == "rolo-workbench-plugin-host-contract-design/v1"
-    assert design["status"] == "e23a-review-candidate"
+    assert design["status"] == "e23a-approved-e23bc-review-candidate"
     assert design["plugin_schema"] == "rolo-plugin/v2"
     assert design["routes"] == {
         "workbench_mount": "/workbench/",
@@ -95,16 +95,17 @@ def test_e23a_requires_bounded_v2_package_integrity_and_feature_compatibility() 
     } <= forbidden
 
 
-def test_e23a_defers_runtime_and_public_deployment() -> None:
+def test_e23bc_records_review_candidates_without_public_deployment() -> None:
     design = _design()
     assert design["implementation"] == {
-        "contract": "candidate-e23a",
-        "rolo_host": "deferred-e23b",
-        "rolo_vis_package": "deferred-e23c",
+        "contract": "approved-e23a",
+        "rolo_host": "candidate-e23b",
+        "rolo_vis_package": "candidate-e23c",
         "real_device_validation": "deferred-e23d",
         "public_deployment": False,
     }
     contract = _contract()
     assert "not a separately hosted public application" in contract
     assert "add no runtime host, route advertisement, package, or public deployment" in contract
+    assert "Files are re-hashed immediately before each response" in contract
     assert "`v0.37.0` remains immutable" in contract

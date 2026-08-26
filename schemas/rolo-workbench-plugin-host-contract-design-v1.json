@@ -1,6 +1,6 @@
 {
   "schema_version": "rolo-workbench-plugin-host-contract-design/v1",
-  "status": "e23a-review-candidate",
+  "status": "e23a-approved-e23bc-review-candidate",
   "target_baseline": "rolo-vis/v0.38.0",
   "plugin_schema": "rolo-plugin/v2",
   "routes": {
@@ -62,11 +62,10 @@
     "verification_influence"
   ],
   "implementation": {
-    "contract": "candidate-e23a",
-    "rolo_host": "deferred-e23b",
-    "rolo_vis_package": "deferred-e23c",
+    "contract": "approved-e23a",
+    "rolo_host": "candidate-e23b",
+    "rolo_vis_package": "candidate-e23c",
     "real_device_validation": "deferred-e23d",
     "public_deployment": false
   }
 }
-

@@ -122,3 +122,25 @@ the bootstrap record into the signed ROS probe. A changed or missing setup file 
 
 Remote mode performs the same process inside the target collector. The controller never substitutes
 its own ROS environment for failed target collection.
+
+## Device-local Workbench plugin
+
+Leave the Workbench disabled for API-only installations. To serve a validated
+`rolo-plugin/v2` package on the same loopback listener, configure the extracted package
+root explicitly:
+
+```yaml
+schema_version: rolo-config/v1
+
+workbench:
+  plugin_dir: /opt/rolo/plugins/rolo-vis-0.38.0
+```
+
+Then `robotctl runtime serve` exposes the UI at `/workbench/` and the same API at
+`/rolo-api`, while preserving `/health` and `/v1/*` for existing clients. The package
+must contain `rolo.plugin.json`, `SHA256SUMS`, and `dist/client/index.html`; validation
+failure leaves the API running and keeps the Workbench unavailable.
+
+Workbench hosting requires a loopback rolo binding. Remote browsers must use a trusted,
+robot-owned reverse proxy that protects and forwards both route families. Do not place
+an API token in the browser or bind the Workbench directly to a non-loopback interface.

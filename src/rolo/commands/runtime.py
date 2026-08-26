@@ -10,7 +10,7 @@ import typer
 
 from rolo import __version__
 from rolo.commands.common import emit
-from rolo.core.config import get_settings
+from rolo.core.config import Settings, get_settings
 from rolo.doctor import build_doctor_report
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.enrollment import EnrollmentService
@@ -22,6 +22,46 @@ from rolo.stages.adapt.target_evidence import (
 )
 
 runtime_app = typer.Typer(help="Inspect the local Rolo runtime without starting services.")
+
+
+def runtime_server_application(settings: Settings, bind_host: str) -> str:
+    try:
+        loopback = bind_host.casefold() == "localhost" or ipaddress.ip_address(
+            bind_host
+        ).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback and not settings.rolo_api_token:
+        raise typer.BadParameter("non-loopback API binding requires ROLO_API_TOKEN")
+    if settings.rolo_workbench_plugin_dir is not None and not loopback:
+        raise typer.BadParameter(
+            "Workbench plugin hosting requires loopback; use a trusted reverse proxy"
+        )
+    return (
+        "rolo.workbench_host:app"
+        if settings.rolo_workbench_plugin_dir is not None
+        else "rolo.api:app"
+    )
+
+
+@runtime_app.command("serve")
+def runtime_serve(
+    host: Annotated[str | None, typer.Option(help="Bind host")] = None,
+    port: Annotated[int | None, typer.Option(help="Bind port")] = None,
+    reload: Annotated[bool, typer.Option(help="Enable development reload")] = False,
+) -> None:
+    """Start the local control-plane API and optional Workbench plugin."""
+    import uvicorn
+
+    settings = get_settings()
+    bind_host = host or settings.rolo_host
+    application = runtime_server_application(settings, bind_host)
+    uvicorn.run(
+        application,
+        host=bind_host,
+        port=port or settings.rolo_port,
+        reload=reload,
+    )
 
 
 @runtime_app.command("health")
@@ -209,27 +249,8 @@ def register_runtime_commands(root: typer.Typer) -> None:
         port: Annotated[int | None, typer.Option(help="Bind port")] = None,
         reload: Annotated[bool, typer.Option(help="Enable development reload")] = False,
     ) -> None:
-        """Start the local control-plane API."""
-        import uvicorn
-
-        settings = get_settings()
-        bind_host = host or settings.rolo_host
-        try:
-            loopback = bind_host.casefold() == "localhost" or ipaddress.ip_address(
-                bind_host
-            ).is_loopback
-        except ValueError:
-            loopback = False
-        if not loopback and not settings.rolo_api_token:
-            raise typer.BadParameter(
-                "non-loopback API binding requires ROLO_API_TOKEN"
-            )
-        uvicorn.run(
-            "rolo.api:app",
-            host=bind_host,
-            port=port or settings.rolo_port,
-            reload=reload,
-        )
+        """Compatibility alias for `robotctl runtime serve`."""
+        runtime_serve(host=host, port=port, reload=reload)
 
     @root.command()
     def bootstrap_agentd(

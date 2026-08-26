@@ -34,6 +34,7 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     assert settings.coding_agent_timeout_s is None
     assert settings.adapt_native_tool_mode == "off"
     assert settings.adapt_native_tool_max_calls == 64
+    assert settings.rolo_workbench_plugin_dir is None
 
 
 def test_user_yaml_is_loaded_below_environment_precedence(
@@ -66,6 +67,8 @@ agent_native:
   mode: canary
   robot_ids: robot-a
   max_calls: 12
+workbench:
+  plugin_dir: /opt/rolo/plugins/rolo-vis
 """,
         encoding="utf-8",
     )
@@ -87,6 +90,7 @@ agent_native:
     assert settings.adapt_native_tool_mode == "canary"
     assert settings.adapt_native_tool_robot_ids == "robot-a"
     assert settings.adapt_native_tool_max_calls == 12
+    assert settings.rolo_workbench_plugin_dir == Path("/opt/rolo/plugins/rolo-vis")
 
 
 def test_standard_ros_rmw_environment_is_mapped_with_explicit_precedence(

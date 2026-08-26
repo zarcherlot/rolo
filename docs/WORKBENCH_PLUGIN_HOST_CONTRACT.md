@@ -1,6 +1,6 @@
 # E23 robot-hosted Workbench plugin contract
 
-Status: E23A review candidate; no runtime surface added
+Status: E23A approved; E23B/C implementation review candidate
 
 Target baseline: rolo-vis `v0.38.0`
 
@@ -135,7 +135,15 @@ different validated version is selected or Workbench hosting is disabled.
 E23 does not design an online updater. Package transport may be manual or part of a
 later robot deployment workflow, but activation always uses the same local validator.
 
-## 8. Delivery slices
+## 8. E23B implementation candidate
+
+The E23B candidate adds `rolo_workbench_plugin_dir`, the strict v2 manifest and
+checksum validator, an in-process `/rolo-api` path adapter, and a bounded static
+authority for `/workbench/`. Files are re-hashed immediately before each response so a
+package changed after startup fails with `PACKAGE_CHANGED` instead of serving unchecked
+bytes. API-only startup and all legacy root routes remain intact.
+
+## 9. Delivery slices
 
 ### E23A: cross-repository contract design
 
@@ -166,7 +174,7 @@ later robot deployment workflow, but activation always uses the same local valid
   proxy routing, version mismatch, corruption, rollback, and Observation Bundle flow;
 - promote the reviewed result as `v0.38.0` without creating a hosted site.
 
-## 9. E23A acceptance decisions
+## 10. E23A acceptance decisions
 
 E23A is ready for review when both repositories agree that:
 
@@ -179,4 +187,3 @@ E23A is ready for review when both repositories agree that:
 7. Remote browser access requires a trusted robot-owned reverse proxy.
 8. Plugin failure cannot disable or weaken the control-plane API.
 9. `v0.37.0` remains immutable and `v0.38.0` is the first robot-hosted baseline.
-
