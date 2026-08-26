@@ -9,6 +9,331 @@
 与不可变 release。Adapt 不执行机器人写操作，也不证明行为正确性、可靠性、性能或安全性。
 未经后续安全验收，不要执行 `robotctl tool invoke`。
 
+## 0. 控制器 SSH + 自然语言执行远程 Adapt（推荐操作路径）
+
+本节给出统一 Agent 开发预览中最短、可复现的远程操作路径。操作者先 SSH 登录
+Controller，在 Controller 上启动 Rolo Session Agent；Session Agent 再通过已注册、host-key pinned、
+用途分离的 SSH 身份访问目标机。Codex 只选择 broker 暴露的结构化动作，不接触目标 SSH 私钥、
+Controller bearer、原始目标输出、shell 或任意 argv。
+
+```text
+操作者终端
+  └─ SSH 登录 Controller
+       └─ robotctl target agent run "自然语言请求"
+            ├─ Codex：只选择结构化动作
+            └─ authenticated broker
+                 ├─ Controller Job / Approval / artifact store
+                 └─ pinned SSH + forced command → 目标机 runtime
+```
+
+当前实现有三个必须先接受的边界：
+
+1. CLI 的一次 `target agent run` 是一轮有界自然语言会话，不是持续等待输入的聊天 REPL。每轮可执行
+   1–8 个动作；下一轮必须使用新的 `--idempotency-key`。同一 key 只用于原请求的安全重试，不能换消息复用。
+2. Agent 不能批准自己创建的 R2/R3 Approval。结果为 `APPROVAL_REQUIRED` 时，必须由另一主体通过
+   `target approval decide` 或独立 authenticated GUI 审批，然后才可让 Agent 运行 Job。
+3. 当前 SSH Adapt 只完成 metadata/source/runtime evidence 绑定的 discovery Journey。成功标准是 Adapt Job
+   `COMPLETE` 且 Journey 为 `DISCOVERY_COMPLETE`；SSH 模式仍拒绝 `--run-adapter-agent`，因此本流程不代表
+   Adapter 已生成、stage、activate，也不代表机器人行为通过安全验证。
+
+### 0.1 选择“远程”的含义
+
+推荐让 Rolo、Codex 和所有 Controller 状态都运行在 Controller 主机，目标机只运行受限 runtime：
+
+```bash
+ssh rolo-operator@controller.example.internal
+cd /opt/rolo-controller
+```
+
+这种方式不要求启动 HTTP API；`robotctl target agent run` 会在当前 Controller 进程中启动 Session Agent。
+不要把 Codex provider key 或 Controller 状态复制到目标机，也不要让通用管理员 SSH 身份成为 runtime 身份。
+
+如果要从本机浏览器使用 `rolo-deployment-control` GUI，则让 API 只监听 Controller loopback，并建立 SSH
+端口转发：
+
+```bash
+# Controller：使用仅含 target:write 的独立操作 token。
+export ROLO_API_TOKEN='<controller-operator-token>'
+export ROLO_API_TOKEN_PRINCIPAL='operator@example.com'
+export ROLO_API_TOKEN_PERMISSIONS='target:write'
+uv run robotctl serve --host 127.0.0.1 --port 8080
+
+# 操作者本机：保持该命令运行，再让 GUI 连接 http://127.0.0.1:8080。
+ssh -N -L 8080:127.0.0.1:8080 rolo-operator@controller.example.internal
+```
+
+审批者应使用另一个 principal 和只在审批入口使用的 `approval:write` token。不要给 Session Agent 请求同时
+携带 `approval:write`，也不要把 API 直接绑定公网地址。
+
+### 0.2 Controller 首次准备
+
+以下命令以源码 checkout 为例；如果使用已审核安装包，可去掉 `uv run`：
+
+```bash
+git fetch origin
+git switch codex/unified-agent-deployment
+uv sync --locked
+
+command -v codex
+uv run robotctl --help
+```
+
+如果控制器是第一次检出该开发分支，本地还没有同名分支，请把上面的 `git switch` 替换为：
+
+```bash
+git switch --track -c codex/unified-agent-deployment origin/codex/unified-agent-deployment
+```
+
+为 Controller 状态选择持久目录。运行 Rolo 的专用账号应独占这些目录：
+
+```bash
+install -d -m 0700 /var/lib/rolo-controller/config
+install -d -m 0700 /var/lib/rolo-controller/artifacts
+install -d -m 0700 /var/lib/rolo-controller/output
+
+export ROLO_CONFIG_DIR=/var/lib/rolo-controller/config
+export ROLO_ARTIFACT_DIR=/var/lib/rolo-controller/artifacts
+export ROLO_OUTPUT_DIR=/var/lib/rolo-controller/output
+```
+
+启用 Session Agent，并使用一份只供模型 provider 使用的 credential。该 key 不能复用浏览器 token、SSH key
+或目标 authorization key：
+
+```bash
+export ROLO_SESSION_AGENT_ENABLED=true
+export ROLO_SESSION_AGENT_API_KEY='<dedicated-provider-key>'
+export ROLO_SESSION_AGENT_MODEL='<approved-codex-model>'
+export ROLO_SESSION_AGENT_BASE_URL='https://api.openai.com/v1'
+export ROLO_SESSION_AGENT_EXECUTABLE='codex'
+export ROLO_SESSION_AGENT_PROVIDER_TIMEOUT_S=120
+
+export ROLO_API_TOKEN_PRINCIPAL='operator@example.com'
+export ROLO_API_TOKEN_PERMISSIONS='target:write'
+```
+
+先检查静态边界和真实 provider。`production_ready=false` 是当前 W10 未完成时的预期结果，不应篡改为通过：
+
+```bash
+uv run robotctl target agent readiness
+
+ROLO_RUN_REAL_SESSION_AGENT=1 \
+  uv run pytest -q tests/test_real_session_agent.py
+```
+
+若 readiness 显示 feature flag、provider credential、Codex executable 或模型未配置，先修复 Controller；
+不要降级为让 Codex 获得自由 shell。
+
+### 0.3 注册 SSH 目标
+
+如果 `robotctl target tui --page target --target wheeltec` 已能显示正确注册信息，可跳到 0.4。首次注册前必须
+通过独立可信信道核对目标 OpenSSH Ed25519 host key，并准备只包含该 host 的 `known_hosts`。不要把未经核对的
+`ssh-keyscan` 输出直接当作信任依据。
+
+下面示例同时登记三种用途的 SSH 身份：已有管理员身份用于 host provisioning；bootstrap 身份用于受限安装；
+runtime 身份只执行最终只读/授权 proof-bound forced commands。三个私钥路径必须不同：
+
+```bash
+uv run robotctl target add wheeltec \
+  --ssh rolo-bootstrap@192.168.1.20 \
+  --port 22 \
+  --credential-ref file-credential:///home/controller/.ssh/rolo-wheeltec-bootstrap \
+  --provisioning-user operator \
+  --provisioning-credential-ref file-credential:///home/controller/.ssh/wheeltec-admin \
+  --runtime-user rolo-runtime \
+  --runtime-credential-ref file-credential:///home/controller/.ssh/rolo-wheeltec-runtime \
+  --known-hosts /home/controller/.config/rolo/ssh/wheeltec_known_hosts \
+  --host-key-sha256 'SHA256:<独立核验的43字符Base64指纹>' \
+  --workspace /home/robot/wheeltec_ws \
+  --desired-version 0.2.0 \
+  --release-signing-key-id release-key-2026 \
+  --release-signing-public-key /etc/rolo/trust/release-key-2026.pub.pem \
+  --requested-by operator@example.com \
+  --idempotency-key target-wheeltec-20260826
+```
+
+`file-credential://` 只引用 Controller 上的绝对私钥路径；结果、日志和 Agent prompt 都不应包含私钥正文。
+目标机若还没有 bootstrap/runtime forced-command 用户、Controller authorization public-key pin 和 v4 Collector
+identity，先完成 4.0 的 host provisioning、Bootstrap、service start 和 `robotctl target enroll`。统一 W7–W10
+链不需要在目标机手工执行 legacy `robotctl target-evidence collector-init`。
+
+### 0.4 第一轮自然语言：连接检查
+
+在 Controller 的 SSH 会话中执行：
+
+```bash
+uv run robotctl target agent run \
+  '只允许操作 wheeltec。读取注册状态，创建 runtime-readonly 连接评估 Job，并在策略允许时运行它；不要执行部署、审批或其他目标。' \
+  --target wheeltec \
+  --max-tool-calls 4 \
+  --timeout-s 180 \
+  --idempotency-key nl-wheeltec-assess-20260826-01
+```
+
+保存 JSON 返回中的 `session_id`、`receipts[].job_id`、状态和摘要。若 Agent 只创建 Job 而没有运行，使用一个新
+自然语言轮次，并把真实 Job ID 明确写入消息：
+
+```bash
+uv run robotctl target agent run \
+  '运行已创建的连接评估 Job deployment-<32位十六进制ID>，然后报告最终状态；不要创建新 Job。' \
+  --target wheeltec \
+  --max-tool-calls 3 \
+  --timeout-s 180 \
+  --idempotency-key nl-wheeltec-assess-20260826-02
+```
+
+连接评估必须完成且不能出现 host-key、credential purpose、forced-command 或目标身份错误。需要原始规范化状态时：
+
+```bash
+uv run robotctl target job get --job-id deployment-<连接评估Job ID>
+uv run robotctl target job events --job-id deployment-<连接评估Job ID>
+```
+
+### 0.5 通过自然语言建立三段 SSH Adapt 证据链
+
+完整的 SSH discovery 需要 project-evidence、source-discovery、runtime-evidence 三个独立 Job。每个 Job 都会创建
+独立 R2 Approval，因此按“自然语言提交 → 独立审批 → 自然语言运行”重复三次。示例审批者
+`reviewer@example.com` 必须与请求人不同。
+
+第一段，冻结项目 metadata 候选：
+
+```bash
+uv run robotctl target agent run \
+  '为 wheeltec 提交默认有界 project evidence 请求，审批人是 reviewer@example.com；提交后停止，不要自批或运行。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 120 \
+  --idempotency-key nl-wheeltec-project-evidence-20260826-01
+```
+
+从返回中复制真实 `approval_id` 和 `job_id`，由审批者核对 target、workspace、候选集合和 digest 后审批：
+
+```bash
+uv run robotctl target approval decide \
+  --approval-id approval-<32位十六进制ID> \
+  --principal reviewer@example.com \
+  --idempotency-key approve-wheeltec-project-evidence-20260826-01 \
+  --reason '已核对 wheeltec、workspace、默认候选范围与请求摘要' \
+  --approve
+
+uv run robotctl target agent run \
+  '运行已批准的 project-evidence Job deployment-<32位十六进制ID>，不要执行其他 Job。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 180 \
+  --idempotency-key nl-wheeltec-project-evidence-20260826-02
+```
+
+第二段，冻结 workspace 根目录的有界结构化源码分析：
+
+```bash
+uv run robotctl target agent run \
+  '为 wheeltec 提交 source discovery 请求，审批人是 reviewer@example.com；只使用已注册 workspace 的默认根目录，不读取源码正文。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 120 \
+  --idempotency-key nl-wheeltec-source-discovery-20260826-01
+
+uv run robotctl target approval decide \
+  --approval-id approval-<source审批ID> \
+  --principal reviewer@example.com \
+  --idempotency-key approve-wheeltec-source-discovery-20260826-01 \
+  --reason '已核对 workspace、scan root、文件和时间预算' \
+  --approve
+
+uv run robotctl target agent run \
+  '运行已批准的 source-discovery Job deployment-<source Job ID>，不要执行其他 Job。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 240 \
+  --idempotency-key nl-wheeltec-source-discovery-20260826-02
+```
+
+第三段，采集 proof-bound `hw/linux/ros` 运行时证据。该 artifact 最长只允许 300 秒 freshness，因此批准后应
+立即运行，并紧接着提交 Adapt：
+
+```bash
+uv run robotctl target agent run \
+  '为 wheeltec 提交 runtime evidence 请求，审批人是 reviewer@example.com；只采集固定的 hw、linux、ros 只读证据。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 120 \
+  --idempotency-key nl-wheeltec-runtime-evidence-20260826-01
+
+uv run robotctl target approval decide \
+  --approval-id approval-<runtime审批ID> \
+  --principal reviewer@example.com \
+  --idempotency-key approve-wheeltec-runtime-evidence-20260826-01 \
+  --reason '已核对目标、固定证据层、Collector pin、proof 摘要和有效期' \
+  --approve
+
+uv run robotctl target agent run \
+  '立即运行已批准的 runtime-evidence Job deployment-<runtime Job ID>，不要执行其他 Job。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 180 \
+  --idempotency-key nl-wheeltec-runtime-evidence-20260826-02
+```
+
+三份 Job 必须均为 `COMPLETE`。如果任何一份为 `BLOCKED`、`FAILED` 或已过期，不要继续拼接 Adapt；先查看
+`target job events`，修复后创建新的证据 Job。
+
+### 0.6 最终自然语言轮次：创建并运行 SSH Adapt
+
+把前三步真实的完成态 Job ID 原样写入消息。不要让模型猜 ID，也不要省略 project Job；source Job 必须与
+project Job 绑定同一 workspace。runtime Job 应在 300 秒 freshness 窗口内：
+
+```bash
+uv run robotctl target agent run \
+  '为 wheeltec 创建并运行 discovery-only Adapt。绑定 project-evidence Job deployment-<project Job ID>、source-discovery Job deployment-<source Job ID>、runtime-evidence Job deployment-<runtime Job ID>；使用 runtime-readonly，不运行 adapter agent。完成后报告 Adapt Job ID 和最终状态。' \
+  --target wheeltec \
+  --max-tool-calls 4 \
+  --timeout-s 600 \
+  --idempotency-key nl-wheeltec-adapt-20260826-01
+```
+
+如果本轮只返回 `SUBMITTED`，用返回的真实 Adapt Job ID 开一个新轮次运行：
+
+```bash
+uv run robotctl target agent run \
+  '运行 Adapt Job deployment-<Adapt Job ID> 并报告最终状态；不要创建或运行其他 Job。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 600 \
+  --idempotency-key nl-wheeltec-adapt-20260826-02
+```
+
+最终验收：
+
+```bash
+uv run robotctl target job get --job-id deployment-<Adapt Job ID>
+uv run robotctl target job events --job-id deployment-<Adapt Job ID>
+uv run robotctl target tui --page job --job-id deployment-<Adapt Job ID>
+uv run robotctl target tui --page blocker
+```
+
+只有 Job 为 `COMPLETE` 且 Journey artifact 为 `DISCOVERY_COMPLETE` 才表示本次远程 discovery Adapt 完成。
+`APPROVAL_REQUIRED` 表示等待人类审批，`SUBMITTED` 表示只创建未运行，`ACTION_BUDGET_EXHAUSTED` 表示应缩小
+自然语言请求，`BLOCKED/REQUIRES_RECONCILIATION` 表示结果可能不确定、不得盲目重跑。
+
+### 0.7 停止、取消与恢复
+
+已知 Job ID 时可自然语言请求取消，也可使用确定性 CLI：
+
+```bash
+uv run robotctl target agent run \
+  '取消 Job deployment-<32位十六进制ID>，不要操作其他 Job。' \
+  --target wheeltec \
+  --max-tool-calls 2 \
+  --timeout-s 120 \
+  --idempotency-key nl-wheeltec-cancel-20260826-01
+
+uv run robotctl target job cancel --job-id deployment-<32位十六进制ID>
+```
+
+SSH 断开、Controller 重启或运行结果未知时，先读取 Job 和 Event。只有未开始的幂等提交可以安全重试；目标写操作
+进入 `REQUIRES_RECONCILIATION` 时必须走对应 reconciliation 流程。不得使用 raw SSH 修改 target runtime、
+`current.json`、authorization pin 或 Job artifact。
+
 ## 1. 选择证据采集模式
 
 Rolo 支持两种显式模式，两者生成相同格式的签名目标证据。
@@ -612,7 +937,7 @@ robotctl target add wheeltec \
 
 robotctl target add remote-arm \
   --ssh robot@192.168.1.20 \
-  --credential-ref file://ssh/remote-arm \
+  --credential-ref file-credential:///absolute/path/to/ssh/remote-arm \
   --known-hosts /absolute/path/to/known_hosts \
   --host-key-sha256 'SHA256:<pinned-fingerprint>' \
   --workspace /home/robot/robot_ws \
