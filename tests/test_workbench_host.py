@@ -22,12 +22,16 @@ from rolo.workbench_host import (
 runner = CliRunner()
 
 
-def _manifest(required_features: list[str] | None = None) -> dict[str, object]:
+def _manifest(
+    required_features: list[str] | None = None,
+    *,
+    version: str = "0.38.0",
+) -> dict[str, object]:
     return {
         "schema_version": "rolo-plugin/v2",
         "id": "rolo-vis",
         "name": "rolo Workbench",
-        "version": "0.38.0",
+        "version": version,
         "kind": "web-workbench",
         "entry": "dist/client/index.html",
         "delivery": {
@@ -55,11 +59,12 @@ def _package(
     root: Path,
     *,
     required_features: list[str] | None = None,
+    version: str = "0.38.0",
 ) -> Path:
     assets = root / "dist" / "client" / "assets"
     assets.mkdir(parents=True)
     (root / "rolo.plugin.json").write_text(
-        json.dumps(_manifest(required_features), indent=2) + "\n",
+        json.dumps(_manifest(required_features, version=version), indent=2) + "\n",
         encoding="utf-8",
     )
     (root / "dist" / "client" / "index.html").write_text(
@@ -157,6 +162,29 @@ def test_validated_plugin_fails_closed_if_a_served_file_changes(tmp_path: Path) 
         "detail": "Workbench plugin unavailable",
         "reason": "PACKAGE_CHANGED",
     }
+
+
+def test_rejected_candidate_keeps_an_immutable_previous_package_available(
+    tmp_path: Path,
+) -> None:
+    previous = _package(tmp_path / "previous", version="0.37.0")
+    candidate = _package(tmp_path / "candidate", version="0.38.0")
+    corrupted = _package(tmp_path / "corrupted", version="0.39.0")
+    (corrupted / "dist" / "client" / "index.html").write_text(
+        "corrupted candidate",
+        encoding="utf-8",
+    )
+
+    assert load_workbench_plugin(candidate).manifest.version == "0.38.0"
+    rejected = create_workbench_app(corrupted, _api())
+    assert rejected.diagnostic.status == "REJECTED"
+    assert rejected.diagnostic.reason_code == "CHECKSUM_MISMATCH"
+
+    rolled_back = create_workbench_app(previous, _api())
+    assert rolled_back.diagnostic.status == "AVAILABLE"
+    assert rolled_back.diagnostic.plugin_version == "0.37.0"
+    with TestClient(rolled_back) as client:
+        assert client.get("/workbench/").status_code == 200
 
 
 def test_validator_rejects_unknown_features_uncovered_files_and_links(tmp_path: Path) -> None:

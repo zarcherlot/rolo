@@ -1,6 +1,6 @@
 # E23 robot-hosted Workbench plugin contract
 
-Status: E23A approved; E23B/C implementation review candidate
+Status: E23A-E23C approved; E23D validation candidate
 
 Target baseline: rolo-vis `v0.38.0`
 
@@ -135,9 +135,9 @@ different validated version is selected or Workbench hosting is disabled.
 E23 does not design an online updater. Package transport may be manual or part of a
 later robot deployment workflow, but activation always uses the same local validator.
 
-## 8. E23B implementation candidate
+## 8. E23B approved implementation
 
-The E23B candidate adds `rolo_workbench_plugin_dir`, the strict v2 manifest and
+The approved E23B implementation adds `rolo_workbench_plugin_dir`, the strict v2 manifest and
 checksum validator, an in-process `/rolo-api` path adapter, and a bounded static
 authority for `/workbench/`. Files are re-hashed immediately before each response so a
 package changed after startup fails with `PACKAGE_CHANGED` instead of serving unchecked
