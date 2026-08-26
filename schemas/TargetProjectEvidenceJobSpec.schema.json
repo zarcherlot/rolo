@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "TargetProjectEvidenceCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TargetProjectEvidenceKind"
+        },
+        "role": {
+          "default": "SOURCE",
+          "enum": [
+            "SOURCE",
+            "ARTIFACT",
+            "RUNTIME"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ],
+      "title": "TargetProjectEvidenceCandidate",
+      "type": "object"
+    },
+    "TargetProjectEvidenceKind": {
+      "enum": [
+        "BUILD_METADATA",
+        "RUNTIME_METADATA",
+        "SOURCE_ENTRYPOINT",
+        "ROS_METADATA",
+        "DOCUMENTATION"
+      ],
+      "title": "TargetProjectEvidenceKind",
+      "type": "string"
+    },
+    "TargetTransport": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetTransport",
+      "type": "string"
+    },
+    "TargetWorkspaceRef": {
+      "additionalProperties": false,
+      "description": "A controller-safe reference to a workspace that exists on one target.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-workspace-ref/v1",
+          "default": "rolo-target-workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "workspace_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "target_id",
+        "robot_id",
+        "root"
+      ],
+      "title": "TargetWorkspaceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-project-evidence-job-spec/v1",
+      "default": "rolo-target-project-evidence-job-spec/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_transport": {
+      "$ref": "#/$defs/TargetTransport"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "workspace": {
+      "$ref": "#/$defs/TargetWorkspaceRef"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/TargetProjectEvidenceCandidate"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "approval_id": {
+      "pattern": "^approval-[0-9a-f]{32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approval_action": {
+      "const": "READ_PROJECT_EVIDENCE",
+      "default": "READ_PROJECT_EVIDENCE",
+      "title": "Approval Action",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_expires_at": {
+      "format": "date-time",
+      "title": "Approval Expires At",
+      "type": "string"
+    },
+    "timeout_s": {
+      "default": 60.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "target_id",
+    "target_transport",
+    "target_registration_sha256",
+    "workspace",
+    "candidates",
+    "approval_id",
+    "approver_principal",
+    "approval_expires_at"
+  ],
+  "title": "TargetProjectEvidenceJobSpec",
+  "type": "object"
+}

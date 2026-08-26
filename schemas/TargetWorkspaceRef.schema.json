@@ -1,0 +1,41 @@
+{
+  "additionalProperties": false,
+  "description": "A controller-safe reference to a workspace that exists on one target.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-workspace-ref/v1",
+      "default": "rolo-target-workspace-ref/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Root",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "target_id",
+    "robot_id",
+    "root"
+  ],
+  "title": "TargetWorkspaceRef",
+  "type": "object"
+}

@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "TargetHostServiceOperation": {
+      "enum": [
+        "START",
+        "STATUS"
+      ],
+      "title": "TargetHostServiceOperation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-service-request/v1",
+      "default": "rolo-target-host-service-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/TargetHostServiceOperation"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "expected_host_plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Host Plan Sha256",
+      "type": "string"
+    },
+    "expected_runtime_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Runtime Manifest Sha256",
+      "type": "string"
+    },
+    "unit_name": {
+      "pattern": "^rolo-bootstrap-agentd@[A-Za-z0-9._-]+\\.service$",
+      "title": "Unit Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "operation",
+    "target_id",
+    "expected_host_plan_sha256",
+    "expected_runtime_manifest_sha256",
+    "unit_name"
+  ],
+  "title": "TargetHostServiceRequest",
+  "type": "object"
+}

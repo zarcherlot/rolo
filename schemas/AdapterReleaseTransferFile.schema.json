@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "AdapterReleaseTransferFileRole": {
+      "enum": [
+        "RELEASE",
+        "RUNTIME_CONTEXT"
+      ],
+      "title": "AdapterReleaseTransferFileRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size_bytes": {
+      "maximum": 536870912,
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "executable": {
+      "default": false,
+      "title": "Executable",
+      "type": "boolean"
+    },
+    "role": {
+      "$ref": "#/$defs/AdapterReleaseTransferFileRole"
+    }
+  },
+  "required": [
+    "path",
+    "sha256",
+    "size_bytes",
+    "role"
+  ],
+  "title": "AdapterReleaseTransferFile",
+  "type": "object"
+}

@@ -1,0 +1,509 @@
+{
+  "$defs": {
+    "CollectorConfigurationV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-collector-configuration/v4",
+          "default": "robot-target-collector-configuration/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "help_executables": {
+          "items": {
+            "$ref": "#/$defs/CollectorHelpExecutable"
+          },
+          "maxItems": 4,
+          "title": "Help Executables",
+          "type": "array"
+        },
+        "ros_setup_files": {
+          "items": {
+            "$ref": "#/$defs/RosSetupFileRecord"
+          },
+          "maxItems": 8,
+          "title": "Ros Setup Files",
+          "type": "array"
+        }
+      },
+      "title": "CollectorConfigurationV4",
+      "type": "object"
+    },
+    "CollectorDescriptorV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-evidence-collector/v4",
+          "default": "robot-target-evidence-collector/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "Collector Id",
+          "type": "string"
+        },
+        "target_host_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Host Fingerprint",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "signing_algorithm": {
+          "const": "Ed25519",
+          "default": "Ed25519",
+          "title": "Signing Algorithm",
+          "type": "string"
+        },
+        "public_key_base64": {
+          "pattern": "^[A-Za-z0-9+/]{43}=$",
+          "title": "Public Key Base64",
+          "type": "string"
+        },
+        "public_key_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Public Key Sha256",
+          "type": "string"
+        },
+        "configuration_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Sha256",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "robot_id",
+        "collector_id",
+        "target_host_fingerprint",
+        "key_id",
+        "public_key_base64",
+        "public_key_sha256",
+        "configuration_sha256",
+        "created_at"
+      ],
+      "title": "CollectorDescriptorV4",
+      "type": "object"
+    },
+    "CollectorEnrollmentAttestationV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-enrollment-attestation/v4",
+          "default": "robot-target-enrollment-attestation/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "challenge_nonce": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Challenge Nonce",
+          "type": "string"
+        },
+        "descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Descriptor Sha256",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "signature_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "challenge_nonce",
+        "descriptor_sha256",
+        "key_id",
+        "issued_at",
+        "expires_at",
+        "signature_base64"
+      ],
+      "title": "CollectorEnrollmentAttestationV4",
+      "type": "object"
+    },
+    "CollectorHelpExecutable": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "pattern": "^target-exe-[0-9a-f]{24}$",
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "executable_id",
+        "path",
+        "sha256"
+      ],
+      "title": "CollectorHelpExecutable",
+      "type": "object"
+    },
+    "CollectorRotationTransitionV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-evidence-transition/v4",
+          "default": "robot-target-evidence-transition/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "transition_id": {
+          "pattern": "^transition-[0-9a-f]{32}$",
+          "title": "Transition Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "target_host_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Host Fingerprint",
+          "type": "string"
+        },
+        "previous_collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "Previous Collector Id",
+          "type": "string"
+        },
+        "previous_descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Previous Descriptor Sha256",
+          "type": "string"
+        },
+        "previous_key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "Previous Key Id",
+          "type": "string"
+        },
+        "new_collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "New Collector Id",
+          "type": "string"
+        },
+        "new_descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "New Descriptor Sha256",
+          "type": "string"
+        },
+        "new_key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "New Key Id",
+          "type": "string"
+        },
+        "authorized_at": {
+          "format": "date-time",
+          "title": "Authorized At",
+          "type": "string"
+        },
+        "signature_by_previous_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature By Previous Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transition_id",
+        "target_id",
+        "robot_id",
+        "target_host_fingerprint",
+        "previous_collector_id",
+        "previous_descriptor_sha256",
+        "previous_key_id",
+        "new_collector_id",
+        "new_descriptor_sha256",
+        "new_key_id",
+        "authorized_at",
+        "signature_by_previous_base64"
+      ],
+      "title": "CollectorRotationTransitionV4",
+      "type": "object"
+    },
+    "RosSetupFileRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "BASE",
+            "OVERLAY",
+            "EXPLICIT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "kind"
+      ],
+      "title": "RosSetupFileRecord",
+      "type": "object"
+    },
+    "TargetEnrollmentErrorCode": {
+      "enum": [
+        "INVALID_STATE",
+        "IO_ERROR",
+        "STATE_CONFLICT"
+      ],
+      "title": "TargetEnrollmentErrorCode",
+      "type": "string"
+    },
+    "TargetEnrollmentOperation": {
+      "enum": [
+        "STATUS",
+        "ENROLL",
+        "ROTATE"
+      ],
+      "title": "TargetEnrollmentOperation",
+      "type": "string"
+    },
+    "TargetEnrollmentStatus": {
+      "enum": [
+        "NOT_ENROLLED",
+        "ENROLLED",
+        "ALREADY_ENROLLED",
+        "ROTATED"
+      ],
+      "title": "TargetEnrollmentStatus",
+      "type": "string"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-enrollment-result/v1",
+      "default": "rolo-target-enrollment-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/TargetEnrollmentOperation"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "executor_kind": {
+      "$ref": "#/$defs/TargetExecutorKind"
+    },
+    "execution_status": {
+      "$ref": "#/$defs/TargetExecutionStatus"
+    },
+    "transport_error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetExecutionErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "enrollment_error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetEnrollmentErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "enrollment_status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetEnrollmentStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "descriptor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorDescriptorV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "configuration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorConfigurationV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "attestation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorEnrollmentAttestationV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "transition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorRotationTransitionV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "operation",
+    "target_id",
+    "robot_id",
+    "executor_kind",
+    "execution_status"
+  ],
+  "title": "TargetEnrollmentResult",
+  "type": "object"
+}

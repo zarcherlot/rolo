@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-authorization-signature/v1",
+      "default": "rolo-deployment-authorization-signature/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "grant_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Grant Sha256",
+      "type": "string"
+    },
+    "signature_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key_id",
+    "grant_sha256",
+    "signature_base64"
+  ],
+  "title": "DeploymentAuthorizationSignature",
+  "type": "object"
+}

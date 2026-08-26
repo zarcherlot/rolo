@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-job-submission/v1",
+      "default": "rolo-deployment-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "workspace_root": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Root"
+    },
+    "active_probe": {
+      "default": "runtime-readonly",
+      "enum": [
+        "none",
+        "help",
+        "runtime-readonly"
+      ],
+      "title": "Active Probe",
+      "type": "string"
+    },
+    "run_adapter_agent": {
+      "default": true,
+      "title": "Run Adapter Agent",
+      "type": "boolean"
+    },
+    "parameters_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parameters Sha256"
+    }
+  },
+  "title": "DeploymentJobSubmission",
+  "type": "object"
+}

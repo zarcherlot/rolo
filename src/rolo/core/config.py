@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -72,6 +72,13 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
         "provider": "coding_agent_provider",
         "executable": "coding_agent_executable",
         "timeout_s": "coding_agent_timeout_s",
+    },
+    "session_agent": {
+        "enabled": "rolo_session_agent_enabled",
+        "base_url": "rolo_session_agent_base_url",
+        "model": "rolo_session_agent_model",
+        "executable": "rolo_session_agent_executable",
+        "timeout_s": "rolo_session_agent_provider_timeout_s",
     },
     "ros": {
         "auto_source": "ros_auto_source",
@@ -144,6 +151,12 @@ class Settings(BaseSettings):
     rolo_invocation_policy: Path = Field(default_factory=_default_invocation_policy)
     rolo_invocation_audit_log: Path = Field(default_factory=_default_invocation_audit_log)
     rolo_r3_authorizer: Path | None = None
+    rolo_deployment_authorization_key_id: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+    )
+    rolo_deployment_authorization_public_key_path: Path | None = None
+    rolo_deployment_authorization_private_key_path: Path | None = None
     rolo_quiescence_provider: Path | None = None
     rolo_hardware_evidence_provider: Path | None = None
     rolo_adapter_sandbox_launcher: Path | None = Field(
@@ -159,7 +172,18 @@ class Settings(BaseSettings):
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     rolo_api_token: str | None = None
+    rolo_api_token_principal: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+    )
+    rolo_api_token_permissions: str = Field(default="", max_length=1024)
     rolo_api_max_body_bytes: int = Field(default=16 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
+    rolo_session_agent_enabled: bool = False
+    rolo_session_agent_base_url: str = "https://api.openai.com/v1"
+    rolo_session_agent_api_key: str | None = None
+    rolo_session_agent_model: str | None = None
+    rolo_session_agent_executable: str = "codex"
+    rolo_session_agent_provider_timeout_s: int = Field(default=120, ge=10, le=1800)
     coding_agent_provider: str = "codex"
     coding_agent_executor: str = "codex"
     coding_agent_base_url: str | None = None
@@ -197,6 +221,23 @@ class Settings(BaseSettings):
     wiki_insights_agent_timeout_s: int = 120
     wiki_insights_skill_path: Path = Path("skills/rolo-wiki-authoring/SKILL.md")
 
+    @model_validator(mode="after")
+    def require_deployment_authorization_key_pair(self) -> Settings:
+        if (self.rolo_deployment_authorization_key_id is None) != (
+            self.rolo_deployment_authorization_public_key_path is None
+        ):
+            raise ValueError(
+                "deployment authorization key ID and public key path must be configured together"
+            )
+        if (
+            self.rolo_deployment_authorization_private_key_path is not None
+            and self.rolo_deployment_authorization_key_id is None
+        ):
+            raise ValueError(
+                "deployment authorization private key requires the configured key pair"
+            )
+        return self
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -217,6 +258,14 @@ class Settings(BaseSettings):
     @property
     def robot_config_dir(self) -> Path:
         return self.rolo_config_dir / "robots"
+
+    @property
+    def target_profile_dir(self) -> Path:
+        return self.rolo_config_dir / "target-profiles"
+
+    @property
+    def target_package_registry_dir(self) -> Path:
+        return self.rolo_artifact_dir / "target-packages"
 
 
 def settings_template() -> dict[str, Any]:

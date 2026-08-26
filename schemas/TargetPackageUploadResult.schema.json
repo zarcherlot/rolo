@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-package-upload-result/v1",
+      "default": "rolo-target-package-upload-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "package_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+      "title": "Package Version",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "package_ref": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}:[0-9a-f]{64}$",
+      "title": "Package Ref",
+      "type": "string"
+    },
+    "files_total": {
+      "maximum": 4098,
+      "minimum": 1,
+      "title": "Files Total",
+      "type": "integer"
+    },
+    "bytes_total": {
+      "minimum": 0,
+      "title": "Bytes Total",
+      "type": "integer"
+    },
+    "bytes_uploaded": {
+      "minimum": 0,
+      "title": "Bytes Uploaded",
+      "type": "integer"
+    },
+    "bytes_resumed": {
+      "minimum": 0,
+      "title": "Bytes Resumed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "package_id",
+    "package_version",
+    "manifest_sha256",
+    "package_ref",
+    "files_total",
+    "bytes_total",
+    "bytes_uploaded",
+    "bytes_resumed"
+  ],
+  "title": "TargetPackageUploadResult",
+  "type": "object"
+}

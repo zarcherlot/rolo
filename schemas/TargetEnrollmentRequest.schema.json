@@ -1,0 +1,262 @@
+{
+  "$defs": {
+    "CollectorConfigurationDiscoveryV4": {
+      "additionalProperties": false,
+      "description": "Target-local, bounded inputs for deterministic collector configuration.",
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-collector-configuration-discovery/v4",
+          "default": "robot-target-collector-configuration-discovery/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "workspace_root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Workspace Root",
+          "type": "string"
+        },
+        "help_executable_relative_paths": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Help Executable Relative Paths",
+          "type": "array"
+        },
+        "ros_auto_source": {
+          "default": true,
+          "title": "Ros Auto Source",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "workspace_root"
+      ],
+      "title": "CollectorConfigurationDiscoveryV4",
+      "type": "object"
+    },
+    "CollectorConfigurationV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-collector-configuration/v4",
+          "default": "robot-target-collector-configuration/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "help_executables": {
+          "items": {
+            "$ref": "#/$defs/CollectorHelpExecutable"
+          },
+          "maxItems": 4,
+          "title": "Help Executables",
+          "type": "array"
+        },
+        "ros_setup_files": {
+          "items": {
+            "$ref": "#/$defs/RosSetupFileRecord"
+          },
+          "maxItems": 8,
+          "title": "Ros Setup Files",
+          "type": "array"
+        }
+      },
+      "title": "CollectorConfigurationV4",
+      "type": "object"
+    },
+    "CollectorHelpExecutable": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "pattern": "^target-exe-[0-9a-f]{24}$",
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "executable_id",
+        "path",
+        "sha256"
+      ],
+      "title": "CollectorHelpExecutable",
+      "type": "object"
+    },
+    "RosSetupFileRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "BASE",
+            "OVERLAY",
+            "EXPLICIT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "kind"
+      ],
+      "title": "RosSetupFileRecord",
+      "type": "object"
+    },
+    "TargetEnrollmentOperation": {
+      "enum": [
+        "STATUS",
+        "ENROLL",
+        "ROTATE"
+      ],
+      "title": "TargetEnrollmentOperation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": "rolo-target-enrollment-request/v2",
+      "enum": [
+        "rolo-target-enrollment-request/v1",
+        "rolo-target-enrollment-request/v2"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/TargetEnrollmentOperation"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "challenge_nonce": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Challenge Nonce",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "configuration_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Configuration Sha256"
+    },
+    "configuration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorConfigurationV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "configuration_discovery": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CollectorConfigurationDiscoveryV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "expected_collector_id": {
+      "anyOf": [
+        {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Collector Id"
+    },
+    "approval_id": {
+      "anyOf": [
+        {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approval Id"
+    },
+    "timeout_s": {
+      "default": 30.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "request_id",
+    "operation",
+    "target_id",
+    "robot_id",
+    "challenge_nonce",
+    "issued_at",
+    "expires_at"
+  ],
+  "title": "TargetEnrollmentRequest",
+  "type": "object"
+}

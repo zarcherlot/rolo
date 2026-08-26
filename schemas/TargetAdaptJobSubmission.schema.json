@@ -1,0 +1,131 @@
+{
+  "additionalProperties": false,
+  "description": "Public discovery request; target workspace always comes from registration.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-adapt-job-submission/v1",
+      "default": "rolo-target-adapt-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "active_probe": {
+      "default": "runtime-readonly",
+      "enum": [
+        "none",
+        "help",
+        "runtime-readonly"
+      ],
+      "title": "Active Probe",
+      "type": "string"
+    },
+    "run_adapter_agent": {
+      "default": false,
+      "title": "Run Adapter Agent",
+      "type": "boolean"
+    },
+    "timeout_s": {
+      "default": 1800,
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Timeout S",
+      "type": "integer"
+    },
+    "evidence_timeout_s": {
+      "default": 45.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Evidence Timeout S",
+      "type": "number"
+    },
+    "urdf_path": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Urdf Path"
+    },
+    "scratch_root": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scratch Root"
+    },
+    "project_evidence_job_id": {
+      "anyOf": [
+        {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Evidence Job Id"
+    },
+    "project_evidence_max_age_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Project Evidence Max Age S",
+      "type": "integer"
+    },
+    "source_discovery_job_id": {
+      "anyOf": [
+        {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Discovery Job Id"
+    },
+    "source_discovery_max_age_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Source Discovery Max Age S",
+      "type": "integer"
+    },
+    "runtime_evidence_job_id": {
+      "anyOf": [
+        {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Runtime Evidence Job Id"
+    },
+    "runtime_evidence_max_age_s": {
+      "default": 300,
+      "maximum": 300,
+      "minimum": 60,
+      "title": "Runtime Evidence Max Age S",
+      "type": "integer"
+    }
+  },
+  "title": "TargetAdaptJobSubmission",
+  "type": "object"
+}

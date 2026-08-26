@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-collector-identity-index/v4",
+      "default": "robot-target-collector-identity-index/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "current_collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Current Collector Id",
+      "type": "string"
+    },
+    "previous_collector_id": {
+      "anyOf": [
+        {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Collector Id"
+    },
+    "transition_id": {
+      "anyOf": [
+        {
+          "pattern": "^transition-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Transition Id"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "current_collector_id",
+    "updated_at"
+  ],
+  "title": "CollectorIdentityIndexV4",
+  "type": "object"
+}

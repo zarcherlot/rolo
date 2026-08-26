@@ -1,0 +1,90 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "ecosystem": {
+      "enum": [
+        "python",
+        "ros"
+      ],
+      "title": "Ecosystem",
+      "type": "string"
+    },
+    "scope": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Scope",
+      "type": "string"
+    },
+    "required": {
+      "title": "Required",
+      "type": "boolean"
+    },
+    "specifier": {
+      "anyOf": [
+        {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Specifier"
+    },
+    "marker": {
+      "anyOf": [
+        {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Marker"
+    },
+    "applicable": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applicable"
+    },
+    "extras": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Extras",
+      "type": "array"
+    },
+    "source": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "ecosystem",
+    "scope",
+    "required",
+    "source"
+  ],
+  "title": "TargetSourceDependencyDeclaration",
+  "type": "object"
+}

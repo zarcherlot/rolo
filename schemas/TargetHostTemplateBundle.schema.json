@@ -1,0 +1,125 @@
+{
+  "additionalProperties": false,
+  "description": "Reviewable host-integration templates; rendering does not install them.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-template-bundle/v2",
+      "default": "rolo-target-host-template-bundle/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "runtime_user": {
+      "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+      "title": "Runtime User",
+      "type": "string"
+    },
+    "robotctl_path": {
+      "maxLength": 4096,
+      "minLength": 2,
+      "title": "Robotctl Path",
+      "type": "string"
+    },
+    "agent_port": {
+      "maximum": 65535,
+      "minimum": 1,
+      "title": "Agent Port",
+      "type": "integer"
+    },
+    "systemd_unit_name": {
+      "pattern": "^rolo-bootstrap-agentd@[A-Za-z0-9._-]+\\.service$",
+      "title": "Systemd Unit Name",
+      "type": "string"
+    },
+    "systemd_unit": {
+      "maxLength": 32768,
+      "minLength": 1,
+      "title": "Systemd Unit",
+      "type": "string"
+    },
+    "systemd_unit_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Systemd Unit Sha256",
+      "type": "string"
+    },
+    "authorized_keys_options": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "title": "Authorized Keys Options",
+      "type": "string"
+    },
+    "authorized_keys_options_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Authorized Keys Options Sha256",
+      "type": "string"
+    },
+    "bootstrap_dispatcher_path": {
+      "const": "/opt/rolo/libexec/rolo-bootstrap-dispatch",
+      "default": "/opt/rolo/libexec/rolo-bootstrap-dispatch",
+      "title": "Bootstrap Dispatcher Path",
+      "type": "string"
+    },
+    "bootstrap_dispatcher": {
+      "maxLength": 256000,
+      "minLength": 1,
+      "title": "Bootstrap Dispatcher",
+      "type": "string"
+    },
+    "bootstrap_dispatcher_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bootstrap Dispatcher Sha256",
+      "type": "string"
+    },
+    "runtime_launcher_path": {
+      "const": "/opt/rolo/bin/robotctl",
+      "default": "/opt/rolo/bin/robotctl",
+      "title": "Runtime Launcher Path",
+      "type": "string"
+    },
+    "runtime_launcher": {
+      "maxLength": 128000,
+      "minLength": 1,
+      "title": "Runtime Launcher",
+      "type": "string"
+    },
+    "runtime_launcher_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Launcher Sha256",
+      "type": "string"
+    },
+    "bootstrap_authorized_keys_options": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "title": "Bootstrap Authorized Keys Options",
+      "type": "string"
+    },
+    "bootstrap_authorized_keys_options_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bootstrap Authorized Keys Options Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "runtime_user",
+    "robotctl_path",
+    "agent_port",
+    "systemd_unit_name",
+    "systemd_unit",
+    "systemd_unit_sha256",
+    "authorized_keys_options",
+    "authorized_keys_options_sha256",
+    "bootstrap_dispatcher",
+    "bootstrap_dispatcher_sha256",
+    "runtime_launcher",
+    "runtime_launcher_sha256",
+    "bootstrap_authorized_keys_options",
+    "bootstrap_authorized_keys_options_sha256"
+  ],
+  "title": "TargetHostTemplateBundle",
+  "type": "object"
+}

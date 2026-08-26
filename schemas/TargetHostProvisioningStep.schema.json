@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "TargetHostProvisioningOperation": {
+      "enum": [
+        "ENSURE_GROUP",
+        "ENSURE_USER",
+        "ENSURE_DIRECTORY",
+        "INSTALL_FILE",
+        "SYSTEMD_DAEMON_RELOAD",
+        "SYSTEMD_ENABLE"
+      ],
+      "title": "TargetHostProvisioningOperation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "step_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Step Id",
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/TargetHostProvisioningOperation"
+    },
+    "requires_sudo": {
+      "const": true,
+      "default": true,
+      "title": "Requires Sudo",
+      "type": "boolean"
+    },
+    "argv": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Argv",
+      "type": "array"
+    },
+    "effect_path": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Effect Path"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
+    "group": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Group"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "maximum": 511,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mode"
+    },
+    "content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Sha256"
+    },
+    "sanitized_summary": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Sanitized Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "step_id",
+    "operation",
+    "sanitized_summary"
+  ],
+  "title": "TargetHostProvisioningStep",
+  "type": "object"
+}

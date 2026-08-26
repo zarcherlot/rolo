@@ -1,0 +1,335 @@
+{
+  "$defs": {
+    "DiscoveryStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "UNAVAILABLE",
+        "FAILED"
+      ],
+      "title": "DiscoveryStatus",
+      "type": "string"
+    },
+    "HelpProbeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/HelpProbeStatus",
+          "default": "NOT_PROBED"
+        },
+        "output_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Ref"
+        },
+        "timeout_s": {
+          "default": 5.0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "output_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Bytes",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "usage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Usage",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subcommands",
+          "type": "array"
+        }
+      },
+      "title": "HelpProbeResult",
+      "type": "object"
+    },
+    "HelpProbeStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "TIMED_OUT",
+        "OUTPUT_LIMIT",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
+      ],
+      "title": "HelpProbeStatus",
+      "type": "string"
+    },
+    "ProbeResult": {
+      "properties": {
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiscoveryStatus"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "status"
+      ],
+      "title": "ProbeResult",
+      "type": "object"
+    },
+    "TargetExecutableHelpEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "pattern": "^target-exe-[0-9a-f]{24}$",
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "executable_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Executable Sha256",
+          "type": "string"
+        },
+        "help_probe": {
+          "$ref": "#/$defs/HelpProbeResult"
+        },
+        "output_text": {
+          "maxLength": 250000,
+          "title": "Output Text",
+          "type": "string"
+        },
+        "output_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Output Sha256",
+          "type": "string"
+        },
+        "usage": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Usage",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Parameters",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Subcommands",
+          "type": "array"
+        }
+      },
+      "required": [
+        "executable_id",
+        "path",
+        "executable_sha256",
+        "help_probe",
+        "output_text",
+        "output_sha256"
+      ],
+      "title": "TargetExecutableHelpEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-evidence-bundle/v4",
+      "default": "robot-target-evidence-bundle/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Collector Id",
+      "type": "string"
+    },
+    "target_host_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Host Fingerprint",
+      "type": "string"
+    },
+    "descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Descriptor Sha256",
+      "type": "string"
+    },
+    "configuration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Configuration Sha256",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "request_nonce": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Request Nonce",
+      "type": "string"
+    },
+    "requested_layers": {
+      "items": {
+        "enum": [
+          "hw",
+          "linux",
+          "ros"
+        ],
+        "type": "string"
+      },
+      "maxItems": 3,
+      "minItems": 1,
+      "title": "Requested Layers",
+      "type": "array"
+    },
+    "access": {
+      "const": "READ_ONLY",
+      "default": "READ_ONLY",
+      "title": "Access",
+      "type": "string"
+    },
+    "collected_at": {
+      "format": "date-time",
+      "title": "Collected At",
+      "type": "string"
+    },
+    "probes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ProbeResult"
+      },
+      "title": "Probes",
+      "type": "object"
+    },
+    "executable_help": {
+      "items": {
+        "$ref": "#/$defs/TargetExecutableHelpEvidence"
+      },
+      "maxItems": 4,
+      "title": "Executable Help",
+      "type": "array"
+    },
+    "payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Sha256",
+      "type": "string"
+    },
+    "signature_ed25519_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature Ed25519 Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "robot_id",
+    "collector_id",
+    "target_host_fingerprint",
+    "descriptor_sha256",
+    "configuration_sha256",
+    "key_id",
+    "request_nonce",
+    "requested_layers",
+    "collected_at",
+    "probes",
+    "payload_sha256",
+    "signature_ed25519_base64"
+  ],
+  "title": "TargetEvidenceBundleV4",
+  "type": "object"
+}

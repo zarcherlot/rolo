@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "target": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "cmake",
+        "cmake_install_program",
+        "pyproject",
+        "setup.cfg",
+        "setup.py"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "source_files": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Source Files",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "target",
+    "source"
+  ],
+  "title": "TargetSourceEntrypoint",
+  "type": "object"
+}

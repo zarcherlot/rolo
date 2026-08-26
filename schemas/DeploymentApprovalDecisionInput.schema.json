@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-approval-decision-input/v1",
+      "default": "rolo-deployment-approval-decision-input/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "approve": {
+      "title": "Approve",
+      "type": "boolean"
+    },
+    "reason": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "approve",
+    "reason"
+  ],
+  "title": "DeploymentApprovalDecisionInput",
+  "type": "object"
+}

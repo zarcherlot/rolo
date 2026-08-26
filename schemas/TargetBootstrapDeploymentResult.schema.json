@@ -1,0 +1,464 @@
+{
+  "$defs": {
+    "BootstrapInstallStatus": {
+      "enum": [
+        "ACTIVATED",
+        "ALREADY_ACTIVE",
+        "HEALTH_CHECK_FAILED",
+        "ROLLED_BACK"
+      ],
+      "title": "BootstrapInstallStatus",
+      "type": "string"
+    },
+    "TargetBootstrapAuthorizationKeyStatus": {
+      "enum": [
+        "NOT_REQUESTED",
+        "INSTALLED",
+        "ALREADY_CURRENT",
+        "FAILED"
+      ],
+      "title": "TargetBootstrapAuthorizationKeyStatus",
+      "type": "string"
+    },
+    "TargetBootstrapExecutionErrorCode": {
+      "enum": [
+        "APPROVAL_REQUIRED",
+        "ACTIVE_UNAVAILABLE",
+        "AUTHORIZATION_KEY_CONFLICT",
+        "AUTHORIZATION_KEY_UNAVAILABLE",
+        "HEALTH_CHECK_FAILED",
+        "IO_ERROR",
+        "PACKAGE_INVALID",
+        "PREFLIGHT_BLOCKED",
+        "ROLLBACK_UNAVAILABLE",
+        "STATE_CONFLICT",
+        "TARGET_INSPECTION_FAILED"
+      ],
+      "title": "TargetBootstrapExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetBootstrapExecutionOperation": {
+      "enum": [
+        "STATUS",
+        "INSTALL_ACTIVATE",
+        "HEALTH",
+        "ROLLBACK"
+      ],
+      "title": "TargetBootstrapExecutionOperation",
+      "type": "string"
+    },
+    "TargetBootstrapExecutionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-bootstrap-execution-result/v1",
+          "default": "rolo-target-bootstrap-execution-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signing Key Id"
+        },
+        "signing_public_key_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signing Public Key Sha256"
+        },
+        "executor_kind": {
+          "$ref": "#/$defs/TargetExecutorKind"
+        },
+        "operation": {
+          "$ref": "#/$defs/TargetBootstrapExecutionOperation"
+        },
+        "status": {
+          "$ref": "#/$defs/TargetExecutionStatus"
+        },
+        "transport_error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetExecutionErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bootstrap_error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetBootstrapExecutionErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "install_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetBootstrapInstallResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "install_index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetInstallIndex"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "healthy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Healthy"
+        },
+        "authorization_key_pin_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Key Pin Sha256"
+        },
+        "authorization_key_status": {
+          "$ref": "#/$defs/TargetBootstrapAuthorizationKeyStatus",
+          "default": "NOT_REQUESTED"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "package_id",
+        "manifest_sha256",
+        "executor_kind",
+        "operation",
+        "status"
+      ],
+      "title": "TargetBootstrapExecutionResult",
+      "type": "object"
+    },
+    "TargetBootstrapInstallResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-bootstrap-install-result/v1",
+          "default": "rolo-target-bootstrap-install-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/BootstrapInstallStatus"
+        },
+        "installed": {
+          "$ref": "#/$defs/TargetInstalledRelease"
+        },
+        "active": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetInstalledRelease"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "previous_preserved": {
+          "title": "Previous Preserved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "installed",
+        "previous_preserved"
+      ],
+      "title": "TargetBootstrapInstallResult",
+      "type": "object"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    },
+    "TargetInstallIndex": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-install-index/v1",
+          "default": "rolo-target-install-index/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "current": {
+          "$ref": "#/$defs/TargetInstalledRelease"
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetInstalledRelease"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "activated_at": {
+          "format": "date-time",
+          "title": "Activated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "current",
+        "activated_at"
+      ],
+      "title": "TargetInstallIndex",
+      "type": "object"
+    },
+    "TargetInstalledRelease": {
+      "additionalProperties": false,
+      "properties": {
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+          "title": "Package Version",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "install_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Install Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_id",
+        "package_version",
+        "manifest_sha256",
+        "install_path"
+      ],
+      "title": "TargetInstalledRelease",
+      "type": "object"
+    },
+    "TargetPackageUploadResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-package-upload-result/v1",
+          "default": "rolo-target-package-upload-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+          "title": "Package Version",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "package_ref": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}:[0-9a-f]{64}$",
+          "title": "Package Ref",
+          "type": "string"
+        },
+        "files_total": {
+          "maximum": 4098,
+          "minimum": 1,
+          "title": "Files Total",
+          "type": "integer"
+        },
+        "bytes_total": {
+          "minimum": 0,
+          "title": "Bytes Total",
+          "type": "integer"
+        },
+        "bytes_uploaded": {
+          "minimum": 0,
+          "title": "Bytes Uploaded",
+          "type": "integer"
+        },
+        "bytes_resumed": {
+          "minimum": 0,
+          "title": "Bytes Resumed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "package_id",
+        "package_version",
+        "manifest_sha256",
+        "package_ref",
+        "files_total",
+        "bytes_total",
+        "bytes_uploaded",
+        "bytes_resumed"
+      ],
+      "title": "TargetPackageUploadResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-bootstrap-deployment-result/v1",
+      "default": "rolo-target-bootstrap-deployment-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "signing_key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Signing Key Id",
+      "type": "string"
+    },
+    "signing_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Signing Public Key Sha256",
+      "type": "string"
+    },
+    "upload": {
+      "$ref": "#/$defs/TargetPackageUploadResult"
+    },
+    "execution": {
+      "$ref": "#/$defs/TargetBootstrapExecutionResult"
+    }
+  },
+  "required": [
+    "target_id",
+    "signing_key_id",
+    "signing_public_key_sha256",
+    "upload",
+    "execution"
+  ],
+  "title": "TargetBootstrapDeploymentResult",
+  "type": "object"
+}

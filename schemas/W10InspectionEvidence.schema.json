@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "CredentialPurpose": {
+      "enum": [
+        "SSH_PROVISIONING",
+        "SSH_BOOTSTRAP",
+        "SSH_RUNTIME",
+        "SSH_CA",
+        "LEGACY_COLLECTOR_VERIFICATION"
+      ],
+      "title": "CredentialPurpose",
+      "type": "string"
+    },
+    "W10AcceptanceGateId": {
+      "enum": [
+        "PROVISIONING_TYPED_INSPECTION",
+        "BOOTSTRAP_CAPABILITY_INSPECTION",
+        "RUNTIME_TYPED_INSPECTION",
+        "RUNTIME_INSTALLATION_BINDING",
+        "REAL_SSH_TEST_REPORT",
+        "PLATFORM_BINDING"
+      ],
+      "title": "W10AcceptanceGateId",
+      "type": "string"
+    },
+    "W10AutomatedResult": {
+      "enum": [
+        "PASSED",
+        "FAILED"
+      ],
+      "title": "W10AutomatedResult",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "gate_id": {
+      "$ref": "#/$defs/W10AcceptanceGateId"
+    },
+    "credential_purpose": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CredentialPurpose"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "automated_result": {
+      "$ref": "#/$defs/W10AutomatedResult"
+    },
+    "request_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Sha256"
+    },
+    "result_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Sha256"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "gate_id",
+    "automated_result",
+    "started_at",
+    "finished_at"
+  ],
+  "title": "W10InspectionEvidence",
+  "type": "object"
+}

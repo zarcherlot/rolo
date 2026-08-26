@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "role": {
+      "enum": [
+        "publisher",
+        "subscriber",
+        "service",
+        "client"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "type": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+    },
+    "source": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "name_source": {
+      "const": "STRING_LITERAL",
+      "default": "STRING_LITERAL",
+      "title": "Name Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "role",
+    "name",
+    "type",
+    "source"
+  ],
+  "title": "TargetSourceRosInterface",
+  "type": "object"
+}

@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "release_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "transfer_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Transfer Manifest Sha256",
+      "type": "string"
+    },
+    "release_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Sha256",
+      "type": "string"
+    },
+    "bundle_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Manifest Sha256",
+      "type": "string"
+    },
+    "runtime_context_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Context Sha256",
+      "type": "string"
+    },
+    "gate_receipt_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Gate Receipt Sha256",
+      "type": "string"
+    },
+    "activated_at": {
+      "format": "date-time",
+      "title": "Activated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "release_id",
+    "transfer_manifest_sha256",
+    "release_manifest_sha256",
+    "bundle_manifest_sha256",
+    "runtime_context_sha256",
+    "gate_receipt_sha256",
+    "activated_at"
+  ],
+  "title": "AdapterReleaseObservedRecord",
+  "type": "object"
+}

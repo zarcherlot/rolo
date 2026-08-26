@@ -27,6 +27,9 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     assert settings.adapt_heuristic_agent_provider_enabled is True
     assert settings.rolo_adapter_max_address_space_bytes == 4 * 1024 * 1024 * 1024
     assert settings.rolo_adapter_max_processes == 128
+    assert settings.rolo_session_agent_enabled is False
+    assert settings.rolo_session_agent_api_key is None
+    assert settings.rolo_session_agent_provider_timeout_s == 120
 
 
 def test_user_yaml_is_loaded_below_environment_precedence(
@@ -43,6 +46,12 @@ storage:
 agent:
   executable: configured-codex
   timeout_s: 900
+session_agent:
+  enabled: true
+  base_url: https://models.example.test/v1
+  model: codex-session-model
+  executable: isolated-codex
+  timeout_s: 75
 ros:
   auto_source: false
   setup_files:
@@ -64,6 +73,11 @@ adapter_runtime:
     assert settings.rolo_output_dir == tmp_path / "environment-output"
     assert settings.coding_agent_executable == "configured-codex"
     assert settings.coding_agent_timeout_s == 900
+    assert settings.rolo_session_agent_enabled is True
+    assert settings.rolo_session_agent_base_url == "https://models.example.test/v1"
+    assert settings.rolo_session_agent_model == "codex-session-model"
+    assert settings.rolo_session_agent_executable == "isolated-codex"
+    assert settings.rolo_session_agent_provider_timeout_s == 75
     assert settings.ros_auto_source is False
     assert settings.ros_setup_files == [Path("/opt/ros/humble/setup.bash")]
     assert settings.ros_domain_id == "7"
@@ -110,3 +124,27 @@ def test_slice_activation_defaults_off_and_accepts_explicit_canary_selectors(
     assert defaults.adapt_operation_slice_max_operations == 20
     assert canary.adapt_operation_slice_mode == "canary"
     assert canary.adapt_operation_slice_max_operations == 12
+
+
+def test_deployment_authorization_key_configuration_is_atomic(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must be configured together"):
+        Settings(
+            _env_file=None,
+            rolo_deployment_authorization_key_id="controller-key-2026",
+        )
+    settings = Settings(
+        _env_file=None,
+        rolo_artifact_dir=tmp_path / "artifacts",
+        rolo_deployment_authorization_key_id="controller-key-2026",
+        rolo_deployment_authorization_public_key_path=tmp_path / "controller.pub",
+        rolo_deployment_authorization_private_key_path=tmp_path / "controller.pem",
+    )
+    assert settings.target_package_registry_dir == tmp_path / "artifacts" / "target-packages"
+    assert settings.rolo_deployment_authorization_private_key_path == (
+        tmp_path / "controller.pem"
+    )
+    with pytest.raises(ValueError, match="private key requires"):
+        Settings(
+            _env_file=None,
+            rolo_deployment_authorization_private_key_path=tmp_path / "controller.pem",
+        )

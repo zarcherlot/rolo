@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "DeploymentCommandKind": {
+      "enum": [
+        "ASSESS_CONNECTION",
+        "PROVISION_HOST",
+        "RECONCILE_HOST",
+        "ROLLBACK_HOST",
+        "START_TARGET_SERVICE",
+        "RECONCILE_TARGET_SERVICE",
+        "BOOTSTRAP",
+        "ENROLL",
+        "COLLECT_EVIDENCE",
+        "ADAPT",
+        "BOOTSTRAP_AND_ADAPT",
+        "UPGRADE",
+        "ROTATE_ENROLLMENT",
+        "ROLLBACK_TARGET_RUNTIME"
+      ],
+      "title": "DeploymentCommandKind",
+      "type": "string"
+    },
+    "InteractionSurface": {
+      "enum": [
+        "CLI",
+        "API",
+        "TUI",
+        "GUI",
+        "NATURAL_LANGUAGE"
+      ],
+      "title": "InteractionSurface",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-command/v1",
+      "default": "rolo-deployment-command/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "command": {
+      "$ref": "#/$defs/DeploymentCommandKind"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "workspace_root": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Root"
+    },
+    "active_probe": {
+      "default": "runtime-readonly",
+      "enum": [
+        "none",
+        "help",
+        "runtime-readonly"
+      ],
+      "title": "Active Probe",
+      "type": "string"
+    },
+    "run_adapter_agent": {
+      "default": true,
+      "title": "Run Adapter Agent",
+      "type": "boolean"
+    },
+    "requested_by": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Requested By",
+      "type": "string"
+    },
+    "interaction_surface": {
+      "$ref": "#/$defs/InteractionSurface"
+    },
+    "idempotency_key": {
+      "maxLength": 128,
+      "minLength": 8,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "parameters_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parameters Sha256"
+    }
+  },
+  "required": [
+    "command",
+    "target_id",
+    "requested_by",
+    "interaction_surface",
+    "idempotency_key"
+  ],
+  "title": "DeploymentCommand",
+  "type": "object"
+}

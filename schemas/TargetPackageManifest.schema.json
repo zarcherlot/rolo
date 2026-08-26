@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "TargetArchitecture": {
+      "enum": [
+        "x86_64",
+        "aarch64"
+      ],
+      "title": "TargetArchitecture",
+      "type": "string"
+    },
+    "TargetPackageFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "mode": {
+          "maximum": 511,
+          "minimum": 0,
+          "title": "Mode",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/TargetPackageFileRole"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "mode",
+        "role"
+      ],
+      "title": "TargetPackageFile",
+      "type": "object"
+    },
+    "TargetPackageFileRole": {
+      "enum": [
+        "ENTRYPOINT",
+        "RUNTIME",
+        "CONFIG",
+        "SERVICE",
+        "LICENSE",
+        "SBOM"
+      ],
+      "title": "TargetPackageFileRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-package/v1",
+      "default": "rolo-target-package/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "package_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+      "title": "Package Version",
+      "type": "string"
+    },
+    "rolo_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+      "title": "Rolo Version",
+      "type": "string"
+    },
+    "target_os": {
+      "const": "linux",
+      "default": "linux",
+      "title": "Target Os",
+      "type": "string"
+    },
+    "architecture": {
+      "$ref": "#/$defs/TargetArchitecture"
+    },
+    "python_requires": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Python Requires",
+      "type": "string"
+    },
+    "entrypoint": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Entrypoint",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/TargetPackageFile"
+      },
+      "maxItems": 4096,
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+    },
+    "requires_bubblewrap": {
+      "default": true,
+      "title": "Requires Bubblewrap",
+      "type": "boolean"
+    },
+    "requires_user_namespace": {
+      "default": true,
+      "title": "Requires User Namespace",
+      "type": "boolean"
+    },
+    "requires_mount_namespace": {
+      "default": true,
+      "title": "Requires Mount Namespace",
+      "type": "boolean"
+    },
+    "requires_network_namespace": {
+      "default": true,
+      "title": "Requires Network Namespace",
+      "type": "boolean"
+    },
+    "minimum_address_space_bytes": {
+      "default": 536870912,
+      "maximum": 17179869184,
+      "minimum": 536870912,
+      "title": "Minimum Address Space Bytes",
+      "type": "integer"
+    },
+    "minimum_processes": {
+      "default": 16,
+      "maximum": 512,
+      "minimum": 16,
+      "title": "Minimum Processes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "package_id",
+    "package_version",
+    "rolo_version",
+    "architecture",
+    "python_requires",
+    "entrypoint",
+    "files"
+  ],
+  "title": "TargetPackageManifest",
+  "type": "object"
+}

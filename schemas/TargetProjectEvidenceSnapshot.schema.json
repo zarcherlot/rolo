@@ -1,0 +1,259 @@
+{
+  "$defs": {
+    "TargetProjectEvidenceHit": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TargetProjectEvidenceKind"
+        },
+        "role": {
+          "enum": [
+            "SOURCE",
+            "ARTIFACT",
+            "RUNTIME"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "role"
+      ],
+      "title": "TargetProjectEvidenceHit",
+      "type": "object"
+    },
+    "TargetProjectEvidenceKind": {
+      "enum": [
+        "BUILD_METADATA",
+        "RUNTIME_METADATA",
+        "SOURCE_ENTRYPOINT",
+        "ROS_METADATA",
+        "DOCUMENTATION"
+      ],
+      "title": "TargetProjectEvidenceKind",
+      "type": "string"
+    },
+    "TargetProjectEvidenceStatus": {
+      "enum": [
+        "OBSERVED",
+        "NO_EVIDENCE"
+      ],
+      "title": "TargetProjectEvidenceStatus",
+      "type": "string"
+    },
+    "TargetWorkspaceFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 67108864,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "executable": {
+          "default": false,
+          "title": "Executable",
+          "type": "boolean"
+        },
+        "role": {
+          "default": "SOURCE",
+          "enum": [
+            "SOURCE",
+            "ARTIFACT",
+            "RUNTIME"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "TargetWorkspaceFile",
+      "type": "object"
+    },
+    "TargetWorkspaceManifest": {
+      "additionalProperties": false,
+      "description": "Bounded target-observed file set; timestamps are excluded from its digest.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-workspace-manifest/v1",
+          "default": "rolo-target-workspace-manifest/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "workspace": {
+          "$ref": "#/$defs/TargetWorkspaceRef"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/TargetWorkspaceFile"
+          },
+          "maxItems": 4096,
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "total_size_bytes": {
+          "maximum": 536870912,
+          "minimum": 0,
+          "title": "Total Size Bytes",
+          "type": "integer"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace",
+        "files",
+        "total_size_bytes",
+        "content_sha256",
+        "observed_at"
+      ],
+      "title": "TargetWorkspaceManifest",
+      "type": "object"
+    },
+    "TargetWorkspaceRef": {
+      "additionalProperties": false,
+      "description": "A controller-safe reference to a workspace that exists on one target.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-workspace-ref/v1",
+          "default": "rolo-target-workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "workspace_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "target_id",
+        "robot_id",
+        "root"
+      ],
+      "title": "TargetWorkspaceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-project-evidence-snapshot/v1",
+      "default": "rolo-target-project-evidence-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetProjectEvidenceStatus"
+    },
+    "hits": {
+      "items": {
+        "$ref": "#/$defs/TargetProjectEvidenceHit"
+      },
+      "maxItems": 256,
+      "title": "Hits",
+      "type": "array"
+    },
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetWorkspaceManifest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "target_id",
+    "robot_id",
+    "workspace_id",
+    "status",
+    "observed_at"
+  ],
+  "title": "TargetProjectEvidenceSnapshot",
+  "type": "object"
+}

@@ -171,7 +171,9 @@
         "SOURCE_FIRST",
         "ARTIFACT_DOC",
         "DOC_PROBE",
-        "BINARY_ONLY"
+        "BINARY_ONLY",
+        "TARGET_METADATA",
+        "TARGET_SOURCE"
       ],
       "title": "DiscoveryModeLevel",
       "type": "string"

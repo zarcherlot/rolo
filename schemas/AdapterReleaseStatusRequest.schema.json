@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "AdapterReleaseDesiredState": {
+      "additionalProperties": false,
+      "description": "Controller authority projected onto one target deployment.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-adapter-release-desired-state/v1",
+          "default": "rolo-adapter-release-desired-state/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "controller_release_index_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Controller Release Index Sha256",
+          "type": "string"
+        },
+        "transfer_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Transfer Manifest Sha256",
+          "type": "string"
+        },
+        "release_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Manifest Sha256",
+          "type": "string"
+        },
+        "bundle_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Manifest Sha256",
+          "type": "string"
+        },
+        "runtime_context_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Runtime Context Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "robot_id",
+        "release_id",
+        "controller_release_index_sha256",
+        "transfer_manifest_sha256",
+        "release_manifest_sha256",
+        "bundle_manifest_sha256",
+        "runtime_context_sha256"
+      ],
+      "title": "AdapterReleaseDesiredState",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Read-only query binding target observation to one controller desired state.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-status-request/v1",
+      "default": "rolo-adapter-release-status-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "desired": {
+      "$ref": "#/$defs/AdapterReleaseDesiredState"
+    },
+    "signing_key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Signing Key Id",
+      "type": "string"
+    },
+    "signing_public_key_base64": {
+      "maxLength": 32768,
+      "title": "Signing Public Key Base64",
+      "type": "string"
+    },
+    "signing_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Signing Public Key Sha256",
+      "type": "string"
+    },
+    "timeout_s": {
+      "default": 60.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "request_id",
+    "desired",
+    "signing_key_id",
+    "signing_public_key_base64",
+    "signing_public_key_sha256"
+  ],
+  "title": "AdapterReleaseStatusRequest",
+  "type": "object"
+}

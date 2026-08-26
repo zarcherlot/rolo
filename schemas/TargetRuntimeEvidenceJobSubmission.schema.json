@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "Public request for all discovery-required runtime evidence layers.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-runtime-evidence-job-submission/v1",
+      "default": "rolo-target-runtime-evidence-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "requested_layers": {
+      "items": {
+        "enum": [
+          "hw",
+          "linux",
+          "ros"
+        ],
+        "type": "string"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Requested Layers",
+      "type": "array"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 300,
+      "maximum": 300,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    },
+    "timeout_s": {
+      "default": 45.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "approver_principal"
+  ],
+  "title": "TargetRuntimeEvidenceJobSubmission",
+  "type": "object"
+}

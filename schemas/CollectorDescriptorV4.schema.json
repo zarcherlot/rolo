@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-evidence-collector/v4",
+      "default": "robot-target-evidence-collector/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Collector Id",
+      "type": "string"
+    },
+    "target_host_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Host Fingerprint",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "signing_algorithm": {
+      "const": "Ed25519",
+      "default": "Ed25519",
+      "title": "Signing Algorithm",
+      "type": "string"
+    },
+    "public_key_base64": {
+      "pattern": "^[A-Za-z0-9+/]{43}=$",
+      "title": "Public Key Base64",
+      "type": "string"
+    },
+    "public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Public Key Sha256",
+      "type": "string"
+    },
+    "configuration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Configuration Sha256",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "robot_id",
+    "collector_id",
+    "target_host_fingerprint",
+    "key_id",
+    "public_key_base64",
+    "public_key_sha256",
+    "configuration_sha256",
+    "created_at"
+  ],
+  "title": "CollectorDescriptorV4",
+  "type": "object"
+}

@@ -1,0 +1,251 @@
+{
+  "$defs": {
+    "AdapterReleaseDesiredStageStatus": {
+      "enum": [
+        "ABSENT",
+        "VERIFIED"
+      ],
+      "title": "AdapterReleaseDesiredStageStatus",
+      "type": "string"
+    },
+    "AdapterReleaseObservedRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "transfer_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Transfer Manifest Sha256",
+          "type": "string"
+        },
+        "release_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Manifest Sha256",
+          "type": "string"
+        },
+        "bundle_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Manifest Sha256",
+          "type": "string"
+        },
+        "runtime_context_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Runtime Context Sha256",
+          "type": "string"
+        },
+        "gate_receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Gate Receipt Sha256",
+          "type": "string"
+        },
+        "activated_at": {
+          "format": "date-time",
+          "title": "Activated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "release_id",
+        "transfer_manifest_sha256",
+        "release_manifest_sha256",
+        "bundle_manifest_sha256",
+        "runtime_context_sha256",
+        "gate_receipt_sha256",
+        "activated_at"
+      ],
+      "title": "AdapterReleaseObservedRecord",
+      "type": "object"
+    },
+    "AdapterReleaseStatusSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-adapter-release-status-snapshot/v1",
+          "default": "rolo-adapter-release-status-snapshot/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "active_index_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Index Sha256"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterReleaseObservedRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterReleaseObservedRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "desired_stage_status": {
+          "$ref": "#/$defs/AdapterReleaseDesiredStageStatus"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "robot_id",
+        "desired_stage_status",
+        "observed_at"
+      ],
+      "title": "AdapterReleaseStatusSnapshot",
+      "type": "object"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-status-execution-result/v1",
+      "default": "rolo-adapter-release-status-execution-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "executor_kind": {
+      "$ref": "#/$defs/TargetExecutorKind"
+    },
+    "execution_status": {
+      "$ref": "#/$defs/TargetExecutionStatus"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetExecutionErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "snapshot": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AdapterReleaseStatusSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "target_id",
+    "robot_id",
+    "executor_kind",
+    "execution_status"
+  ],
+  "title": "AdapterReleaseStatusExecutionResult",
+  "type": "object"
+}

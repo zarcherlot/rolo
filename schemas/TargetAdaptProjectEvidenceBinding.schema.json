@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable reference from one SSH Adapt Job to verified target metadata.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-adapt-project-evidence-binding/v1",
+      "default": "rolo-target-adapt-project-evidence-binding/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Artifact Sha256",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "workspace_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Workspace Sha256",
+      "type": "string"
+    },
+    "workspace_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Workspace Manifest Sha256",
+      "type": "string"
+    },
+    "observed_paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Observed Paths",
+      "type": "array"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "artifact_sha256",
+    "command_sha256",
+    "target_id",
+    "target_registration_sha256",
+    "workspace_sha256",
+    "workspace_manifest_sha256",
+    "observed_paths",
+    "observed_at",
+    "expires_at"
+  ],
+  "title": "TargetAdaptProjectEvidenceBinding",
+  "type": "object"
+}

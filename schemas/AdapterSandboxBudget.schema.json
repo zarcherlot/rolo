@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "description": "The same address-space/process controls consumed by BoundedAdapterRunner.",
+  "properties": {
+    "max_address_space_bytes": {
+      "default": 4294967296,
+      "maximum": 68719476736,
+      "minimum": 536870912,
+      "title": "Max Address Space Bytes",
+      "type": "integer"
+    },
+    "max_processes": {
+      "default": 128,
+      "maximum": 512,
+      "minimum": 16,
+      "title": "Max Processes",
+      "type": "integer"
+    }
+  },
+  "title": "AdapterSandboxBudget",
+  "type": "object"
+}

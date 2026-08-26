@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "description": "Target-local, bounded inputs for deterministic collector configuration.",
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-collector-configuration-discovery/v4",
+      "default": "robot-target-collector-configuration-discovery/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "workspace_root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Workspace Root",
+      "type": "string"
+    },
+    "help_executable_relative_paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Help Executable Relative Paths",
+      "type": "array"
+    },
+    "ros_auto_source": {
+      "default": true,
+      "title": "Ros Auto Source",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "workspace_root"
+  ],
+  "title": "CollectorConfigurationDiscoveryV4",
+  "type": "object"
+}

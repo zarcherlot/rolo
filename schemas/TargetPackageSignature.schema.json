@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-package-signature/v1",
+      "default": "rolo-target-package-signature/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "algorithm": {
+      "const": "Ed25519",
+      "default": "Ed25519",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "signature_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key_id",
+    "manifest_sha256",
+    "signature_base64"
+  ],
+  "title": "TargetPackageSignature",
+  "type": "object"
+}

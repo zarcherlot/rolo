@@ -1,0 +1,318 @@
+{
+  "$defs": {
+    "OrchestratorPlacement": {
+      "enum": [
+        "TARGET_LOCAL",
+        "CONTROLLER"
+      ],
+      "title": "OrchestratorPlacement",
+      "type": "string"
+    },
+    "TargetConnectionProfile": {
+      "additionalProperties": false,
+      "description": "Non-secret SSH metadata with an optional bootstrap-to-runtime identity split.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-connection-profile/v1",
+          "default": "rolo-target-connection-profile/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "connection_profile_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Connection Profile Id",
+          "type": "string"
+        },
+        "transport": {
+          "const": "SSH",
+          "default": "SSH",
+          "title": "Transport",
+          "type": "string"
+        },
+        "host": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "default": 22,
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "user": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "title": "User",
+          "type": "string"
+        },
+        "credential_ref": {
+          "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]{1,2048}$",
+          "title": "Credential Ref",
+          "type": "string"
+        },
+        "provisioning_user": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provisioning User"
+        },
+        "provisioning_credential_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]{1,2048}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provisioning Credential Ref"
+        },
+        "runtime_user": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime User"
+        },
+        "runtime_credential_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]{1,2048}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Credential Ref"
+        },
+        "known_hosts_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Known Hosts Path",
+          "type": "string"
+        },
+        "trust_level": {
+          "$ref": "#/$defs/TargetTrustLevel",
+          "default": "STRICT"
+        },
+        "expected_host_key_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^SHA256:[A-Za-z0-9+/]{43}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Host Key Sha256"
+        },
+        "ssh_ca_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]{1,2048}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ssh Ca Ref"
+        },
+        "proxy_jump_profile_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proxy Jump Profile Id"
+        }
+      },
+      "required": [
+        "connection_profile_id",
+        "host",
+        "user",
+        "credential_ref",
+        "known_hosts_path"
+      ],
+      "title": "TargetConnectionProfile",
+      "type": "object"
+    },
+    "TargetProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-profile/v1",
+          "default": "rolo-target-profile/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "orchestrator_placement": {
+          "$ref": "#/$defs/OrchestratorPlacement"
+        },
+        "transport": {
+          "$ref": "#/$defs/TargetTransport"
+        },
+        "connection_profile_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connection Profile Id"
+        },
+        "workspace_root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Workspace Root",
+          "type": "string"
+        },
+        "desired_rolo_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+          "title": "Desired Rolo Version",
+          "type": "string"
+        },
+        "trust_level": {
+          "$ref": "#/$defs/TargetTrustLevel",
+          "default": "STRICT"
+        },
+        "release_signing_key_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Signing Key Id"
+        },
+        "release_signing_public_key_path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Signing Public Key Path"
+        },
+        "release_signing_public_key_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Signing Public Key Sha256"
+        }
+      },
+      "required": [
+        "target_id",
+        "orchestrator_placement",
+        "transport",
+        "workspace_root",
+        "desired_rolo_version"
+      ],
+      "title": "TargetProfile",
+      "type": "object"
+    },
+    "TargetTransport": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetTransport",
+      "type": "string"
+    },
+    "TargetTrustLevel": {
+      "enum": [
+        "STRICT",
+        "CONFIRMED",
+        "TOFU_DEV"
+      ],
+      "title": "TargetTrustLevel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-registration-request/v1",
+      "default": "rolo-target-registration-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/TargetProfile"
+    },
+    "connection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetConnectionProfile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "TargetRegistrationRequest",
+  "type": "object"
+}

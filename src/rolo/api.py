@@ -92,6 +92,7 @@ from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.workset import TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
+from rolo.targets.deployment_api import DEPLOYMENT_API_FEATURES, deployment_router
 from rolo.topology_history_read_models import (
     TopologyDiff,
     TopologySnapshotCollection,
@@ -125,6 +126,7 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+app.include_router(deployment_router)
 
 
 def _loopback_host(value: str) -> bool:
@@ -183,7 +185,11 @@ async def health(request: Request) -> HealthResponse:
         robots=len(runtime.registry),
         robot_use_backend=runtime.robot_use_backend.name,
         openai_key_configured=bool(runtime.settings.openai_api_key),
-        api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES],
+        api_features=[
+            *ADAPT_API_FEATURES,
+            *DEPLOYMENT_API_FEATURES,
+            *EPISODE_API_FEATURES,
+        ],
     )
 
 

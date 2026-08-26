@@ -1,0 +1,354 @@
+{
+  "$defs": {
+    "TargetHostProvisioningOperation": {
+      "enum": [
+        "ENSURE_GROUP",
+        "ENSURE_USER",
+        "ENSURE_DIRECTORY",
+        "INSTALL_FILE",
+        "SYSTEMD_DAEMON_RELOAD",
+        "SYSTEMD_ENABLE"
+      ],
+      "title": "TargetHostProvisioningOperation",
+      "type": "string"
+    },
+    "TargetHostProvisioningStep": {
+      "additionalProperties": false,
+      "properties": {
+        "step_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/TargetHostProvisioningOperation"
+        },
+        "requires_sudo": {
+          "const": true,
+          "default": true,
+          "title": "Requires Sudo",
+          "type": "boolean"
+        },
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Argv",
+          "type": "array"
+        },
+        "effect_path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effect Path"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "maximum": 511,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
+        },
+        "sanitized_summary": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Sanitized Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step_id",
+        "operation",
+        "sanitized_summary"
+      ],
+      "title": "TargetHostProvisioningStep",
+      "type": "object"
+    },
+    "TargetHostTemplateBundle": {
+      "additionalProperties": false,
+      "description": "Reviewable host-integration templates; rendering does not install them.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-host-template-bundle/v2",
+          "default": "rolo-target-host-template-bundle/v2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "runtime_user": {
+          "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+          "title": "Runtime User",
+          "type": "string"
+        },
+        "robotctl_path": {
+          "maxLength": 4096,
+          "minLength": 2,
+          "title": "Robotctl Path",
+          "type": "string"
+        },
+        "agent_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Agent Port",
+          "type": "integer"
+        },
+        "systemd_unit_name": {
+          "pattern": "^rolo-bootstrap-agentd@[A-Za-z0-9._-]+\\.service$",
+          "title": "Systemd Unit Name",
+          "type": "string"
+        },
+        "systemd_unit": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Systemd Unit",
+          "type": "string"
+        },
+        "systemd_unit_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Systemd Unit Sha256",
+          "type": "string"
+        },
+        "authorized_keys_options": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Authorized Keys Options",
+          "type": "string"
+        },
+        "authorized_keys_options_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Authorized Keys Options Sha256",
+          "type": "string"
+        },
+        "bootstrap_dispatcher_path": {
+          "const": "/opt/rolo/libexec/rolo-bootstrap-dispatch",
+          "default": "/opt/rolo/libexec/rolo-bootstrap-dispatch",
+          "title": "Bootstrap Dispatcher Path",
+          "type": "string"
+        },
+        "bootstrap_dispatcher": {
+          "maxLength": 256000,
+          "minLength": 1,
+          "title": "Bootstrap Dispatcher",
+          "type": "string"
+        },
+        "bootstrap_dispatcher_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bootstrap Dispatcher Sha256",
+          "type": "string"
+        },
+        "runtime_launcher_path": {
+          "const": "/opt/rolo/bin/robotctl",
+          "default": "/opt/rolo/bin/robotctl",
+          "title": "Runtime Launcher Path",
+          "type": "string"
+        },
+        "runtime_launcher": {
+          "maxLength": 128000,
+          "minLength": 1,
+          "title": "Runtime Launcher",
+          "type": "string"
+        },
+        "runtime_launcher_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Runtime Launcher Sha256",
+          "type": "string"
+        },
+        "bootstrap_authorized_keys_options": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Bootstrap Authorized Keys Options",
+          "type": "string"
+        },
+        "bootstrap_authorized_keys_options_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bootstrap Authorized Keys Options Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "runtime_user",
+        "robotctl_path",
+        "agent_port",
+        "systemd_unit_name",
+        "systemd_unit",
+        "systemd_unit_sha256",
+        "authorized_keys_options",
+        "authorized_keys_options_sha256",
+        "bootstrap_dispatcher",
+        "bootstrap_dispatcher_sha256",
+        "runtime_launcher",
+        "runtime_launcher_sha256",
+        "bootstrap_authorized_keys_options",
+        "bootstrap_authorized_keys_options_sha256"
+      ],
+      "title": "TargetHostTemplateBundle",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable review scope for the first privileged target-host transaction.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-provisioning-plan/v1",
+      "default": "rolo-target-host-provisioning-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "runtime_user": {
+      "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+      "title": "Runtime User",
+      "type": "string"
+    },
+    "bootstrap_public_key": {
+      "pattern": "^ssh-ed25519 [A-Za-z0-9+/]{43}=$",
+      "title": "Bootstrap Public Key",
+      "type": "string"
+    },
+    "bootstrap_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bootstrap Public Key Sha256",
+      "type": "string"
+    },
+    "runtime_public_key": {
+      "pattern": "^ssh-ed25519 [A-Za-z0-9+/]{43}=$",
+      "title": "Runtime Public Key",
+      "type": "string"
+    },
+    "runtime_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Public Key Sha256",
+      "type": "string"
+    },
+    "authorized_keys": {
+      "maxLength": 32768,
+      "minLength": 1,
+      "title": "Authorized Keys",
+      "type": "string"
+    },
+    "authorized_keys_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Authorized Keys Sha256",
+      "type": "string"
+    },
+    "template_bundle": {
+      "$ref": "#/$defs/TargetHostTemplateBundle"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/TargetHostProvisioningStep"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "approval_actions": {
+      "items": {
+        "const": "USE_SUDO",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Approval Actions",
+      "type": "array"
+    },
+    "expected_current_plan_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Current Plan Sha256"
+    }
+  },
+  "required": [
+    "target_id",
+    "target_registration_sha256",
+    "runtime_user",
+    "bootstrap_public_key",
+    "bootstrap_public_key_sha256",
+    "runtime_public_key",
+    "runtime_public_key_sha256",
+    "authorized_keys",
+    "authorized_keys_sha256",
+    "template_bundle",
+    "steps",
+    "approval_actions"
+  ],
+  "title": "TargetHostProvisioningPlan",
+  "type": "object"
+}

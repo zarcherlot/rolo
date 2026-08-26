@@ -1,0 +1,208 @@
+{
+  "$defs": {
+    "DeploymentAuthorizationKeyPin": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-key-pin/v1",
+          "default": "rolo-deployment-authorization-key-pin/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "public_key_base64": {
+          "maxLength": 32768,
+          "title": "Public Key Base64",
+          "type": "string"
+        },
+        "public_key_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Public Key Sha256",
+          "type": "string"
+        },
+        "installed_by_approval_id": {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "title": "Installed By Approval Id",
+          "type": "string"
+        },
+        "installed_at": {
+          "format": "date-time",
+          "title": "Installed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "key_id",
+        "public_key_base64",
+        "public_key_sha256",
+        "installed_by_approval_id",
+        "installed_at"
+      ],
+      "title": "DeploymentAuthorizationKeyPin",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Secret-free immutable Controller inputs for one approved Bootstrap Job.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-bootstrap-job-spec/v1",
+      "default": "rolo-target-bootstrap-job-spec/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "workspace_root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Workspace Root",
+      "type": "string"
+    },
+    "package_root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Package Root",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "release_signing_key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Release Signing Key Id",
+      "type": "string"
+    },
+    "release_signing_public_key_base64": {
+      "maxLength": 32768,
+      "title": "Release Signing Public Key Base64",
+      "type": "string"
+    },
+    "release_signing_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Signing Public Key Sha256",
+      "type": "string"
+    },
+    "approval_id": {
+      "pattern": "^approval-[0-9a-f]{32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approval_action": {
+      "enum": [
+        "INSTALL_TARGET_RUNTIME",
+        "UPGRADE_TARGET_RUNTIME"
+      ],
+      "title": "Approval Action",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_expires_at": {
+      "format": "date-time",
+      "title": "Approval Expires At",
+      "type": "string"
+    },
+    "expect_current_present": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expect Current Present"
+    },
+    "expected_current_manifest_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Current Manifest Sha256"
+    },
+    "authorization_key_pin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeploymentAuthorizationKeyPin"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "expected_authorization_key_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Authorization Key Sha256"
+    },
+    "timeout_s": {
+      "default": 300.0,
+      "maximum": 1800.0,
+      "minimum": 10.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "target_id",
+    "target_registration_sha256",
+    "workspace_root",
+    "package_root",
+    "package_id",
+    "manifest_sha256",
+    "release_signing_key_id",
+    "release_signing_public_key_base64",
+    "release_signing_public_key_sha256",
+    "approval_id",
+    "approval_action",
+    "approver_principal",
+    "approval_expires_at"
+  ],
+  "title": "TargetBootstrapJobSpec",
+  "type": "object"
+}

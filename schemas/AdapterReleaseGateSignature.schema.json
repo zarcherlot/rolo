@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-gate-signature/v1",
+      "default": "rolo-adapter-release-gate-signature/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "algorithm": {
+      "const": "Ed25519",
+      "default": "Ed25519",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "receipt_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Receipt Sha256",
+      "type": "string"
+    },
+    "signature_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key_id",
+    "receipt_sha256",
+    "signature_base64"
+  ],
+  "title": "AdapterReleaseGateSignature",
+  "type": "object"
+}

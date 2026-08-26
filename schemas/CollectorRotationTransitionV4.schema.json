@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-evidence-transition/v4",
+      "default": "robot-target-evidence-transition/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "transition_id": {
+      "pattern": "^transition-[0-9a-f]{32}$",
+      "title": "Transition Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "target_host_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Host Fingerprint",
+      "type": "string"
+    },
+    "previous_collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Previous Collector Id",
+      "type": "string"
+    },
+    "previous_descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Previous Descriptor Sha256",
+      "type": "string"
+    },
+    "previous_key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "Previous Key Id",
+      "type": "string"
+    },
+    "new_collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "New Collector Id",
+      "type": "string"
+    },
+    "new_descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "New Descriptor Sha256",
+      "type": "string"
+    },
+    "new_key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "New Key Id",
+      "type": "string"
+    },
+    "authorized_at": {
+      "format": "date-time",
+      "title": "Authorized At",
+      "type": "string"
+    },
+    "signature_by_previous_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature By Previous Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "transition_id",
+    "target_id",
+    "robot_id",
+    "target_host_fingerprint",
+    "previous_collector_id",
+    "previous_descriptor_sha256",
+    "previous_key_id",
+    "new_collector_id",
+    "new_descriptor_sha256",
+    "new_key_id",
+    "authorized_at",
+    "signature_by_previous_base64"
+  ],
+  "title": "CollectorRotationTransitionV4",
+  "type": "object"
+}

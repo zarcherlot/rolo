@@ -1,0 +1,318 @@
+{
+  "$defs": {
+    "TargetConnectionAssessmentFailureCode": {
+      "enum": [
+        "TARGET_REGISTRATION_CHANGED",
+        "RUNNER_ERROR"
+      ],
+      "title": "TargetConnectionAssessmentFailureCode",
+      "type": "string"
+    },
+    "TargetConnectionAssessmentStatus": {
+      "enum": [
+        "PROFILE_VALIDATED",
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetConnectionAssessmentStatus",
+      "type": "string"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    },
+    "TargetInspectionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-inspection-request/v1",
+          "default": "rolo-target-inspection-request/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/TargetInspectionTool"
+        },
+        "operand": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operand"
+        },
+        "timeout_s": {
+          "default": 10.0,
+          "maximum": 300.0,
+          "minimum": 0.1,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "max_stdout_bytes": {
+          "default": 256000,
+          "maximum": 2000000,
+          "minimum": 1,
+          "title": "Max Stdout Bytes",
+          "type": "integer"
+        },
+        "max_stderr_bytes": {
+          "default": 64000,
+          "maximum": 512000,
+          "minimum": 1,
+          "title": "Max Stderr Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "request_id",
+        "tool"
+      ],
+      "title": "TargetInspectionRequest",
+      "type": "object"
+    },
+    "TargetInspectionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-inspection-result/v1",
+          "default": "rolo-target-inspection-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "executor_kind": {
+          "$ref": "#/$defs/TargetExecutorKind"
+        },
+        "status": {
+          "$ref": "#/$defs/TargetExecutionStatus"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetExecutionErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "stdout": {
+          "maxLength": 2000000,
+          "title": "Stdout",
+          "type": "string"
+        },
+        "stderr": {
+          "maxLength": 512000,
+          "title": "Stderr",
+          "type": "string"
+        },
+        "timed_out": {
+          "default": false,
+          "title": "Timed Out",
+          "type": "boolean"
+        },
+        "output_limited": {
+          "default": false,
+          "title": "Output Limited",
+          "type": "boolean"
+        },
+        "cancelled": {
+          "default": false,
+          "title": "Cancelled",
+          "type": "boolean"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "executor_kind",
+        "status",
+        "stdout",
+        "stderr",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "TargetInspectionResult",
+      "type": "object"
+    },
+    "TargetInspectionTool": {
+      "enum": [
+        "PLATFORM",
+        "RUNTIME_CAPABILITIES",
+        "PATH_STAT",
+        "EXECUTABLE_HELP"
+      ],
+      "title": "TargetInspectionTool",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-connection-assessment-artifact/v1",
+      "default": "rolo-target-connection-assessment-artifact/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "observed_target_registration_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Target Registration Sha256"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetConnectionAssessmentStatus"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetConnectionAssessmentFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "inspection_request": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetInspectionRequest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "inspection_result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetInspectionResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "assessed_at": {
+      "format": "date-time",
+      "title": "Assessed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "command_sha256",
+    "target_id",
+    "target_registration_sha256",
+    "status",
+    "assessed_at"
+  ],
+  "title": "TargetConnectionAssessmentArtifact",
+  "type": "object"
+}

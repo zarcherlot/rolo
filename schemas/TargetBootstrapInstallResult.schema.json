@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "BootstrapInstallStatus": {
+      "enum": [
+        "ACTIVATED",
+        "ALREADY_ACTIVE",
+        "HEALTH_CHECK_FAILED",
+        "ROLLED_BACK"
+      ],
+      "title": "BootstrapInstallStatus",
+      "type": "string"
+    },
+    "TargetInstalledRelease": {
+      "additionalProperties": false,
+      "properties": {
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+          "title": "Package Version",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "install_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Install Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_id",
+        "package_version",
+        "manifest_sha256",
+        "install_path"
+      ],
+      "title": "TargetInstalledRelease",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-bootstrap-install-result/v1",
+      "default": "rolo-target-bootstrap-install-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/BootstrapInstallStatus"
+    },
+    "installed": {
+      "$ref": "#/$defs/TargetInstalledRelease"
+    },
+    "active": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetInstalledRelease"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "previous_preserved": {
+      "title": "Previous Preserved",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "status",
+    "installed",
+    "previous_preserved"
+  ],
+  "title": "TargetBootstrapInstallResult",
+  "type": "object"
+}

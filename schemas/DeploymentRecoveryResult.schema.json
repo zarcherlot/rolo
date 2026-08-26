@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "DeploymentJobState": {
+      "enum": [
+        "CREATED",
+        "CONNECTING",
+        "HOST_KEY_APPROVAL_REQUIRED",
+        "PREFLIGHT",
+        "BOOTSTRAPPING",
+        "ROLLING_BACK",
+        "ENROLLING",
+        "COLLECTING_EVIDENCE",
+        "DISCOVERING",
+        "ADAPTING",
+        "GATING",
+        "COMPLETE",
+        "BLOCKED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "title": "DeploymentJobState",
+      "type": "string"
+    },
+    "DeploymentRecoveryDisposition": {
+      "enum": [
+        "NONE",
+        "RESUMABLE",
+        "REQUIRES_RECONCILIATION"
+      ],
+      "title": "DeploymentRecoveryDisposition",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-recovery-result/v1",
+      "default": "rolo-deployment-recovery-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "previous_state": {
+      "$ref": "#/$defs/DeploymentJobState"
+    },
+    "recovered_state": {
+      "$ref": "#/$defs/DeploymentJobState"
+    },
+    "disposition": {
+      "$ref": "#/$defs/DeploymentRecoveryDisposition"
+    },
+    "recovered_at": {
+      "format": "date-time",
+      "title": "Recovered At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "previous_state",
+    "recovered_state",
+    "disposition",
+    "recovered_at"
+  ],
+  "title": "DeploymentRecoveryResult",
+  "type": "object"
+}

@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "TargetArchitecture": {
+      "enum": [
+        "x86_64",
+        "aarch64"
+      ],
+      "title": "TargetArchitecture",
+      "type": "string"
+    },
+    "TargetPlatformFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-platform-facts/v1",
+          "default": "rolo-target-platform-facts/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "os": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Os",
+          "type": "string"
+        },
+        "architecture": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Architecture",
+          "type": "string"
+        },
+        "python_version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Python Version",
+          "type": "string"
+        },
+        "bubblewrap_available": {
+          "title": "Bubblewrap Available",
+          "type": "boolean"
+        },
+        "user_namespace_available": {
+          "title": "User Namespace Available",
+          "type": "boolean"
+        },
+        "mount_namespace_available": {
+          "title": "Mount Namespace Available",
+          "type": "boolean"
+        },
+        "network_namespace_available": {
+          "title": "Network Namespace Available",
+          "type": "boolean"
+        },
+        "available_address_space_bytes": {
+          "minimum": 0,
+          "title": "Available Address Space Bytes",
+          "type": "integer"
+        },
+        "available_processes": {
+          "minimum": 0,
+          "title": "Available Processes",
+          "type": "integer"
+        },
+        "runtime_path_available": {
+          "title": "Runtime Path Available",
+          "type": "boolean"
+        },
+        "explicit_pythonpath_supported": {
+          "title": "Explicit Pythonpath Supported",
+          "type": "boolean"
+        },
+        "virtualenv_supported": {
+          "title": "Virtualenv Supported",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "os",
+        "architecture",
+        "python_version",
+        "bubblewrap_available",
+        "user_namespace_available",
+        "mount_namespace_available",
+        "network_namespace_available",
+        "available_address_space_bytes",
+        "available_processes",
+        "runtime_path_available",
+        "explicit_pythonpath_supported",
+        "virtualenv_supported"
+      ],
+      "title": "TargetPlatformFacts",
+      "type": "object"
+    },
+    "TargetPreflightStatus": {
+      "enum": [
+        "READY",
+        "BLOCKED"
+      ],
+      "title": "TargetPreflightStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-platform-preflight/v1",
+      "default": "rolo-target-platform-preflight/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "package_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+      "title": "Package Version",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetPreflightStatus"
+    },
+    "normalized_architecture": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetArchitecture"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "facts": {
+      "$ref": "#/$defs/TargetPlatformFacts"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Blockers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "package_id",
+    "package_version",
+    "manifest_sha256",
+    "status",
+    "facts"
+  ],
+  "title": "TargetPlatformPreflight",
+  "type": "object"
+}

@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "step_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Step Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "ALREADY_CURRENT",
+        "FAILED"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "step_id",
+    "status"
+  ],
+  "title": "TargetHostProvisioningStepResult",
+  "type": "object"
+}

@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-rollback-job-submission/v1",
+      "default": "rolo-target-host-rollback-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "current_host_job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Current Host Job Id",
+      "type": "string"
+    },
+    "rollback_to_host_job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Rollback To Host Job Id",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "current_host_job_id",
+    "rollback_to_host_job_id",
+    "approver_principal"
+  ],
+  "title": "TargetHostRollbackJobSubmission",
+  "type": "object"
+}

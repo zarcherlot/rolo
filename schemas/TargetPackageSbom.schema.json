@@ -1,0 +1,196 @@
+{
+  "$defs": {
+    "TargetPackageSbomApplicationComponent": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "application",
+          "default": "application",
+          "title": "Type",
+          "type": "string"
+        },
+        "bom-ref": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Bom-Ref",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TargetPackageSbomProperty"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "title": "Properties"
+        }
+      },
+      "required": [
+        "bom-ref",
+        "name",
+        "version",
+        "properties"
+      ],
+      "title": "TargetPackageSbomApplicationComponent",
+      "type": "object"
+    },
+    "TargetPackageSbomFileComponent": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "file",
+          "default": "file",
+          "title": "Type",
+          "type": "string"
+        },
+        "bom-ref": {
+          "maxLength": 4112,
+          "minLength": 1,
+          "title": "Bom-Ref",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "hashes": {
+          "items": {
+            "$ref": "#/$defs/TargetPackageSbomHash"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Hashes",
+          "type": "array"
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TargetPackageSbomProperty"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "title": "Properties"
+        }
+      },
+      "required": [
+        "bom-ref",
+        "name",
+        "hashes",
+        "properties"
+      ],
+      "title": "TargetPackageSbomFileComponent",
+      "type": "object"
+    },
+    "TargetPackageSbomHash": {
+      "additionalProperties": false,
+      "properties": {
+        "alg": {
+          "const": "SHA-256",
+          "default": "SHA-256",
+          "title": "Alg",
+          "type": "string"
+        },
+        "content": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "TargetPackageSbomHash",
+      "type": "object"
+    },
+    "TargetPackageSbomMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/TargetPackageSbomApplicationComponent"
+        }
+      },
+      "required": [
+        "component"
+      ],
+      "title": "TargetPackageSbomMetadata",
+      "type": "object"
+    },
+    "TargetPackageSbomProperty": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "pattern": "^rolo:[a-z0-9-]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "TargetPackageSbomProperty",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Strict deterministic CycloneDX 1.6 inventory for one signed target package.",
+  "properties": {
+    "bomFormat": {
+      "const": "CycloneDX",
+      "default": "CycloneDX",
+      "title": "Bomformat",
+      "type": "string"
+    },
+    "specVersion": {
+      "const": "1.6",
+      "default": "1.6",
+      "title": "Specversion",
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "metadata": {
+      "$ref": "#/$defs/TargetPackageSbomMetadata"
+    },
+    "components": {
+      "items": {
+        "$ref": "#/$defs/TargetPackageSbomFileComponent"
+      },
+      "maxItems": 4096,
+      "minItems": 1,
+      "title": "Components",
+      "type": "array"
+    }
+  },
+  "required": [
+    "metadata",
+    "components"
+  ],
+  "title": "TargetPackageSbom",
+  "type": "object"
+}

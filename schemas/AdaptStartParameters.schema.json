@@ -1,0 +1,159 @@
+{
+  "additionalProperties": false,
+  "description": "Typed execution parameters with an explicit controller/target path location.",
+  "properties": {
+    "schema_version": {
+      "default": "rolo-adapt-start-parameters/v2",
+      "enum": [
+        "rolo-adapt-start-parameters/v1",
+        "rolo-adapt-start-parameters/v2"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "project_root_location": {
+      "default": "CONTROLLER",
+      "enum": [
+        "CONTROLLER",
+        "TARGET"
+      ],
+      "title": "Project Root Location",
+      "type": "string"
+    },
+    "project_root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Project Root",
+      "type": "string"
+    },
+    "urdf_path": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Urdf Path"
+    },
+    "scratch_root": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scratch Root"
+    },
+    "timeout_s": {
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Timeout S",
+      "type": "integer"
+    },
+    "evidence_mode": {
+      "default": "local",
+      "enum": [
+        "local",
+        "remote"
+      ],
+      "title": "Evidence Mode",
+      "type": "string"
+    },
+    "allowed_executables": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Allowed Executables",
+      "type": "array"
+    },
+    "collector_descriptor_path": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Collector Descriptor Path"
+    },
+    "verification_secret_ref": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verification Secret Ref"
+    },
+    "ssh_target": {
+      "anyOf": [
+        {
+          "maxLength": 253,
+          "minLength": 1,
+          "pattern": "^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ssh Target"
+    },
+    "known_hosts_path": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Known Hosts Path"
+    },
+    "collector_config": {
+      "default": ".rolo/config/target-evidence-collector.json",
+      "maxLength": 4096,
+      "minLength": 1,
+      "pattern": "^[/A-Za-z0-9_.-]+$",
+      "title": "Collector Config",
+      "type": "string"
+    },
+    "evidence_timeout_s": {
+      "default": 45.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Evidence Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "project_root",
+    "timeout_s"
+  ],
+  "title": "AdaptStartParameters",
+  "type": "object"
+}

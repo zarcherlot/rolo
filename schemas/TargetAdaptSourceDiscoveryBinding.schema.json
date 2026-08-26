@@ -1,0 +1,92 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable reference to separately approved target source-analysis facts.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-adapt-source-discovery-binding/v1",
+      "default": "rolo-target-adapt-source-discovery-binding/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Artifact Sha256",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "workspace_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Workspace Sha256",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "summary_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Summary Sha256",
+      "type": "string"
+    },
+    "scan_roots": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Scan Roots",
+      "type": "array"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "artifact_sha256",
+    "command_sha256",
+    "target_id",
+    "target_registration_sha256",
+    "workspace_id",
+    "workspace_sha256",
+    "request_sha256",
+    "summary_sha256",
+    "scan_roots",
+    "observed_at",
+    "expires_at"
+  ],
+  "title": "TargetAdaptSourceDiscoveryBinding",
+  "type": "object"
+}

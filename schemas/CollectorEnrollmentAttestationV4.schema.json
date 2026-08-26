@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-enrollment-attestation/v4",
+      "default": "robot-target-enrollment-attestation/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "challenge_nonce": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Challenge Nonce",
+      "type": "string"
+    },
+    "descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Descriptor Sha256",
+      "type": "string"
+    },
+    "key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "signature_base64": {
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "title": "Signature Base64",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "challenge_nonce",
+    "descriptor_sha256",
+    "key_id",
+    "issued_at",
+    "expires_at",
+    "signature_base64"
+  ],
+  "title": "CollectorEnrollmentAttestationV4",
+  "type": "object"
+}

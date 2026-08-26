@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "TargetArchitecture": {
+      "enum": [
+        "x86_64",
+        "aarch64"
+      ],
+      "title": "TargetArchitecture",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Operator-supplied immutable bindings for one real-target acceptance run.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-w10-real-ssh-acceptance-request/v1",
+      "default": "rolo-w10-real-ssh-acceptance-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "environment_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Environment Id",
+      "type": "string"
+    },
+    "expected_architecture": {
+      "$ref": "#/$defs/TargetArchitecture"
+    },
+    "os_image_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Os Image Sha256",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "package_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Package Manifest Sha256",
+      "type": "string"
+    },
+    "acceptance_suite_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Acceptance Suite Sha256",
+      "type": "string"
+    },
+    "test_report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Test Report Sha256",
+      "type": "string"
+    },
+    "timeout_s": {
+      "default": 20.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "target_id",
+    "environment_id",
+    "expected_architecture",
+    "os_image_sha256",
+    "package_id",
+    "package_manifest_sha256",
+    "acceptance_suite_sha256",
+    "test_report_sha256"
+  ],
+  "title": "W10RealSshAcceptanceRequest",
+  "type": "object"
+}

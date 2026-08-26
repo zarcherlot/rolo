@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "ApprovalAction": {
+      "enum": [
+        "ACCEPT_HOST_KEY",
+        "INSTALL_TARGET_RUNTIME",
+        "USE_SUDO",
+        "REPLACE_ENROLLMENT",
+        "UPGRADE_TARGET_RUNTIME",
+        "ACTIVATE_RELEASE",
+        "ROLLBACK_RELEASE",
+        "ROLLBACK_TARGET_RUNTIME",
+        "ROLLBACK_HOST_CONFIGURATION",
+        "START_TARGET_SERVICE",
+        "RECONCILE_TARGET_SERVICE",
+        "STAGE_RELEASE",
+        "DESCRIBE_RELEASE",
+        "READ_PROJECT_EVIDENCE",
+        "ANALYZE_PROJECT_SOURCE",
+        "COLLECT_RUNTIME_EVIDENCE",
+        "RAW_SSH_EXPERT_MODE"
+      ],
+      "title": "ApprovalAction",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-approval-decision/v1",
+      "default": "rolo-approval-decision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "decision_id": {
+      "pattern": "^decision-[0-9a-f]{32}$",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "approval_id": {
+      "pattern": "^approval-[0-9a-f]{32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "action": {
+      "$ref": "#/$defs/ApprovalAction"
+    },
+    "principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Principal",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "APPROVED",
+        "REJECTED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "sanitized_reason": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Sanitized Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "decision_id",
+    "approval_id",
+    "request_sha256",
+    "job_id",
+    "target_id",
+    "command_sha256",
+    "action",
+    "principal",
+    "status",
+    "decided_at",
+    "expires_at",
+    "sanitized_reason"
+  ],
+  "title": "ApprovalDecision",
+  "type": "object"
+}

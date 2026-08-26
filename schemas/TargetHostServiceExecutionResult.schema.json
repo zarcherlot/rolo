@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "TargetHostServiceError": {
+      "enum": [
+        "CANCELLED",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_PLAN_MISMATCH",
+        "INVALID_REQUEST",
+        "PROTOCOL_ERROR",
+        "RUNTIME_MISMATCH",
+        "SUDO_UNAVAILABLE",
+        "SYSTEMD_FAILED"
+      ],
+      "title": "TargetHostServiceError",
+      "type": "string"
+    },
+    "TargetHostServiceOperation": {
+      "enum": [
+        "START",
+        "STATUS"
+      ],
+      "title": "TargetHostServiceOperation",
+      "type": "string"
+    },
+    "TargetHostServiceStatus": {
+      "enum": [
+        "STARTED",
+        "ALREADY_ACTIVE",
+        "ACTIVE",
+        "INACTIVE",
+        "FAILED"
+      ],
+      "title": "TargetHostServiceStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-service-execution-result/v1",
+      "default": "rolo-target-host-service-execution-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/TargetHostServiceOperation"
+    },
+    "executor_kind": {
+      "const": "SSH",
+      "default": "SSH",
+      "title": "Executor Kind",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetHostServiceStatus"
+    },
+    "active": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetHostServiceError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "observed_host_plan_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Host Plan Sha256"
+    },
+    "observed_runtime_manifest_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Runtime Manifest Sha256"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "target_id",
+    "operation",
+    "status",
+    "started_at",
+    "finished_at"
+  ],
+  "title": "TargetHostServiceExecutionResult",
+  "type": "object"
+}

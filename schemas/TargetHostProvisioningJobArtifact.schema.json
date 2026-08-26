@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "TargetHostProvisioningExecutionError": {
+      "enum": [
+        "CANCELLED",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "INVALID_PLAN",
+        "IO_ERROR",
+        "PROTOCOL_ERROR",
+        "SUDO_UNAVAILABLE",
+        "SYSTEMD_FAILED"
+      ],
+      "title": "TargetHostProvisioningExecutionError",
+      "type": "string"
+    },
+    "TargetHostProvisioningExecutionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-host-provisioning-execution-result/v1",
+          "default": "rolo-target-host-provisioning-execution-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "plan_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Sha256",
+          "type": "string"
+        },
+        "executor_kind": {
+          "const": "SSH",
+          "default": "SSH",
+          "title": "Executor Kind",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TargetHostProvisioningExecutionStatus"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetHostProvisioningExecutionError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "current_plan_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Plan Sha256"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/TargetHostProvisioningStepResult"
+          },
+          "maxItems": 32,
+          "title": "Steps",
+          "type": "array"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "plan_sha256",
+        "status",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "TargetHostProvisioningExecutionResult",
+      "type": "object"
+    },
+    "TargetHostProvisioningExecutionStatus": {
+      "enum": [
+        "APPLIED",
+        "ALREADY_CURRENT",
+        "FAILED",
+        "CONFLICT"
+      ],
+      "title": "TargetHostProvisioningExecutionStatus",
+      "type": "string"
+    },
+    "TargetHostProvisioningStepResult": {
+      "additionalProperties": false,
+      "properties": {
+        "step_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "SUCCEEDED",
+            "ALREADY_CURRENT",
+            "FAILED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step_id",
+        "status"
+      ],
+      "title": "TargetHostProvisioningStepResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-provisioning-job-artifact/v1",
+      "default": "rolo-target-host-provisioning-job-artifact/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "enum": [
+            "TARGET_REGISTRATION_CHANGED",
+            "RUNNER_ERROR"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Code"
+    },
+    "execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetHostProvisioningExecutionResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "command_sha256",
+    "spec_sha256",
+    "target_id",
+    "status",
+    "completed_at"
+  ],
+  "title": "TargetHostProvisioningJobArtifact",
+  "type": "object"
+}

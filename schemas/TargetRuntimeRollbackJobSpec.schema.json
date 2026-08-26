@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-runtime-rollback-job-spec/v1",
+      "default": "rolo-target-runtime-rollback-job-spec/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "expected_current_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Current Manifest Sha256",
+      "type": "string"
+    },
+    "expected_previous_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Previous Manifest Sha256",
+      "type": "string"
+    },
+    "release_signing_key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Release Signing Key Id",
+      "type": "string"
+    },
+    "release_signing_public_key_base64": {
+      "maxLength": 32768,
+      "title": "Release Signing Public Key Base64",
+      "type": "string"
+    },
+    "release_signing_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Signing Public Key Sha256",
+      "type": "string"
+    },
+    "approval_id": {
+      "pattern": "^approval-[0-9a-f]{32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approval_action": {
+      "const": "ROLLBACK_TARGET_RUNTIME",
+      "default": "ROLLBACK_TARGET_RUNTIME",
+      "title": "Approval Action",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_expires_at": {
+      "format": "date-time",
+      "title": "Approval Expires At",
+      "type": "string"
+    },
+    "timeout_s": {
+      "default": 300.0,
+      "maximum": 1800.0,
+      "minimum": 10.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "target_id",
+    "target_registration_sha256",
+    "package_id",
+    "expected_current_manifest_sha256",
+    "expected_previous_manifest_sha256",
+    "release_signing_key_id",
+    "release_signing_public_key_base64",
+    "release_signing_public_key_sha256",
+    "approval_id",
+    "approver_principal",
+    "approval_expires_at"
+  ],
+  "title": "TargetRuntimeRollbackJobSpec",
+  "type": "object"
+}

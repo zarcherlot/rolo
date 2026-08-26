@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "AdapterReleaseTransferFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 536870912,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "executable": {
+          "default": false,
+          "title": "Executable",
+          "type": "boolean"
+        },
+        "role": {
+          "$ref": "#/$defs/AdapterReleaseTransferFileRole"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "role"
+      ],
+      "title": "AdapterReleaseTransferFile",
+      "type": "object"
+    },
+    "AdapterReleaseTransferFileRole": {
+      "enum": [
+        "RELEASE",
+        "RUNTIME_CONTEXT"
+      ],
+      "title": "AdapterReleaseTransferFileRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-transfer/v1",
+      "default": "rolo-adapter-release-transfer/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "release_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Sha256",
+      "type": "string"
+    },
+    "bundle_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Manifest Sha256",
+      "type": "string"
+    },
+    "runtime_context_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Context Sha256",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/AdapterReleaseTransferFile"
+      },
+      "maxItems": 4098,
+      "minItems": 2,
+      "title": "Files",
+      "type": "array"
+    },
+    "total_size_bytes": {
+      "maximum": 1073741824,
+      "minimum": 0,
+      "title": "Total Size Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "package_id",
+    "target_id",
+    "robot_id",
+    "release_id",
+    "release_manifest_sha256",
+    "bundle_manifest_sha256",
+    "runtime_context_sha256",
+    "files",
+    "total_size_bytes"
+  ],
+  "title": "AdapterReleaseTransferManifest",
+  "type": "object"
+}

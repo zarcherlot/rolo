@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "TargetInspectionTool": {
+      "enum": [
+        "PLATFORM",
+        "RUNTIME_CAPABILITIES",
+        "PATH_STAT",
+        "EXECUTABLE_HELP"
+      ],
+      "title": "TargetInspectionTool",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-inspection-request/v1",
+      "default": "rolo-target-inspection-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/TargetInspectionTool"
+    },
+    "operand": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operand"
+    },
+    "timeout_s": {
+      "default": 10.0,
+      "maximum": 300.0,
+      "minimum": 0.1,
+      "title": "Timeout S",
+      "type": "number"
+    },
+    "max_stdout_bytes": {
+      "default": 256000,
+      "maximum": 2000000,
+      "minimum": 1,
+      "title": "Max Stdout Bytes",
+      "type": "integer"
+    },
+    "max_stderr_bytes": {
+      "default": 64000,
+      "maximum": 512000,
+      "minimum": 1,
+      "title": "Max Stderr Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "tool"
+  ],
+  "title": "TargetInspectionRequest",
+  "type": "object"
+}

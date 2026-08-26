@@ -8,7 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from rolo.cli import app
-from rolo.core.config import get_settings
+from rolo.core.config import Settings, get_settings
 from rolo.core.models import ProbeResult
 from rolo.stages.adapt.journey import detect_project_evidence
 from rolo.stages.adapt.models import AdaptPlanStatus, AdaptRunSummary
@@ -16,6 +16,12 @@ from rolo.stages.adapt.target_evidence import (
     collect_target_evidence,
     initialize_collector,
     load_collector_state,
+)
+from rolo.targets import (
+    OrchestratorPlacement,
+    TargetProfile,
+    TargetProfileRegistry,
+    TargetTransport,
 )
 
 
@@ -208,6 +214,75 @@ def test_adapt_start_collects_and_binds_fresh_local_target_evidence(
     )
     assert Path(acceptance_payload["artifact"]).is_file()
     assert len(acceptance_payload["sha256"]) == 64
+
+
+def test_adapt_start_prefers_pinned_ed25519_v4_identity_over_legacy_hmac(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_target_probes(monkeypatch)
+    project = _project(tmp_path)
+    config_root = tmp_path / "config"
+    settings = Settings(_env_file=None, rolo_config_dir=config_root)
+    TargetProfileRegistry(settings.target_profile_dir).save_target(
+        TargetProfile(
+            target_id="signed_v4",
+            orchestrator_placement=OrchestratorPlacement.TARGET_LOCAL,
+            transport=TargetTransport.LOCAL,
+            workspace_root="/opt/robot/ws",
+            desired_rolo_version="0.2.0",
+        )
+    )
+    env = {
+        "ROLO_CONFIG_DIR": str(config_root),
+        "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+        "WIKI_INSIGHTS_AGENT_ENABLED": "false",
+        "WIKI_POLISH_ENABLED": "false",
+    }
+    runner = CliRunner()
+    get_settings.cache_clear()
+    enrolled = runner.invoke(
+        app,
+        [
+            "target",
+            "enroll",
+            "--target",
+            "signed_v4",
+            "--robot-id",
+            "signed_v4",
+            "--approval-id",
+            "approval-" + "1" * 32,
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+    result = runner.invoke(
+        app,
+        [
+            "adapt",
+            "start",
+            "--robot",
+            "signed_v4",
+            "--project-root",
+            str(project),
+            "--discover-only",
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert enrolled.exit_code == 0, enrolled.output
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    target = payload["target_evidence"]
+    assert target["signature_version"] == "ED25519_V4"
+    assert target["target_id"] == "signed_v4"
+    assert target["key_id"].startswith("collector-key-")
+    bundle = json.loads(Path(target["bundle_path"]).read_text(encoding="utf-8"))
+    assert bundle["schema_version"] == "robot-target-evidence-bundle/v4"
+    assert "signature_ed25519_base64" in bundle
+    assert not (config_root / "target-evidence/signed_v4.json").exists()
 
 
 def test_adapt_start_remote_mode_requires_a_pinned_deployment(tmp_path: Path) -> None:

@@ -1,0 +1,73 @@
+{
+  "additionalProperties": false,
+  "description": "Path-free projection of the target-validated active runtime index.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-w10-observed-runtime-installation/v1",
+      "default": "rolo-w10-observed-runtime-installation/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "current_package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Current Package Id",
+      "type": "string"
+    },
+    "current_package_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+      "title": "Current Package Version",
+      "type": "string"
+    },
+    "current_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Current Manifest Sha256",
+      "type": "string"
+    },
+    "previous_package_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Package Id"
+    },
+    "previous_package_version": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Package Version"
+    },
+    "previous_manifest_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Manifest Sha256"
+    }
+  },
+  "required": [
+    "current_package_id",
+    "current_package_version",
+    "current_manifest_sha256"
+  ],
+  "title": "W10ObservedRuntimeInstallation",
+  "type": "object"
+}

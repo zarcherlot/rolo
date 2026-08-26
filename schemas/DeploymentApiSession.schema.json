@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Authenticated, secret-free identity projection for deployment-control clients.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-api-session/v1",
+      "default": "rolo-deployment-api-session/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Principal",
+      "type": "string"
+    },
+    "permissions": {
+      "items": {
+        "enum": [
+          "approval:write",
+          "target:write"
+        ],
+        "type": "string"
+      },
+      "title": "Permissions",
+      "type": "array"
+    },
+    "authentication": {
+      "const": "bearer",
+      "default": "bearer",
+      "title": "Authentication",
+      "type": "string"
+    },
+    "token_persistence": {
+      "const": "client-memory-only",
+      "default": "client-memory-only",
+      "title": "Token Persistence",
+      "type": "string"
+    }
+  },
+  "required": [
+    "principal",
+    "permissions"
+  ],
+  "title": "DeploymentApiSession",
+  "type": "object"
+}

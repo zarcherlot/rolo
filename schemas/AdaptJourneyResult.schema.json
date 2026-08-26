@@ -59,6 +59,50 @@
           "default": false,
           "title": "Truncated",
           "type": "boolean"
+        },
+        "observation_mode": {
+          "default": "LOCAL_FILESYSTEM",
+          "enum": [
+            "LOCAL_FILESYSTEM",
+            "TARGET_METADATA"
+          ],
+          "title": "Observation Mode",
+          "type": "string"
+        },
+        "target_workspace_manifest_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Workspace Manifest Sha256"
+        },
+        "target_observed_paths": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Target Observed Paths",
+          "type": "array"
+        },
+        "target_project_root": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Project Root"
         }
       },
       "required": [
@@ -97,6 +141,51 @@
         "collected_at": {
           "title": "Collected At",
           "type": "string"
+        },
+        "signature_version": {
+          "default": "HMAC_V1_V3",
+          "enum": [
+            "HMAC_V1_V3",
+            "ED25519_V4"
+          ],
+          "title": "Signature Version",
+          "type": "string"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Id"
+        },
+        "descriptor_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Descriptor Sha256"
+        },
+        "key_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Id"
         }
       },
       "required": [

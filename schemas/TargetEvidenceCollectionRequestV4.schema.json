@@ -1,0 +1,303 @@
+{
+  "$defs": {
+    "ApprovalAction": {
+      "enum": [
+        "ACCEPT_HOST_KEY",
+        "INSTALL_TARGET_RUNTIME",
+        "USE_SUDO",
+        "REPLACE_ENROLLMENT",
+        "UPGRADE_TARGET_RUNTIME",
+        "ACTIVATE_RELEASE",
+        "ROLLBACK_RELEASE",
+        "ROLLBACK_TARGET_RUNTIME",
+        "ROLLBACK_HOST_CONFIGURATION",
+        "START_TARGET_SERVICE",
+        "RECONCILE_TARGET_SERVICE",
+        "STAGE_RELEASE",
+        "DESCRIBE_RELEASE",
+        "READ_PROJECT_EVIDENCE",
+        "ANALYZE_PROJECT_SOURCE",
+        "COLLECT_RUNTIME_EVIDENCE",
+        "RAW_SSH_EXPERT_MODE"
+      ],
+      "title": "ApprovalAction",
+      "type": "string"
+    },
+    "DeploymentAuthorizationGrant": {
+      "additionalProperties": false,
+      "description": "Short-lived controller capability verified against a target-local key pin.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-grant/v1",
+          "default": "rolo-deployment-authorization-grant/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "authorization_id": {
+          "pattern": "^authorization-[0-9a-f]{32}$",
+          "title": "Authorization Id",
+          "type": "string"
+        },
+        "approval_id": {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "decision_id": {
+          "pattern": "^decision-[0-9a-f]{32}$",
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "command_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Command Sha256",
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/ApprovalAction"
+        },
+        "approver_principal": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Approver Principal",
+          "type": "string"
+        },
+        "request_schema_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$",
+          "title": "Request Schema Version",
+          "type": "string"
+        },
+        "request_payload_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Payload Sha256",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "authorization_id",
+        "approval_id",
+        "decision_id",
+        "job_id",
+        "target_id",
+        "command_sha256",
+        "action",
+        "approver_principal",
+        "request_schema_version",
+        "request_payload_sha256",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "DeploymentAuthorizationGrant",
+      "type": "object"
+    },
+    "DeploymentAuthorizationProof": {
+      "additionalProperties": false,
+      "description": "Portable proof; the verification key is deliberately not part of the request.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-proof/v1",
+          "default": "rolo-deployment-authorization-proof/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "grant": {
+          "$ref": "#/$defs/DeploymentAuthorizationGrant"
+        },
+        "signature": {
+          "$ref": "#/$defs/DeploymentAuthorizationSignature"
+        }
+      },
+      "required": [
+        "grant",
+        "signature"
+      ],
+      "title": "DeploymentAuthorizationProof",
+      "type": "object"
+    },
+    "DeploymentAuthorizationSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-signature/v1",
+          "default": "rolo-deployment-authorization-signature/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "grant_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Grant Sha256",
+          "type": "string"
+        },
+        "signature_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "grant_sha256",
+        "signature_base64"
+      ],
+      "title": "DeploymentAuthorizationSignature",
+      "type": "object"
+    },
+    "TargetEvidenceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "robot-target-evidence-request/v2",
+          "enum": [
+            "robot-target-evidence-request/v1",
+            "robot-target-evidence-request/v2"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "mode": {
+          "const": "READ_ONLY",
+          "default": "READ_ONLY",
+          "title": "Mode",
+          "type": "string"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Nonce",
+          "type": "string"
+        },
+        "requested_layers": {
+          "items": {
+            "enum": [
+              "hw",
+              "linux",
+              "ros"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Requested Layers",
+          "type": "array"
+        },
+        "requested_executable_help_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Requested Executable Help Ids",
+          "type": "array"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "robot_id",
+        "nonce",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "TargetEvidenceRequest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-evidence-collection-request/v4",
+      "default": "rolo-target-evidence-collection-request/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "evidence_request": {
+      "$ref": "#/$defs/TargetEvidenceRequest"
+    },
+    "approval_id": {
+      "anyOf": [
+        {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approval Id"
+    },
+    "authorization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeploymentAuthorizationProof"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "timeout_s": {
+      "default": 45.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "request_id",
+    "target_id",
+    "evidence_request"
+  ],
+  "title": "TargetEvidenceCollectionRequestV4",
+  "type": "object"
+}

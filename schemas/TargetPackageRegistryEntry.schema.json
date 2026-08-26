@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "TargetPackageRegistryRecord": {
+      "additionalProperties": false,
+      "description": "Immutable Controller-side identity for one verified runtime package.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-package-registry-record/v1",
+          "default": "rolo-target-package-registry-record/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "package_ref": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}@[0-9a-f]{64}$",
+          "title": "Package Ref",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Package Version",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Signing Key Id",
+          "type": "string"
+        },
+        "signing_public_key_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Signing Public Key Sha256",
+          "type": "string"
+        },
+        "declared_file_count": {
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Declared File Count",
+          "type": "integer"
+        },
+        "declared_size_bytes": {
+          "minimum": 0,
+          "title": "Declared Size Bytes",
+          "type": "integer"
+        },
+        "imported_at": {
+          "format": "date-time",
+          "title": "Imported At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_ref",
+        "package_id",
+        "package_version",
+        "manifest_sha256",
+        "signing_key_id",
+        "signing_public_key_sha256",
+        "declared_file_count",
+        "declared_size_bytes",
+        "imported_at"
+      ],
+      "title": "TargetPackageRegistryRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-package-registry-entry/v1",
+      "default": "rolo-target-package-registry-entry/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "record": {
+      "$ref": "#/$defs/TargetPackageRegistryRecord"
+    },
+    "package_root": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Package Root",
+      "type": "string"
+    }
+  },
+  "required": [
+    "record",
+    "package_root"
+  ],
+  "title": "TargetPackageRegistryEntry",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "field": {
+      "enum": [
+        "geometry.hard_max_angular_velocity_radps",
+        "geometry.hard_max_linear_velocity_mps"
+      ],
+      "title": "Field",
+      "type": "string"
+    },
+    "value": {
+      "exclusiveMinimum": 0,
+      "title": "Value",
+      "type": "number"
+    },
+    "unit": {
+      "enum": [
+        "m/s",
+        "rad/s"
+      ],
+      "title": "Unit",
+      "type": "string"
+    },
+    "source_kind": {
+      "enum": [
+        "config",
+        "launch"
+      ],
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "source_path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Source Path",
+      "type": "string"
+    },
+    "source_key": {
+      "enum": [
+        "max_angular_speed",
+        "max_angular_velocity",
+        "max_linear_speed",
+        "max_linear_velocity",
+        "max_vel_theta",
+        "max_vel_x"
+      ],
+      "title": "Source Key",
+      "type": "string"
+    },
+    "status": {
+      "const": "DISCOVERED_UNVERIFIED",
+      "default": "DISCOVERED_UNVERIFIED",
+      "title": "Status",
+      "type": "string"
+    },
+    "safety_authority": {
+      "const": "none",
+      "default": "none",
+      "title": "Safety Authority",
+      "type": "string"
+    }
+  },
+  "required": [
+    "field",
+    "value",
+    "unit",
+    "source_kind",
+    "source_path",
+    "source_key"
+  ],
+  "title": "TargetSourceSemanticCandidate",
+  "type": "object"
+}

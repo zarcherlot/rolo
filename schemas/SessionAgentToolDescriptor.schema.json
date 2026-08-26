@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "SessionAgentAction": {
+      "description": "Commands available to the model. Approval decisions are deliberately absent.",
+      "enum": [
+        "LIST_TARGETS",
+        "SHOW_TARGET",
+        "ASSESS_CONNECTION",
+        "SUBMIT_BOOTSTRAP",
+        "SUBMIT_RUNTIME_ROLLBACK",
+        "SUBMIT_PROJECT_EVIDENCE",
+        "SUBMIT_SOURCE_DISCOVERY",
+        "SUBMIT_RUNTIME_EVIDENCE",
+        "SUBMIT_ADAPT",
+        "GET_JOB",
+        "RUN_JOB",
+        "CANCEL_JOB",
+        "SHOW_APPROVAL",
+        "LIST_BLOCKERS"
+      ],
+      "title": "SessionAgentAction",
+      "type": "string"
+    },
+    "SessionAgentToolRisk": {
+      "enum": [
+        "READ_ONLY",
+        "JOB_CREATE",
+        "JOB_EXECUTE",
+        "JOB_CANCEL",
+        "APPROVAL_HANDOFF"
+      ],
+      "title": "SessionAgentToolRisk",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/SessionAgentAction"
+    },
+    "risk": {
+      "$ref": "#/$defs/SessionAgentToolRisk"
+    },
+    "effect": {
+      "enum": [
+        "NONE",
+        "CONTROLLER_STATE",
+        "TARGET_READ",
+        "TARGET_MUTATION"
+      ],
+      "title": "Effect",
+      "type": "string"
+    },
+    "required_permission": {
+      "anyOf": [
+        {
+          "const": "target:write",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Required Permission"
+    },
+    "requires_external_approval": {
+      "default": false,
+      "title": "Requires External Approval",
+      "type": "boolean"
+    },
+    "allowed_parameters": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Allowed Parameters",
+      "type": "array"
+    }
+  },
+  "required": [
+    "action",
+    "risk",
+    "effect"
+  ],
+  "title": "SessionAgentToolDescriptor",
+  "type": "object"
+}

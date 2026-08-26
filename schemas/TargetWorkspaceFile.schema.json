@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "size_bytes": {
+      "maximum": 67108864,
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "executable": {
+      "default": false,
+      "title": "Executable",
+      "type": "boolean"
+    },
+    "role": {
+      "default": "SOURCE",
+      "enum": [
+        "SOURCE",
+        "ARTIFACT",
+        "RUNTIME"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "size_bytes",
+    "sha256"
+  ],
+  "title": "TargetWorkspaceFile",
+  "type": "object"
+}

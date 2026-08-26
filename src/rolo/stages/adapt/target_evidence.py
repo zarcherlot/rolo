@@ -691,15 +691,71 @@ def new_request(
     )
 
 
-def _validate_request(
-    request: TargetEvidenceRequest, state: CollectorState, *, now: datetime
+def validate_target_evidence_request(
+    request: TargetEvidenceRequest,
+    *,
+    robot_id: str,
+    now: datetime,
 ) -> None:
-    if request.robot_id != state.robot_id:
+    if request.robot_id != robot_id:
         raise ValueError("evidence request robot identity mismatch")
     if request.issued_at - MAX_CLOCK_SKEW > now:
         raise ValueError("evidence request was issued in the future")
     if request.expires_at < now:
         raise ValueError("evidence request expired")
+
+
+def collect_target_evidence_payload(
+    request: TargetEvidenceRequest,
+    *,
+    schema_version: str,
+    robot_id: str,
+    collector_id: str,
+    target_host_fingerprint: str,
+    help_executables: Sequence[CollectorHelpExecutable],
+    ros_setup_files: Sequence[RosSetupFileRecord],
+    identity_fields: Mapping[str, object] | None = None,
+    now: datetime | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Collect one canonical unsigned payload shared by HMAC v2 and Ed25519 v4."""
+
+    collected_at = now or _utc_now()
+    validate_target_evidence_request(request, robot_id=robot_id, now=collected_at)
+    ros_environment = resolve_pinned_ros_environment(
+        ros_setup_files,
+        environment=environment,
+    )
+    collectors = {
+        "hw": lambda: HardwareProbe().run(robot_id=robot_id),
+        "linux": lambda: LinuxProbe().run(),
+        "ros": lambda: RosProbe().run(),
+    }
+    with _temporary_environment(ros_environment.environment):
+        probes = {
+            layer: persist_route_evidence(collectors[layer]())
+            for layer in request.requested_layers
+        }
+        help_evidence = _collect_executable_help(request, help_executables)
+    if ros_probe := probes.get("ros"):
+        ros_probe.data["environment_bootstrap"] = ros_environment.model_dump(
+            mode="json",
+            exclude={"environment"},
+        )
+        ros_probe.warnings.extend(ros_environment.warnings)
+    return {
+        "schema_version": schema_version,
+        "robot_id": robot_id,
+        "collector_id": collector_id,
+        "target_host_fingerprint": target_host_fingerprint,
+        **dict(identity_fields or {}),
+        "request_nonce": request.nonce,
+        "requested_layers": request.requested_layers,
+        "access": "READ_ONLY",
+        "collected_at": collected_at.isoformat().replace("+00:00", "Z"),
+        "probes": {key: value.model_dump(mode="json") for key, value in probes.items()},
+        "executable_help": [item.model_dump(mode="json") for item in help_evidence],
+    }
 
 
 def collect_target_evidence(
@@ -709,40 +765,17 @@ def collect_target_evidence(
     now: datetime | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> TargetEvidenceBundle:
-    collected_at = now or _utc_now()
-    _validate_request(request, state, now=collected_at)
-    ros_environment = resolve_pinned_ros_environment(
-        state.ros_setup_files,
+    base = collect_target_evidence_payload(
+        request,
+        schema_version="robot-target-evidence-bundle/v2",
+        robot_id=state.robot_id,
+        collector_id=state.collector_id,
+        target_host_fingerprint=state.target_host_fingerprint,
+        help_executables=state.help_executables,
+        ros_setup_files=state.ros_setup_files,
+        now=now,
         environment=environment,
     )
-    collectors = {
-        "hw": lambda: HardwareProbe().run(robot_id=state.robot_id),
-        "linux": lambda: LinuxProbe().run(),
-        "ros": lambda: RosProbe().run(),
-    }
-    with _temporary_environment(ros_environment.environment):
-        probes = {
-            layer: persist_route_evidence(collectors[layer]()) for layer in request.requested_layers
-        }
-        help_evidence = _collect_executable_help(request, state)
-    if ros_probe := probes.get("ros"):
-        ros_probe.data["environment_bootstrap"] = ros_environment.model_dump(
-            mode="json",
-            exclude={"environment"},
-        )
-        ros_probe.warnings.extend(ros_environment.warnings)
-    base = {
-        "schema_version": "robot-target-evidence-bundle/v2",
-        "robot_id": state.robot_id,
-        "collector_id": state.collector_id,
-        "target_host_fingerprint": state.target_host_fingerprint,
-        "request_nonce": request.nonce,
-        "requested_layers": request.requested_layers,
-        "access": "READ_ONLY",
-        "collected_at": collected_at.isoformat().replace("+00:00", "Z"),
-        "probes": {key: value.model_dump(mode="json") for key, value in probes.items()},
-        "executable_help": [item.model_dump(mode="json") for item in help_evidence],
-    }
     payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
     signature = hmac.new(
         _load_secret(Path(state.secret_path)), payload_sha256.encode("ascii"), hashlib.sha256
@@ -768,9 +801,9 @@ def _temporary_environment(environment: Mapping[str, str]):
 
 def _collect_executable_help(
     request: TargetEvidenceRequest,
-    state: CollectorState,
+    help_executables: Sequence[CollectorHelpExecutable],
 ) -> list[TargetExecutableHelpEvidence]:
-    allowed = {item.executable_id: item for item in state.help_executables}
+    allowed = {item.executable_id: item for item in help_executables}
     unknown = sorted(set(request.requested_executable_help_ids) - set(allowed))
     if unknown:
         raise ValueError(f"requested executable help IDs are not allowlisted: {unknown}")

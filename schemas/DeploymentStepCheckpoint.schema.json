@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "DeploymentRemoteState": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "CONFIRMED",
+        "UNKNOWN"
+      ],
+      "title": "DeploymentRemoteState",
+      "type": "string"
+    },
+    "DeploymentStepStatus": {
+      "enum": [
+        "RUNNING",
+        "COMPLETE",
+        "FAILED",
+        "UNKNOWN"
+      ],
+      "title": "DeploymentStepStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-step-checkpoint/v1",
+      "default": "rolo-deployment-step-checkpoint/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "step_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Step Id",
+      "type": "string"
+    },
+    "attempt": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Attempt",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/DeploymentStepStatus"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "remote_state": {
+      "$ref": "#/$defs/DeploymentRemoteState",
+      "default": "NOT_APPLICABLE"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "outcome_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outcome Sha256"
+    },
+    "artifact_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Artifact Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "step_id",
+    "attempt",
+    "status",
+    "command_sha256",
+    "started_at",
+    "updated_at"
+  ],
+  "title": "DeploymentStepCheckpoint",
+  "type": "object"
+}

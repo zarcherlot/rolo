@@ -76,6 +76,8 @@ class DiscoveryModeLevel(str, Enum):
     ARTIFACT_DOC = "ARTIFACT_DOC"
     DOC_PROBE = "DOC_PROBE"
     BINARY_ONLY = "BINARY_ONLY"
+    TARGET_METADATA = "TARGET_METADATA"
+    TARGET_SOURCE = "TARGET_SOURCE"
 
 
 class Confidence(str, Enum):
@@ -117,6 +119,14 @@ class ActiveDiscoveryInputs(BaseModel):
     executables: list[Path] = Field(default_factory=list)
     document_roots: list[Path] = Field(default_factory=list)
     launch_roots: list[Path] = Field(default_factory=list)
+    target_workspace_manifest_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    target_source_summary_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
     active_probe: ActiveProbeMode = ActiveProbeMode.NONE
 
     @model_validator(mode="after")
@@ -128,11 +138,14 @@ class ActiveDiscoveryInputs(BaseModel):
             or self.executables
             or self.document_roots
             or self.launch_roots
+            or self.target_workspace_manifest_sha256 is not None
+            or self.target_source_summary_sha256 is not None
             or self.active_probe == ActiveProbeMode.RUNTIME_READONLY
         ):
             raise ValueError(
                 "at least one --build-root, --install-root, --executable, --doc-root, "
-                "--launch-root, --source-root, or --active-probe runtime-readonly is required"
+                "--launch-root, --source-root, target workspace manifest, or "
+                "--active-probe runtime-readonly is required"
             )
         return self
 
@@ -884,7 +897,19 @@ def _mode(
     executable_artifacts: list[Path],
     *,
     probe_observed: bool,
+    target_manifest_observed: bool,
+    target_source_observed: bool,
 ) -> DiscoveryMode:
+    if target_source_observed:
+        return DiscoveryMode(
+            level=DiscoveryModeLevel.TARGET_SOURCE,
+            confidence=Confidence.LOW,
+            reason=(
+                "a proof-bound target source parser supplied bounded structured facts; "
+                "source text, executable artifacts, documentation text, and runtime probes "
+                "were not supplied"
+            ),
+        )
     if executable_artifacts and docs:
         return DiscoveryMode(
             level=DiscoveryModeLevel.ARTIFACT_DOC,
@@ -922,6 +947,15 @@ def _mode(
                 if docs
                 else "probe evidence is primary; no executable build/deployed artifact or "
                 "documentation was found and source is supporting only"
+            ),
+        )
+    if target_manifest_observed:
+        return DiscoveryMode(
+            level=DiscoveryModeLevel.TARGET_METADATA,
+            confidence=Confidence.LOW,
+            reason=(
+                "a target-observed workspace manifest is primary; file contents, "
+                "executable artifacts, documentation, and runtime probes were not supplied"
             ),
         )
     source_note = (
@@ -1781,6 +1815,30 @@ class ActiveDiscoveryAnalyzer:
                 if runtime_observed
                 else 0,
             ),
+            "target_workspace_metadata": CoverageRecord(
+                status=(
+                    CoverageStatus.OBSERVED
+                    if self.inputs.target_workspace_manifest_sha256 is not None
+                    else CoverageStatus.NOT_PROVIDED
+                ),
+                records=(
+                    1
+                    if self.inputs.target_workspace_manifest_sha256 is not None
+                    else 0
+                ),
+            ),
+            "target_source_analysis": CoverageRecord(
+                status=(
+                    CoverageStatus.OBSERVED
+                    if self.inputs.target_source_summary_sha256 is not None
+                    else CoverageStatus.NOT_PROVIDED
+                ),
+                records=(
+                    len(usable_projects)
+                    if self.inputs.target_source_summary_sha256 is not None
+                    else 0
+                ),
+            ),
         }
         probe_observed = runtime_observed or any(
             result.status == HelpProbeStatus.SUCCEEDED for result in help_results
@@ -1790,6 +1848,12 @@ class ActiveDiscoveryAnalyzer:
             list(dict.fromkeys([*doc_files, *structured_document_files, *launch_files])),
             all_discovered_paths,
             probe_observed=probe_observed,
+            target_manifest_observed=(
+                self.inputs.target_workspace_manifest_sha256 is not None
+            ),
+            target_source_observed=(
+                self.inputs.target_source_summary_sha256 is not None
+            ),
         )
         all_source_interfaces = {
             _source_interface_key(interface): interface

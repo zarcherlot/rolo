@@ -1,0 +1,352 @@
+{
+  "$defs": {
+    "AdapterReleaseStageExecutionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-adapter-release-stage-execution-result/v1",
+          "default": "rolo-adapter-release-stage-execution-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Signing Key Id",
+          "type": "string"
+        },
+        "signing_public_key_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Signing Public Key Sha256",
+          "type": "string"
+        },
+        "executor_kind": {
+          "$ref": "#/$defs/TargetExecutorKind"
+        },
+        "execution_status": {
+          "$ref": "#/$defs/TargetExecutionStatus"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetExecutionErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterReleaseStageResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "robot_id",
+        "release_id",
+        "package_id",
+        "manifest_sha256",
+        "signing_key_id",
+        "signing_public_key_sha256",
+        "executor_kind",
+        "execution_status"
+      ],
+      "title": "AdapterReleaseStageExecutionResult",
+      "type": "object"
+    },
+    "AdapterReleaseStageResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-adapter-release-stage-result/v1",
+          "default": "rolo-adapter-release-stage-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Signing Key Id",
+          "type": "string"
+        },
+        "signing_public_key_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Signing Public Key Sha256",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/AdapterReleaseStageStatus"
+        },
+        "staged_root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Staged Root",
+          "type": "string"
+        },
+        "release_root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Release Root",
+          "type": "string"
+        },
+        "runtime_context_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Runtime Context Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "robot_id",
+        "release_id",
+        "package_id",
+        "manifest_sha256",
+        "signing_key_id",
+        "signing_public_key_sha256",
+        "status",
+        "staged_root",
+        "release_root",
+        "runtime_context_path"
+      ],
+      "title": "AdapterReleaseStageResult",
+      "type": "object"
+    },
+    "AdapterReleaseStageStatus": {
+      "enum": [
+        "STAGED",
+        "ALREADY_STAGED"
+      ],
+      "title": "AdapterReleaseStageStatus",
+      "type": "string"
+    },
+    "AdapterReleaseUploadResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-adapter-release-upload-result/v1",
+          "default": "rolo-adapter-release-upload-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "files_total": {
+          "maximum": 4100,
+          "minimum": 3,
+          "title": "Files Total",
+          "type": "integer"
+        },
+        "bytes_total": {
+          "maximum": 1074741824,
+          "minimum": 0,
+          "title": "Bytes Total",
+          "type": "integer"
+        },
+        "bytes_uploaded": {
+          "minimum": 0,
+          "title": "Bytes Uploaded",
+          "type": "integer"
+        },
+        "bytes_resumed": {
+          "minimum": 0,
+          "title": "Bytes Resumed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "package_id",
+        "release_id",
+        "manifest_sha256",
+        "files_total",
+        "bytes_total",
+        "bytes_uploaded",
+        "bytes_resumed"
+      ],
+      "title": "AdapterReleaseUploadResult",
+      "type": "object"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-deployment-result/v1",
+      "default": "rolo-adapter-release-deployment-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "release_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "signing_key_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Signing Key Id",
+      "type": "string"
+    },
+    "signing_public_key_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Signing Public Key Sha256",
+      "type": "string"
+    },
+    "upload": {
+      "$ref": "#/$defs/AdapterReleaseUploadResult"
+    },
+    "execution": {
+      "$ref": "#/$defs/AdapterReleaseStageExecutionResult"
+    }
+  },
+  "required": [
+    "target_id",
+    "robot_id",
+    "release_id",
+    "signing_key_id",
+    "signing_public_key_sha256",
+    "upload",
+    "execution"
+  ],
+  "title": "AdapterReleaseDeploymentResult",
+  "type": "object"
+}

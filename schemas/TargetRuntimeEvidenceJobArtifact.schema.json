@@ -1,0 +1,670 @@
+{
+  "$defs": {
+    "DiscoveryStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "UNAVAILABLE",
+        "FAILED"
+      ],
+      "title": "DiscoveryStatus",
+      "type": "string"
+    },
+    "HelpProbeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/HelpProbeStatus",
+          "default": "NOT_PROBED"
+        },
+        "output_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Ref"
+        },
+        "timeout_s": {
+          "default": 5.0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "output_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Bytes",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "usage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Usage",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subcommands",
+          "type": "array"
+        }
+      },
+      "title": "HelpProbeResult",
+      "type": "object"
+    },
+    "HelpProbeStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "TIMED_OUT",
+        "OUTPUT_LIMIT",
+        "NOT_PROBED",
+        "BLOCKED_BY_POLICY"
+      ],
+      "title": "HelpProbeStatus",
+      "type": "string"
+    },
+    "ProbeResult": {
+      "properties": {
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiscoveryStatus"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "status"
+      ],
+      "title": "ProbeResult",
+      "type": "object"
+    },
+    "TargetEvidenceBundleV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "robot-target-evidence-bundle/v4",
+          "default": "robot-target-evidence-bundle/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "Collector Id",
+          "type": "string"
+        },
+        "target_host_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Host Fingerprint",
+          "type": "string"
+        },
+        "descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Descriptor Sha256",
+          "type": "string"
+        },
+        "configuration_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Sha256",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "request_nonce": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Request Nonce",
+          "type": "string"
+        },
+        "requested_layers": {
+          "items": {
+            "enum": [
+              "hw",
+              "linux",
+              "ros"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Requested Layers",
+          "type": "array"
+        },
+        "access": {
+          "const": "READ_ONLY",
+          "default": "READ_ONLY",
+          "title": "Access",
+          "type": "string"
+        },
+        "collected_at": {
+          "format": "date-time",
+          "title": "Collected At",
+          "type": "string"
+        },
+        "probes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProbeResult"
+          },
+          "title": "Probes",
+          "type": "object"
+        },
+        "executable_help": {
+          "items": {
+            "$ref": "#/$defs/TargetExecutableHelpEvidence"
+          },
+          "maxItems": 4,
+          "title": "Executable Help",
+          "type": "array"
+        },
+        "payload_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Payload Sha256",
+          "type": "string"
+        },
+        "signature_ed25519_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature Ed25519 Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "robot_id",
+        "collector_id",
+        "target_host_fingerprint",
+        "descriptor_sha256",
+        "configuration_sha256",
+        "key_id",
+        "request_nonce",
+        "requested_layers",
+        "collected_at",
+        "probes",
+        "payload_sha256",
+        "signature_ed25519_base64"
+      ],
+      "title": "TargetEvidenceBundleV4",
+      "type": "object"
+    },
+    "TargetEvidenceCollectionResultV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-evidence-collection-result/v4",
+          "default": "rolo-target-evidence-collection-result/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "executor_kind": {
+          "$ref": "#/$defs/TargetExecutorKind"
+        },
+        "execution_status": {
+          "$ref": "#/$defs/TargetExecutionStatus"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetExecutionErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bundle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetEvidenceBundleV4"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "robot_id",
+        "executor_kind",
+        "execution_status"
+      ],
+      "title": "TargetEvidenceCollectionResultV4",
+      "type": "object"
+    },
+    "TargetEvidenceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "robot-target-evidence-request/v2",
+          "enum": [
+            "robot-target-evidence-request/v1",
+            "robot-target-evidence-request/v2"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "mode": {
+          "const": "READ_ONLY",
+          "default": "READ_ONLY",
+          "title": "Mode",
+          "type": "string"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Nonce",
+          "type": "string"
+        },
+        "requested_layers": {
+          "items": {
+            "enum": [
+              "hw",
+              "linux",
+              "ros"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Requested Layers",
+          "type": "array"
+        },
+        "requested_executable_help_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Requested Executable Help Ids",
+          "type": "array"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "robot_id",
+        "nonce",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "TargetEvidenceRequest",
+      "type": "object"
+    },
+    "TargetExecutableHelpEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "pattern": "^target-exe-[0-9a-f]{24}$",
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "executable_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Executable Sha256",
+          "type": "string"
+        },
+        "help_probe": {
+          "$ref": "#/$defs/HelpProbeResult"
+        },
+        "output_text": {
+          "maxLength": 250000,
+          "title": "Output Text",
+          "type": "string"
+        },
+        "output_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Output Sha256",
+          "type": "string"
+        },
+        "usage": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Usage",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Parameters",
+          "type": "array"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Subcommands",
+          "type": "array"
+        }
+      },
+      "required": [
+        "executable_id",
+        "path",
+        "executable_sha256",
+        "help_probe",
+        "output_text",
+        "output_sha256"
+      ],
+      "title": "TargetExecutableHelpEvidence",
+      "type": "object"
+    },
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    },
+    "TargetRuntimeEvidenceJobArtifactStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetRuntimeEvidenceJobArtifactStatus",
+      "type": "string"
+    },
+    "TargetRuntimeEvidenceJobFailureCode": {
+      "enum": [
+        "TARGET_REGISTRATION_CHANGED",
+        "COLLECTOR_PIN_CHANGED",
+        "EXECUTION_FAILED",
+        "VERIFICATION_FAILED",
+        "RUNNER_ERROR"
+      ],
+      "title": "TargetRuntimeEvidenceJobFailureCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-runtime-evidence-job-artifact/v1",
+      "default": "rolo-target-runtime-evidence-job-artifact/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "observed_target_registration_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Target Registration Sha256"
+    },
+    "collector_descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Collector Descriptor Sha256",
+      "type": "string"
+    },
+    "observed_collector_descriptor_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Collector Descriptor Sha256"
+    },
+    "evidence_request": {
+      "$ref": "#/$defs/TargetEvidenceRequest"
+    },
+    "authorized_request_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authorized Request Sha256"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetRuntimeEvidenceJobArtifactStatus"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetRuntimeEvidenceJobFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetEvidenceCollectionResultV4"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "verified_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified At"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "command_sha256",
+    "spec_sha256",
+    "target_id",
+    "target_registration_sha256",
+    "collector_descriptor_sha256",
+    "evidence_request",
+    "status",
+    "completed_at"
+  ],
+  "title": "TargetRuntimeEvidenceJobArtifact",
+  "type": "object"
+}

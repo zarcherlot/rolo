@@ -9,6 +9,10 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings, load_yaml
 from rolo.core.models import ProbeResult, RobotCapability
 from rolo.core.registry import RobotRegistry
+from rolo.stages.adapt.active_discovery import (
+    ActiveDiscoveryInputs,
+    DiscoveryModeLevel,
+)
 from rolo.stages.adapt.discovery import (
     UBUNTU_ROS_DEFAULTS,
     ApplicationProbe,
@@ -26,6 +30,7 @@ from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.operation_registry import materialize_active_catalog
 from rolo.stages.adapt.semantic_mapping import SemanticOperationRule
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
+from rolo.targets import TargetSourceProjectSummary
 
 
 def test_linux_hardware_probe_degrades_when_bus_enumeration_is_unavailable(
@@ -465,6 +470,113 @@ def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Pa
     run_path.write_text(run_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(ValueError, match="hash mismatch"):
         load_latest_report(artifacts.root, "demo_diff")
+
+
+def test_discovery_accepts_target_manifest_without_controller_source_roots(
+    tmp_path: Path,
+) -> None:
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
+    registry.load()
+    artifacts = ArtifactStore(tmp_path / "artifacts")
+
+    report, run_path = DiscoveryService(artifacts).run(
+        robot=registry.get("demo_diff"),
+        active_inputs=ActiveDiscoveryInputs(
+            target_workspace_manifest_sha256="a" * 64,
+        ),
+    )
+    active = json.loads(
+        (run_path.parent / "active_discovery_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert report.status.value != "FAILED"
+    assert active["inputs"]["target_workspace_manifest_sha256"] == "a" * 64
+    assert active["inputs"]["source_roots"] == []
+    assert active["discovery_mode"]["level"] == DiscoveryModeLevel.TARGET_METADATA
+    assert active["inputs"]["target_source_summary_sha256"] is None
+    assert active["coverage"]["target_source_analysis"]["status"] == "NOT_PROVIDED"
+    assert active["coverage"]["target_workspace_metadata"] == {
+        "status": "OBSERVED",
+        "records": 1,
+        "truncated": False,
+        "warnings": [],
+    }
+    assert report.probes["application"].data["projects"] == []
+
+
+def test_discovery_consumes_verified_target_source_summary_without_local_scan(
+    tmp_path: Path,
+) -> None:
+    registry = RobotRegistry(Path("tests/fixtures/robots"))
+    registry.load()
+    project = TargetSourceProjectSummary(
+        root=".",
+        file_count_scanned=4,
+        scan_truncated=False,
+        build_systems=["python/pyproject"],
+        packages=["remote-driver"],
+        declared_dependencies=["pyserial"],
+        languages=["python"],
+        manifest_digests={"pyproject.toml": "b" * 64},
+        source_revision="c" * 40,
+    )
+    target_probe = ProbeResult(
+        layer="application",
+        status="SUCCEEDED",
+        data={
+            "projects": [project.model_dump(mode="json")],
+            "route_evidence": [],
+            "target_source_discovery": {
+                "target_id": "demo_diff",
+                "robot_id": "demo_diff",
+                "workspace_id": "workspace-demo-diff",
+                "request_sha256": "d" * 64,
+                "summary_sha256": "e" * 64,
+                "observed_at": "2026-08-26T09:00:00Z",
+            },
+        },
+    )
+
+    report, run_path = DiscoveryService(ArtifactStore(tmp_path / "artifacts")).run(
+        robot=registry.get("demo_diff"),
+        active_inputs=ActiveDiscoveryInputs(
+            target_workspace_manifest_sha256="a" * 64,
+        ),
+        target_application_probe=target_probe,
+    )
+    active = json.loads(
+        (run_path.parent / "active_discovery_report.json").read_text(encoding="utf-8")
+    )
+
+    assert report.status.value != "FAILED"
+    assert report.probes["application"].data["projects"][0]["packages"] == [
+        "remote-driver"
+    ]
+    assert report.source_roots == []
+    assert active["discovery_mode"]["level"] == DiscoveryModeLevel.TARGET_SOURCE
+    assert active["inputs"]["target_source_summary_sha256"] == "e" * 64
+    assert active["coverage"]["target_source_analysis"]["status"] == "OBSERVED"
+
+    with pytest.raises(ValueError, match="robot identity"):
+        DiscoveryService(ArtifactStore(tmp_path / "other-artifacts")).run(
+            robot=registry.get("demo_diff"),
+            active_inputs=ActiveDiscoveryInputs(
+                target_workspace_manifest_sha256="a" * 64,
+            ),
+            target_application_probe=target_probe.model_copy(
+                update={
+                    "data": {
+                        **target_probe.data,
+                        "target_source_discovery": {
+                            **target_probe.data["target_source_discovery"],
+                            "robot_id": "other-robot",
+                        },
+                    }
+                }
+            ),
+        )
 
 
 def test_unresolved_urdf_semantics_flow_into_debug_and_test_inputs(tmp_path: Path) -> None:

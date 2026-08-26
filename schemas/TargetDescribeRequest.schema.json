@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-describe-request/v1",
+      "default": "rolo-target-describe-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Collector Id",
+      "type": "string"
+    },
+    "release_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Sha256",
+      "type": "string"
+    },
+    "bundle_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Manifest Sha256",
+      "type": "string"
+    },
+    "runtime_context_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Context Sha256",
+      "type": "string"
+    },
+    "sandbox_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sandbox Profile Sha256",
+      "type": "string"
+    },
+    "nonce": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Nonce",
+      "type": "string"
+    },
+    "timeout_s": {
+      "default": 10.0,
+      "maximum": 30.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "target_id",
+    "robot_id",
+    "collector_id",
+    "release_id",
+    "release_manifest_sha256",
+    "bundle_manifest_sha256",
+    "runtime_context_sha256",
+    "sandbox_profile_sha256",
+    "nonce",
+    "issued_at",
+    "expires_at"
+  ],
+  "title": "TargetDescribeRequest",
+  "type": "object"
+}

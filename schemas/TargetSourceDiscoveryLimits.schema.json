@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "description": "The exact v1 parser budget; literals prevent a request from overstating limits.",
+  "properties": {
+    "max_projects": {
+      "const": 16,
+      "default": 16,
+      "title": "Max Projects",
+      "type": "integer"
+    },
+    "max_files_per_project": {
+      "const": 10000,
+      "default": 10000,
+      "title": "Max Files Per Project",
+      "type": "integer"
+    },
+    "max_file_read_bytes": {
+      "const": 2000000,
+      "default": 2000000,
+      "title": "Max File Read Bytes",
+      "type": "integer"
+    },
+    "max_items_per_collection": {
+      "const": 1000,
+      "default": 1000,
+      "title": "Max Items Per Collection",
+      "type": "integer"
+    }
+  },
+  "title": "TargetSourceDiscoveryLimits",
+  "type": "object"
+}

@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-session-agent-turn-request/v2",
+      "default": "rolo-session-agent-turn-request/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 16384,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "allowed_target_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "title": "Allowed Target Ids",
+      "type": "array"
+    },
+    "max_tool_calls": {
+      "default": 4,
+      "maximum": 8,
+      "minimum": 1,
+      "title": "Max Tool Calls",
+      "type": "integer"
+    },
+    "timeout_s": {
+      "default": 120,
+      "maximum": 1800,
+      "minimum": 10,
+      "title": "Timeout S",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "message",
+    "allowed_target_ids"
+  ],
+  "title": "SessionAgentTurnRequest",
+  "type": "object"
+}

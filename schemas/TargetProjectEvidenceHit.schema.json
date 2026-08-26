@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "TargetProjectEvidenceKind": {
+      "enum": [
+        "BUILD_METADATA",
+        "RUNTIME_METADATA",
+        "SOURCE_ENTRYPOINT",
+        "ROS_METADATA",
+        "DOCUMENTATION"
+      ],
+      "title": "TargetProjectEvidenceKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/TargetProjectEvidenceKind"
+    },
+    "role": {
+      "enum": [
+        "SOURCE",
+        "ARTIFACT",
+        "RUNTIME"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "kind",
+    "role"
+  ],
+  "title": "TargetProjectEvidenceHit",
+  "type": "object"
+}

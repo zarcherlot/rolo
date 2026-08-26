@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "TargetHostServiceOperation": {
+      "enum": [
+        "START",
+        "STATUS"
+      ],
+      "title": "TargetHostServiceOperation",
+      "type": "string"
+    },
+    "TargetHostServiceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-host-service-request/v1",
+          "default": "rolo-target-host-service-request/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/TargetHostServiceOperation"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "expected_host_plan_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Expected Host Plan Sha256",
+          "type": "string"
+        },
+        "expected_runtime_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Expected Runtime Manifest Sha256",
+          "type": "string"
+        },
+        "unit_name": {
+          "pattern": "^rolo-bootstrap-agentd@[A-Za-z0-9._-]+\\.service$",
+          "title": "Unit Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "operation",
+        "target_id",
+        "expected_host_plan_sha256",
+        "expected_runtime_manifest_sha256",
+        "unit_name"
+      ],
+      "title": "TargetHostServiceRequest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-service-reconciliation-job-spec/v1",
+      "default": "rolo-target-host-service-reconciliation-job-spec/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "original_job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Original Job Id",
+      "type": "string"
+    },
+    "original_command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Original Command Sha256",
+      "type": "string"
+    },
+    "original_spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Original Spec Sha256",
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/$defs/TargetHostServiceRequest"
+    },
+    "approval_id": {
+      "pattern": "^approval-[0-9a-f]{32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_expires_at": {
+      "format": "date-time",
+      "title": "Approval Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "target_registration_sha256",
+    "original_job_id",
+    "original_command_sha256",
+    "original_spec_sha256",
+    "request",
+    "approval_id",
+    "approver_principal",
+    "approval_expires_at"
+  ],
+  "title": "TargetHostServiceReconciliationJobSpec",
+  "type": "object"
+}

@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-provisioning-job-submission/v1",
+      "default": "rolo-target-host-provisioning-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "bootstrap_public_key": {
+      "maxLength": 16384,
+      "minLength": 1,
+      "title": "Bootstrap Public Key",
+      "type": "string"
+    },
+    "runtime_public_key": {
+      "maxLength": 16384,
+      "minLength": 1,
+      "title": "Runtime Public Key",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    },
+    "expected_current_plan_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Current Plan Sha256"
+    }
+  },
+  "required": [
+    "bootstrap_public_key",
+    "runtime_public_key",
+    "approver_principal"
+  ],
+  "title": "TargetHostProvisioningJobSubmission",
+  "type": "object"
+}

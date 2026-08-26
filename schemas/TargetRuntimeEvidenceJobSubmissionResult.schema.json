@@ -1,0 +1,919 @@
+{
+  "$defs": {
+    "ApprovalAction": {
+      "enum": [
+        "ACCEPT_HOST_KEY",
+        "INSTALL_TARGET_RUNTIME",
+        "USE_SUDO",
+        "REPLACE_ENROLLMENT",
+        "UPGRADE_TARGET_RUNTIME",
+        "ACTIVATE_RELEASE",
+        "ROLLBACK_RELEASE",
+        "ROLLBACK_TARGET_RUNTIME",
+        "ROLLBACK_HOST_CONFIGURATION",
+        "START_TARGET_SERVICE",
+        "RECONCILE_TARGET_SERVICE",
+        "STAGE_RELEASE",
+        "DESCRIBE_RELEASE",
+        "READ_PROJECT_EVIDENCE",
+        "ANALYZE_PROJECT_SOURCE",
+        "COLLECT_RUNTIME_EVIDENCE",
+        "RAW_SSH_EXPERT_MODE"
+      ],
+      "title": "ApprovalAction",
+      "type": "string"
+    },
+    "ApprovalRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-approval-request/v1",
+          "default": "rolo-approval-request/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "approval_id": {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "command_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Command Sha256",
+          "type": "string"
+        },
+        "authorization_scope_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Scope Sha256"
+        },
+        "requester_principal": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Requester Principal",
+          "type": "string"
+        },
+        "approver_principal": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Approver Principal",
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/ApprovalAction"
+        },
+        "risk": {
+          "enum": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "sanitized_summary": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Sanitized Summary",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ApprovalStatus",
+          "default": "PENDING"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id",
+        "job_id",
+        "target_id",
+        "command_sha256",
+        "requester_principal",
+        "approver_principal",
+        "action",
+        "risk",
+        "sanitized_summary",
+        "requested_at",
+        "expires_at"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
+    "ApprovalStatus": {
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "EXPIRED"
+      ],
+      "title": "ApprovalStatus",
+      "type": "string"
+    },
+    "DeploymentAuthorizationGrant": {
+      "additionalProperties": false,
+      "description": "Short-lived controller capability verified against a target-local key pin.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-grant/v1",
+          "default": "rolo-deployment-authorization-grant/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "authorization_id": {
+          "pattern": "^authorization-[0-9a-f]{32}$",
+          "title": "Authorization Id",
+          "type": "string"
+        },
+        "approval_id": {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "decision_id": {
+          "pattern": "^decision-[0-9a-f]{32}$",
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "command_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Command Sha256",
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/ApprovalAction"
+        },
+        "approver_principal": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Approver Principal",
+          "type": "string"
+        },
+        "request_schema_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$",
+          "title": "Request Schema Version",
+          "type": "string"
+        },
+        "request_payload_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Payload Sha256",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "authorization_id",
+        "approval_id",
+        "decision_id",
+        "job_id",
+        "target_id",
+        "command_sha256",
+        "action",
+        "approver_principal",
+        "request_schema_version",
+        "request_payload_sha256",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "DeploymentAuthorizationGrant",
+      "type": "object"
+    },
+    "DeploymentAuthorizationProof": {
+      "additionalProperties": false,
+      "description": "Portable proof; the verification key is deliberately not part of the request.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-proof/v1",
+          "default": "rolo-deployment-authorization-proof/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "grant": {
+          "$ref": "#/$defs/DeploymentAuthorizationGrant"
+        },
+        "signature": {
+          "$ref": "#/$defs/DeploymentAuthorizationSignature"
+        }
+      },
+      "required": [
+        "grant",
+        "signature"
+      ],
+      "title": "DeploymentAuthorizationProof",
+      "type": "object"
+    },
+    "DeploymentAuthorizationSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-authorization-signature/v1",
+          "default": "rolo-deployment-authorization-signature/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "grant_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Grant Sha256",
+          "type": "string"
+        },
+        "signature_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "grant_sha256",
+        "signature_base64"
+      ],
+      "title": "DeploymentAuthorizationSignature",
+      "type": "object"
+    },
+    "DeploymentCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-command/v1",
+          "default": "rolo-deployment-command/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "command": {
+          "$ref": "#/$defs/DeploymentCommandKind"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "workspace_root": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Root"
+        },
+        "active_probe": {
+          "default": "runtime-readonly",
+          "enum": [
+            "none",
+            "help",
+            "runtime-readonly"
+          ],
+          "title": "Active Probe",
+          "type": "string"
+        },
+        "run_adapter_agent": {
+          "default": true,
+          "title": "Run Adapter Agent",
+          "type": "boolean"
+        },
+        "requested_by": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Requested By",
+          "type": "string"
+        },
+        "interaction_surface": {
+          "$ref": "#/$defs/InteractionSurface"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 8,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$",
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "parameters_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameters Sha256"
+        }
+      },
+      "required": [
+        "command",
+        "target_id",
+        "requested_by",
+        "interaction_surface",
+        "idempotency_key"
+      ],
+      "title": "DeploymentCommand",
+      "type": "object"
+    },
+    "DeploymentCommandKind": {
+      "enum": [
+        "ASSESS_CONNECTION",
+        "PROVISION_HOST",
+        "RECONCILE_HOST",
+        "ROLLBACK_HOST",
+        "START_TARGET_SERVICE",
+        "RECONCILE_TARGET_SERVICE",
+        "BOOTSTRAP",
+        "ENROLL",
+        "COLLECT_EVIDENCE",
+        "ADAPT",
+        "BOOTSTRAP_AND_ADAPT",
+        "UPGRADE",
+        "ROTATE_ENROLLMENT",
+        "ROLLBACK_TARGET_RUNTIME"
+      ],
+      "title": "DeploymentCommandKind",
+      "type": "string"
+    },
+    "DeploymentJob": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-job/v1",
+          "default": "rolo-deployment-job/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^deployment-[0-9a-f]{32}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "command": {
+          "$ref": "#/$defs/DeploymentCommand"
+        },
+        "command_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Command Sha256",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/DeploymentJobState",
+          "default": "CREATED"
+        },
+        "current_step": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Step"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "command",
+        "command_sha256",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "DeploymentJob",
+      "type": "object"
+    },
+    "DeploymentJobRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-job-record/v1",
+          "default": "rolo-deployment-job-record/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "job": {
+          "$ref": "#/$defs/DeploymentJob"
+        },
+        "revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "attempt": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "cancel_requested": {
+          "default": false,
+          "title": "Cancel Requested",
+          "type": "boolean"
+        },
+        "recovery_disposition": {
+          "$ref": "#/$defs/DeploymentRecoveryDisposition",
+          "default": "NONE"
+        },
+        "checkpoints": {
+          "items": {
+            "$ref": "#/$defs/DeploymentStepCheckpoint"
+          },
+          "maxItems": 512,
+          "title": "Checkpoints",
+          "type": "array"
+        },
+        "final_artifact_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Final Artifact Refs",
+          "type": "array"
+        },
+        "last_event_sequence": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Last Event Sequence",
+          "type": "integer"
+        },
+        "last_event_record_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Event Record Sha256"
+        }
+      },
+      "required": [
+        "job"
+      ],
+      "title": "DeploymentJobRecord",
+      "type": "object"
+    },
+    "DeploymentJobState": {
+      "enum": [
+        "CREATED",
+        "CONNECTING",
+        "HOST_KEY_APPROVAL_REQUIRED",
+        "PREFLIGHT",
+        "BOOTSTRAPPING",
+        "ROLLING_BACK",
+        "ENROLLING",
+        "COLLECTING_EVIDENCE",
+        "DISCOVERING",
+        "ADAPTING",
+        "GATING",
+        "COMPLETE",
+        "BLOCKED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "title": "DeploymentJobState",
+      "type": "string"
+    },
+    "DeploymentRecoveryDisposition": {
+      "enum": [
+        "NONE",
+        "RESUMABLE",
+        "REQUIRES_RECONCILIATION"
+      ],
+      "title": "DeploymentRecoveryDisposition",
+      "type": "string"
+    },
+    "DeploymentRemoteState": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "CONFIRMED",
+        "UNKNOWN"
+      ],
+      "title": "DeploymentRemoteState",
+      "type": "string"
+    },
+    "DeploymentStepCheckpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-deployment-step-checkpoint/v1",
+          "default": "rolo-deployment-step-checkpoint/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "step_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "attempt": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/DeploymentStepStatus"
+        },
+        "command_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Command Sha256",
+          "type": "string"
+        },
+        "remote_state": {
+          "$ref": "#/$defs/DeploymentRemoteState",
+          "default": "NOT_APPLICABLE"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "outcome_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome Sha256"
+        },
+        "artifact_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Artifact Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "step_id",
+        "attempt",
+        "status",
+        "command_sha256",
+        "started_at",
+        "updated_at"
+      ],
+      "title": "DeploymentStepCheckpoint",
+      "type": "object"
+    },
+    "DeploymentStepStatus": {
+      "enum": [
+        "RUNNING",
+        "COMPLETE",
+        "FAILED",
+        "UNKNOWN"
+      ],
+      "title": "DeploymentStepStatus",
+      "type": "string"
+    },
+    "InteractionSurface": {
+      "enum": [
+        "CLI",
+        "API",
+        "TUI",
+        "GUI",
+        "NATURAL_LANGUAGE"
+      ],
+      "title": "InteractionSurface",
+      "type": "string"
+    },
+    "TargetEvidenceCollectionRequestV4": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-evidence-collection-request/v4",
+          "default": "rolo-target-evidence-collection-request/v4",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "evidence_request": {
+          "$ref": "#/$defs/TargetEvidenceRequest"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^approval-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "authorization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeploymentAuthorizationProof"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "timeout_s": {
+          "default": 45.0,
+          "maximum": 300.0,
+          "minimum": 1.0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "request_id",
+        "target_id",
+        "evidence_request"
+      ],
+      "title": "TargetEvidenceCollectionRequestV4",
+      "type": "object"
+    },
+    "TargetEvidenceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "robot-target-evidence-request/v2",
+          "enum": [
+            "robot-target-evidence-request/v1",
+            "robot-target-evidence-request/v2"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "robot_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "mode": {
+          "const": "READ_ONLY",
+          "default": "READ_ONLY",
+          "title": "Mode",
+          "type": "string"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Nonce",
+          "type": "string"
+        },
+        "requested_layers": {
+          "items": {
+            "enum": [
+              "hw",
+              "linux",
+              "ros"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Requested Layers",
+          "type": "array"
+        },
+        "requested_executable_help_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Requested Executable Help Ids",
+          "type": "array"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "robot_id",
+        "nonce",
+        "issued_at",
+        "expires_at"
+      ],
+      "title": "TargetEvidenceRequest",
+      "type": "object"
+    },
+    "TargetRuntimeEvidenceJobSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-runtime-evidence-job-spec/v1",
+          "default": "rolo-target-runtime-evidence-job-spec/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_transport": {
+          "$ref": "#/$defs/TargetTransport"
+        },
+        "target_registration_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Registration Sha256",
+          "type": "string"
+        },
+        "collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "Collector Id",
+          "type": "string"
+        },
+        "collector_descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Collector Descriptor Sha256",
+          "type": "string"
+        },
+        "collector_configuration_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Collector Configuration Sha256",
+          "type": "string"
+        },
+        "collector_key_id": {
+          "pattern": "^collector-key-[0-9a-f]{32}$",
+          "title": "Collector Key Id",
+          "type": "string"
+        },
+        "collection_request": {
+          "$ref": "#/$defs/TargetEvidenceCollectionRequestV4"
+        },
+        "approval_id": {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "approval_action": {
+          "const": "COLLECT_RUNTIME_EVIDENCE",
+          "default": "COLLECT_RUNTIME_EVIDENCE",
+          "title": "Approval Action",
+          "type": "string"
+        },
+        "approver_principal": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+          "title": "Approver Principal",
+          "type": "string"
+        },
+        "approval_expires_at": {
+          "format": "date-time",
+          "title": "Approval Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "target_transport",
+        "target_registration_sha256",
+        "collector_id",
+        "collector_descriptor_sha256",
+        "collector_configuration_sha256",
+        "collector_key_id",
+        "collection_request",
+        "approval_id",
+        "approver_principal",
+        "approval_expires_at"
+      ],
+      "title": "TargetRuntimeEvidenceJobSpec",
+      "type": "object"
+    },
+    "TargetTransport": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetTransport",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-runtime-evidence-submission-result/v1",
+      "default": "rolo-target-runtime-evidence-submission-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job": {
+      "$ref": "#/$defs/DeploymentJobRecord"
+    },
+    "spec": {
+      "$ref": "#/$defs/TargetRuntimeEvidenceJobSpec"
+    },
+    "approval": {
+      "$ref": "#/$defs/ApprovalRequest"
+    }
+  },
+  "required": [
+    "job",
+    "spec",
+    "approval"
+  ],
+  "title": "TargetRuntimeEvidenceJobSubmissionResult",
+  "type": "object"
+}

@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-connection-assessment-submission/v1",
+      "default": "rolo-target-connection-assessment-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "active_probe": {
+      "default": "runtime-readonly",
+      "enum": [
+        "none",
+        "help",
+        "runtime-readonly"
+      ],
+      "title": "Active Probe",
+      "type": "string"
+    }
+  },
+  "title": "TargetConnectionAssessmentSubmission",
+  "type": "object"
+}

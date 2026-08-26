@@ -1,0 +1,676 @@
+{
+  "$defs": {
+    "DiscoveryStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "UNAVAILABLE",
+        "FAILED"
+      ],
+      "title": "DiscoveryStatus",
+      "type": "string"
+    },
+    "RouteEvidence": {
+      "additionalProperties": false,
+      "description": "One stable, typed operation route observed or declared during discovery.",
+      "properties": {
+        "schema_version": {
+          "const": "robot-route-evidence/v2",
+          "default": "robot-route-evidence/v2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "resource_id": {
+          "minLength": 1,
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ros_topic",
+            "ros_service",
+            "ros_action",
+            "device",
+            "cli"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "endpoint": {
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "interface_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Type"
+        },
+        "interface_schema_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Schema Sha256"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Id"
+        },
+        "runtime_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Revision"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "evidence_origin": {
+          "enum": [
+            "OBSERVED_RUNTIME",
+            "DECLARED_STATIC"
+          ],
+          "title": "Evidence Origin",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "resource_id",
+        "kind",
+        "endpoint",
+        "evidence_origin",
+        "source"
+      ],
+      "title": "RouteEvidence",
+      "type": "object"
+    },
+    "TargetSourceDependencyDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "ecosystem": {
+          "enum": [
+            "python",
+            "ros"
+          ],
+          "title": "Ecosystem",
+          "type": "string"
+        },
+        "scope": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "specifier": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specifier"
+        },
+        "marker": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Marker"
+        },
+        "applicable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applicable"
+        },
+        "extras": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Extras",
+          "type": "array"
+        },
+        "source": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "ecosystem",
+        "scope",
+        "required",
+        "source"
+      ],
+      "title": "TargetSourceDependencyDeclaration",
+      "type": "object"
+    },
+    "TargetSourceDiscoveryWarning": {
+      "enum": [
+        "PARSER_WARNING_REDACTED",
+        "RESULT_COLLECTION_TRUNCATED",
+        "SOURCE_FILE_LIMIT_REACHED"
+      ],
+      "title": "TargetSourceDiscoveryWarning",
+      "type": "string"
+    },
+    "TargetSourceEntrypoint": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "cmake",
+            "cmake_install_program",
+            "pyproject",
+            "setup.cfg",
+            "setup.py"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "source_files": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Source Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "target",
+        "source"
+      ],
+      "title": "TargetSourceEntrypoint",
+      "type": "object"
+    },
+    "TargetSourceProjectSummary": {
+      "additionalProperties": false,
+      "description": "Strict transport form of one ApplicationProbe project.",
+      "properties": {
+        "root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Root",
+          "type": "string"
+        },
+        "file_count_scanned": {
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "File Count Scanned",
+          "type": "integer"
+        },
+        "scan_truncated": {
+          "title": "Scan Truncated",
+          "type": "boolean"
+        },
+        "build_systems": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Build Systems",
+          "type": "array"
+        },
+        "packages": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Packages",
+          "type": "array"
+        },
+        "entrypoints": {
+          "items": {
+            "$ref": "#/$defs/TargetSourceEntrypoint"
+          },
+          "maxItems": 1000,
+          "title": "Entrypoints",
+          "type": "array"
+        },
+        "launch_files": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Launch Files",
+          "type": "array"
+        },
+        "readmes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Readmes",
+          "type": "array"
+        },
+        "config_files": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Config Files",
+          "type": "array"
+        },
+        "semantic_candidates": {
+          "items": {
+            "$ref": "#/$defs/TargetSourceSemanticCandidate"
+          },
+          "maxItems": 1000,
+          "title": "Semantic Candidates",
+          "type": "array"
+        },
+        "ros_names": {
+          "$ref": "#/$defs/TargetSourceRosNames"
+        },
+        "ros_interfaces": {
+          "items": {
+            "$ref": "#/$defs/TargetSourceRosInterface"
+          },
+          "maxItems": 1000,
+          "title": "Ros Interfaces",
+          "type": "array"
+        },
+        "protocols": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Protocols",
+          "type": "array"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Languages",
+          "type": "array"
+        },
+        "build_targets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Build Targets",
+          "type": "array"
+        },
+        "declared_dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Declared Dependencies",
+          "type": "array"
+        },
+        "dependency_declarations": {
+          "items": {
+            "$ref": "#/$defs/TargetSourceDependencyDeclaration"
+          },
+          "maxItems": 1000,
+          "title": "Dependency Declarations",
+          "type": "array"
+        },
+        "manifest_digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Manifest Digests",
+          "type": "object"
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-fA-F]{40,64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision"
+        }
+      },
+      "required": [
+        "root",
+        "file_count_scanned",
+        "scan_truncated"
+      ],
+      "title": "TargetSourceProjectSummary",
+      "type": "object"
+    },
+    "TargetSourceRosInterface": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "publisher",
+            "subscriber",
+            "service",
+            "client"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "name_source": {
+          "const": "STRING_LITERAL",
+          "default": "STRING_LITERAL",
+          "title": "Name Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "name",
+        "type",
+        "source"
+      ],
+      "title": "TargetSourceRosInterface",
+      "type": "object"
+    },
+    "TargetSourceRosNames": {
+      "additionalProperties": false,
+      "properties": {
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Topics",
+          "type": "array"
+        },
+        "services": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Services",
+          "type": "array"
+        },
+        "actions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Actions",
+          "type": "array"
+        }
+      },
+      "title": "TargetSourceRosNames",
+      "type": "object"
+    },
+    "TargetSourceSemanticCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "enum": [
+            "geometry.hard_max_angular_velocity_radps",
+            "geometry.hard_max_linear_velocity_mps"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "value": {
+          "exclusiveMinimum": 0,
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "enum": [
+            "m/s",
+            "rad/s"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "config",
+            "launch"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source Path",
+          "type": "string"
+        },
+        "source_key": {
+          "enum": [
+            "max_angular_speed",
+            "max_angular_velocity",
+            "max_linear_speed",
+            "max_linear_velocity",
+            "max_vel_theta",
+            "max_vel_x"
+          ],
+          "title": "Source Key",
+          "type": "string"
+        },
+        "status": {
+          "const": "DISCOVERED_UNVERIFIED",
+          "default": "DISCOVERED_UNVERIFIED",
+          "title": "Status",
+          "type": "string"
+        },
+        "safety_authority": {
+          "const": "none",
+          "default": "none",
+          "title": "Safety Authority",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "value",
+        "unit",
+        "source_kind",
+        "source_path",
+        "source_key"
+      ],
+      "title": "TargetSourceSemanticCandidate",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-source-discovery-snapshot/v1",
+      "default": "rolo-target-source-discovery-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "workspace_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "workspace_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Workspace Sha256",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DiscoveryStatus"
+    },
+    "projects": {
+      "items": {
+        "$ref": "#/$defs/TargetSourceProjectSummary"
+      },
+      "maxItems": 16,
+      "title": "Projects",
+      "type": "array"
+    },
+    "route_evidence": {
+      "items": {
+        "$ref": "#/$defs/RouteEvidence"
+      },
+      "maxItems": 1000,
+      "title": "Route Evidence",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "$ref": "#/$defs/TargetSourceDiscoveryWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "summary_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Summary Sha256",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "target_id",
+    "robot_id",
+    "workspace_id",
+    "workspace_sha256",
+    "status",
+    "summary_sha256",
+    "observed_at"
+  ],
+  "title": "TargetSourceDiscoverySnapshot",
+  "type": "object"
+}

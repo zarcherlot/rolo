@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "W10AutomatedResult": {
+      "enum": [
+        "PASSED",
+        "FAILED"
+      ],
+      "title": "W10AutomatedResult",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Bounded aggregate extracted from a real pytest JUnit XML report.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-w10-test-report-summary/v1",
+      "default": "rolo-w10-test-report-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "format": {
+      "const": "JUNIT_XML",
+      "default": "JUNIT_XML",
+      "title": "Format",
+      "type": "string"
+    },
+    "report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Report Sha256",
+      "type": "string"
+    },
+    "test_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Test Count",
+      "type": "integer"
+    },
+    "failure_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Failure Count",
+      "type": "integer"
+    },
+    "error_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Error Count",
+      "type": "integer"
+    },
+    "skipped_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Skipped Count",
+      "type": "integer"
+    },
+    "duration_s": {
+      "maximum": 31536000.0,
+      "minimum": 0.0,
+      "title": "Duration S",
+      "type": "number"
+    },
+    "minimum_executed_tests": {
+      "const": 4,
+      "default": 4,
+      "title": "Minimum Executed Tests",
+      "type": "integer"
+    },
+    "automated_result": {
+      "$ref": "#/$defs/W10AutomatedResult"
+    }
+  },
+  "required": [
+    "report_sha256",
+    "test_count",
+    "failure_count",
+    "error_count",
+    "skipped_count",
+    "duration_s",
+    "automated_result"
+  ],
+  "title": "W10TestReportSummary",
+  "type": "object"
+}

@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "SessionAgentHostClass": {
+      "enum": [
+        "LINUX_X86_64",
+        "LINUX_ARM64",
+        "WINDOWS_X86_64",
+        "OTHER"
+      ],
+      "title": "SessionAgentHostClass",
+      "type": "string"
+    },
+    "SessionAgentReadinessEvidenceKind": {
+      "enum": [
+        "CONFIGURATION",
+        "COMMAND_CONTRACT",
+        "EXTERNAL_ACCEPTANCE_REQUIRED"
+      ],
+      "title": "SessionAgentReadinessEvidenceKind",
+      "type": "string"
+    },
+    "SessionAgentReadinessGate": {
+      "additionalProperties": false,
+      "properties": {
+        "gate_id": {
+          "$ref": "#/$defs/SessionAgentReadinessGateId"
+        },
+        "status": {
+          "$ref": "#/$defs/SessionAgentReadinessStatus"
+        },
+        "evidence_kind": {
+          "$ref": "#/$defs/SessionAgentReadinessEvidenceKind"
+        },
+        "summary": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "evidence_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Sha256"
+        }
+      },
+      "required": [
+        "gate_id",
+        "status",
+        "evidence_kind",
+        "summary"
+      ],
+      "title": "SessionAgentReadinessGate",
+      "type": "object"
+    },
+    "SessionAgentReadinessGateId": {
+      "enum": [
+        "FEATURE_ENABLED",
+        "DEDICATED_PROVIDER_CREDENTIAL",
+        "HTTPS_PROVIDER",
+        "CODEX_EXECUTABLE",
+        "CODEX_CONTAINMENT_CONTRACT",
+        "DEDICATED_OS_ISOLATION",
+        "REAL_PROVIDER_ACCEPTANCE",
+        "REAL_SSH_PROMPT_INJECTION",
+        "MULTI_WORKER_FAILURE_INJECTION",
+        "LINUX_X86_64_ACCEPTANCE",
+        "LINUX_ARM64_ACCEPTANCE"
+      ],
+      "title": "SessionAgentReadinessGateId",
+      "type": "string"
+    },
+    "SessionAgentReadinessStatus": {
+      "enum": [
+        "PASSED",
+        "BLOCKED",
+        "NOT_VERIFIED"
+      ],
+      "title": "SessionAgentReadinessStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Secret-free W10 gate report. It cannot self-attest external acceptance.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-session-agent-production-readiness/v1",
+      "default": "rolo-session-agent-production-readiness/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "host_class": {
+      "$ref": "#/$defs/SessionAgentHostClass"
+    },
+    "catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Catalog Sha256",
+      "type": "string"
+    },
+    "provider_configuration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Provider Configuration Sha256",
+      "type": "string"
+    },
+    "gates": {
+      "items": {
+        "$ref": "#/$defs/SessionAgentReadinessGate"
+      },
+      "title": "Gates",
+      "type": "array"
+    },
+    "production_ready": {
+      "title": "Production Ready",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "generated_at",
+    "host_class",
+    "catalog_sha256",
+    "provider_configuration_sha256",
+    "gates",
+    "production_ready"
+  ],
+  "title": "SessionAgentProductionReadinessReport",
+  "type": "object"
+}

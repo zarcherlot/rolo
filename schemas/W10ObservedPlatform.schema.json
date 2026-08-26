@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "machine": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Machine",
+      "type": "string"
+    },
+    "os": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Os",
+      "type": "string"
+    },
+    "os_release": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Os Release",
+      "type": "string"
+    },
+    "python": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Python",
+      "type": "string"
+    },
+    "python_executable": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Python Executable",
+      "type": "string"
+    },
+    "uid": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Uid"
+    }
+  },
+  "required": [
+    "machine",
+    "os",
+    "os_release",
+    "python",
+    "python_executable"
+  ],
+  "title": "W10ObservedPlatform",
+  "type": "object"
+}

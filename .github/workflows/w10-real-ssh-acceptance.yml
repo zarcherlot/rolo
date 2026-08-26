@@ -1,0 +1,131 @@
+name: W10 real SSH acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Target architecture gate
+        required: true
+        type: choice
+        options:
+          - x86_64
+          - aarch64
+      target_id:
+        description: Pre-registered target ID on the protected runner
+        required: true
+        type: string
+      environment_id:
+        description: Immutable operator-assigned environment ID
+        required: true
+        type: string
+      os_image_sha256:
+        description: Independently verified target OS image SHA-256
+        required: true
+        type: string
+      package_id:
+        description: Deployed Rolo package ID
+        required: true
+        type: string
+      package_manifest_sha256:
+        description: Deployed Rolo package manifest SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: w10-real-ssh-${{ inputs.environment_id }}
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    name: ${{ matrix.architecture }} protected target
+    if: ${{ github.ref == 'refs/heads/main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: ["${{ inputs.architecture }}"]
+    runs-on: [self-hosted, linux, rolo-w10, "rolo-w10-${{ matrix.architecture }}"]
+    environment: rolo-w10-acceptance
+    timeout-minutes: 45
+    env:
+      W10_INPUT_ARCHITECTURE: ${{ matrix.architecture }}
+      W10_INPUT_TARGET_ID: ${{ inputs.target_id }}
+      W10_INPUT_ENVIRONMENT_ID: ${{ inputs.environment_id }}
+      W10_INPUT_OS_IMAGE_SHA256: ${{ inputs.os_image_sha256 }}
+      W10_INPUT_PACKAGE_ID: ${{ inputs.package_id }}
+      W10_INPUT_PACKAGE_MANIFEST_SHA256: ${{ inputs.package_manifest_sha256 }}
+      ROLO_CONFIG_DIR: ${{ secrets.ROLO_CONFIG_DIR }}
+      ROLO_W10_EVIDENCE_DIR: ${{ secrets.ROLO_W10_EVIDENCE_DIR }}
+      ROLO_RUN_REAL_SSH_ACCEPTANCE: "1"
+      ROLO_REAL_SSH_HOST: ${{ secrets.ROLO_REAL_SSH_HOST }}
+      ROLO_REAL_SSH_PORT: ${{ secrets.ROLO_REAL_SSH_PORT }}
+      ROLO_REAL_SSH_PROVISIONING_USER: ${{ secrets.ROLO_REAL_SSH_PROVISIONING_USER }}
+      ROLO_REAL_SSH_PROVISIONING_IDENTITY_FILE: ${{ secrets.ROLO_REAL_SSH_PROVISIONING_IDENTITY_FILE }}
+      ROLO_REAL_SSH_BOOTSTRAP_USER: ${{ secrets.ROLO_REAL_SSH_BOOTSTRAP_USER }}
+      ROLO_REAL_SSH_BOOTSTRAP_IDENTITY_FILE: ${{ secrets.ROLO_REAL_SSH_BOOTSTRAP_IDENTITY_FILE }}
+      ROLO_REAL_SSH_RUNTIME_USER: ${{ secrets.ROLO_REAL_SSH_RUNTIME_USER }}
+      ROLO_REAL_SSH_RUNTIME_IDENTITY_FILE: ${{ secrets.ROLO_REAL_SSH_RUNTIME_IDENTITY_FILE }}
+      ROLO_REAL_SSH_KNOWN_HOSTS: ${{ secrets.ROLO_REAL_SSH_KNOWN_HOSTS }}
+      ROLO_REAL_SSH_HOST_KEY_SHA256: ${{ secrets.ROLO_REAL_SSH_HOST_KEY_SHA256 }}
+      ROLO_REAL_SSH_HOSTILE_BANNER_TOKEN: ${{ secrets.ROLO_REAL_SSH_HOSTILE_BANNER_TOKEN }}
+      ROLO_REAL_SSH_TARGET_ID: ${{ inputs.target_id }}
+      ROLO_REAL_SSH_PACKAGE_ID: ${{ inputs.package_id }}
+      ROLO_REAL_SSH_PACKAGE_MANIFEST_SHA256: ${{ inputs.package_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+      - name: Prepare runner-local evidence directory
+        shell: bash
+        run: |
+          test -n "$ROLO_W10_EVIDENCE_DIR"
+          umask 077
+          run_dir="$ROLO_W10_EVIDENCE_DIR/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          install -d -m 0700 "$run_dir"
+          echo "ROLO_W10_RUN_DIR=$run_dir" >> "$GITHUB_ENV"
+
+      - name: Sync locked acceptance environment
+        id: sync
+        run: uv sync --locked --dev --python 3.12
+
+      - name: Run real three-identity SSH tests
+        id: real-ssh
+        shell: bash
+        run: |
+          set +e
+          .venv/bin/python -m pytest -q tests/test_real_ssh_target.py \
+            --junitxml="$ROLO_W10_RUN_DIR/real-ssh.junit.xml"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Build runner-local secret-closed automated receipt
+        id: receipt
+        if: ${{ always() && steps.sync.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          .venv/bin/robotctl target acceptance real-ssh \
+            --target "$W10_INPUT_TARGET_ID" \
+            --environment "$W10_INPUT_ENVIRONMENT_ID" \
+            --architecture "$W10_INPUT_ARCHITECTURE" \
+            --os-image-sha256 "$W10_INPUT_OS_IMAGE_SHA256" \
+            --package-id "$W10_INPUT_PACKAGE_ID" \
+            --package-manifest-sha256 "$W10_INPUT_PACKAGE_MANIFEST_SHA256" \
+            --acceptance-suite tests/test_real_ssh_target.py \
+            --test-report "$ROLO_W10_RUN_DIR/real-ssh.junit.xml" \
+            --output "$ROLO_W10_RUN_DIR/w10-real-ssh-receipt.json" \
+            > "$ROLO_W10_RUN_DIR/receipt-command.json"
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce test and receipt gates
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          test "${{ steps.real-ssh.outputs.exit_code }}" = "0"
+          test "${{ steps.receipt.outputs.exit_code }}" = "0"

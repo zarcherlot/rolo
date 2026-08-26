@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "SessionAgentReadinessEvidenceKind": {
+      "enum": [
+        "CONFIGURATION",
+        "COMMAND_CONTRACT",
+        "EXTERNAL_ACCEPTANCE_REQUIRED"
+      ],
+      "title": "SessionAgentReadinessEvidenceKind",
+      "type": "string"
+    },
+    "SessionAgentReadinessGateId": {
+      "enum": [
+        "FEATURE_ENABLED",
+        "DEDICATED_PROVIDER_CREDENTIAL",
+        "HTTPS_PROVIDER",
+        "CODEX_EXECUTABLE",
+        "CODEX_CONTAINMENT_CONTRACT",
+        "DEDICATED_OS_ISOLATION",
+        "REAL_PROVIDER_ACCEPTANCE",
+        "REAL_SSH_PROMPT_INJECTION",
+        "MULTI_WORKER_FAILURE_INJECTION",
+        "LINUX_X86_64_ACCEPTANCE",
+        "LINUX_ARM64_ACCEPTANCE"
+      ],
+      "title": "SessionAgentReadinessGateId",
+      "type": "string"
+    },
+    "SessionAgentReadinessStatus": {
+      "enum": [
+        "PASSED",
+        "BLOCKED",
+        "NOT_VERIFIED"
+      ],
+      "title": "SessionAgentReadinessStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "gate_id": {
+      "$ref": "#/$defs/SessionAgentReadinessGateId"
+    },
+    "status": {
+      "$ref": "#/$defs/SessionAgentReadinessStatus"
+    },
+    "evidence_kind": {
+      "$ref": "#/$defs/SessionAgentReadinessEvidenceKind"
+    },
+    "summary": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "evidence_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Sha256"
+    }
+  },
+  "required": [
+    "gate_id",
+    "status",
+    "evidence_kind",
+    "summary"
+  ],
+  "title": "SessionAgentReadinessGate",
+  "type": "object"
+}

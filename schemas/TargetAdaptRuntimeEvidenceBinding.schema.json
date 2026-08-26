@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable reference to separately approved, signed runtime facts.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-adapt-runtime-evidence-binding/v1",
+      "default": "rolo-target-adapt-runtime-evidence-binding/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Artifact Sha256",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_registration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Registration Sha256",
+      "type": "string"
+    },
+    "collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Collector Id",
+      "type": "string"
+    },
+    "collector_descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Collector Descriptor Sha256",
+      "type": "string"
+    },
+    "collector_configuration_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Collector Configuration Sha256",
+      "type": "string"
+    },
+    "collector_key_id": {
+      "pattern": "^collector-key-[0-9a-f]{32}$",
+      "title": "Collector Key Id",
+      "type": "string"
+    },
+    "evidence_request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Request Sha256",
+      "type": "string"
+    },
+    "bundle_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Payload Sha256",
+      "type": "string"
+    },
+    "collected_at": {
+      "format": "date-time",
+      "title": "Collected At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "artifact_sha256",
+    "command_sha256",
+    "target_id",
+    "target_registration_sha256",
+    "collector_id",
+    "collector_descriptor_sha256",
+    "collector_configuration_sha256",
+    "collector_key_id",
+    "evidence_request_sha256",
+    "bundle_payload_sha256",
+    "collected_at",
+    "expires_at"
+  ],
+  "title": "TargetAdaptRuntimeEvidenceBinding",
+  "type": "object"
+}

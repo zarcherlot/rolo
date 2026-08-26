@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "CollectorHelpExecutable": {
+      "additionalProperties": false,
+      "properties": {
+        "executable_id": {
+          "pattern": "^target-exe-[0-9a-f]{24}$",
+          "title": "Executable Id",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "executable_id",
+        "path",
+        "sha256"
+      ],
+      "title": "CollectorHelpExecutable",
+      "type": "object"
+    },
+    "RosSetupFileRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "BASE",
+            "OVERLAY",
+            "EXPLICIT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "kind"
+      ],
+      "title": "RosSetupFileRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "robot-target-collector-configuration/v4",
+      "default": "robot-target-collector-configuration/v4",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "help_executables": {
+      "items": {
+        "$ref": "#/$defs/CollectorHelpExecutable"
+      },
+      "maxItems": 4,
+      "title": "Help Executables",
+      "type": "array"
+    },
+    "ros_setup_files": {
+      "items": {
+        "$ref": "#/$defs/RosSetupFileRecord"
+      },
+      "maxItems": 8,
+      "title": "Ros Setup Files",
+      "type": "array"
+    }
+  },
+  "title": "CollectorConfigurationV4",
+  "type": "object"
+}

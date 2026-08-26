@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "TargetProjectEvidenceCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TargetProjectEvidenceKind"
+        },
+        "role": {
+          "default": "SOURCE",
+          "enum": [
+            "SOURCE",
+            "ARTIFACT",
+            "RUNTIME"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ],
+      "title": "TargetProjectEvidenceCandidate",
+      "type": "object"
+    },
+    "TargetProjectEvidenceKind": {
+      "enum": [
+        "BUILD_METADATA",
+        "RUNTIME_METADATA",
+        "SOURCE_ENTRYPOINT",
+        "ROS_METADATA",
+        "DOCUMENTATION"
+      ],
+      "title": "TargetProjectEvidenceKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public bounded request for target-side project metadata observation.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-project-evidence-job-submission/v1",
+      "default": "rolo-target-project-evidence-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/TargetProjectEvidenceCandidate"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    },
+    "timeout_s": {
+      "default": 60.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "approver_principal"
+  ],
+  "title": "TargetProjectEvidenceJobSubmission",
+  "type": "object"
+}

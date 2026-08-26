@@ -1,0 +1,290 @@
+{
+  "$defs": {
+    "SessionAgentAction": {
+      "description": "Commands available to the model. Approval decisions are deliberately absent.",
+      "enum": [
+        "LIST_TARGETS",
+        "SHOW_TARGET",
+        "ASSESS_CONNECTION",
+        "SUBMIT_BOOTSTRAP",
+        "SUBMIT_RUNTIME_ROLLBACK",
+        "SUBMIT_PROJECT_EVIDENCE",
+        "SUBMIT_SOURCE_DISCOVERY",
+        "SUBMIT_RUNTIME_EVIDENCE",
+        "SUBMIT_ADAPT",
+        "GET_JOB",
+        "RUN_JOB",
+        "CANCEL_JOB",
+        "SHOW_APPROVAL",
+        "LIST_BLOCKERS"
+      ],
+      "title": "SessionAgentAction",
+      "type": "string"
+    },
+    "SessionAgentCommand": {
+      "additionalProperties": false,
+      "description": "One broker command selected by the model, not an authorization-bearing intent.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-session-agent-command/v1",
+          "default": "rolo-session-agent-command/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence": {
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "action": {
+          "$ref": "#/$defs/SessionAgentAction"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Id"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "pattern": "^deployment-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^approval-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "package_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}@[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Ref"
+        },
+        "package_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Id"
+        },
+        "approver_principal": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approver Principal"
+        },
+        "active_probe": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "help",
+                "runtime-readonly"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Probe"
+        },
+        "project_evidence_job_id": {
+          "anyOf": [
+            {
+              "pattern": "^deployment-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Evidence Job Id"
+        },
+        "source_discovery_job_id": {
+          "anyOf": [
+            {
+              "pattern": "^deployment-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Discovery Job Id"
+        },
+        "runtime_evidence_job_id": {
+          "anyOf": [
+            {
+              "pattern": "^deployment-[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Evidence Job Id"
+        },
+        "approval_ttl_s": {
+          "anyOf": [
+            {
+              "maximum": 86400,
+              "minimum": 60,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Ttl S"
+        },
+        "expect_current_present": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expect Current Present"
+        },
+        "expected_current_manifest_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Current Manifest Sha256"
+        },
+        "expected_previous_manifest_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Previous Manifest Sha256"
+        }
+      },
+      "required": [
+        "sequence",
+        "action"
+      ],
+      "title": "SessionAgentCommand",
+      "type": "object"
+    },
+    "SessionAgentDecisionKind": {
+      "enum": [
+        "COMMAND",
+        "CLARIFY",
+        "FINAL"
+      ],
+      "title": "SessionAgentDecisionKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One model decision. It is a tool call or prose, never an authorization intent.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-session-agent-model-decision/v1",
+      "default": "rolo-session-agent-model-decision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/SessionAgentDecisionKind"
+    },
+    "command": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SessionAgentCommand"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "SessionAgentModelDecision",
+  "type": "object"
+}

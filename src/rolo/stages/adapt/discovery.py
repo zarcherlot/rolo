@@ -2215,6 +2215,7 @@ class DiscoveryService:
         source_roots: Sequence[Path] | None = None,
         active_inputs: ActiveDiscoveryInputs | None = None,
         target_probes: Mapping[str, ProbeResult] | None = None,
+        target_application_probe: ProbeResult | None = None,
     ) -> tuple[DiscoveryReport, Path]:
         if active_inputs is not None and source_roots is not None:
             raise ValueError("pass active_inputs or source_roots, not both")
@@ -2227,6 +2228,39 @@ class DiscoveryService:
         if active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY and target_probes is None:
             raise ValueError(
                 "runtime-readonly discovery requires a verified target evidence bundle"
+            )
+        if target_application_probe is not None:
+            if target_application_probe.layer != "application":
+                raise ValueError("target source discovery probe layer identity mismatch")
+            binding = target_application_probe.data.get("target_source_discovery")
+            if not isinstance(binding, dict):
+                raise ValueError("target source discovery probe lacks verified binding metadata")
+            if binding.get("robot_id") != robot.robot_id:
+                raise ValueError("target source discovery robot identity mismatch")
+            if active_inputs.source_roots:
+                raise ValueError(
+                    "target source discovery cannot be combined with controller source roots"
+                )
+            if active_inputs.target_workspace_manifest_sha256 is None:
+                raise ValueError(
+                    "target source discovery requires verified target workspace metadata"
+                )
+            summary_sha256 = binding.get("summary_sha256")
+            if not isinstance(summary_sha256, str) or re.fullmatch(
+                r"[0-9a-f]{64}", summary_sha256
+            ) is None:
+                raise ValueError("target source discovery summary digest is invalid")
+            if (
+                active_inputs.target_source_summary_sha256 is not None
+                and active_inputs.target_source_summary_sha256 != summary_sha256
+            ):
+                raise ValueError("target source discovery summary digest mismatch")
+            active_inputs = active_inputs.model_copy(
+                update={"target_source_summary_sha256": summary_sha256}
+            )
+        elif active_inputs.target_source_summary_sha256 is not None:
+            raise ValueError(
+                "target source summary digest requires a verified target application probe"
             )
         robot = _read_discovery_urdf(robot, urdf_path)
         previous_report: DiscoveryReport | None = None
@@ -2299,7 +2333,11 @@ class DiscoveryService:
                 data={"nodes": [], "topics": [], "services": [], "actions": []},
                 warnings=["verified target ROS evidence was not supplied"],
             )
-        application_scan = ApplicationProbe().scan(active_inputs.source_roots)
+        application_scan = (
+            ApplicationScanResult(probe=target_application_probe, evidence_text={})
+            if target_application_probe is not None
+            else ApplicationProbe().scan(active_inputs.source_roots)
+        )
         probes = {
             "hw": (
                 target_probes["hw"]
@@ -2330,7 +2368,11 @@ class DiscoveryService:
         applicable_probes = {
             name: probe
             for name, probe in probes.items()
-            if (name != "application" or active_inputs.source_roots)
+            if (
+                name != "application"
+                or active_inputs.source_roots
+                or target_application_probe is not None
+            )
             and (name != "ros" or active_inputs.active_probe == ActiveProbeMode.RUNTIME_READONLY)
         }
         probe_status = aggregate_probe_status(probe.status for probe in applicable_probes.values())

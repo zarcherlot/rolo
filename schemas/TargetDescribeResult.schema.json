@@ -1,0 +1,197 @@
+{
+  "$defs": {
+    "TargetDescribeAttestation": {
+      "additionalProperties": false,
+      "description": "Collector-signed result of target-side sandboxed `describe`; never `invoke`.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-describe-attestation/v1",
+          "default": "rolo-target-describe-attestation/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Sha256",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "robot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "collector_id": {
+          "pattern": "^collector-[0-9a-f]{32}$",
+          "title": "Collector Id",
+          "type": "string"
+        },
+        "descriptor_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Descriptor Sha256",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Release Id",
+          "type": "string"
+        },
+        "release_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Manifest Sha256",
+          "type": "string"
+        },
+        "bundle_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Bundle Manifest Sha256",
+          "type": "string"
+        },
+        "runtime_context_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Runtime Context Sha256",
+          "type": "string"
+        },
+        "sandbox_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sandbox Profile Sha256",
+          "type": "string"
+        },
+        "output_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Output Sha256",
+          "type": "string"
+        },
+        "described_operations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 1024,
+          "title": "Described Operations",
+          "type": "object"
+        },
+        "described_at": {
+          "format": "date-time",
+          "title": "Described At",
+          "type": "string"
+        },
+        "payload_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Payload Sha256",
+          "type": "string"
+        },
+        "signature_ed25519_base64": {
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "title": "Signature Ed25519 Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_sha256",
+        "target_id",
+        "robot_id",
+        "collector_id",
+        "descriptor_sha256",
+        "release_id",
+        "release_manifest_sha256",
+        "bundle_manifest_sha256",
+        "runtime_context_sha256",
+        "sandbox_profile_sha256",
+        "output_sha256",
+        "described_operations",
+        "described_at",
+        "payload_sha256",
+        "signature_ed25519_base64"
+      ],
+      "title": "TargetDescribeAttestation",
+      "type": "object"
+    },
+    "TargetDescribeOutput": {
+      "additionalProperties": false,
+      "description": "The complete allowlisted stdout object returned by adapter `describe`.",
+      "properties": {
+        "operations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 1024,
+          "minProperties": 1,
+          "title": "Operations",
+          "type": "object"
+        },
+        "runtime_protocol": {
+          "anyOf": [
+            {
+              "const": "robot-adapter-rpc/v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Protocol"
+        }
+      },
+      "required": [
+        "operations"
+      ],
+      "title": "TargetDescribeOutput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-describe-result/v1",
+      "default": "rolo-target-describe-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "output": {
+      "$ref": "#/$defs/TargetDescribeOutput"
+    },
+    "attestation": {
+      "$ref": "#/$defs/TargetDescribeAttestation"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "target_id",
+    "robot_id",
+    "output",
+    "attestation"
+  ],
+  "title": "TargetDescribeResult",
+  "type": "object"
+}

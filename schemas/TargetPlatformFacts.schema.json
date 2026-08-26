@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-platform-facts/v1",
+      "default": "rolo-target-platform-facts/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "os": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Os",
+      "type": "string"
+    },
+    "architecture": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Architecture",
+      "type": "string"
+    },
+    "python_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Python Version",
+      "type": "string"
+    },
+    "bubblewrap_available": {
+      "title": "Bubblewrap Available",
+      "type": "boolean"
+    },
+    "user_namespace_available": {
+      "title": "User Namespace Available",
+      "type": "boolean"
+    },
+    "mount_namespace_available": {
+      "title": "Mount Namespace Available",
+      "type": "boolean"
+    },
+    "network_namespace_available": {
+      "title": "Network Namespace Available",
+      "type": "boolean"
+    },
+    "available_address_space_bytes": {
+      "minimum": 0,
+      "title": "Available Address Space Bytes",
+      "type": "integer"
+    },
+    "available_processes": {
+      "minimum": 0,
+      "title": "Available Processes",
+      "type": "integer"
+    },
+    "runtime_path_available": {
+      "title": "Runtime Path Available",
+      "type": "boolean"
+    },
+    "explicit_pythonpath_supported": {
+      "title": "Explicit Pythonpath Supported",
+      "type": "boolean"
+    },
+    "virtualenv_supported": {
+      "title": "Virtualenv Supported",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "os",
+    "architecture",
+    "python_version",
+    "bubblewrap_available",
+    "user_namespace_available",
+    "mount_namespace_available",
+    "network_namespace_available",
+    "available_address_space_bytes",
+    "available_processes",
+    "runtime_path_available",
+    "explicit_pythonpath_supported",
+    "virtualenv_supported"
+  ],
+  "title": "TargetPlatformFacts",
+  "type": "object"
+}

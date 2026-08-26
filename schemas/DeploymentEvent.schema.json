@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "DeploymentEventType": {
+      "enum": [
+        "STATE_CHANGED",
+        "STEP_STARTED",
+        "STEP_COMPLETED",
+        "STEP_FAILED",
+        "APPROVAL_REQUIRED",
+        "APPROVAL_DECIDED",
+        "ARTIFACT_WRITTEN"
+      ],
+      "title": "DeploymentEventType",
+      "type": "string"
+    },
+    "DeploymentJobState": {
+      "enum": [
+        "CREATED",
+        "CONNECTING",
+        "HOST_KEY_APPROVAL_REQUIRED",
+        "PREFLIGHT",
+        "BOOTSTRAPPING",
+        "ROLLING_BACK",
+        "ENROLLING",
+        "COLLECTING_EVIDENCE",
+        "DISCOVERING",
+        "ADAPTING",
+        "GATING",
+        "COMPLETE",
+        "BLOCKED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "title": "DeploymentJobState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-deployment-event/v1",
+      "default": "rolo-deployment-event/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "pattern": "^event-[0-9a-f]{32}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "step_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Step Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/DeploymentEventType"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "attempt": {
+      "default": 1,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Attempt",
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/DeploymentJobState"
+    },
+    "sanitized_summary": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Sanitized Summary",
+      "type": "string"
+    },
+    "artifact_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "approval_ref": {
+      "anyOf": [
+        {
+          "pattern": "^approval-[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approval Ref"
+    }
+  },
+  "required": [
+    "event_id",
+    "job_id",
+    "step_id",
+    "target_id",
+    "event_type",
+    "timestamp",
+    "state",
+    "sanitized_summary"
+  ],
+  "title": "DeploymentEvent",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "description": "The complete allowlisted stdout object returned by adapter `describe`.",
+  "properties": {
+    "operations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 1024,
+      "minProperties": 1,
+      "title": "Operations",
+      "type": "object"
+    },
+    "runtime_protocol": {
+      "anyOf": [
+        {
+          "const": "robot-adapter-rpc/v1",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Runtime Protocol"
+    }
+  },
+  "required": [
+    "operations"
+  ],
+  "title": "TargetDescribeOutput",
+  "type": "object"
+}

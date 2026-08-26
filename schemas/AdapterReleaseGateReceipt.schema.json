@@ -1,0 +1,124 @@
+{
+  "additionalProperties": false,
+  "description": "Controller Gate proof that one target-side `describe` matched a frozen release.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-adapter-release-gate-receipt/v1",
+      "default": "rolo-adapter-release-gate-receipt/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "gate_status": {
+      "const": "PASSED",
+      "default": "PASSED",
+      "title": "Gate Status",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "collector_id": {
+      "pattern": "^collector-[0-9a-f]{32}$",
+      "title": "Collector Id",
+      "type": "string"
+    },
+    "descriptor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Descriptor Sha256",
+      "type": "string"
+    },
+    "release_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "transfer_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Transfer Manifest Sha256",
+      "type": "string"
+    },
+    "release_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Sha256",
+      "type": "string"
+    },
+    "bundle_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Bundle Manifest Sha256",
+      "type": "string"
+    },
+    "runtime_context_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Runtime Context Sha256",
+      "type": "string"
+    },
+    "sandbox_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sandbox Profile Sha256",
+      "type": "string"
+    },
+    "describe_request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Describe Request Sha256",
+      "type": "string"
+    },
+    "describe_attestation_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Describe Attestation Sha256",
+      "type": "string"
+    },
+    "describe_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Describe Payload Sha256",
+      "type": "string"
+    },
+    "describe_output_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Describe Output Sha256",
+      "type": "string"
+    },
+    "gate_report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Gate Report Sha256",
+      "type": "string"
+    },
+    "verified_at": {
+      "format": "date-time",
+      "title": "Verified At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "robot_id",
+    "collector_id",
+    "descriptor_sha256",
+    "release_id",
+    "transfer_manifest_sha256",
+    "release_manifest_sha256",
+    "bundle_manifest_sha256",
+    "runtime_context_sha256",
+    "sandbox_profile_sha256",
+    "describe_request_sha256",
+    "describe_attestation_sha256",
+    "describe_payload_sha256",
+    "describe_output_sha256",
+    "gate_report_sha256",
+    "verified_at",
+    "expires_at"
+  ],
+  "title": "AdapterReleaseGateReceipt",
+  "type": "object"
+}

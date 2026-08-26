@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-runtime-rollback-submission/v1",
+      "default": "rolo-target-runtime-rollback-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "package_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "expected_current_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Current Manifest Sha256",
+      "type": "string"
+    },
+    "expected_previous_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Previous Manifest Sha256",
+      "type": "string"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    },
+    "timeout_s": {
+      "default": 300.0,
+      "maximum": 1800.0,
+      "minimum": 10.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "package_id",
+    "expected_current_manifest_sha256",
+    "expected_previous_manifest_sha256",
+    "approver_principal"
+  ],
+  "title": "TargetRuntimeRollbackSubmission",
+  "type": "object"
+}

@@ -22,7 +22,9 @@ from rolo.commands.lifecycle import (
 from rolo.commands.robot_use import robot_use_app
 from rolo.commands.runtime import register_runtime_commands
 from rolo.commands.schema import schema_app
+from rolo.commands.target import target_app
 from rolo.commands.target_evidence import target_evidence_app
+from rolo.commands.target_executor import target_executor_app
 
 app = typer.Typer(help="Canonical local CLI for the rolo development harness.")
 
@@ -40,6 +42,8 @@ app.add_typer(ros_app, name="ros")
 app.add_typer(application_app, name="app")
 app.add_typer(state_app, name="state")
 app.add_typer(target_evidence_app, name="target-evidence")
+app.add_typer(target_executor_app, name="target-executor", hidden=True)
+app.add_typer(target_app, name="target")
 app.add_typer(config_app, name="config")
 
 

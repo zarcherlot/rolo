@@ -9,6 +9,10 @@
 - [目标机部署与 Adapt 操作手册](TARGET_DEVICE_OPERATION_MANUAL_ZH.md)：固定版本部署、本地或远程证据采集、完整 Adapt、验收与故障处理；
 - [ROLO 白皮书](ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
 - [三阶段架构](ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
+- [统一 Agent 部署与远程适配开发计划](UNIFIED_AGENT_DEPLOYMENT_DEVELOPMENT_PLAN_ZH.md)：
+  面向 Local/SSH、CLI/TUI/GUI/自然语言统一入口的产品架构、工作包、阶段门禁与工程量；
+- [W10 真机与生产就绪矩阵](W10_ACCEPTANCE_MATRIX_ZH.md)：逐平台、真实 provider、SSH、HA 与故障注入证据门禁；
+- [RC Rollout / Rollback Runbook](RC_ROLLOUT_ROLLBACK_RUNBOOK_ZH.md)：Target runtime 分批发布、停止条件、证据目录与当前 rollback blocker；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
 - [P0 Adapt 验收](P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
 

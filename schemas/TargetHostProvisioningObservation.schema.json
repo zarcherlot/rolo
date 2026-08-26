@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "TargetHostProvisioningExecutionError": {
+      "enum": [
+        "CANCELLED",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "INVALID_PLAN",
+        "IO_ERROR",
+        "PROTOCOL_ERROR",
+        "SUDO_UNAVAILABLE",
+        "SYSTEMD_FAILED"
+      ],
+      "title": "TargetHostProvisioningExecutionError",
+      "type": "string"
+    },
+    "TargetHostProvisioningObservationStatus": {
+      "enum": [
+        "EXACT",
+        "NOT_COMMITTED",
+        "DIFFERENT_CURRENT",
+        "DRIFTED",
+        "FAILED"
+      ],
+      "title": "TargetHostProvisioningObservationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Read-only target observation used to reconcile an unknown apply outcome.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-host-provisioning-observation/v1",
+      "default": "rolo-target-host-provisioning-observation/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "expected_plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Plan Sha256",
+      "type": "string"
+    },
+    "executor_kind": {
+      "const": "SSH",
+      "default": "SSH",
+      "title": "Executor Kind",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetHostProvisioningObservationStatus"
+    },
+    "current_plan_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Plan Sha256"
+    },
+    "mismatch_codes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Mismatch Codes",
+      "type": "array"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetHostProvisioningExecutionError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_id",
+    "expected_plan_sha256",
+    "status",
+    "observed_at"
+  ],
+  "title": "TargetHostProvisioningObservation",
+  "type": "object"
+}

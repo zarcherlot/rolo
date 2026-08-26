@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "TargetExecutionErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "CONFIGURATION_ERROR",
+        "CONNECTION_FAILED",
+        "CREDENTIAL_UNAVAILABLE",
+        "HOST_KEY_VERIFICATION_FAILED",
+        "INTEGRITY_ERROR",
+        "IO_ERROR",
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "NON_ZERO_EXIT",
+        "OUTPUT_LIMIT",
+        "OFFSET_MISMATCH",
+        "PROTOCOL_ERROR",
+        "SPAWN_FAILED",
+        "TIMEOUT"
+      ],
+      "title": "TargetExecutionErrorCode",
+      "type": "string"
+    },
+    "TargetExecutionStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "TargetExecutionStatus",
+      "type": "string"
+    },
+    "TargetExecutorKind": {
+      "enum": [
+        "LOCAL",
+        "SSH"
+      ],
+      "title": "TargetExecutorKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-package-transfer-result/v1",
+      "default": "rolo-target-package-transfer-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "request_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Sha256",
+      "type": "string"
+    },
+    "executor_kind": {
+      "$ref": "#/$defs/TargetExecutorKind"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetExecutionStatus"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetExecutionErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "received_size_bytes": {
+      "maximum": 1000000000,
+      "minimum": 0,
+      "title": "Received Size Bytes",
+      "type": "integer"
+    },
+    "file_size_bytes": {
+      "maximum": 1000000000,
+      "minimum": 0,
+      "title": "File Size Bytes",
+      "type": "integer"
+    },
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "request_id",
+    "request_sha256",
+    "executor_kind",
+    "status",
+    "received_size_bytes",
+    "file_size_bytes",
+    "complete"
+  ],
+  "title": "TargetPackageTransferResult",
+  "type": "object"
+}

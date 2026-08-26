@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "TargetDeploymentTuiField": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4096,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "TargetDeploymentTuiField",
+      "type": "object"
+    },
+    "TargetDeploymentTuiPage": {
+      "enum": [
+        "fleet",
+        "target",
+        "job",
+        "approval",
+        "blocker"
+      ],
+      "title": "TargetDeploymentTuiPage",
+      "type": "string"
+    },
+    "TargetDeploymentTuiRow": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "TARGET",
+            "JOB",
+            "APPROVAL",
+            "BLOCKER"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "canonical_cli": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Cli"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/TargetDeploymentTuiField"
+          },
+          "maxItems": 64,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "identity",
+        "kind",
+        "status",
+        "summary"
+      ],
+      "title": "TargetDeploymentTuiRow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Secret-closed GUI read model projected from the same TUI state service.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-deployment-workbench-snapshot/v1",
+      "default": "rolo-target-deployment-workbench-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "page": {
+      "$ref": "#/$defs/TargetDeploymentTuiPage"
+    },
+    "title": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/TargetDeploymentTuiRow"
+      },
+      "maxItems": 10000,
+      "title": "Rows",
+      "type": "array"
+    }
+  },
+  "required": [
+    "page",
+    "title",
+    "captured_at"
+  ],
+  "title": "TargetDeploymentWorkbenchSnapshot",
+  "type": "object"
+}

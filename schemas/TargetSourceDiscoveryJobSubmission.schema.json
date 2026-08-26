@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "TargetSourceDiscoveryLimits": {
+      "additionalProperties": false,
+      "description": "The exact v1 parser budget; literals prevent a request from overstating limits.",
+      "properties": {
+        "max_projects": {
+          "const": 16,
+          "default": 16,
+          "title": "Max Projects",
+          "type": "integer"
+        },
+        "max_files_per_project": {
+          "const": 10000,
+          "default": 10000,
+          "title": "Max Files Per Project",
+          "type": "integer"
+        },
+        "max_file_read_bytes": {
+          "const": 2000000,
+          "default": 2000000,
+          "title": "Max File Read Bytes",
+          "type": "integer"
+        },
+        "max_items_per_collection": {
+          "const": 1000,
+          "default": 1000,
+          "title": "Max Items Per Collection",
+          "type": "integer"
+        }
+      },
+      "title": "TargetSourceDiscoveryLimits",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Public request for separately approved recursive target source analysis.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-source-discovery-job-submission/v1",
+      "default": "rolo-target-source-discovery-job-submission/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scan_roots": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Scan Roots",
+      "type": "array"
+    },
+    "limits": {
+      "$ref": "#/$defs/TargetSourceDiscoveryLimits"
+    },
+    "approver_principal": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$",
+      "title": "Approver Principal",
+      "type": "string"
+    },
+    "approval_ttl_s": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 60,
+      "title": "Approval Ttl S",
+      "type": "integer"
+    },
+    "timeout_s": {
+      "default": 120.0,
+      "maximum": 300.0,
+      "minimum": 1.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "approver_principal"
+  ],
+  "title": "TargetSourceDiscoveryJobSubmission",
+  "type": "object"
+}

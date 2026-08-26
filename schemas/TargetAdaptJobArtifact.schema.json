@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "TargetAdaptJobArtifactStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "BLOCKED",
+        "FAILED"
+      ],
+      "title": "TargetAdaptJobArtifactStatus",
+      "type": "string"
+    },
+    "TargetAdaptJobFailureCode": {
+      "enum": [
+        "TARGET_REGISTRATION_CHANGED",
+        "JOURNEY_BLOCKED",
+        "RUNNER_ERROR"
+      ],
+      "title": "TargetAdaptJobFailureCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-adapt-job-artifact/v1",
+      "default": "rolo-target-adapt-job-artifact/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^deployment-[0-9a-f]{32}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Command Sha256",
+      "type": "string"
+    },
+    "spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TargetAdaptJobArtifactStatus"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetAdaptJobFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "journey_status": {
+      "anyOf": [
+        {
+          "enum": [
+            "DISCOVERY_COMPLETE",
+            "BLOCKED"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Journey Status"
+    },
+    "journey_result_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Journey Result Sha256"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "command_sha256",
+    "spec_sha256",
+    "target_id",
+    "status",
+    "completed_at"
+  ],
+  "title": "TargetAdaptJobArtifact",
+  "type": "object"
+}
