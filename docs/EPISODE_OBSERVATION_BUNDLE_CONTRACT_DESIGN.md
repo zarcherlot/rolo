@@ -1,6 +1,6 @@
 # Episode Observation Bundle public contract design
 
-Status: E22A cross-repository review candidate
+Status: E22A approved; E22B producer and safe-projection review candidate
 
 Target consumer: rolo-vis Episode Studio
 
@@ -136,10 +136,11 @@ does not establish execution outcome, causal correctness, human confirmation,
 verification, release authority, or readiness. Simulated and replayed sources remain
 visually and semantically separate from physical sources.
 
-E22A adds no implemented endpoint, feature advertisement, producer schema, media
-delivery, live stream, browser storage, identity, capture request, supplementary-check
-orchestration, recollection, replay, export, remediation, deployment, or robot write
-authority.
+E22A added no runtime surface. E22B implements only the reviewed read-only producer
+record, server-owned projection, feature advertisement, and exact-revision endpoint.
+It still adds no asset-content delivery, live stream, browser storage, identity,
+capture request, supplementary-check orchestration, recollection, replay, export,
+remediation, deployment, verification influence, or robot write authority.
 
 ## 9. Delivery slices
 
@@ -152,10 +153,14 @@ authority.
 
 ### E22B: rolo producer and safe projection
 
-- add bounded internal producer records and server-owned projection;
-- implement exact-revision reads and cross-model integrity checks;
-- publish one ROS navigation fixture with degraded synchronization and one missing or
-  rejected source.
+- [x] add bounded, digest-validated internal producer records and a server-owned
+  projection;
+- [x] implement exact-revision reads, opaque pagination, and cross-model integrity
+  checks;
+- [x] publish one ROS navigation fixture with degraded synchronization plus missing and
+  policy-rejected sources;
+- [x] generate and pin the producer, publication-envelope, and public collection JSON
+  Schemas.
 
 ### E22C: rolo-vis consumer and Perspective Tray
 

@@ -42,6 +42,10 @@ from rolo.discovery_history_read_models import (
     DiscoverySnapshotCollection,
     build_discovery_snapshot_collection,
 )
+from rolo.episode_observation_bundles import (
+    EpisodeObservationBundleCollection,
+    build_episode_observation_bundle_collection,
+)
 from rolo.episode_read_models import (
     EPISODE_API_FEATURES,
     EpisodeCohort,
@@ -877,6 +881,46 @@ async def get_robot_episode_timeline(
     if page is None:
         raise HTTPException(status_code=404, detail="Unknown Episode")
     return page
+
+
+@app.get(
+    "/v1/robots/{robot_id}/episodes/{episode_id}/observation-bundles",
+    response_model=EpisodeObservationBundleCollection,
+)
+async def get_robot_episode_observation_bundles(
+    robot_id: str,
+    episode_id: str,
+    request: Request,
+    revision: Annotated[int, Query(ge=1)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 20,
+    cursor: Annotated[str | None, Query(max_length=80)] = None,
+) -> EpisodeObservationBundleCollection:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        collection = build_episode_observation_bundle_collection(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            episode_id,
+            revision=revision,
+            limit=limit,
+            cursor=cursor,
+        )
+    except EpisodeCursorError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except EpisodeRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Episode observation publication failed integrity validation",
+        ) from exc
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Unknown Episode")
+    return collection
 
 
 @app.get(

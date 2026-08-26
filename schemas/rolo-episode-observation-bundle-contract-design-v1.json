@@ -1,6 +1,6 @@
 {
   "schema_version": "rolo-episode-observation-bundle-contract-design/v1",
-  "status": "e22a-cross-repository-review-candidate",
+  "status": "e22b-producer-review-candidate",
   "base_feature": "workbench.episode-read-model/v1",
   "candidate_feature": "workbench.episode-observation-bundle/v1",
   "contracts": {
@@ -94,9 +94,9 @@
     "content_key"
   ],
   "implementation": {
-    "producer": "deferred-e22b",
-    "endpoint": "deferred-e22b",
-    "feature_advertisement": "deferred-e22b",
+    "producer": "candidate-e22b",
+    "endpoint": "candidate-e22b",
+    "feature_advertisement": "candidate-e22b",
     "consumer": "deferred-e22c",
     "media_delivery": false,
     "supports_capture": false,

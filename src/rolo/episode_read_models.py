@@ -27,6 +27,7 @@ EPISODE_API_FEATURES = (
     "workbench.episode-read-model/v1",
     "workbench.episode-revision-history/v1",
     "workbench.episode-cohort-read-model/v1",
+    "workbench.episode-observation-bundle/v1",
 )
 
 Identifier = Annotated[

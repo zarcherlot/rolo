@@ -73,6 +73,47 @@ class ArtifactLayout:
             raise ValueError("episode revision must be positive")
         return self.episode_records(robot_id, episode_id) / f"revision-{revision}.json"
 
+    def episode_observation_records(self, robot_id: str, episode_id: str) -> Path:
+        return (
+            self.root
+            / "episodes"
+            / _segment(robot_id, "robot_id")
+            / "observation-records"
+            / _segment(episode_id, "episode_id")
+        )
+
+    def episode_observation_record(
+        self,
+        robot_id: str,
+        episode_id: str,
+        revision: int,
+    ) -> Path:
+        if revision < 1:
+            raise ValueError("episode revision must be positive")
+        return self.episode_observation_records(robot_id, episode_id) / f"revision-{revision}.json"
+
+    def episode_observation_publications(self, robot_id: str, episode_id: str) -> Path:
+        return (
+            self.root
+            / "episodes"
+            / _segment(robot_id, "robot_id")
+            / "published-observations"
+            / _segment(episode_id, "episode_id")
+        )
+
+    def episode_observation_publication(
+        self,
+        robot_id: str,
+        episode_id: str,
+        revision: int,
+    ) -> Path:
+        if revision < 1:
+            raise ValueError("episode revision must be positive")
+        return (
+            self.episode_observation_publications(robot_id, episode_id)
+            / f"revision-{revision}.json"
+        )
+
     def relative(self, path: Path) -> str:
         try:
             return path.resolve().relative_to(self.root.resolve()).as_posix()

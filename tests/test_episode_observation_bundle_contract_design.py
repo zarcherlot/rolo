@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).parents[1]
 
 
@@ -17,16 +16,16 @@ def _contract() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_e22a_contract_is_versioned_feature_negotiated_and_design_only() -> None:
+def test_e22b_contract_is_versioned_feature_negotiated_and_consumer_deferred() -> None:
     design = _design()
     assert design["schema_version"] == "rolo-episode-observation-bundle-contract-design/v1"
-    assert design["status"] == "e22a-cross-repository-review-candidate"
+    assert design["status"] == "e22b-producer-review-candidate"
     assert design["base_feature"] == "workbench.episode-read-model/v1"
     assert design["candidate_feature"] == "workbench.episode-observation-bundle/v1"
     assert design["implementation"] == {
-        "producer": "deferred-e22b",
-        "endpoint": "deferred-e22b",
-        "feature_advertisement": "deferred-e22b",
+        "producer": "candidate-e22b",
+        "endpoint": "candidate-e22b",
+        "feature_advertisement": "candidate-e22b",
         "consumer": "deferred-e22c",
         "media_delivery": False,
         "supports_capture": False,
@@ -109,7 +108,7 @@ def test_e22a_contract_keeps_bundle_completeness_release_neutral() -> None:
     assert "influences_verification is always false" in invariants
     contract = _contract()
     assert "does not establish execution outcome" in contract
-    assert "E22A adds no implemented endpoint" in contract
+    assert "E22B implements only the reviewed read-only producer" in contract
 
 
 def test_e22a_orders_pages_newest_first_and_defers_parent_resolution_safely() -> None:

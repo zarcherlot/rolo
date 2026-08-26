@@ -1,0 +1,132 @@
+{
+  "schema_version": "rolo-episode-observation-producer-record/v1",
+  "robot_id": "mentorpi",
+  "episode_id": "ep-discovery-20260820",
+  "episode_revision": 1,
+  "record_id": "obs-mentorpi-discovery-1",
+  "committed": true,
+  "committed_at": "2026-08-20T11:57:06Z",
+  "producer": "diagnose.observation-assembler",
+  "bundles": [
+    {
+      "schema_version": "rolo-episode-observation-producer-bundle/v1",
+      "bundle_id": "bundle-initial",
+      "sequence": 1,
+      "parent_bundle_id": null,
+      "trigger_kind": "INITIAL",
+      "status": "PARTIAL",
+      "created_at": "2026-08-20T11:57:05Z",
+      "window_start_offset_ms": 0,
+      "window_end_offset_ms": 3000,
+      "synchronization": "DEGRADED",
+      "spatial_alignment": "UNKNOWN",
+      "sources": [
+        {
+          "schema_version": "rolo-episode-observation-producer-source/v1",
+          "source_id": "source-ros-runtime",
+          "public_label": "ROS runtime state",
+          "source_kind": "ROBOT_STATE",
+          "modality": "ros-graph",
+          "world_kind": "PHYSICAL",
+          "availability": "AVAILABLE",
+          "synchronization": "DEGRADED",
+          "spatial_alignment": "UNKNOWN",
+          "asset_ids": [],
+          "public_limitations": [
+            "Runtime graph probes were incomplete and spatial alignment was not applicable."
+          ],
+          "provider_identity": "ros-graph-collector",
+          "topic_name": "/rosout",
+          "device_path": null,
+          "internal_metadata": {
+            "hostname": "mentorpi.local",
+            "artifact_ref": "artifact://discovery/mentorpi/internal/ros.json"
+          }
+        },
+        {
+          "schema_version": "rolo-episode-observation-producer-source/v1",
+          "source_id": "source-front-camera",
+          "public_label": "Front camera",
+          "source_kind": "ONBOARD_SENSOR",
+          "modality": "camera",
+          "world_kind": "PHYSICAL",
+          "availability": "MISSING",
+          "synchronization": "UNKNOWN",
+          "spatial_alignment": "UNKNOWN",
+          "asset_ids": [],
+          "public_limitations": [
+            "No camera frame or synchronized capture timestamp was committed."
+          ],
+          "provider_identity": "ros-camera-provider",
+          "topic_name": "/camera/image_raw",
+          "device_path": "/dev/video0",
+          "internal_metadata": {
+            "capture_error": "withheld"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "artifact://discovery/mentorpi/runs/disc-20260820T115700-f8f2b8ec/ros.json"
+      ],
+      "public_limitations": [
+        "The initial bundle has degraded clock coverage and no camera observation asset."
+      ],
+      "raw_context": {
+        "model_prompt": "withheld",
+        "renderer_config": {
+          "layers": ["tf", "costmap"]
+        }
+      },
+      "influences_verification": false
+    },
+    {
+      "schema_version": "rolo-episode-observation-producer-bundle/v1",
+      "bundle_id": "bundle-supplementary",
+      "sequence": 2,
+      "parent_bundle_id": "bundle-initial",
+      "trigger_kind": "SUPPLEMENTARY",
+      "status": "UNAVAILABLE",
+      "created_at": "2026-08-20T11:57:05.500Z",
+      "window_start_offset_ms": 1500,
+      "window_end_offset_ms": 3000,
+      "synchronization": "UNKNOWN",
+      "spatial_alignment": "UNKNOWN",
+      "sources": [
+        {
+          "schema_version": "rolo-episode-observation-producer-source/v1",
+          "source_id": "source-gui-capture",
+          "public_label": "Registered engineering view",
+          "source_kind": "TRUSTED_GUI_CAPTURE",
+          "modality": "engineering-view",
+          "world_kind": "PHYSICAL",
+          "availability": "REJECTED",
+          "synchronization": "UNKNOWN",
+          "spatial_alignment": "UNKNOWN",
+          "asset_ids": [],
+          "public_limitations": [
+            "The registered GUI capture was rejected by the bounded observation policy."
+          ],
+          "provider_identity": "desktop-capture-provider",
+          "topic_name": null,
+          "device_path": null,
+          "internal_metadata": {
+            "window_title": "RViz2",
+            "display_session": "withheld"
+          }
+        }
+      ],
+      "evidence_refs": [],
+      "public_limitations": [
+        "The supplementary bundle contains no published observation asset."
+      ],
+      "raw_context": {
+        "requested_by": "diagnosis-agent"
+      },
+      "influences_verification": false
+    }
+  ],
+  "public_limitations": [
+    "Observation coverage is bounded to committed metadata and safe references."
+  ],
+  "content_sha256": "25ae5f691565cac66ae99d2fc059a0084565f543b5850545f0706f81e600b3c3"
+}

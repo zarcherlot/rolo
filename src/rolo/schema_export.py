@@ -25,6 +25,11 @@ from rolo.core.models import (
     RouteEvidence,
     ToolDescriptor,
 )
+from rolo.episode_observation_bundles import (
+    CommittedEpisodeObservationRecord,
+    EpisodeObservationBundleCollection,
+    PublishedEpisodeObservationBundleProjection,
+)
 from rolo.episode_projection import CommittedEpisodeRecord
 from rolo.episode_read_models import (
     EpisodeAssetSummary,
@@ -180,6 +185,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     EpisodeRevisionCollection,
     EpisodeRevisionSummary,
     CommittedEpisodeRecord,
+    CommittedEpisodeObservationRecord,
+    EpisodeObservationBundleCollection,
+    PublishedEpisodeObservationBundleProjection,
 )
 
 
