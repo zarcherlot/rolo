@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
+rolo = "rolo.product_cli:app"
 robotctl = "rolo.cli:app"
 
 [dependency-groups]

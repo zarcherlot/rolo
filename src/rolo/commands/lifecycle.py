@@ -12,7 +12,11 @@ from rolo.core.config import get_settings, prepare_runtime_directories
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.acceptance import write_adapt_acceptance_pack
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
-from rolo.stages.adapt.journey import AdaptJourneyService, detect_project_evidence
+from rolo.stages.adapt.journey import (
+    AdaptJourneyResult,
+    AdaptJourneyService,
+    detect_project_evidence,
+)
 from rolo.stages.adapt.ros_environment import select_ros_setup_files
 from rolo.stages.adapt.service import (
     AdaptRunService,
@@ -36,6 +40,106 @@ diagnose_stage_app = typer.Typer(help="Stage 2: diagnose and tune within user co
 verify_stage_app = typer.Typer(help="Stage 3: optionally verify acceptance and regression.")
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")
 adapt_stage_app.add_typer(enroll_app, name="enroll")
+
+
+def run_adapt_start(
+    *,
+    robot_id: str,
+    project_root: Path | None,
+    urdf: Path | None,
+    active_probe: ActiveProbeMode,
+    run_agent: bool,
+    scratch_root: Path | None,
+    timeout: int | None,
+    evidence_mode: EvidenceDeploymentMode,
+    allow_executable: list[Path] | None,
+    collector_descriptor: Path | None,
+    verification_secret: Path | None,
+    ssh_target: str | None,
+    known_hosts: Path | None,
+    collector_config: str,
+    evidence_timeout: float,
+) -> AdaptJourneyResult:
+    """Run the shared Adapt start application service used by product and expert CLIs."""
+    settings = get_settings()
+    prepare_runtime_directories(settings)
+    evidence = detect_project_evidence(project_root or Path.cwd())
+    evidence_deployment = None
+    remote_options = (
+        collector_descriptor,
+        verification_secret,
+        ssh_target,
+        known_hosts,
+    )
+    if active_probe == ActiveProbeMode.RUNTIME_READONLY:
+        if evidence_mode == EvidenceDeploymentMode.LOCAL:
+            if any(value is not None for value in remote_options):
+                raise ValueError("local evidence mode does not accept remote collector options")
+            _, ros_setup_files = select_ros_setup_files(
+                auto_source=settings.ros_auto_source,
+                configured=settings.ros_setup_files,
+                project_root=evidence.project_root,
+                install_roots=evidence.install_roots,
+            )
+            evidence_deployment, _ = ensure_local_deployment(
+                robot_id=robot_id,
+                config_root=settings.rolo_config_dir,
+                help_executables=allow_executable or (),
+                ros_setup_files=ros_setup_files,
+            )
+        else:
+            if allow_executable:
+                raise ValueError(
+                    "remote executable allowlists must be established on the target collector"
+                )
+            deployment_path = settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+            if deployment_path.is_file() and not any(
+                value is not None for value in remote_options
+            ):
+                evidence_deployment = load_deployment(deployment_path)
+                if evidence_deployment.mode != EvidenceDeploymentMode.REMOTE:
+                    raise ValueError("existing target evidence deployment is not remote")
+            else:
+                if not all(value is not None for value in remote_options):
+                    raise ValueError(
+                        "remote evidence mode requires an existing deployment or "
+                        "--collector-descriptor, --verification-secret, --ssh-target, "
+                        "and --known-hosts"
+                    )
+                descriptor = CollectorDescriptor.model_validate_json(
+                    collector_descriptor.read_text(encoding="utf-8")
+                )
+                evidence_deployment = configure_deployment(
+                    robot_id=robot_id,
+                    mode=EvidenceDeploymentMode.REMOTE,
+                    descriptor=descriptor,
+                    verification_secret_path=verification_secret,
+                    output_path=deployment_path,
+                    ssh_target=ssh_target,
+                    known_hosts_path=known_hosts,
+                    collector_config=collector_config,
+                )
+    elif evidence_mode == EvidenceDeploymentMode.REMOTE or allow_executable or any(
+        value is not None for value in remote_options
+    ):
+        raise ValueError("target evidence options require --active-probe runtime-readonly")
+    return AdaptJourneyService(
+        settings,
+        configured_discovery_service(
+            settings,
+            ArtifactStore(settings.rolo_artifact_dir),
+        ),
+    ).start(
+        robot_id=robot_id,
+        evidence=evidence,
+        urdf_path=urdf,
+        active_probe=active_probe,
+        run_agent=run_agent,
+        scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
+        timeout_s=timeout or settings.coding_agent_timeout_s,
+        evidence_deployment=evidence_deployment,
+        evidence_timeout_s=evidence_timeout,
+    )
 
 
 @adapt_stage_app.command("start")
@@ -114,91 +218,23 @@ def adapt_stage_start(
     ] = 45.0,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
-    settings = get_settings()
     try:
-        prepare_runtime_directories(settings)
-        evidence = detect_project_evidence(project_root or Path.cwd())
-        evidence_deployment = None
-        remote_options = (
-            collector_descriptor,
-            verification_secret,
-            ssh_target,
-            known_hosts,
-        )
-        if active_probe == ActiveProbeMode.RUNTIME_READONLY:
-            if evidence_mode == EvidenceDeploymentMode.LOCAL:
-                if any(value is not None for value in remote_options):
-                    raise ValueError(
-                        "local evidence mode does not accept remote collector options"
-                    )
-                _, ros_setup_files = select_ros_setup_files(
-                    auto_source=settings.ros_auto_source,
-                    configured=settings.ros_setup_files,
-                    project_root=evidence.project_root,
-                    install_roots=evidence.install_roots,
-                )
-                evidence_deployment, _ = ensure_local_deployment(
-                    robot_id=robot_id,
-                    config_root=settings.rolo_config_dir,
-                    help_executables=allow_executable or (),
-                    ros_setup_files=ros_setup_files,
-                )
-            else:
-                if allow_executable:
-                    raise ValueError(
-                        "remote executable allowlists must be established on the target collector"
-                    )
-                deployment_path = (
-                    settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
-                )
-                if deployment_path.is_file() and not any(
-                    value is not None for value in remote_options
-                ):
-                    evidence_deployment = load_deployment(deployment_path)
-                    if evidence_deployment.mode != EvidenceDeploymentMode.REMOTE:
-                        raise ValueError("existing target evidence deployment is not remote")
-                else:
-                    if not all(value is not None for value in remote_options):
-                        raise ValueError(
-                            "remote evidence mode requires an existing deployment or "
-                            "--collector-descriptor, --verification-secret, --ssh-target, "
-                            "and --known-hosts"
-                        )
-                    descriptor = CollectorDescriptor.model_validate_json(
-                        collector_descriptor.read_text(encoding="utf-8")
-                    )
-                    evidence_deployment = configure_deployment(
-                        robot_id=robot_id,
-                        mode=EvidenceDeploymentMode.REMOTE,
-                        descriptor=descriptor,
-                        verification_secret_path=verification_secret,
-                        output_path=deployment_path,
-                        ssh_target=ssh_target,
-                        known_hosts_path=known_hosts,
-                        collector_config=collector_config,
-                    )
-        elif evidence_mode == EvidenceDeploymentMode.REMOTE or allow_executable or any(
-            value is not None for value in remote_options
-        ):
-            raise ValueError(
-                "target evidence options require --active-probe runtime-readonly"
-            )
-        result = AdaptJourneyService(
-            settings,
-            configured_discovery_service(
-                settings,
-                ArtifactStore(settings.rolo_artifact_dir),
-            ),
-        ).start(
+        result = run_adapt_start(
             robot_id=robot_id,
-            evidence=evidence,
-            urdf_path=urdf,
+            project_root=project_root,
+            urdf=urdf,
             active_probe=active_probe,
             run_agent=run_agent,
-            scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
-            timeout_s=timeout or settings.coding_agent_timeout_s,
-            evidence_deployment=evidence_deployment,
-            evidence_timeout_s=evidence_timeout,
+            scratch_root=scratch_root,
+            timeout=timeout,
+            evidence_mode=evidence_mode,
+            allow_executable=allow_executable,
+            collector_descriptor=collector_descriptor,
+            verification_secret=verification_secret,
+            ssh_target=ssh_target,
+            known_hosts=known_hosts,
+            collector_config=collector_config,
+            evidence_timeout=evidence_timeout,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
