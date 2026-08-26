@@ -1,0 +1,72 @@
+{
+  "schema_version": "rolo-workbench-plugin-host-contract-design/v1",
+  "status": "e23a-review-candidate",
+  "target_baseline": "rolo-vis/v0.38.0",
+  "plugin_schema": "rolo-plugin/v2",
+  "routes": {
+    "workbench_mount": "/workbench/",
+    "api_base": "/rolo-api",
+    "legacy_api_compatibility": [
+      "/health",
+      "/v1/*"
+    ],
+    "spa_fallback_scope": "/workbench/*",
+    "asset_miss_status": 404
+  },
+  "runtime": {
+    "command": "robotctl runtime serve",
+    "listener_count": 1,
+    "http_self_proxy": false,
+    "duplicate_api_routes": false,
+    "plugin_optional": true,
+    "api_survives_plugin_failure": true
+  },
+  "network_modes": [
+    "ROBOT_LOOPBACK",
+    "TRUSTED_REVERSE_PROXY_TO_LOOPBACK"
+  ],
+  "direct_non_loopback_workbench": false,
+  "package": {
+    "manifest": "rolo.plugin.json",
+    "checksums": "SHA256SUMS",
+    "entry": "dist/client/index.html",
+    "checksum_algorithm": "sha256",
+    "delivery_mode": "device-local"
+  },
+  "required_manifest_sections": [
+    "delivery",
+    "api",
+    "security",
+    "integrity"
+  ],
+  "compatibility_authority": "health-advertised-api-features",
+  "cache_policy": {
+    "index": "no-store",
+    "checksum_named_assets": "public, max-age=31536000, immutable",
+    "default": "no-cache"
+  },
+  "forbidden_capabilities": [
+    "public_site",
+    "cloud_runtime",
+    "external_cdn",
+    "cross_origin_api",
+    "browser_bearer_secret",
+    "directory_scan",
+    "directory_listing",
+    "arbitrary_file_serving",
+    "path_traversal",
+    "symlink_escape",
+    "upload",
+    "teleoperation",
+    "arbitrary_command",
+    "verification_influence"
+  ],
+  "implementation": {
+    "contract": "candidate-e23a",
+    "rolo_host": "deferred-e23b",
+    "rolo_vis_package": "deferred-e23c",
+    "real_device_validation": "deferred-e23d",
+    "public_deployment": false
+  }
+}
+
