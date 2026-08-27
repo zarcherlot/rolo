@@ -28,6 +28,22 @@ jobs:
       - run: uv run --python ${{ matrix.python-version }} ruff check .
       - run: uv run --python ${{ matrix.python-version }} pytest
 
+  package:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev --python 3.12
+      - name: Run product release smoke checks
+        run: uv run --python 3.12 rolo release-check
+      - name: Build wheel and sdist
+        run: uv build
+      - name: Verify build artifacts
+        run: test -n "$(find dist -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print -quit)"
+
   lerobot-e2e:
     runs-on: ubuntu-latest
     steps:
