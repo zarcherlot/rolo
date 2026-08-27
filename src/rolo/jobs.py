@@ -76,6 +76,25 @@ class JobRecovery(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class JobPage(BaseModel):
+    schema_version: Literal["rolo-job-page/v1"] = "rolo-job-page/v1"
+    items: list[JobSummary]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+    next_offset: int | None = Field(default=None, ge=0)
+
+
+class JobEventPage(BaseModel):
+    schema_version: Literal["rolo-job-event-page/v1"] = "rolo-job-event-page/v1"
+    job_id: str
+    items: list[JobEvent]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+    next_offset: int | None = Field(default=None, ge=0)
+
+
 class JobStore:
     """Small append-only JSON repository with optimistic revision checks."""
 
@@ -125,6 +144,18 @@ class JobStore:
             )
         return summaries[offset : offset + limit]
 
+    def job_page(self, *, limit: int = 100, offset: int = 0) -> JobPage:
+        items = self.list_jobs(limit=limit, offset=offset)
+        total = len(list(self.root.glob("job_*.json")))
+        next_offset = offset + limit if offset + limit < total else None
+        return JobPage(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+            next_offset=next_offset,
+        )
+
     def recover(self, job_id: str) -> JobRecovery:
         job, events, checkpoints = self.load(job_id)
         return JobRecovery(
@@ -142,6 +173,21 @@ class JobStore:
             raise ValueError("event list limit must be 1..100 and offset must be non-negative")
         _, events, _ = self.load(job_id)
         return events[offset : offset + limit]
+
+    def event_page(self, job_id: str, *, limit: int = 100, offset: int = 0) -> JobEventPage:
+        _, events, _ = self.load(job_id)
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("event list limit must be 1..100 and offset must be non-negative")
+        items = events[offset : offset + limit]
+        next_offset = offset + limit if offset + limit < len(events) else None
+        return JobEventPage(
+            job_id=job_id,
+            items=items,
+            total=len(events),
+            limit=limit,
+            offset=offset,
+            next_offset=next_offset,
+        )
 
     def append_event(
         self,
