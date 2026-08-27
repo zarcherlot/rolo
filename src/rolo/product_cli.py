@@ -30,7 +30,7 @@ from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
-from rolo.targets.signing import verify_companion_manifest
+from rolo.targets.signing import CompanionReleasePolicy, verify_companion_manifest
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
@@ -387,6 +387,33 @@ def target_companion_build(
             "publisher_id": signed.publisher_id,
         }
     )
+
+
+@target_app.command("companion-verify")
+def target_companion_verify(
+    manifest_file: Annotated[Path, typer.Argument(help="Signed manifest JSON")],
+    package_file: Annotated[Path, typer.Argument(help="Companion package")],
+    verification_key_file: Annotated[Path, typer.Option("--verification-key-file")],
+    policy_file: Annotated[Path | None, typer.Option("--policy")] = None,
+) -> None:
+    """Verify a companion package against its publisher key and revocation policy."""
+    try:
+        policy = (
+            CompanionReleasePolicy.model_validate_json(
+                policy_file.read_text(encoding="utf-8")
+            )
+            if policy_file
+            else None
+        )
+        result = verify_companion_manifest(
+            manifest_file,
+            package_file,
+            verification_key=verification_key_file.read_bytes(),
+            release_policy=policy,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "COMPANION_VERIFIED", "verification": result.model_dump(mode="json")})
 
 
 @profile_app.command("init")

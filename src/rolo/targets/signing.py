@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rolo.core.hashing import sha256_file
 
@@ -53,6 +53,31 @@ class ManifestVerificationResult(BaseModel):
     verified: Literal[True] = True
 
 
+class CompanionReleasePolicy(BaseModel):
+    """Publisher allow-list and revocation set distributed with releases."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-target-companion-release-policy/v1"] = (
+        "rolo-target-companion-release-policy/v1"
+    )
+    publisher_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}$")
+    revoked_versions: list[str] = Field(default_factory=list)
+    revoked_hashes: list[str] = Field(default_factory=list)
+
+    @field_validator("revoked_hashes")
+    @classmethod
+    def _validate_hashes(cls, values: list[str]) -> list[str]:
+        invalid = any(
+            len(value) != 64
+            or any(char not in "0123456789abcdef" for char in value)
+            for value in values
+        )
+        if invalid:
+            raise ValueError("revoked hashes must be lowercase SHA-256 values")
+        return values
+
+
 def sign_companion_manifest(
     *,
     package_id: str,
@@ -86,6 +111,7 @@ def verify_companion_manifest(
     package_path: Path,
     *,
     verification_key: bytes,
+    release_policy: CompanionReleasePolicy | None = None,
 ) -> ManifestVerificationResult:
     if not verification_key:
         raise ValueError("manifest verification key must not be empty")
@@ -94,6 +120,13 @@ def verify_companion_manifest(
     if not manifest_path.is_file():
         raise FileNotFoundError(f"companion manifest is missing: {manifest_path}")
     manifest = CompanionManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    if release_policy is not None:
+        if manifest.publisher_id != release_policy.publisher_id:
+            raise ValueError("companion publisher is not trusted by the release policy")
+        if manifest.package_version in release_policy.revoked_versions:
+            raise ValueError("companion package version has been revoked")
+        if manifest.package_sha256 in release_policy.revoked_hashes:
+            raise ValueError("companion package hash has been revoked")
     expected_package = (manifest_path.parent / manifest.package_file).resolve()
     if expected_package != package_path:
         raise ValueError("companion package path does not match its manifest")

@@ -39,6 +39,7 @@ from rolo.targets.profiles import (
 )
 from rolo.targets.signing import (
     CompanionManifest,
+    CompanionReleasePolicy,
     ManifestVerificationResult,
     sign_companion_manifest,
     verify_companion_manifest,
@@ -53,6 +54,7 @@ __all__ = [
     "BootstrapPlanStatus",
     "CompanionStatus",
     "CompanionManifest",
+    "CompanionReleasePolicy",
     "CredentialReference",
     "HostKeyDecision",
     "LocalTargetExecutor",
