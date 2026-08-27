@@ -3,7 +3,11 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from rolo.natural_language import NaturalLanguageOperation, parse_natural_language
+from rolo.natural_language import (
+    NaturalLanguageOperation,
+    intent_to_argv,
+    parse_natural_language,
+)
 from rolo.product_cli import app
 
 
@@ -17,6 +21,14 @@ def test_natural_language_maps_only_explicit_inspect_plan_and_recover_intents():
     assert parse_natural_language("恢复任务 job_abcdef0123456789").operation == (
         NaturalLanguageOperation.JOB_RECOVER
     )
+    request = parse_natural_language("申请 bootstrap 审批 C:/tmp/plan.json 由 agent")
+    assert request.operation == NaturalLanguageOperation.BOOTSTRAP_REQUEST
+    assert intent_to_argv(request)[0:2] == ["target", "bootstrap-request"]
+    approval = parse_natural_language(
+        "批准 bootstrap C:/tmp/plan.json C:/tmp/request.json by operator"
+    )
+    assert approval.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE
+    assert approval.actor == "operator"
 
 
 def test_natural_language_rejects_ambiguous_or_command_like_text():
@@ -39,3 +51,13 @@ def test_product_cli_lists_and_recovers_job_without_resuming_it(tmp_path, monkey
     recovery = json.loads(recovered.output)
     assert recovery["resumable"] is False
     assert recovery["limitations"]
+
+
+def test_product_cli_natural_returns_canonical_argv_without_execution():
+    result = CliRunner().invoke(
+        app, ["natural", "检查目标 ssh://robot@example.test/home/robot/ws"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "INTENT_PARSED"
+    assert payload["argv"] == ["target", "inspect", "ssh://robot@example.test/home/robot/ws"]
