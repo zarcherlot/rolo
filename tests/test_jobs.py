@@ -6,6 +6,8 @@ from typer.testing import CliRunner
 from rolo.jobs import JobStatus, JobStore
 from rolo.product_cli import app
 from rolo.target_ref import parse_target_ref
+from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
+from rolo.targets.bootstrap import BootstrapExecutionResult
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan
 
 
@@ -89,3 +91,56 @@ def test_product_cli_exposes_plan_bound_bootstrap_request_and_approval(tmp_path)
     )
     assert approved.exit_code == 0, approved.output
     assert __import__("json").loads(approved.output)["status"] == "APPROVED"
+
+
+def test_run_bootstrap_job_records_completion_checkpoint(tmp_path, monkeypatch):
+    target = parse_target_ref("ssh://robot@example.test/home/robot/workspace")
+    plan = TargetBootstrapPlan(
+        target=target,
+        assessment_state="READY",
+        status=BootstrapPlanStatus.APPROVAL_REQUIRED,
+        required_approvals=["target.bootstrap.execute"],
+    )
+    request = BootstrapApprovalRequest(
+        request_id="bar-" + "a" * 32,
+        plan_sha256="b" * 64,
+        scope="target.bootstrap.execute",
+        requested_by="agent",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc),
+    )
+    decision = BootstrapApprovalDecision(
+        request_id=request.request_id,
+        plan_sha256=request.plan_sha256,
+        scope=request.scope,
+        approved_by="operator",
+        approved_at=datetime.now(timezone.utc),
+    )
+    expected = BootstrapExecutionResult(
+        status="SUCCEEDED",
+        target=target,
+        plan_sha256=request.plan_sha256,
+        approval_request_id=request.request_id,
+        package_id="rolo-target",
+        package_version="1.0.0",
+        package_sha256="c" * 64,
+        remote_package_path="/tmp/rolo-target-c.pkg",
+    )
+    monkeypatch.setattr("rolo.jobs.execute_bootstrap", lambda *args, **kwargs: expected)
+    from rolo.jobs import run_bootstrap_job
+
+    job, result = run_bootstrap_job(
+        JobStore(tmp_path),
+        plan,
+        request,
+        decision,
+        manifest_path=tmp_path / "manifest.json",
+        package_path=tmp_path / "package.pkg",
+        verification_key=b"key",
+        transport=object(),
+    )
+    loaded, events, checkpoints = JobStore(tmp_path).load(job.job_id)
+    assert result == expected
+    assert loaded.status == JobStatus.SUCCEEDED
+    assert events[-1].event_type == "BOOTSTRAP_COMPLETED"
+    assert checkpoints[-1].state["phase"] == "completed"

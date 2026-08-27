@@ -12,6 +12,9 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from rolo.core.models import utc_now
+from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
+from rolo.targets.bootstrap import BootstrapExecutionResult, BootstrapTransport, execute_bootstrap
+from rolo.targets.models import TargetBootstrapPlan
 
 
 class JobStatus(str, Enum):
@@ -164,3 +167,72 @@ class JobStore:
             raise ValueError(
                 f"job revision conflict: expected {expected_revision}, current {job.revision}"
             )
+
+
+def run_bootstrap_job(
+    store: JobStore,
+    plan: TargetBootstrapPlan,
+    request: BootstrapApprovalRequest,
+    decision: BootstrapApprovalDecision,
+    *,
+    manifest_path: Path,
+    package_path: Path,
+    verification_key: bytes,
+    transport: BootstrapTransport,
+    timeout_s: float = 60.0,
+    now: datetime | None = None,
+) -> tuple[Job, BootstrapExecutionResult]:
+    """Execute approved bootstrap while recording a resumable lifecycle."""
+    job = store.create("target.bootstrap.execute", plan.target.model_dump_json(), now=now)
+    store.append_event(
+        job.job_id,
+        "JOB_STARTED",
+        JobStatus.RUNNING,
+        expected_revision=0,
+        now=now,
+        payload={"plan_sha256": request.plan_sha256, "approval_request_id": request.request_id},
+    )
+    store.save_checkpoint(
+        job.job_id,
+        {"phase": "authority-verified", "plan_sha256": request.plan_sha256},
+        expected_revision=1,
+        now=now,
+    )
+    try:
+        result = execute_bootstrap(
+            plan,
+            request,
+            decision,
+            manifest_path=manifest_path,
+            package_path=package_path,
+            verification_key=verification_key,
+            transport=transport,
+            timeout_s=timeout_s,
+            now=now,
+        )
+    except (OSError, ValueError) as exc:
+        store.append_event(
+            job.job_id,
+            "BOOTSTRAP_FAILED",
+            JobStatus.FAILED,
+            expected_revision=1,
+            now=now,
+            payload={"error": str(exc)},
+        )
+        raise
+    store.save_checkpoint(
+        job.job_id,
+        {"phase": "completed", "result": result.model_dump(mode="json")},
+        expected_revision=1,
+        now=now,
+    )
+    final_status = JobStatus.SUCCEEDED if result.status == "SUCCEEDED" else JobStatus.FAILED
+    store.append_event(
+        job.job_id,
+        "BOOTSTRAP_COMPLETED" if result.status == "SUCCEEDED" else "BOOTSTRAP_FAILED",
+        final_status,
+        expected_revision=1,
+        now=now,
+        payload={"diagnostics": result.diagnostics},
+    )
+    return store.load(job.job_id)[0], result
