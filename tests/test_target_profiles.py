@@ -131,3 +131,23 @@ def test_product_cli_profile_init_and_show_do_not_connect(tmp_path: Path) -> Non
     assert shown.exit_code == 0, shown.output
     payload = json.loads(shown.output)
     assert payload["profile"]["host_key"]["status"] == "PENDING"
+
+    approved = runner.invoke(
+        app,
+        [
+            "target",
+            "profile",
+            "approve-host-key",
+            "--robot",
+            "wheeltec",
+            "--fingerprint",
+            "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "--approver",
+            "operator",
+        ],
+        env=env,
+    )
+    assert approved.exit_code == 0, approved.output
+    approved_payload = json.loads(approved.output)
+    assert approved_payload["status"] == "HOST_KEY_APPROVED"
+    assert approved_payload["profile"]["host_key"]["status"] == "APPROVED"
