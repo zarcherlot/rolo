@@ -10,6 +10,8 @@ def test_bootstrap_security_requires_non_empty_inputs(tmp_path):
     key = tmp_path / "key"
     known_hosts.write_text("host ssh-ed25519 AAAA\n", encoding="utf-8")
     key.write_bytes(b"key")
+    if os.name != "nt":
+        key.chmod(0o600)
     assert validate_bootstrap_security(known_hosts, key) == (known_hosts.resolve(), key.resolve())
 
 
