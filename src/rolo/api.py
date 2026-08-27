@@ -73,7 +73,7 @@ from rolo.fleet_read_models import (
     build_fleet_collection,
     get_fleet_blocker_detail,
 )
-from rolo.job_service import JobService
+from rolo.job_service import JobService, JobServiceError
 from rolo.jobs import JobEventPage, JobPage, JobRecovery
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
@@ -206,18 +206,22 @@ def list_jobs(
 ) -> JobPage:
     try:
         return get_job_service().list(limit=limit, offset=offset)
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobRecovery)
 def recover_job(job_id: str) -> JobRecovery:
     try:
         return get_job_service().recover(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="job not found") from exc
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.get("/v1/jobs/{job_id}/events", response_model=JobEventPage)
@@ -228,10 +232,11 @@ def list_job_events(
 ) -> JobEventPage:
     try:
         return get_job_service().events(job_id, limit=limit, offset=offset)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="job not found") from exc
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.get("/v1/operations/governance", response_model=OperationGovernanceCollection)
