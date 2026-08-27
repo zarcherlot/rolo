@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from rolo.core.hashing import sha256_file
+from rolo.product_cli import app
+from rolo.target_ref import SshTargetRef, parse_target_ref
+from rolo.targets.approvals import approve_bootstrap, request_bootstrap_approval
+from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan
+from rolo.targets.profiles import (
+    CredentialReference,
+    HostKeyDecision,
+    TargetProfileStore,
+)
+from rolo.targets.signing import sign_companion_manifest, verify_companion_manifest
+
+
+def _target() -> SshTargetRef:
+    target = parse_target_ref("ssh://robot@example.test:2222/home/robot/wheeltec_ws")
+    assert isinstance(target, SshTargetRef)
+    return target
+
+
+def _approval_plan() -> TargetBootstrapPlan:
+    return TargetBootstrapPlan(
+        target=_target(),
+        assessment_state="READY",
+        status=BootstrapPlanStatus.APPROVAL_REQUIRED,
+        required_approvals=["target.bootstrap.execute"],
+    )
+
+
+def test_target_profile_store_persists_non_secret_profile_and_rejects_target_replacement(
+    tmp_path: Path,
+) -> None:
+    store = TargetProfileStore(tmp_path)
+    profile = store.create(
+        robot_id="wheeltec",
+        target=_target(),
+        credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+        now=datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    loaded = store.load("wheeltec")
+    assert loaded == profile
+    assert loaded.host_key == HostKeyDecision(
+        host="example.test",
+        port=2222,
+    )
+    assert "secret" not in json.dumps(loaded.model_dump(mode="json"))
+    with pytest.raises(ValueError, match="target is immutable"):
+        store.save(
+            profile.model_copy(
+                update={
+                    "target": parse_target_ref("ssh://robot@example.test/home/robot/other")
+                }
+            )
+        )
+
+
+def test_bootstrap_approval_is_bound_to_plan_and_disallows_self_approval() -> None:
+    now = datetime(2026, 8, 27, tzinfo=timezone.utc)
+    plan = _approval_plan()
+    request = request_bootstrap_approval(plan, requested_by="agent", now=now)
+
+    decision = approve_bootstrap(
+        plan,
+        request,
+        approved_by="operator",
+        now=now + timedelta(seconds=1),
+    )
+    assert decision.status == "APPROVED"
+    assert decision.plan_sha256 == request.plan_sha256
+    with pytest.raises(ValueError, match="self-approved"):
+        approve_bootstrap(plan, request, approved_by="agent", now=now + timedelta(seconds=1))
+    changed = plan.model_copy(update={"required_approvals": ["other.scope"]})
+    with pytest.raises(ValueError, match="different plan"):
+        approve_bootstrap(changed, request, approved_by="operator", now=now + timedelta(seconds=1))
+
+
+def test_companion_manifest_verification_checks_hash_and_signature(tmp_path: Path) -> None:
+    package = tmp_path / "rolo-target.bin"
+    package.write_bytes(b"signed companion payload")
+    manifest = sign_companion_manifest(
+        package_id="rolo-target",
+        package_version="1.0.0",
+        architecture="aarch64",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        publisher_id="rolo-release",
+        verification_key=b"test verification key",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+    result = verify_companion_manifest(
+        manifest_path,
+        package,
+        verification_key=b"test verification key",
+    )
+    assert result.verified is True
+    package.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="hash does not match"):
+        verify_companion_manifest(manifest_path, package, verification_key=b"test verification key")
+
+
+def test_product_cli_profile_init_and_show_do_not_connect(tmp_path: Path) -> None:
+    env = {"ROLO_CONFIG_DIR": str(tmp_path / "config")}
+    runner = CliRunner()
+    created = runner.invoke(
+        app,
+        [
+            "target",
+            "profile",
+            "init",
+            "ssh://robot@example.test/home/robot/workspace",
+            "--robot",
+            "wheeltec",
+        ],
+        env=env,
+    )
+    shown = runner.invoke(app, ["target", "profile", "show", "--robot", "wheeltec"], env=env)
+
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["status"] == "PROFILE_READY"
+    assert shown.exit_code == 0, shown.output
+    payload = json.loads(shown.output)
+    assert payload["profile"]["host_key"]["status"] == "PENDING"

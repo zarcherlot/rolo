@@ -9,11 +9,13 @@ import typer
 
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
+from rolo.core.config import get_settings
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetConnectionState
+from rolo.targets.profiles import CredentialReference, TargetProfileStore
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
@@ -21,6 +23,8 @@ app = typer.Typer(
 )
 target_app = typer.Typer(help="Inspect targets and plan approved bootstrap changes.")
 app.add_typer(target_app, name="target")
+profile_app = typer.Typer(help="Manage non-secret target connection profiles.")
+target_app.add_typer(profile_app, name="profile")
 
 
 @app.callback()
@@ -78,6 +82,60 @@ def target_bootstrap_plan(
     emit(plan)
     if plan.status == BootstrapPlanStatus.BLOCKED:
         raise typer.Exit(code=2)
+
+
+@profile_app.command("init")
+def profile_init(
+    target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
+    robot_id: Annotated[
+        str,
+        typer.Option("--robot", "--robot-id", help="Stable identity for this target profile"),
+    ],
+    credential_ref: Annotated[
+        str,
+        typer.Option(
+            "--credential-ref",
+            help="Typed reference only, for example ssh-agent:default; never a secret",
+        ),
+    ] = "ssh-agent:default",
+) -> None:
+    """Create or validate a target profile without connecting or mutating a host."""
+    try:
+        target_ref = parse_target_ref(target)
+        credential = CredentialReference(
+            kind=credential_ref.split(":", 1)[0],
+            reference=credential_ref,
+        )
+        store = TargetProfileStore(get_settings().rolo_config_dir)
+        profile = store.create(robot_id=robot_id, target=target_ref, credential=credential)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "PROFILE_READY",
+            "path": str(store.path_for(profile.profile_id)),
+            "profile": profile.model_dump(mode="json"),
+        }
+    )
+
+
+@profile_app.command("show")
+def profile_show(
+    robot_id: Annotated[str, typer.Option("--robot", "--robot-id")],
+) -> None:
+    """Show a target profile; credential references never contain secret material."""
+    try:
+        store = TargetProfileStore(get_settings().rolo_config_dir)
+        profile = store.load(robot_id)
+        emit(
+            {
+                "status": "PROFILE_FOUND",
+                "path": str(store.path_for(profile.profile_id)),
+                "profile": profile.model_dump(mode="json"),
+            }
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @app.command("adapt")
