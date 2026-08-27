@@ -277,27 +277,43 @@ Discovery 为 `PARTIAL` 不一定失败。缺失证据与本次目标 Operation 
 
 ## 4. 模式 B：控制器与目标机分离
 
-### 4.1 在目标机初始化 Collector
+该模式中的 SSH 只承载一次一请求的只读 Collector 协议，不提供交互式 Shell、任意命令执行、
+断点调试或写 Operation。建议为 Collector 使用独立账号和独立密钥，并把该密钥强制绑定到固定
+Collector 命令。运维人员需要登录目标机时，应使用另一套经过授权的管理账号和密钥。
+
+### 4.1 准备目标机运行目录
 
 目标机只需要 Git checkout、锁定环境和 Collector，不需要 Codex、Agent 工作区或 Tool Gateway
-访问权限。
+访问权限。以下示例将固定版本放在 `/opt/rolo`，并让非交互 SSH 会话可以通过
+`/usr/local/bin/robotctl` 找到入口：
 
 ```bash
-git clone --branch v0.1.0-rc.2 --depth 1 \
-  https://github.com/zarcherlot/rolo.git
-cd rolo
-uv sync --frozen
+sudo useradd --create-home --shell /bin/bash rolo-evidence
+sudo install -d -m 0755 -o rolo-evidence -g rolo-evidence /opt/rolo
+sudo -u rolo-evidence git clone --branch v0.1.0-rc.2 --depth 1 \
+  https://github.com/zarcherlot/rolo.git /opt/rolo
+cd /opt/rolo
+sudo -u rolo-evidence uv sync --frozen
+sudo ln -s /opt/rolo/.venv/bin/robotctl /usr/local/bin/robotctl
+/usr/local/bin/robotctl --help >/dev/null
 ```
 
-初始化：
+已有 `rolo-evidence` 账号或 `/usr/local/bin/robotctl` 时不要重复创建或覆盖，应核对它们是否指向
+固定的 `v0.1.0-rc.2` 环境。该账号不应具有 `sudo` 权限。它必须能够只读访问机器人工程、已批准
+的 ROS setup 和需要枚举的设备；仅按实际需要授予 Unix group 或 ACL，不要直接授予管理员权限。
+
+创建仅该账号可读的 Collector 目录并初始化：
 
 ```bash
-uv run robotctl target-evidence collector-init \
+sudo install -d -m 0700 -o rolo-evidence -g rolo-evidence /etc/rolo
+sudo -u rolo-evidence /usr/local/bin/robotctl target-evidence collector-init \
   --robot-id wheeltec \
   --project-root /home/robot/wheeltec_ws \
   --config /etc/rolo/target-evidence-collector.json \
   --secret-file /etc/rolo/target-evidence-collector.key \
-  --descriptor-out ./wheeltec-collector.json
+  --descriptor-out /home/rolo-evidence/wheeltec-collector.json
+sudo chmod 0600 /etc/rolo/target-evidence-collector.json \
+  /etc/rolo/target-evidence-collector.key
 ```
 
 使用 ROS 且自动选择存在歧义时，按真实加载顺序重复传入：
@@ -316,29 +332,141 @@ ROS 或非 ROS 目标需要采集某个已审核程序的受限 `--help` 时，�
 第三方程序可能为 `--help` 实现副作用，只能 allowlist 经人工审核的可执行文件，也可以完全
 省略此类证据。
 
+### 4.2 创建专用 SSH 密钥并限制账号
+
+在控制器上为这一台目标机创建独立 Ed25519 密钥。推荐使用口令并在运行前加载到
+`ssh-agent`；无人值守场景应把密钥放入受控的秘密存储，不能提交到源码仓库：
+
+```bash
+install -d -m 0700 ~/.ssh
+ssh-keygen -t ed25519 -f ~/.ssh/rolo-wheeltec -C rolo-wheeltec-evidence
+ssh-add ~/.ssh/rolo-wheeltec
+```
+
+通过物理控制台或已有的管理通道，把 `~/.ssh/rolo-wheeltec.pub` 的内容安装到目标机
+`/home/rolo-evidence/.ssh/authorized_keys`。生产配置推荐使用以下单行格式；将
+`AAAAC3...` 替换为控制器公钥的完整内容：
+
+```text
+restrict,command="/usr/local/bin/robotctl target-evidence collector-run --config /etc/rolo/target-evidence-collector.json" ssh-ed25519 AAAAC3... rolo-wheeltec-evidence
+```
+
+然后在目标机核对权限：
+
+```bash
+sudo chown -R rolo-evidence:rolo-evidence /home/rolo-evidence/.ssh
+sudo chmod 0700 /home/rolo-evidence/.ssh
+sudo chmod 0600 /home/rolo-evidence/.ssh/authorized_keys
+```
+
+`restrict` 会禁用 PTY、端口转发、Agent 转发和 X11 转发。旧版 OpenSSH 不支持 `restrict` 时，
+使用 `no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-pty` 等价限制，并继续保留
+固定 `command=`。不要用该专用密钥执行 `scp`、交互式 Shell 或 SSH tunnel。
+
+### 4.3 独立固定 SSH 主机密钥
+
+在目标机物理控制台或可信管理通道读取 Ed25519 主机公钥及其 SHA-256 指纹：
+
+```bash
+sudo cat /etc/ssh/ssh_host_ed25519_key.pub
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256
+```
+
+在控制器上通过另一个可信通道核对指纹后，创建专用 `known_hosts`。不要直接信任首次连接提示，
+也不要把未经独立核对的 `ssh-keyscan` 输出当作可信主机密钥：
+
+```bash
+install -d -m 0700 ~/.config/rolo/ssh
+printf '%s\n' 'wheeltec-host ssh-ed25519 <目标机主机公钥的Base64部分>' \
+  > ~/.config/rolo/ssh/wheeltec_known_hosts
+chmod 0600 ~/.config/rolo/ssh/wheeltec_known_hosts
+ssh-keygen -F wheeltec-host -f ~/.config/rolo/ssh/wheeltec_known_hosts
+```
+
+为了明确指定地址、账号和私钥，在控制器的 `~/.ssh/config` 增加：
+
+```sshconfig
+Host wheeltec-rolo
+  HostName 192.0.2.10
+  User rolo-evidence
+  IdentityFile ~/.ssh/rolo-wheeltec
+  IdentitiesOnly yes
+  HostKeyAlias wheeltec-host
+```
+
+把 `192.0.2.10` 替换为目标机实际 IP 或 DNS 名称。自定义端口可增加 `Port`，需要跳板机时可
+增加 `ProxyJump`。`--ssh-target` 只接受 `host` 或 `user@host`，不接受 `-p` 等 SSH 参数；复杂
+连接应封装为上述仅含字母、数字、点、下划线或连字符的 Host 别名。
+
+### 4.4 分通道置备 Collector 身份与验签秘密
+
 部署时必须使用相互独立的通道传递：
 
 - descriptor：普通配置通道；
 - Collector secret：独立秘密通道；
 - SSH host key：独立核验的 `known_hosts`。
 
-### 4.2 在控制器启动远程 Adapt
+将目标机上的 `/home/rolo-evidence/wheeltec-collector.json` 通过普通配置管理通道传到控制器，
+将 `/etc/rolo/target-evidence-collector.key` 通过秘密管理系统、加密介质或其他独立秘密通道置备
+到控制器。例如最终文件可放置为：
 
-控制器同样克隆固定标签并完成 `uv sync --frozen` 与 Codex 登录。首次远程启动：
+```text
+~/.config/rolo/collectors/wheeltec-collector.json
+~/.config/rolo/secrets/wheeltec-collector.key
+```
+
+控制器上的 secret 必须设为 `0600`，且不得使用受限的 `rolo-evidence` SSH 密钥从目标机
+下载。descriptor、secret 和 SSH host key 三者来自同一未验证 SSH 会话时，不构成独立置备。
+
+### 4.5 配置远程模式并执行 SSH 冒烟采集
+
+控制器同样克隆 `v0.1.0-rc.2` 固定标签并执行 `uv sync --frozen`。先单独配置并采集一份新鲜
+证据，以同时验证 SSH 认证、主机密钥固定、远端 `robotctl`、Collector 配置和 HMAC 验签：
+
+```bash
+cd /path/to/controller/rolo
+chmod 0600 ~/.config/rolo/secrets/wheeltec-collector.key
+uv run robotctl target-evidence configure \
+  --robot-id wheeltec \
+  --mode remote \
+  --collector-descriptor ~/.config/rolo/collectors/wheeltec-collector.json \
+  --verification-secret ~/.config/rolo/secrets/wheeltec-collector.key \
+  --ssh-target wheeltec-rolo \
+  --known-hosts ~/.config/rolo/ssh/wheeltec_known_hosts \
+  --collector-config /etc/rolo/target-evidence-collector.json
+
+uv run robotctl target-evidence collect \
+  --robot-id wheeltec \
+  --output ./wheeltec-target-evidence.json \
+  --timeout 45
+```
+
+成功时第二条命令返回 `status: VERIFIED`，并报告与 descriptor 一致的 `collector_id` 和
+`target_host_fingerprint`。任何密码提示、首次连接确认提示、主机密钥错误、签名错误或超时都
+应视为失败；不要改用 `StrictHostKeyChecking=no` 绕过。
+
+首次配置会固定 Collector 身份、secret 摘要、SSH target、`known_hosts` 路径和远端配置路径。
+以后更换其中任一项都必须走显式 rotation/re-enrollment，不能直接覆盖部署文件。
+
+### 4.6 在控制器启动远程 Adapt
+
+冒烟采集通过后，完成 Codex 登录并复用已经固定的远程部署：
 
 ```bash
 uv run robotctl adapt start \
   --robot-id wheeltec \
   --project-root /path/to/controller/source-copy \
   --evidence-mode remote \
-  --collector-descriptor ./wheeltec-collector.json \
-  --verification-secret /etc/rolo/secrets/wheeltec-collector.key \
-  --ssh-target rolo-evidence@wheeltec-host \
-  --known-hosts /etc/rolo/ssh/known_hosts \
-  --collector-config /etc/rolo/target-evidence-collector.json
+  --discover-only \
+  --timeout 1800
 ```
 
-只运行远程 Discovery 时增加 `--discover-only`。远程模式要求 SSH `BatchMode=yes`、
+确认 Discovery、Wiki 和目标路由后，移除 `--discover-only` 运行完整 Agent/Gate/release 链。
+如果跳过 4.5 的独立配置，也可以在首次 `adapt start` 中传入
+`--collector-descriptor`、`--verification-secret`、`--ssh-target`、`--known-hosts` 和
+`--collector-config` 全部参数；先冒烟采集更容易定位连接和验签问题。
+
+远程模式固定使用 SSH `BatchMode=yes`、
 `StrictHostKeyChecking=yes` 和显式 `known_hosts`；目标身份、Collector ID、签名或 SSH host key
 不匹配时必须停止。
 
@@ -393,6 +521,34 @@ bubblewrap --version
 
 停止采集，核验物理目标机，初始化新 Collector 或执行显式轮换与 re-enroll，再采集新 bundle。
 旧 bundle 只能作为审计证据，不能重复用于新的 Discovery。
+
+### 5.6 SSH 远程采集失败
+
+先在控制器上重跑最小采集，不要直接反复运行完整 Adapt：
+
+```bash
+uv run robotctl target-evidence collect --robot-id wheeltec --timeout 45
+```
+
+按错误类型检查：
+
+- `Permission denied (publickey)`：确认 `ssh-agent` 已加载正确私钥、SSH Host 别名选中了
+  `rolo-evidence` 账号，并核对目标机 `.ssh` 与 `authorized_keys` 的属主和权限；
+- `Host key verification failed`：核对 `HostKeyAlias` 与专用 `known_hosts` 第一列是否一致，并通过
+  独立通道复核目标机指纹；不要自动删除旧 pin；
+- `remote target evidence collector failed`：在目标机管理控制台确认
+  `/usr/local/bin/robotctl`、Collector state、secret、工程和 ROS setup 对 `rolo-evidence` 可读，且
+  固定 `command=` 中的配置路径与控制器 `--collector-config` 一致；
+- `collector state belongs to a different target host`：Collector state 被复制到了另一台机器，
+  必须在实际目标机重新初始化并显式 re-enroll；
+- `signature mismatch`、`collector identity mismatch` 或证据过期：停止连接，核对 descriptor、
+  secret、系统时间和目标身份，不要重建或替换部署文件来绕过；
+- 超时：检查网络、跳板机和目标负载；可以在 `1` 到 `300` 秒之间调整 `--timeout`，但超时后
+  不会回退采集控制器本机证据。
+
+需要查看 SSH 握手细节时，可临时用相同 Host 别名和固定 `known_hosts` 执行 OpenSSH 的 `-vvv`
+诊断，但受限账号仍会强制运行 Collector，空请求预期会被拒绝。不要为了调试移除
+`BatchMode`、`StrictHostKeyChecking`、`UserKnownHostsFile` 或 `authorized_keys` 的强制命令。
 
 ## 6. 真机安全边界
 
