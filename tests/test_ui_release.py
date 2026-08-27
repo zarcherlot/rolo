@@ -28,3 +28,5 @@ def test_release_check_and_cli_smoke_pass():
     assert "api-route:/v1/jobs" in result.checks
     cli = CliRunner().invoke(app, ["release-check"])
     assert cli.exit_code == 0, cli.output
+    tui = CliRunner().invoke(app, ["tui", "--once"])
+    assert tui.exit_code == 0, tui.output

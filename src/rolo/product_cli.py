@@ -15,6 +15,7 @@ from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore, run_bootstrap_job
 from rolo.natural_language import intent_to_argv, parse_natural_language
 from rolo.natural_service import NaturalLanguageService
+from rolo.query_adapter import ServiceJobQueryAdapter
 from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
@@ -32,6 +33,8 @@ from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
 from rolo.targets.security import validate_bootstrap_security
 from rolo.targets.signing import CompanionReleasePolicy, verify_companion_manifest
+from rolo.tui import run_tui
+from rolo.ui_models import JobUiAdapter
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
@@ -108,6 +111,19 @@ def natural(
             result.model_dump(mode="json") if hasattr(result, "model_dump") else result
         )
     emit(payload)
+
+
+@app.command("tui")
+def tui(
+    once: Annotated[
+        bool, typer.Option("--once", help="Render the current Job view and exit")
+    ] = False,
+) -> None:
+    """Open the dependency-free, read-only terminal UI."""
+    adapter = JobUiAdapter(
+        ServiceJobQueryAdapter(JobService(get_settings().rolo_config_dir / "jobs"))
+    )
+    run_tui(adapter, once=once)
 
 
 @job_app.command("list")

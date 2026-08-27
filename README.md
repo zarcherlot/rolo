@@ -94,6 +94,15 @@ uv run robotctl adapt start \
   --urdf /path/to/robot.urdf  # 可省略
 ```
 
+需要在终端查看任务状态或解析自然语言时，可启动只读 TUI：
+
+```bash
+uv run rolo tui
+```
+
+TUI 支持 `list`、`show JOB_ID`、`events JOB_ID` 和 `ask <自然语言>`；高风险操作只展示规范
+CLI，不在 TUI 内直接执行。
+
 不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；此后的正式产品
 入口只有一条 `robotctl adapt start`。它自动注册或复用机器人身份、检查环境、识别工程证据、
 幂等建立本地 collector、采集并验证新鲜签名证据、执行只读发现、生成 Wiki，并在存在目标机

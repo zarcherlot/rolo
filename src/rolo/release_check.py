@@ -33,6 +33,7 @@ def run_release_check(
         "rolo.api",
         "rolo.natural_service",
         "rolo.query_adapter",
+        "rolo.tui",
     ):
         try:
             importlib.import_module(module)
