@@ -168,6 +168,30 @@ class JobStore:
             ],
         )
 
+    def find_completed_bootstrap(
+        self, *, plan_sha256: str, target: str
+    ) -> tuple[Job, BootstrapExecutionResult] | None:
+        """Return a successful bootstrap for the same plan and target."""
+        for path in self.root.glob("job_*.json"):
+            try:
+                job, events, checkpoints = self.load(path.stem)
+            except (OSError, ValueError, KeyError):
+                continue
+            if job.operation != "target.bootstrap.execute" or job.target != target:
+                continue
+            if job.status != JobStatus.SUCCEEDED:
+                continue
+            if not any(event.payload.get("plan_sha256") == plan_sha256 for event in events):
+                continue
+            for checkpoint in reversed(checkpoints):
+                result = checkpoint.state.get("result")
+                if isinstance(result, dict):
+                    try:
+                        return job, BootstrapExecutionResult.model_validate(result)
+                    except ValueError:
+                        break
+        return None
+
     def list_events(self, job_id: str, *, limit: int = 100, offset: int = 0) -> list[JobEvent]:
         if not 1 <= limit <= 100 or offset < 0:
             raise ValueError("event list limit must be 1..100 and offset must be non-negative")
@@ -286,9 +310,16 @@ def run_bootstrap_job(
     verification_key: bytes,
     transport: BootstrapTransport,
     timeout_s: float = 60.0,
+    rollback_on_failure: bool = False,
     now: datetime | None = None,
 ) -> tuple[Job, BootstrapExecutionResult]:
     """Execute approved bootstrap while recording a resumable lifecycle."""
+    existing = store.find_completed_bootstrap(
+        plan_sha256=request.plan_sha256,
+        target=plan.target.model_dump_json(),
+    )
+    if existing is not None:
+        return existing
     job = store.create("target.bootstrap.execute", plan.target.model_dump_json(), now=now)
     store.append_event(
         job.job_id,
@@ -314,6 +345,7 @@ def run_bootstrap_job(
             verification_key=verification_key,
             transport=transport,
             timeout_s=timeout_s,
+            rollback_on_failure=rollback_on_failure,
             now=now,
         )
     except (OSError, ValueError) as exc:

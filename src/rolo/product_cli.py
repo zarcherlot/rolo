@@ -347,6 +347,7 @@ def target_bootstrap_execute(
             verification_key=verification_key,
             transport=transport,
             timeout_s=timeout,
+            rollback_on_failure=True,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

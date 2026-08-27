@@ -170,6 +170,7 @@ def execute_bootstrap(
     verification_key: bytes,
     transport: BootstrapTransport,
     timeout_s: float = 60.0,
+    rollback_on_failure: bool = False,
     now: datetime | None = None,
 ) -> BootstrapExecutionResult:
     """Upload/install a signed companion only after all authority checks pass."""
@@ -191,7 +192,23 @@ def execute_bootstrap(
         manifest_path.read_text(encoding="utf-8")
     )
     remote_package_path = f"/tmp/rolo-target-{manifest.package_sha256}.pkg"
+    rollback_path = f"/tmp/rolo-target-previous-{manifest.package_sha256}"
     diagnostics: list[str] = []
+    rollback_available = False
+    if rollback_on_failure:
+        backup = transport.execute(
+            [
+                "sudo",
+                "-n",
+                "cp",
+                "-p",
+                "--",
+                "/usr/local/bin/rolo-target",
+                rollback_path,
+            ],
+            timeout_s=timeout_s,
+        )
+        rollback_available = backup.returncode == 0
     uploaded = transport.upload(package_path.resolve(), remote_package_path, timeout_s=timeout_s)
     if uploaded.returncode != 0:
         return BootstrapExecutionResult(
@@ -222,6 +239,10 @@ def execute_bootstrap(
         timeout_s=timeout_s,
     )
     if installed.returncode != 0:
+        cleanup = transport.execute(["rm", "-f", "--", remote_package_path], timeout_s=timeout_s)
+        diagnostics = [_transport_failure(installed, "companion install")]
+        if cleanup.returncode != 0:
+            diagnostics.append(_transport_failure(cleanup, "temporary package cleanup"))
         return BootstrapExecutionResult(
             status="FAILED",
             target=transport.target,
@@ -231,10 +252,25 @@ def execute_bootstrap(
             package_version=verified.package_version,
             package_sha256=verified.package_sha256,
             remote_package_path=remote_package_path,
-            diagnostics=[_transport_failure(installed, "companion install")],
+            diagnostics=diagnostics,
         )
     health = transport.execute(["rolo-target", "--version"], timeout_s=timeout_s)
     if health.returncode != 0:
+        diagnostics = [_transport_failure(health, "companion health check")]
+        if rollback_available:
+            rollback = transport.execute(
+                ["sudo", "-n", "mv", "-f", "--", rollback_path, "/usr/local/bin/rolo-target"],
+                timeout_s=timeout_s,
+            )
+            if rollback.returncode == 0:
+                diagnostics.append("rollback restored the previous companion")
+            else:
+                diagnostics.append(_transport_failure(rollback, "companion rollback"))
+        else:
+            diagnostics.append("rollback unavailable: no previous companion backup")
+        cleanup = transport.execute(["rm", "-f", "--", remote_package_path], timeout_s=timeout_s)
+        if cleanup.returncode != 0:
+            diagnostics.append(_transport_failure(cleanup, "temporary package cleanup"))
         return BootstrapExecutionResult(
             status="FAILED",
             target=transport.target,
@@ -244,8 +280,14 @@ def execute_bootstrap(
             package_version=verified.package_version,
             package_sha256=verified.package_sha256,
             remote_package_path=remote_package_path,
-            diagnostics=[_transport_failure(health, "companion health check")],
+            diagnostics=diagnostics,
         )
+    if rollback_available:
+        cleanup_backup = transport.execute(["rm", "-f", "--", rollback_path], timeout_s=timeout_s)
+        if cleanup_backup.returncode != 0:
+            diagnostics.append(
+                _transport_failure(cleanup_backup, "previous companion backup cleanup")
+            )
     cleanup = transport.execute(["rm", "-f", "--", remote_package_path], timeout_s=timeout_s)
     if cleanup.returncode != 0:
         diagnostics.append(_transport_failure(cleanup, "temporary package cleanup"))

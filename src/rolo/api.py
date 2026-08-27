@@ -278,6 +278,7 @@ def execute_target_bootstrap(payload: BootstrapExecutePayload) -> dict[str, obje
             verification_key=verification_key,
             transport=transport,
             timeout_s=payload.timeout_s,
+            rollback_on_failure=True,
         )
     except FileNotFoundError as exc:
         raise HTTPException(

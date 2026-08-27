@@ -158,6 +158,29 @@ def test_bootstrap_returns_failed_result_without_claiming_success(
     assert result.diagnostics
 
 
+def test_bootstrap_health_failure_restores_previous_companion_when_backup_exists(
+    tmp_path: Path,
+) -> None:
+    manifest, package = _package(tmp_path)
+    plan, request, decision = _authority()
+    transport = FakeTransport(_target(), fail_action="health")
+
+    result = execute_bootstrap(
+        plan,
+        request,
+        decision,
+        manifest_path=manifest,
+        package_path=package,
+        verification_key=b"verification-key",
+        transport=transport,
+        rollback_on_failure=True,
+    )
+
+    assert result.status == "FAILED"
+    assert any("restored the previous companion" in item for item in result.diagnostics)
+    assert any(command[:3] == ("sudo", "-n", "mv") for command in transport.commands)
+
+
 def test_bootstrap_rejects_changed_plan_or_bad_manifest_before_transport(tmp_path: Path) -> None:
     manifest, package = _package(tmp_path)
     plan, request, decision = _authority()

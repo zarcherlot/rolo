@@ -103,6 +103,7 @@ class NaturalLanguageService:
                 verification_key=verification_key,
                 transport=transport,
                 timeout_s=timeout_s,
+                rollback_on_failure=True,
             )
             return {"job": job, "result": result}
         if intent.operation == NaturalLanguageOperation.JOB_RECOVER:

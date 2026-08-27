@@ -144,3 +144,15 @@ def test_run_bootstrap_job_records_completion_checkpoint(tmp_path, monkeypatch):
     assert loaded.status == JobStatus.SUCCEEDED
     assert events[-1].event_type == "BOOTSTRAP_COMPLETED"
     assert checkpoints[-1].state["phase"] == "completed"
+    repeated_job, repeated_result = run_bootstrap_job(
+        JobStore(tmp_path),
+        plan,
+        request,
+        decision,
+        manifest_path=tmp_path / "manifest.json",
+        package_path=tmp_path / "package.pkg",
+        verification_key=b"key",
+        transport=object(),
+    )
+    assert repeated_job.job_id == job.job_id
+    assert repeated_result == expected
