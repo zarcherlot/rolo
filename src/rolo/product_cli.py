@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -15,8 +15,13 @@ from rolo.jobs import JobStatus, JobStore
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
+from rolo.targets.approvals import (
+    BootstrapApprovalRequest,
+    approve_bootstrap,
+    request_bootstrap_approval,
+)
 from rolo.targets.executor import create_target_executor
-from rolo.targets.models import BootstrapPlanStatus, TargetConnectionState
+from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
 
 app = typer.Typer(
@@ -147,6 +152,45 @@ def target_bootstrap_plan(
     )
     if plan.status == BootstrapPlanStatus.BLOCKED:
         raise typer.Exit(code=2)
+
+
+@target_app.command("bootstrap-request")
+def target_bootstrap_request(
+    plan_file: Annotated[
+        Path, typer.Argument(help="JSON file containing an approval-required plan")
+    ],
+    requested_by: Annotated[str, typer.Option("--requested-by")],
+    ttl_minutes: Annotated[int, typer.Option("--ttl-minutes", min=1, max=1440)] = 10,
+) -> None:
+    """Create a plan-bound bootstrap approval request without connecting to a host."""
+    try:
+        plan = TargetBootstrapPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+        request = request_bootstrap_approval(
+            plan,
+            requested_by=requested_by,
+            ttl=timedelta(minutes=ttl_minutes),
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(request)
+
+
+@target_app.command("bootstrap-approve")
+def target_bootstrap_approve(
+    plan_file: Annotated[Path, typer.Argument(help="JSON file containing the approved plan")],
+    request_file: Annotated[Path, typer.Argument(help="JSON file containing a pending request")],
+    approved_by: Annotated[str, typer.Option("--approved-by")],
+) -> None:
+    """Approve a pending bootstrap request while preserving plan binding."""
+    try:
+        plan = TargetBootstrapPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+        request = BootstrapApprovalRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+        decision = approve_bootstrap(plan, request, approved_by=approved_by)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(decision)
 
 
 @profile_app.command("init")
