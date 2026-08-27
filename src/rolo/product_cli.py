@@ -28,6 +28,10 @@ app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
     no_args_is_help=True,
 )
+job_app = typer.Typer(
+    help="Inspect and recover persisted Adapt jobs without auto-resuming mutations."
+)
+app.add_typer(job_app, name="job")
 target_app = typer.Typer(help="Inspect targets and plan approved bootstrap changes.")
 app.add_typer(target_app, name="target")
 profile_app = typer.Typer(help="Manage non-secret target connection profiles.")
@@ -49,6 +53,29 @@ def _target_executor(target: str, known_hosts: Path | None, timeout: float):
 
 def _job_store() -> JobStore:
     return JobStore(get_settings().rolo_config_dir / "jobs")
+
+
+@job_app.command("list")
+def job_list(
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
+    offset: Annotated[int, typer.Option("--offset", min=0)] = 0,
+) -> None:
+    """List bounded Job metadata; payloads and secrets are not resolved."""
+    try:
+        items = _job_store().list_jobs(limit=limit, offset=offset)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "JOB_LISTED", "items": [item.model_dump(mode="json") for item in items]})
+
+
+@job_app.command("recover")
+def job_recover(job_id: Annotated[str, typer.Argument(help="Persisted job identifier")]) -> None:
+    """Return the latest checkpoint; never resumes host mutation automatically."""
+    try:
+        recovery = _job_store().recover(job_id)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(recovery)
 
 
 @target_app.command("inspect")
