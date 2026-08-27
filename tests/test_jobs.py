@@ -5,6 +5,8 @@ from typer.testing import CliRunner
 
 from rolo.jobs import JobStatus, JobStore
 from rolo.product_cli import app
+from rolo.target_ref import parse_target_ref
+from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan
 
 
 def test_job_store_appends_events_and_checkpoints_with_revision(tmp_path):
@@ -55,3 +57,35 @@ def test_product_cli_can_persist_target_inspection_as_a_job(tmp_path, monkeypatc
     assert loaded_plan.status == JobStatus.SUCCEEDED
     assert plan_events[-1].event_type == "BOOTSTRAP_PLAN_CREATED"
     assert plan_checkpoints[0].state["plan"]["status"] == "READY"
+
+
+def test_product_cli_exposes_plan_bound_bootstrap_request_and_approval(tmp_path):
+    plan = TargetBootstrapPlan(
+        target=parse_target_ref("ssh://robot@example.test/home/robot/workspace"),
+        assessment_state="READY",
+        status=BootstrapPlanStatus.APPROVAL_REQUIRED,
+        required_approvals=["target.bootstrap.execute"],
+    )
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(plan.model_dump_json(), encoding="utf-8")
+    runner = CliRunner()
+    requested = runner.invoke(
+        app,
+        ["target", "bootstrap-request", str(plan_file), "--requested-by", "agent"],
+    )
+    assert requested.exit_code == 0, requested.output
+    request_file = tmp_path / "request.json"
+    request_file.write_text(requested.output, encoding="utf-8")
+    approved = runner.invoke(
+        app,
+        [
+            "target",
+            "bootstrap-approve",
+            str(plan_file),
+            str(request_file),
+            "--approved-by",
+            "operator",
+        ],
+    )
+    assert approved.exit_code == 0, approved.output
+    assert __import__("json").loads(approved.output)["status"] == "APPROVED"
