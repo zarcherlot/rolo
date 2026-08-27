@@ -56,6 +56,25 @@ class Job(BaseModel):
     updated_at: datetime
 
 
+class JobSummary(BaseModel):
+    schema_version: Literal["rolo-job-summary/v1"] = "rolo-job-summary/v1"
+    job_id: str
+    operation: str
+    target: str
+    status: JobStatus
+    revision: int = Field(ge=0)
+    updated_at: datetime
+
+
+class JobRecovery(BaseModel):
+    schema_version: Literal["rolo-job-recovery/v1"] = "rolo-job-recovery/v1"
+    job: Job
+    latest_event: JobEvent | None = None
+    latest_checkpoint: JobCheckpoint | None = None
+    resumable: bool
+    limitations: list[str] = Field(default_factory=list)
+
+
 class JobStore:
     """Small append-only JSON repository with optimistic revision checks."""
 
@@ -80,6 +99,41 @@ class JobStore:
             Job.model_validate(data["job"]),
             [JobEvent.model_validate(item) for item in data["events"]],
             [JobCheckpoint.model_validate(item) for item in data["checkpoints"]],
+        )
+
+    def list_jobs(self, *, limit: int = 100, offset: int = 0) -> list[JobSummary]:
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("job list limit must be 1..100 and offset must be non-negative")
+        summaries: list[JobSummary] = []
+        for path in sorted(
+            self.root.glob("job_*.json"), key=lambda item: item.stat().st_mtime, reverse=True
+        ):
+            try:
+                job, _, _ = self.load(path.stem)
+            except (OSError, ValueError, KeyError):
+                continue
+            summaries.append(
+                JobSummary(
+                    job_id=job.job_id,
+                    operation=job.operation,
+                    target=job.target,
+                    status=job.status,
+                    revision=job.revision,
+                    updated_at=job.updated_at,
+                )
+            )
+        return summaries[offset : offset + limit]
+
+    def recover(self, job_id: str) -> JobRecovery:
+        job, events, checkpoints = self.load(job_id)
+        return JobRecovery(
+            job=job,
+            latest_event=events[-1] if events else None,
+            latest_checkpoint=checkpoints[-1] if checkpoints else None,
+            resumable=job.status in {JobStatus.CREATED, JobStatus.RUNNING},
+            limitations=[
+                "Recovery returns state only; it never resumes host mutation automatically."
+            ],
         )
 
     def append_event(
