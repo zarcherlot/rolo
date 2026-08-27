@@ -6,13 +6,16 @@ from pathlib import Path
 from typing import Any
 
 from rolo.job_service import JobService
+from rolo.jobs import run_bootstrap_job
 from rolo.natural_language import NaturalLanguageIntent, NaturalLanguageOperation
-from rolo.target_ref import parse_target_ref
+from rolo.target_ref import SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
+    BootstrapApprovalDecision,
     BootstrapApprovalRequest,
     approve_bootstrap,
     request_bootstrap_approval,
 )
+from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import TargetBootstrapPlan
 
@@ -55,6 +58,53 @@ class NaturalLanguageService:
                 Path(intent.request_file).read_text(encoding="utf-8")
             )
             return approve_bootstrap(plan, request, approved_by=intent.actor)
+        if intent.operation == NaturalLanguageOperation.BOOTSTRAP_EXECUTE:
+            required = (
+                intent.plan_file,
+                intent.request_file,
+                intent.decision_file,
+                intent.manifest_file,
+                intent.package_file,
+                intent.verification_key_file,
+                intent.known_hosts_file,
+            )
+            if any(value is None for value in required):
+                raise ValueError("bootstrap execute requires all input files")
+            plan = TargetBootstrapPlan.model_validate_json(
+                Path(intent.plan_file).read_text(encoding="utf-8")
+            )
+            request = BootstrapApprovalRequest.model_validate_json(
+                Path(intent.request_file).read_text(encoding="utf-8")
+            )
+            decision = BootstrapApprovalDecision.model_validate_json(
+                Path(intent.decision_file).read_text(encoding="utf-8")
+            )
+            if not isinstance(plan.target, SshTargetRef):
+                raise ValueError("bootstrap execution requires an SSH target")
+            if not intent.execute:
+                return {
+                    "status": "BOOTSTRAP_EXECUTION_READY",
+                    "plan_sha256": request.plan_sha256,
+                    "approval_request_id": request.request_id,
+                    "target": plan.target.model_dump(mode="json"),
+                    "mutation_started": False,
+                }
+            verification_key = Path(intent.verification_key_file).read_bytes()
+            transport = SubprocessBootstrapTransport(
+                plan.target, known_hosts=Path(intent.known_hosts_file)
+            )
+            job, result = run_bootstrap_job(
+                self.jobs.store,
+                plan,
+                request,
+                decision,
+                manifest_path=Path(intent.manifest_file),
+                package_path=Path(intent.package_file),
+                verification_key=verification_key,
+                transport=transport,
+                timeout_s=timeout_s,
+            )
+            return {"job": job, "result": result}
         if intent.operation == NaturalLanguageOperation.JOB_RECOVER:
             if not intent.job_id:
                 raise ValueError("job recovery requires job id")

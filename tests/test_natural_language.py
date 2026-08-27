@@ -30,6 +30,13 @@ def test_natural_language_maps_only_explicit_inspect_plan_and_recover_intents():
     )
     assert approval.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE
     assert approval.actor == "operator"
+    execute = parse_natural_language(
+        "执行 bootstrap plan.json request.json decision.json manifest.json "
+        "package.pkg key.bin known_hosts"
+    )
+    assert execute.operation == NaturalLanguageOperation.BOOTSTRAP_EXECUTE
+    assert execute.execute is False
+    assert "--execute" not in intent_to_argv(execute)
     adapter = NaturalLanguageExecutionAdapter(
         {NaturalLanguageOperation.BOOTSTRAP_APPROVE: lambda value: value.operation.value}
     )

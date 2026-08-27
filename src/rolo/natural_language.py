@@ -15,6 +15,7 @@ class NaturalLanguageOperation(str, Enum):
     BOOTSTRAP_PLAN = "target.bootstrap-plan"
     BOOTSTRAP_REQUEST = "target.bootstrap-request"
     BOOTSTRAP_APPROVE = "target.bootstrap-approve"
+    BOOTSTRAP_EXECUTE = "target.bootstrap-execute"
     JOB_RECOVER = "job.recover"
 
 
@@ -24,6 +25,12 @@ class NaturalLanguageIntent(BaseModel):
     target: str | None = Field(default=None, max_length=1024)
     plan_file: str | None = None
     request_file: str | None = None
+    decision_file: str | None = None
+    manifest_file: str | None = None
+    package_file: str | None = None
+    verification_key_file: str | None = None
+    known_hosts_file: str | None = None
+    execute: bool = False
     job_id: str | None = None
     actor: str | None = None
     source_text: str = Field(min_length=1, max_length=2000)
@@ -93,6 +100,34 @@ def parse_natural_language(text: str) -> NaturalLanguageIntent:
             source_text=source,
         )
     match = re.search(
+        r"(?:执行|execute)\s+bootstrap\s+(.+)$",
+        source,
+        re.IGNORECASE,
+    )
+    if match:
+        parts = match.group(1).split()
+        execute = False
+        if parts and parts[-1] == "--execute":
+            execute = True
+            parts.pop()
+        if len(parts) != 7:
+            raise ValueError(
+                "bootstrap execute requires plan, request, decision, manifest, "
+                "package, key and known_hosts files"
+            )
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.BOOTSTRAP_EXECUTE,
+            plan_file=parts[0],
+            request_file=parts[1],
+            decision_file=parts[2],
+            manifest_file=parts[3],
+            package_file=parts[4],
+            verification_key_file=parts[5],
+            known_hosts_file=parts[6],
+            execute=execute,
+            source_text=source,
+        )
+    match = re.search(
         rf"(?:生成|创建|create)\s*(?:bootstrap\s*)?(?:计划|plan)\s*{_TARGET}",
         source,
         re.IGNORECASE,
@@ -149,6 +184,36 @@ def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
             "--approved-by",
             intent.actor or "",
         ]
+    if intent.operation == NaturalLanguageOperation.BOOTSTRAP_EXECUTE:
+        required = (
+            intent.plan_file,
+            intent.request_file,
+            intent.decision_file,
+            intent.manifest_file,
+            intent.package_file,
+            intent.verification_key_file,
+            intent.known_hosts_file,
+        )
+        if any(value is None for value in required):
+            raise ValueError("bootstrap execute intent requires all input files")
+        argv = [
+            "target",
+            "bootstrap-execute",
+            intent.plan_file or "",
+            intent.request_file or "",
+            intent.decision_file or "",
+            "--manifest",
+            intent.manifest_file or "",
+            "--package",
+            intent.package_file or "",
+            "--verification-key-file",
+            intent.verification_key_file or "",
+            "--known-hosts",
+            intent.known_hosts_file or "",
+        ]
+        if intent.execute:
+            argv.append("--execute")
+        return argv
     if intent.operation == NaturalLanguageOperation.JOB_RECOVER:
         return ["job", "recover", intent.job_id or ""]
     raise ValueError(f"unsupported intent operation: {intent.operation}")
