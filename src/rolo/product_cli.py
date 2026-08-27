@@ -11,6 +11,7 @@ import typer
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.core.config import get_settings
+from rolo.jobs import JobStatus, JobStore
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
@@ -41,6 +42,10 @@ def _target_executor(target: str, known_hosts: Path | None, timeout: float):
     )
 
 
+def _job_store() -> JobStore:
+    return JobStore(get_settings().rolo_config_dir / "jobs")
+
+
 @target_app.command("inspect")
 def target_inspect(
     target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
@@ -52,13 +57,40 @@ def target_inspect(
         float,
         typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
     ] = 10.0,
+    as_job: Annotated[
+        bool,
+        typer.Option("--job/--direct", help="Persist lifecycle events and a resumable checkpoint"),
+    ] = False,
 ) -> None:
     """Inspect a target without installing or changing anything."""
     try:
+        job = _job_store().create("target.inspect", target) if as_job else None
+        if job:
+            _job_store().append_event(
+                job.job_id, "JOB_STARTED", JobStatus.RUNNING, expected_revision=0
+            )
         assessment = _target_executor(target, known_hosts, timeout).inspect()
+        if job:
+            store = _job_store()
+            store.save_checkpoint(
+                job.job_id,
+                {"assessment": assessment.model_dump(mode="json")},
+                expected_revision=1,
+            )
+            store.append_event(
+                job.job_id, "TARGET_INSPECTED", JobStatus.SUCCEEDED, expected_revision=1
+            )
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    emit(assessment)
+    emit(
+        {
+            "status": "JOB_COMPLETED",
+            "job_id": job.job_id,
+            "result": assessment.model_dump(mode="json"),
+        }
+        if job
+        else assessment
+    )
     if assessment.state != TargetConnectionState.READY:
         raise typer.Exit(code=2)
 
@@ -74,13 +106,45 @@ def target_bootstrap_plan(
         float,
         typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
     ] = 10.0,
+    as_job: Annotated[
+        bool,
+        typer.Option("--job/--direct", help="Persist lifecycle events and a resumable checkpoint"),
+    ] = False,
 ) -> None:
     """Return a typed bootstrap plan without executing host mutations."""
     try:
+        job = _job_store().create("target.bootstrap-plan", target) if as_job else None
+        if job:
+            _job_store().append_event(
+                job.job_id, "JOB_STARTED", JobStatus.RUNNING, expected_revision=0
+            )
         plan = _target_executor(target, known_hosts, timeout).plan_bootstrap()
+        if job:
+            store = _job_store()
+            store.save_checkpoint(
+                job.job_id,
+                {"plan": plan.model_dump(mode="json")},
+                expected_revision=1,
+            )
+            final_status = (
+                JobStatus.BLOCKED
+                if plan.status == BootstrapPlanStatus.BLOCKED
+                else JobStatus.SUCCEEDED
+            )
+            store.append_event(
+                job.job_id, "BOOTSTRAP_PLAN_CREATED", final_status, expected_revision=1
+            )
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    emit(plan)
+    emit(
+        {
+            "status": "JOB_COMPLETED",
+            "job_id": job.job_id,
+            "result": plan.model_dump(mode="json"),
+        }
+        if job
+        else plan
+    )
     if plan.status == BootstrapPlanStatus.BLOCKED:
         raise typer.Exit(code=2)
 
