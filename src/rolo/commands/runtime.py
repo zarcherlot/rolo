@@ -93,10 +93,22 @@ def register_runtime_commands(root: typer.Typer) -> None:
             Path | None,
             typer.Option("--known-hosts", help="Pinned known_hosts file for remote mode"),
         ] = None,
+        ssh_port: Annotated[int | None, typer.Option("--ssh-port", min=1, max=65535)] = None,
+        ssh_identity_file: Annotated[
+            Path | None,
+            typer.Option("--ssh-identity-file", help="Pinned controller-side SSH private key"),
+        ] = None,
         collector_config: Annotated[
             str,
             typer.Option("--collector-config", help="Collector state path on the target"),
         ] = ".rolo/config/target-evidence-collector.json",
+        collector_executable: Annotated[
+            str | None,
+            typer.Option(
+                "--collector-executable",
+                help="Pinned robotctl executable name or absolute path on the remote target",
+            ),
+        ] = None,
     ) -> None:
         """Register identity and validate the installed runtime environment."""
         settings = get_settings()
@@ -111,6 +123,9 @@ def register_runtime_commands(root: typer.Typer) -> None:
                         verification_secret,
                         ssh_target,
                         known_hosts,
+                        ssh_port,
+                        ssh_identity_file,
+                        collector_executable,
                     )
                 ):
                     raise ValueError("local evidence mode does not accept remote collector options")
@@ -143,7 +158,10 @@ def register_runtime_commands(root: typer.Typer) -> None:
                     output_path=deployment_path,
                     ssh_target=ssh_target,
                     known_hosts_path=known_hosts,
+                    ssh_port=ssh_port,
+                    ssh_identity_file=ssh_identity_file,
                     collector_config=collector_config,
+                    collector_executable=collector_executable or "robotctl",
                 )
             enrollment = EnrollmentService(config_root=settings.rolo_config_dir).enroll(
                 robot_id=robot_id,

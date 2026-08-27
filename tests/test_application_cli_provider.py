@@ -346,7 +346,9 @@ def test_cli_operation_inference_uses_help_semantics_not_only_name() -> None:
 def test_cli_operation_inference_does_not_treat_package_info_as_robot_health() -> None:
     matches = infer_application_cli_operations(
         "lerobot-info",
-        help_text="Use this script to get a quick summary of your system config and package versions.",
+        help_text=(
+            "Use this script to get a quick summary of your system config and package versions."
+        ),
     )
 
     assert matches == []
