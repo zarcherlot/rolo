@@ -1,6 +1,7 @@
 # Registry Operation 重设计 Worktree 与合并计划
 
-状态：提案。本文只定义协作边界和合并顺序，不创建分支、不改写当前工作树。
+状态：已落地（首轮实现）。本文定义协作边界和合并顺序；对应 worktree 与分支已创建，首轮
+R0-R2/R3 基础实现已合并到 `codex/registry-redesign-integration`。
 
 ## 1. 总体原则
 
@@ -10,18 +11,22 @@
 - 所有跨 worktree 依赖通过提交 SHA 和 fixture 传递，不复制另一 worktree 的实现；
 - 任何改变 v1 digest、Catalog 或 release 行为的提交必须在 integration worktree 中显式审查。
 
-建议的工作树根目录：
+实际工作树根目录：
 
 ```text
-C:\Users\zarch\Desktop\robot_loop                 # integration，保留为当前主工作树
-C:\Users\zarch\Desktop\robot_loop-wt\registry-governance
-C:\Users\zarch\Desktop\robot_loop-wt\registry-native-tools
-C:\Users\zarch\Desktop\robot_loop-wt\registry-v2-core
-C:\Users\zarch\Desktop\robot_loop-wt\registry-runtime
-C:\Users\zarch\Desktop\robot_loop-wt\registry-validation
+C:\Users\zarch\Desktop\robot_loop                              # integration
+C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-governance
+C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-native-tools
+C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-v2-core
+C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-runtime
+C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-validation
 ```
 
 分支统一使用 `codex/registry-redesign-` 前缀。
+
+当前 integration 已合并提交：角色投影、bounded Agent-native Runner、Agent-native Schema、
+v2 shadow projection、version-bound resolver、迁移校验报告及 native tool ID 冲突测试。v1
+Registry、release 和现有运行时默认行为保持不变。
 
 ## 2. Worktree 矩阵
 

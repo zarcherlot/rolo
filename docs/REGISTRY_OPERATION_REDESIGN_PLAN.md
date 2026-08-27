@@ -1,7 +1,8 @@
 # Registry Operation 双轨重设计与实施计划
 
-状态：提案，作为后续实现的工作基线。本文不改变当前 v1 Registry、294 项基线或现有
-release；实施前必须先完成本文定义的角色矩阵和 shadow 验收。
+状态：实施基线（首轮切片已完成）。本文不改变当前 v1 Registry、294 项基线或现有
+release；R0-R2 及 R3 的 version-bound resolver 基础能力已在 integration 分支落地，尚未
+启用 v2 release/runtime 切换。
 
 ## 1. 决策背景
 
@@ -298,6 +299,10 @@ ROS: graph snapshot + node/topic list/describe
 HW: inventory + compute/thermal/status（只读）
 保留: app.teleop.velocity、app.base.velocity、app.safety.*、app.task.*
 ```
+
+首轮实现已经覆盖该切片所需的治理投影、受控 Agent-native Runner、v2 shadow 视图、版本绑定
+resolver 和迁移报告。Linux/ROS/HW 工具目前以 `native.*` 命名空间提供，避免与 Canonical
+Operation ID 冲突；后续仍需接入 Adapt Agent、evidence/artifact store 及灰度 feature flag。
 
 首个切片跑通后，再扩展 service/container/network、参数/TF、sensor/bus 和更多诊断工具。
 这样可以先验证“Agent-native Tool 能替代冗余封装”这一核心假设，而不是先进行一次大规模
