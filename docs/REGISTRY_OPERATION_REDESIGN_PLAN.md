@@ -156,7 +156,7 @@ Schema：
 ```json
 {
   "schema_version": "rolo-agent-native-tool/v1",
-  "tool_id": "ros2.topic.list",
+  "tool_id": "native.ros.topic.list",
   "family": "ros",
   "execution_path": "ROS_CLI",
   "argv_template": ["ros2", "topic", "list"],
@@ -174,7 +174,7 @@ Schema：
 ```json
 {
   "schema_version": "rolo-agent-native-tool-result/v1",
-  "tool_id": "ros2.topic.list",
+  "tool_id": "native.ros.topic.list",
   "status": "SUCCEEDED",
   "argv": ["ros2", "topic", "list"],
   "observed_at": "...",
@@ -302,4 +302,3 @@ HW: inventory + compute/thermal/status（只读）
 首个切片跑通后，再扩展 service/container/network、参数/TF、sensor/bus 和更多诊断工具。
 这样可以先验证“Agent-native Tool 能替代冗余封装”这一核心假设，而不是先进行一次大规模
 Registry 重写。
-
