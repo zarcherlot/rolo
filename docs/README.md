@@ -11,6 +11,8 @@
 - [三阶段架构](ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
 - [归档文档](archive/README.md)：已完成或被替代的计划、评审样本和一次性验证材料；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
+- [Registry Operation 重设计计划](REGISTRY_OPERATION_REDESIGN_PLAN.md)：Canonical Registry 与 Agent-native Tool 双轨边界、迁移阶段和验收标准；
+- [Registry Operation Worktree 计划](REGISTRY_OPERATION_WORKTREE_PLAN.md)：实现 worktree、文件所有权、接口冻结和合并顺序；
 - [P0 Adapt 验收](P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
 
 中文项目入口位于仓库根目录 [README](../README.md)，英文项目介绍见 [README.en.md](README.en.md)。
