@@ -41,6 +41,21 @@ jobs:
         run: uv run --python 3.12 rolo release-check
       - name: Build wheel and sdist
         run: uv build
+      - name: Build and verify signed target companion
+        run: |
+          mkdir -p dist/companion
+          printf 'ci-only-companion-key' > dist/companion/verification.key
+          uv run --python 3.12 rolo target companion-build \
+            --output-dir dist/companion \
+            --version 0.1.0 \
+            --architecture x86_64 \
+            --publisher rolo \
+            --verification-key-file dist/companion/verification.key
+          uv run --python 3.12 rolo target companion-verify \
+            dist/companion/manifest.json \
+            dist/companion/rolo-target-0.1.0-x86_64 \
+            --verification-key-file dist/companion/verification.key
+          test -x dist/companion/rolo-target-0.1.0-x86_64
       - name: Verify build artifacts
         run: test -n "$(find dist -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print -quit)"
       - name: Re-run release check against built artifacts
