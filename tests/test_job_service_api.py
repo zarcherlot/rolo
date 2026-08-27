@@ -31,4 +31,7 @@ def test_job_service_api_exposes_shared_pages_and_recovery(tmp_path: Path, monke
     assert events.status_code == 200
     assert events.json()["total"] == 1
     assert events.json()["next_offset"] is None
+    missing = client.get("/v1/jobs/job_missing/events")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "JOB_NOT_FOUND"
     get_settings.cache_clear()
