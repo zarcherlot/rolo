@@ -1858,7 +1858,7 @@ def _build_operation_candidates(
                 evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
                 route_evidence=[route(semantic_uri) for semantic_uri in semantic_uris],
                 limitations=[
-                    "Rule-derived applicability requires target-runtime interface, provider, "
+                    "Heuristic CLI/help applicability requires target-runtime interface, provider, "
                     "and semantic validation",
                     "Requires adapter generation and independent conformance",
                 ],

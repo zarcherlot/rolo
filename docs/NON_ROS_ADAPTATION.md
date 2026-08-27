@@ -16,7 +16,7 @@ ApplicationCliRouteProvider
         └── 目标证据：cli:<canonical-name> + cli:<absolute-path>
                            │ OBSERVED_RUNTIME
                            ▼
-              通用、数据驱动的语义规则
+              Registry + CLI/help 启发式语义推断
                            │
                            ▼
               DISCOVERED_UNVERIFIED Operation
@@ -42,13 +42,13 @@ Operation eligibility。
 - target bundle digest 和 observation time。
 
 只有源码声明的 canonical name 与目标机观测 name 精确相交，且 help 成功、Provider ID、
-executable hash 和 interface schema 都齐全时，确定性语义规则才会运行。规则存放在
-`src/rolo/stages/adapt/application_cli_operation_rules.yaml`，只能引用活动 Registry 中的
-Operation，不允许出现仓库或厂商专属 Operation。
+executable hash 和 interface schema 都齐全时，CLI/help 启发式才会运行。推断只读取活动
+Operation Registry 的名称、描述、能力要求和风险字段，并结合目标 `--help` 的 usage、参数、
+子命令和有界文本；不会加载仓库或厂商专属的 Operation 映射表。
 
 ## Gate 边界
 
-CLI name 和 `--help` 只能证明“目标机存在这个自描述入口”，不能证明命令结果正确。规则输出
+CLI name 和 `--help` 只能证明“目标机存在这个自描述入口”，不能证明命令结果正确。推断输出
 仍是 `DISCOVERED_UNVERIFIED`；独立 Gate 还必须验证：
 
 1. Candidate Route 与不可变 Linux Probe 中的 target Route 精确一致；
@@ -78,7 +78,7 @@ PATH，也不包含其他已发现但与本次 Bundle 无关的入口。若选�
 
 LeRobot 使用普通 Python console scripts，因此不需要专用 Provider：
 
-- `lerobot-find-cameras` 可通过通用 camera inventory 规则映射到 `app.camera.list`；
+- `lerobot-find-cameras` 可通过 CLI/help 启发式映射到 `app.camera.list`；
 - `lerobot-info` 是环境诊断，不等同于 robot status/health，不映射 Operation；
 - `lerobot-record`、`lerobot-rollout`、`lerobot-train`、`lerobot-teleoperate` 的生命周期、取消、
   数据和物理风险语义与现有 Operation 不能自动等同，当前只报告为未映射能力；
