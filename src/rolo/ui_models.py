@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from rolo.job_service import JobServiceError
 from rolo.jobs import JobEventPage, JobPage, JobRecovery
 from rolo.query_adapter import JobQueryAdapter
 
@@ -31,6 +32,26 @@ class JobDetailView(BaseModel):
     latest_checkpoint: dict[str, object] | None = None
     resumable: bool
     limitations: list[str] = Field(default_factory=list)
+
+
+class JobUiError(BaseModel):
+    schema_version: str = "rolo-job-ui-error/v1"
+    code: str
+    message: str
+
+
+class JobListState(BaseModel):
+    schema_version: str = "rolo-job-list-state/v1"
+    status: str
+    view: JobListView | None = None
+    error: JobUiError | None = None
+
+
+class JobDetailState(BaseModel):
+    schema_version: str = "rolo-job-detail-state/v1"
+    status: str
+    view: JobDetailView | None = None
+    error: JobUiError | None = None
 
 
 class JobUiAdapter:
@@ -85,3 +106,22 @@ class JobUiAdapter:
 
     def events(self, job_id: str, *, limit: int = 20, offset: int = 0) -> JobEventPage:
         return self.query.events(job_id, limit=limit, offset=offset)
+
+    def safe_list_view(self, *, limit: int = 20, offset: int = 0) -> JobListState:
+        try:
+            return JobListState(status="READY", view=self.list_view(limit=limit, offset=offset))
+        except (OSError, ValueError) as exc:
+            return JobListState(
+                status="ERROR", error=JobUiError(code="JOB_QUERY_FAILED", message=str(exc))
+            )
+
+    def safe_detail_view(self, job_id: str) -> JobDetailState:
+        try:
+            return JobDetailState(status="READY", view=self.detail_view(job_id))
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            code = (
+                "JOB_NOT_FOUND"
+                if isinstance(exc, JobServiceError) and exc.code == "JOB_NOT_FOUND"
+                else "JOB_QUERY_FAILED"
+            )
+            return JobDetailState(status="ERROR", error=JobUiError(code=code, message=str(exc)))

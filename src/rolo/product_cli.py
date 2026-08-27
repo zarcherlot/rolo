@@ -48,9 +48,13 @@ def product_root() -> None:
 
 
 @app.command("release-check")
-def release_check() -> None:
+def release_check(
+    require_artifacts: Annotated[
+        bool, typer.Option("--require-artifacts/--allow-missing-artifacts")
+    ] = False,
+) -> None:
     """Run release smoke checks for product modules and console scripts."""
-    result = run_release_check()
+    result = run_release_check(require_artifacts=require_artifacts)
     emit(result)
     if result.status != "PASS":
         raise typer.Exit(code=2)
