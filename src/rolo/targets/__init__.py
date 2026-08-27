@@ -30,6 +30,7 @@ from rolo.targets.models import (
     TargetConnectionState,
     TargetRisk,
 )
+from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import (
     CredentialReference,
     HostKeyDecision,
@@ -74,4 +75,5 @@ __all__ = [
     "request_bootstrap_approval",
     "sign_companion_manifest",
     "verify_companion_manifest",
+    "build_companion_package",
 ]

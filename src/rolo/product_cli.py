@@ -28,7 +28,9 @@ from rolo.targets.approvals import (
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
+from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
+from rolo.targets.signing import verify_companion_manifest
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
@@ -351,6 +353,39 @@ def target_bootstrap_execute(
     emit({"status": "BOOTSTRAP_EXECUTED", "job_id": job.job_id, "result": result})
     if result.status == "FAILED":
         raise typer.Exit(code=2)
+
+
+@target_app.command("companion-build")
+def target_companion_build(
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+    package_version: Annotated[str, typer.Option("--version")],
+    architecture: Annotated[str, typer.Option("--architecture")],
+    publisher_id: Annotated[str, typer.Option("--publisher")],
+    verification_key_file: Annotated[Path, typer.Option("--verification-key-file")],
+) -> None:
+    """Build and sign the minimal target companion package offline."""
+    try:
+        package, manifest, signed = build_companion_package(
+            output_dir,
+            package_version=package_version,
+            architecture=architecture,
+            publisher_id=publisher_id,
+            verification_key=verification_key_file.read_bytes(),
+        )
+        verification = verify_companion_manifest(
+            manifest, package, verification_key=verification_key_file.read_bytes()
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "COMPANION_BUILT",
+            "package": str(package),
+            "manifest": str(manifest),
+            "verification": verification.model_dump(mode="json"),
+            "publisher_id": signed.publisher_id,
+        }
+    )
 
 
 @profile_app.command("init")
