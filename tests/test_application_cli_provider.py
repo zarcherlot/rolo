@@ -7,6 +7,7 @@ from pathlib import Path
 from rolo.core.models import DiscoveryReport, OperationCandidate, ProbeResult, RouteEvidence
 from rolo.stages.adapt.active_discovery import HelpProbeResult, HelpProbeStatus
 from rolo.stages.adapt.application_cli_mapping import (
+    infer_application_cli_operations,
     load_application_cli_operation_rules,
     matching_application_cli_rules,
 )
@@ -323,6 +324,32 @@ def test_rules_are_project_neutral_and_do_not_map_diagnostic_info() -> None:
     ] == ["app.camera.list"]
     assert matching_application_cli_rules("lerobot-info") == []
     assert matching_application_cli_rules("lerobot-record") == []
+
+
+def test_cli_operation_inference_uses_help_semantics_not_only_name() -> None:
+    camera = infer_application_cli_operations(
+        "robot-tool",
+        usage=["usage: robot-tool [--camera front]"],
+        subcommands=["find-cameras"],
+        help_text="Find all available cameras and print their metadata.",
+    )
+    calibration = infer_application_cli_operations(
+        "robot-tool",
+        usage=["usage: robot-tool --motor-id MOTOR"],
+        help_text="Calibrate one actuator motor and report its limits.",
+    )
+
+    assert [item.operation for item in camera] == ["app.camera.list"]
+    assert [item.operation for item in calibration] == ["hw.actuator.calibrate"]
+
+
+def test_cli_operation_inference_does_not_treat_package_info_as_robot_health() -> None:
+    matches = infer_application_cli_operations(
+        "lerobot-info",
+        help_text="Use this script to get a quick summary of your system config and package versions.",
+    )
+
+    assert matches == []
 
 
 def test_static_application_route_is_available_to_agent_but_not_runtime_gate(
