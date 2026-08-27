@@ -76,10 +76,10 @@ def job_list(
 ) -> None:
     """List bounded Job metadata; payloads and secrets are not resolved."""
     try:
-        items = _job_store().list_jobs(limit=limit, offset=offset)
+        page = _job_store().job_page(limit=limit, offset=offset)
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    emit({"status": "JOB_LISTED", "items": [item.model_dump(mode="json") for item in items]})
+    emit({"status": "JOB_LISTED", **page.model_dump(mode="json")})
 
 
 @job_app.command("recover")
@@ -100,14 +100,18 @@ def job_events(
 ) -> None:
     """List a bounded, ordered event page for audit and UI consumers."""
     try:
-        events = _job_store().list_events(job_id, limit=limit, offset=offset)
+        page = _job_store().event_page(job_id, limit=limit, offset=offset)
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(
         {
             "status": "JOB_EVENTS_LISTED",
             "job_id": job_id,
-            "items": [event.model_dump(mode="json") for event in events],
+            "items": [event.model_dump(mode="json") for event in page.items],
+            "total": page.total,
+            "limit": page.limit,
+            "offset": page.offset,
+            "next_offset": page.next_offset,
         }
     )
 

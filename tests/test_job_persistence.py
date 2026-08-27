@@ -33,3 +33,16 @@ def test_job_store_uses_atomic_writes_and_recovers_after_repeated_updates(tmp_pa
     assert loaded.revision == len(events)
     assert loaded.revision >= 2
     assert len(results) >= 1
+
+
+def test_job_and_event_pages_expose_stable_offsets(tmp_path):
+    store = JobStore(tmp_path)
+    job = store.create("target.inspect", "local:C:/robot")
+    store.create("target.bootstrap-plan", "local:C:/robot")
+    store.append_event(job.job_id, "STARTED", JobStatus.RUNNING, expected_revision=0)
+    store.append_event(job.job_id, "DONE", JobStatus.SUCCEEDED, expected_revision=1)
+    assert store.job_page(limit=1).next_offset == 1
+    page = store.event_page(job.job_id, limit=1, offset=1)
+    assert page.total == 2
+    assert page.items[0].event_type == "DONE"
+    assert page.next_offset is None
