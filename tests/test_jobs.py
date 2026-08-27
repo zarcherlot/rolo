@@ -47,3 +47,11 @@ def test_product_cli_can_persist_target_inspection_as_a_job(tmp_path, monkeypatc
     assert loaded.status == JobStatus.SUCCEEDED
     assert [event.event_type for event in events] == ["JOB_STARTED", "TARGET_INSPECTED"]
     assert checkpoints[0].state["assessment"]["state"] == "READY"
+
+    planned = CliRunner().invoke(app, ["target", "bootstrap-plan", str(tmp_path), "--job"])
+    assert planned.exit_code == 0, planned.output
+    planned_payload = __import__("json").loads(planned.output)
+    loaded_plan, plan_events, plan_checkpoints = job.load(planned_payload["job_id"])
+    assert loaded_plan.status == JobStatus.SUCCEEDED
+    assert plan_events[-1].event_type == "BOOTSTRAP_PLAN_CREATED"
+    assert plan_checkpoints[0].state["plan"]["status"] == "READY"
