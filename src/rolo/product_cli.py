@@ -15,6 +15,7 @@ from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore
 from rolo.natural_language import intent_to_argv, parse_natural_language
 from rolo.natural_service import NaturalLanguageService
+from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
@@ -44,6 +45,15 @@ target_app.add_typer(profile_app, name="profile")
 @app.callback()
 def product_root() -> None:
     """Rolo product commands."""
+
+
+@app.command("release-check")
+def release_check() -> None:
+    """Run release smoke checks for product modules and console scripts."""
+    result = run_release_check()
+    emit(result)
+    if result.status != "PASS":
+        raise typer.Exit(code=2)
 
 
 def _target_executor(target: str, known_hosts: Path | None, timeout: float):
