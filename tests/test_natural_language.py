@@ -4,6 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from rolo.natural_language import (
+    NaturalLanguageExecutionAdapter,
     NaturalLanguageOperation,
     intent_to_argv,
     parse_natural_language,
@@ -29,12 +30,27 @@ def test_natural_language_maps_only_explicit_inspect_plan_and_recover_intents():
     )
     assert approval.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE
     assert approval.actor == "operator"
+    adapter = NaturalLanguageExecutionAdapter(
+        {NaturalLanguageOperation.BOOTSTRAP_APPROVE: lambda value: value.operation.value}
+    )
+    assert adapter.dispatch(approval) == "target.bootstrap-approve"
 
 
 def test_natural_language_rejects_ambiguous_or_command_like_text():
     for text in ("帮我处理一下目标", "检查目标 C:/robot && whoami"):
         with pytest.raises(ValueError):
             parse_natural_language(text)
+
+
+def test_natural_language_adapter_fails_closed_for_unregistered_or_unattributed_approval():
+    inspect = parse_natural_language("检查目标 C:/robot/ws")
+    with pytest.raises(ValueError, match="no handler"):
+        NaturalLanguageExecutionAdapter({}).dispatch(inspect)
+    approval = parse_natural_language("批准 bootstrap C:/tmp/plan.json C:/tmp/request.json")
+    with pytest.raises(ValueError, match="explicit actor"):
+        NaturalLanguageExecutionAdapter(
+            {NaturalLanguageOperation.BOOTSTRAP_APPROVE: lambda value: value}
+        ).dispatch(approval)
 
 
 def test_product_cli_lists_and_recovers_job_without_resuming_it(tmp_path, monkeypatch):

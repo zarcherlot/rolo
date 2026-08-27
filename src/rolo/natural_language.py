@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +28,24 @@ class NaturalLanguageIntent(BaseModel):
     actor: str | None = None
     source_text: str = Field(min_length=1, max_length=2000)
     limitations: list[str] = Field(default_factory=list)
+
+
+class NaturalLanguageExecutionAdapter:
+    """Dispatch parsed intents only to explicitly registered canonical handlers."""
+
+    def __init__(self, handlers: Mapping[NaturalLanguageOperation, Callable[..., Any]]) -> None:
+        self._handlers = dict(handlers)
+
+    def dispatch(self, intent: NaturalLanguageIntent) -> Any:
+        handler = self._handlers.get(intent.operation)
+        if handler is None:
+            raise ValueError(f"no handler registered for {intent.operation.value}")
+        if intent.operation in {
+            NaturalLanguageOperation.BOOTSTRAP_REQUEST,
+            NaturalLanguageOperation.BOOTSTRAP_APPROVE,
+        } and not intent.actor:
+            raise ValueError("approval intents require an explicit actor")
+        return handler(intent)
 
 
 _TARGET = r"(ssh://[^\s，。,；;]+|(?:[A-Za-z]:[\\/]|/)[^\s，。,；;]+)"
@@ -109,6 +129,8 @@ def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
     if intent.operation == NaturalLanguageOperation.BOOTSTRAP_PLAN:
         return ["target", "bootstrap-plan", intent.target or ""]
     if intent.operation == NaturalLanguageOperation.BOOTSTRAP_REQUEST:
+        if not intent.plan_file or not intent.actor:
+            raise ValueError("bootstrap request intent requires plan_file and actor")
         return [
             "target",
             "bootstrap-request",
@@ -117,6 +139,8 @@ def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
             intent.actor or "",
         ]
     if intent.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE:
+        if not intent.plan_file or not intent.request_file or not intent.actor:
+            raise ValueError("bootstrap approval intent requires plan_file, request_file and actor")
         return [
             "target",
             "bootstrap-approve",
