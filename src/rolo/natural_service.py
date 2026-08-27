@@ -5,10 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from rolo.commands.lifecycle import run_adapt_start
 from rolo.job_service import JobService
 from rolo.jobs import run_bootstrap_job
 from rolo.natural_language import NaturalLanguageIntent, NaturalLanguageOperation
-from rolo.target_ref import SshTargetRef, parse_target_ref
+from rolo.stages.adapt.active_discovery import ActiveProbeMode
+from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
+from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
     BootstrapApprovalDecision,
     BootstrapApprovalRequest,
@@ -32,6 +35,31 @@ class NaturalLanguageService:
         known_hosts: Path | None = None,
         timeout_s: float = 10.0,
     ) -> Any:
+        if intent.operation == NaturalLanguageOperation.ADAPT_START:
+            if not intent.target or not intent.robot_id:
+                raise ValueError("Adapt request requires target and robot id")
+            target = parse_target_ref(intent.target)
+            if not isinstance(target, LocalTargetRef):
+                raise ValueError(
+                    "natural-language Adapt currently supports local workspaces only"
+                )
+            return run_adapt_start(
+                robot_id=intent.robot_id,
+                project_root=target.workspace,
+                urdf=Path(intent.urdf) if intent.urdf else None,
+                active_probe=ActiveProbeMode.RUNTIME_READONLY,
+                run_agent=intent.run_agent,
+                scratch_root=None,
+                timeout=None,
+                evidence_mode=EvidenceDeploymentMode.LOCAL,
+                allow_executable=None,
+                collector_descriptor=None,
+                verification_secret=None,
+                ssh_target=None,
+                known_hosts=None,
+                collector_config=".rolo/config/target-evidence-collector.json",
+                evidence_timeout=45.0,
+            )
         if intent.operation == NaturalLanguageOperation.INSPECT:
             target = self._target(intent.target)
             return create_target_executor(

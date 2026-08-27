@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class NaturalLanguageOperation(str, Enum):
+    ADAPT_START = "adapt.start"
     INSPECT = "target.inspect"
     BOOTSTRAP_PLAN = "target.bootstrap-plan"
     BOOTSTRAP_REQUEST = "target.bootstrap-request"
@@ -23,6 +24,9 @@ class NaturalLanguageIntent(BaseModel):
     schema_version: str = "rolo-natural-language-intent/v1"
     operation: NaturalLanguageOperation
     target: str | None = Field(default=None, max_length=1024)
+    robot_id: str | None = Field(default=None, max_length=128)
+    urdf: str | None = Field(default=None, max_length=1024)
+    run_agent: bool = True
     plan_file: str | None = None
     request_file: str | None = None
     decision_file: str | None = None
@@ -56,6 +60,7 @@ class NaturalLanguageExecutionAdapter:
 
 
 _TARGET = r"(ssh://[^\s，。,；;]+|(?:[A-Za-z]:[\\/]|/)[^\s，。,；;]+)"
+_WORKSPACE_TARGET = r"(ssh://[^\s，。,；;]+|(?:[A-Za-z]:[\\/]|/|\./|\.\./)[^\s，。,；;]+)"
 
 
 def parse_natural_language(text: str) -> NaturalLanguageIntent:
@@ -65,6 +70,42 @@ def parse_natural_language(text: str) -> NaturalLanguageIntent:
         raise ValueError("natural-language request must contain 1..2000 characters")
     if any(token in source for token in ("&&", "||", ";", "|", "`", "$(", "<", ">")):
         raise ValueError("natural-language request contains unsupported command syntax")
+    match = re.search(
+        rf"(?:适配|adapt)\s*(?:目标|工作区|workspace)?\s*{_WORKSPACE_TARGET}",
+        source,
+        re.IGNORECASE,
+    )
+    if match:
+        target = match.group(1)
+        robot_match = re.search(
+            r"(?:机器人(?:叫|是)?|--robot(?:-id)?|"
+            r"(?<![A-Za-z0-9_.-])robot(?:-id)?(?![A-Za-z0-9_.-]))"
+            r"\s*[:：=]?\s*([A-Za-z0-9_.:-]+)",
+            source,
+            re.IGNORECASE,
+        )
+        if robot_match is None:
+            raise ValueError("Adapt request requires an explicit robot id")
+        urdf_match = re.search(
+            rf"(?:urdf)\s*(?:为|是|[:：=])?\s*{_WORKSPACE_TARGET}",
+            source,
+            re.IGNORECASE,
+        )
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.ADAPT_START,
+            target=target,
+            robot_id=robot_match.group(1),
+            urdf=urdf_match.group(1) if urdf_match else None,
+            run_agent=not bool(
+                re.search(
+                    r"(?:只|仅|先)?\s*(?:做)?\s*"
+                    r"(?:发现|discovery\s*only|--discover-only)",
+                    source,
+                    re.IGNORECASE,
+                )
+            ),
+            source_text=source,
+        )
     match = re.search(
         rf"(?:检查|inspect)\s*(?:目标|target)?\s*{_TARGET}", source, re.IGNORECASE
     )
@@ -159,6 +200,15 @@ def _actor(source: str) -> str | None:
 
 def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
     """Return the canonical product CLI argv; this function never executes it."""
+    if intent.operation == NaturalLanguageOperation.ADAPT_START:
+        if not intent.target or not intent.robot_id:
+            raise ValueError("Adapt intent requires target and robot_id")
+        argv = ["adapt", intent.target, "--robot", intent.robot_id]
+        if intent.urdf:
+            argv.extend(["--urdf", intent.urdf])
+        if not intent.run_agent:
+            argv.append("--discover-only")
+        return argv
     if intent.operation == NaturalLanguageOperation.INSPECT:
         return ["target", "inspect", intent.target or ""]
     if intent.operation == NaturalLanguageOperation.BOOTSTRAP_PLAN:

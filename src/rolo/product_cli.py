@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
@@ -10,6 +11,7 @@ import typer
 
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
+from rolo.console import run_console
 from rolo.core.config import get_settings
 from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore, run_bootstrap_job
@@ -38,7 +40,8 @@ from rolo.ui_models import JobUiAdapter
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
-    no_args_is_help=True,
+    no_args_is_help=False,
+    invoke_without_command=True,
 )
 job_app = typer.Typer(
     help="Inspect and recover persisted Adapt jobs without auto-resuming mutations."
@@ -50,9 +53,15 @@ profile_app = typer.Typer(help="Manage non-secret target connection profiles.")
 target_app.add_typer(profile_app, name="profile")
 
 
-@app.callback()
-def product_root() -> None:
-    """Rolo product commands."""
+@app.callback(invoke_without_command=True)
+def product_root(ctx: typer.Context) -> None:
+    """Rolo product commands; no arguments open the natural-language console."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        run_console()
+        return
+    typer.echo(ctx.get_help())
 
 
 @app.command("release-check")

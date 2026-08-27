@@ -31,6 +31,7 @@ def run_release_check(
     for module in (
         "rolo.product_cli",
         "rolo.api",
+        "rolo.console",
         "rolo.natural_service",
         "rolo.query_adapter",
         "rolo.tui",

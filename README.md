@@ -103,6 +103,10 @@ uv run rolo tui
 TUI 支持 `list`、`show JOB_ID`、`events JOB_ID` 和 `ask <自然语言>`；高风险操作只展示规范
 CLI，不在 TUI 内直接执行。
 
+在交互式终端中直接运行 `uv run rolo` 会进入自然语言控制台。它会先展示规范 CLI 和风险提示，
+再要求确认 Adapt、Bootstrap 等会写入状态的操作；`/jobs`、`/show JOB_ID`、`/events JOB_ID`
+和 `/quit` 是内置快捷命令。非交互环境下不会启动 REPL，而是输出帮助，适合 CI 和脚本调用。
+
 不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；此后的正式产品
 入口只有一条 `robotctl adapt start`。它自动注册或复用机器人身份、检查环境、识别工程证据、
 幂等建立本地 collector、采集并验证新鲜签名证据、执行只读发现、生成 Wiki，并在存在目标机

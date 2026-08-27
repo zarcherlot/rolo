@@ -43,6 +43,26 @@ def test_natural_language_maps_only_explicit_inspect_plan_and_recover_intents():
     assert adapter.dispatch(approval) == "target.bootstrap-approve"
 
 
+def test_natural_language_maps_local_adapt_request():
+    intent = parse_natural_language(
+        "适配 ./robot_ws，机器人叫 wheeltec，URDF ./robot.urdf，先只做发现"
+    )
+
+    assert intent.operation == NaturalLanguageOperation.ADAPT_START
+    assert intent.robot_id == "wheeltec"
+    assert intent.urdf == "./robot.urdf"
+    assert intent.run_agent is False
+    assert intent_to_argv(intent) == [
+        "adapt",
+        "./robot_ws",
+        "--robot",
+        "wheeltec",
+        "--urdf",
+        "./robot.urdf",
+        "--discover-only",
+    ]
+
+
 def test_natural_language_rejects_ambiguous_or_command_like_text():
     for text in ("帮我处理一下目标", "检查目标 C:/robot && whoami"):
         with pytest.raises(ValueError):
