@@ -34,6 +34,16 @@ def run_release_check(pyproject_path: Path | None = None) -> ReleaseCheckResult:
             checks.append(f"import:{module}")
         except Exception as exc:  # pragma: no cover - defensive release boundary
             failures.append(f"import:{module}: {exc}")
+    try:
+        api = importlib.import_module("rolo.api").app
+        route_paths = {route.path for route in api.routes}
+        for path in ("/v1/jobs", "/v1/jobs/{job_id}", "/v1/jobs/{job_id}/events"):
+            if path not in route_paths:
+                failures.append(f"missing API route: {path}")
+            else:
+                checks.append(f"api-route:{path}")
+    except Exception as exc:  # pragma: no cover - defensive release boundary
+        failures.append(f"api-routes: {exc}")
     path = pyproject_path or Path(__file__).resolve().parents[2] / "pyproject.toml"
     if path.is_file():
         try:
