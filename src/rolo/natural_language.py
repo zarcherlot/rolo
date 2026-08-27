@@ -48,6 +48,31 @@ def parse_natural_language(text: str) -> NaturalLanguageIntent:
             source_text=source,
         )
     match = re.search(
+        r"(?:申请|请求|request)\s*(?:bootstrap\s*)?(?:审批|approval)\s*([^\s，。,；;]+)",
+        source,
+        re.IGNORECASE,
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.BOOTSTRAP_REQUEST,
+            plan_file=match.group(1),
+            actor=_actor(source),
+            source_text=source,
+        )
+    match = re.search(
+        r"(?:批准|同意|approve)\s*(?:bootstrap\s*)?(?:计划\s*)?([^\s，。,；;]+)\s+([^\s，。,；;]+)",
+        source,
+        re.IGNORECASE,
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.BOOTSTRAP_APPROVE,
+            plan_file=match.group(1),
+            request_file=match.group(2),
+            actor=_actor(source),
+            source_text=source,
+        )
+    match = re.search(
         rf"(?:生成|创建|create)\s*(?:bootstrap\s*)?(?:计划|plan)\s*{_TARGET}",
         source,
         re.IGNORECASE,
@@ -70,3 +95,36 @@ def parse_natural_language(text: str) -> NaturalLanguageIntent:
             source_text=source,
         )
     raise ValueError("unsupported or ambiguous natural-language request")
+
+
+def _actor(source: str) -> str | None:
+    match = re.search(r"(?:由|by|as)\s*([A-Za-z0-9_.:-]+)", source, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
+    """Return the canonical product CLI argv; this function never executes it."""
+    if intent.operation == NaturalLanguageOperation.INSPECT:
+        return ["target", "inspect", intent.target or ""]
+    if intent.operation == NaturalLanguageOperation.BOOTSTRAP_PLAN:
+        return ["target", "bootstrap-plan", intent.target or ""]
+    if intent.operation == NaturalLanguageOperation.BOOTSTRAP_REQUEST:
+        return [
+            "target",
+            "bootstrap-request",
+            intent.plan_file or "",
+            "--requested-by",
+            intent.actor or "",
+        ]
+    if intent.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE:
+        return [
+            "target",
+            "bootstrap-approve",
+            intent.plan_file or "",
+            intent.request_file or "",
+            "--approved-by",
+            intent.actor or "",
+        ]
+    if intent.operation == NaturalLanguageOperation.JOB_RECOVER:
+        return ["job", "recover", intent.job_id or ""]
+    raise ValueError(f"unsupported intent operation: {intent.operation}")

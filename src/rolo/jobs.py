@@ -136,6 +136,12 @@ class JobStore:
             ],
         )
 
+    def list_events(self, job_id: str, *, limit: int = 100, offset: int = 0) -> list[JobEvent]:
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("event list limit must be 1..100 and offset must be non-negative")
+        _, events, _ = self.load(job_id)
+        return events[offset : offset + limit]
+
     def append_event(
         self,
         job_id: str,

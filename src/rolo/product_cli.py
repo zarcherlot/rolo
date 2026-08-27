@@ -12,6 +12,7 @@ from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.core.config import get_settings
 from rolo.jobs import JobStatus, JobStore
+from rolo.natural_language import intent_to_argv, parse_natural_language
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
@@ -55,6 +56,19 @@ def _job_store() -> JobStore:
     return JobStore(get_settings().rolo_config_dir / "jobs")
 
 
+@app.command("natural")
+def natural(
+    request: Annotated[str, typer.Argument(help="Explicit natural-language request")],
+) -> None:
+    """Parse a bounded natural-language request into canonical CLI argv without executing it."""
+    try:
+        intent = parse_natural_language(request)
+        argv = intent_to_argv(intent)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "INTENT_PARSED", "intent": intent.model_dump(mode="json"), "argv": argv})
+
+
 @job_app.command("list")
 def job_list(
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
@@ -76,6 +90,26 @@ def job_recover(job_id: Annotated[str, typer.Argument(help="Persisted job identi
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(recovery)
+
+
+@job_app.command("events")
+def job_events(
+    job_id: Annotated[str, typer.Argument(help="Persisted job identifier")],
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
+    offset: Annotated[int, typer.Option("--offset", min=0)] = 0,
+) -> None:
+    """List a bounded, ordered event page for audit and UI consumers."""
+    try:
+        events = _job_store().list_events(job_id, limit=limit, offset=offset)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "JOB_EVENTS_LISTED",
+            "job_id": job_id,
+            "items": [event.model_dump(mode="json") for event in events],
+        }
+    )
 
 
 @target_app.command("inspect")
