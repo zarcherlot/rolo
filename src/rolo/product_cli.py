@@ -11,8 +11,10 @@ import typer
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.core.config import get_settings
+from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore
 from rolo.natural_language import intent_to_argv, parse_natural_language
+from rolo.natural_service import NaturalLanguageService
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
@@ -59,14 +61,34 @@ def _job_store() -> JobStore:
 @app.command("natural")
 def natural(
     request: Annotated[str, typer.Argument(help="Explicit natural-language request")],
+    execute: Annotated[
+        bool,
+        typer.Option("--execute/--parse-only", help="Execute through canonical safe services"),
+    ] = False,
+    known_hosts: Annotated[Path | None, typer.Option("--known-hosts")] = None,
+    timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=300.0)] = 10.0,
 ) -> None:
-    """Parse a bounded natural-language request into canonical CLI argv without executing it."""
+    """Parse, or explicitly execute, a bounded request through canonical services."""
     try:
         intent = parse_natural_language(request)
         argv = intent_to_argv(intent)
+        result = None
+        if execute:
+            result = NaturalLanguageService(
+                JobService(get_settings().rolo_config_dir / "jobs")
+            ).execute(intent, known_hosts=known_hosts, timeout_s=timeout)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    emit({"status": "INTENT_PARSED", "intent": intent.model_dump(mode="json"), "argv": argv})
+    payload = {
+        "status": "INTENT_EXECUTED" if execute else "INTENT_PARSED",
+        "intent": intent.model_dump(mode="json"),
+        "argv": argv,
+    }
+    if execute:
+        payload["result"] = (
+            result.model_dump(mode="json") if hasattr(result, "model_dump") else result
+        )
+    emit(payload)
 
 
 @job_app.command("list")
