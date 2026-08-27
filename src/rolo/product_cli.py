@@ -30,6 +30,7 @@ from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
+from rolo.targets.security import validate_bootstrap_security
 from rolo.targets.signing import CompanionReleasePolicy, verify_companion_manifest
 
 app = typer.Typer(
@@ -335,6 +336,9 @@ def target_bootstrap_execute(
                 }
             )
             return
+        known_hosts, verification_key_file = validate_bootstrap_security(
+            known_hosts, verification_key_file
+        )
         verification_key = verification_key_file.read_bytes()
         transport = SubprocessBootstrapTransport(plan.target, known_hosts=known_hosts)
         job, result = run_bootstrap_job(

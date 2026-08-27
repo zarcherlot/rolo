@@ -101,6 +101,7 @@ from rolo.target_ref import SshTargetRef
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.models import TargetBootstrapPlan
+from rolo.targets.security import validate_bootstrap_security
 from rolo.topology_history_read_models import (
     TopologyDiff,
     TopologySnapshotCollection,
@@ -266,8 +267,11 @@ def execute_target_bootstrap(payload: BootstrapExecutePayload) -> dict[str, obje
                 "target": plan.target.model_dump(mode="json"),
                 "mutation_started": False,
             }
-        verification_key = payload.verification_key_file.read_bytes()
-        transport = SubprocessBootstrapTransport(plan.target, known_hosts=payload.known_hosts)
+        known_hosts, verification_key_path = validate_bootstrap_security(
+            payload.known_hosts, payload.verification_key_file
+        )
+        verification_key = verification_key_path.read_bytes()
+        transport = SubprocessBootstrapTransport(plan.target, known_hosts=known_hosts)
         job, result = run_bootstrap_job(
             JobService(get_settings().rolo_config_dir / "jobs").store,
             plan,

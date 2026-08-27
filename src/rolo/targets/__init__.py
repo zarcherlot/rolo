@@ -37,6 +37,7 @@ from rolo.targets.profiles import (
     TargetProfile,
     TargetProfileStore,
 )
+from rolo.targets.security import validate_bootstrap_file, validate_bootstrap_security
 from rolo.targets.signing import (
     CompanionManifest,
     CompanionReleasePolicy,
@@ -78,4 +79,6 @@ __all__ = [
     "sign_companion_manifest",
     "verify_companion_manifest",
     "build_companion_package",
+    "validate_bootstrap_file",
+    "validate_bootstrap_security",
 ]

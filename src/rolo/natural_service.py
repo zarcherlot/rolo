@@ -18,6 +18,7 @@ from rolo.targets.approvals import (
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import TargetBootstrapPlan
+from rolo.targets.security import validate_bootstrap_security
 
 
 class NaturalLanguageService:
@@ -89,9 +90,12 @@ class NaturalLanguageService:
                     "target": plan.target.model_dump(mode="json"),
                     "mutation_started": False,
                 }
-            verification_key = Path(intent.verification_key_file).read_bytes()
+            known_hosts, verification_key_path = validate_bootstrap_security(
+                Path(intent.known_hosts_file), Path(intent.verification_key_file)
+            )
+            verification_key = verification_key_path.read_bytes()
             transport = SubprocessBootstrapTransport(
-                plan.target, known_hosts=Path(intent.known_hosts_file)
+                plan.target, known_hosts=known_hosts
             )
             job, result = run_bootstrap_job(
                 self.jobs.store,
