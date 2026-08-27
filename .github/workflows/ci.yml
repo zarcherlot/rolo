@@ -43,6 +43,8 @@ jobs:
         run: uv build
       - name: Verify build artifacts
         run: test -n "$(find dist -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print -quit)"
+      - name: Re-run release check against built artifacts
+        run: uv run --python 3.12 rolo release-check --require-artifacts
 
   lerobot-e2e:
     runs-on: ubuntu-latest

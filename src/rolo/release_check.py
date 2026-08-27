@@ -20,7 +20,12 @@ class ReleaseCheckResult(BaseModel):
     failures: list[str] = Field(default_factory=list)
 
 
-def run_release_check(pyproject_path: Path | None = None) -> ReleaseCheckResult:
+def run_release_check(
+    pyproject_path: Path | None = None,
+    *,
+    dist_path: Path | None = None,
+    require_artifacts: bool = False,
+) -> ReleaseCheckResult:
     checks: list[str] = []
     failures: list[str] = []
     for module in (
@@ -57,6 +62,16 @@ def run_release_check(pyproject_path: Path | None = None) -> ReleaseCheckResult:
             failures.append(f"pyproject: {exc}")
     else:
         failures.append(f"missing pyproject: {path}")
+    if require_artifacts:
+        artifact_root = dist_path or path.parent / "dist"
+        artifacts = [
+            *artifact_root.glob("*.whl"),
+            *artifact_root.glob("*.tar.gz"),
+        ]
+        if not artifacts:
+            failures.append(f"missing build artifacts: {artifact_root}")
+        else:
+            checks.append("build-artifacts:present")
     return ReleaseCheckResult(
         status="PASS" if not failures else "FAIL",
         checks=checks,
