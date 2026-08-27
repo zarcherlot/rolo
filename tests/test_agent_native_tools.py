@@ -30,10 +30,10 @@ def test_default_catalog_is_fixed_and_read_only() -> None:
     catalog = default_agent_native_catalog()
 
     assert [item.tool_id for item in catalog] == [
-        "hw.inventory.scan",
-        "linux.host.status",
-        "linux.process.list",
-        "ros.graph.snapshot",
+        "native.hw.inventory.scan",
+        "native.linux.host.status",
+        "native.linux.process.list",
+        "native.ros.node.list",
     ]
     assert all(item.access == "read" for item in catalog)
     assert all(item.argv_template[0] == item.executable for item in catalog)

@@ -241,7 +241,7 @@ def default_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
     """Return the first read-only Linux/ROS/HW slice; unavailable tools degrade explicitly."""
     descriptors = [
         AgentNativeToolDescriptor(
-            tool_id="linux.host.status",
+            tool_id="native.linux.host.status",
             family="linux",
             execution_path="DIRECT_RUNNER",
             executable="uname",
@@ -253,7 +253,7 @@ def default_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
             evidence_kind="HOST_STATUS",
         ),
         AgentNativeToolDescriptor(
-            tool_id="linux.process.list",
+            tool_id="native.linux.process.list",
             family="linux",
             execution_path="DIRECT_RUNNER",
             executable="ps",
@@ -265,7 +265,7 @@ def default_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
             evidence_kind="PROCESS_LIST",
         ),
         AgentNativeToolDescriptor(
-            tool_id="ros.graph.snapshot",
+            tool_id="native.ros.node.list",
             family="ros",
             execution_path="ROS_CLI",
             executable="ros2",
@@ -278,7 +278,7 @@ def default_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
             allowed_env_keys=sorted(_SAFE_ENV_KEYS),
         ),
         AgentNativeToolDescriptor(
-            tool_id="hw.inventory.scan",
+            tool_id="native.hw.inventory.scan",
             family="hw",
             execution_path="DIRECT_RUNNER",
             executable="lsusb",
