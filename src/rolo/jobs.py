@@ -107,7 +107,10 @@ class JobStore:
             job_id,
             {
                 "job": updated.model_dump(mode="json"),
-                "events": [*events, event.model_dump(mode="json")],
+                "events": [
+                    *[item.model_dump(mode="json") for item in events],
+                    event.model_dump(mode="json"),
+                ],
                 "checkpoints": [item.model_dump(mode="json") for item in checkpoints],
             },
         )
