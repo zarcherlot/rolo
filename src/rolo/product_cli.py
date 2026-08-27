@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -136,6 +137,49 @@ def profile_show(
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+@profile_app.command("approve-host-key")
+def profile_approve_host_key(
+    robot_id: Annotated[str, typer.Option("--robot", "--robot-id")],
+    fingerprint: Annotated[
+        str,
+        typer.Option("--fingerprint", help="Independently verified SHA256 host-key fingerprint"),
+    ],
+    approver: Annotated[
+        str,
+        typer.Option("--approver", help="Human or policy actor approving this host key"),
+    ],
+) -> None:
+    """Record an explicit host-key decision without changing SSH known_hosts."""
+    try:
+        store = TargetProfileStore(get_settings().rolo_config_dir)
+        profile = store.load(robot_id)
+        if profile.host_key is None:
+            raise ValueError("local target profiles do not have an SSH host key decision")
+        if profile.host_key.status == "APPROVED" and profile.host_key.fingerprint != fingerprint:
+            raise ValueError("changing an approved host key requires explicit rotation")
+        host_key = profile.host_key.model_copy(
+            update={
+                "status": "APPROVED",
+                "fingerprint": fingerprint,
+                "decided_at": datetime.now(timezone.utc),
+                "decided_by": approver,
+            }
+        )
+        updated = profile.model_copy(
+            update={"host_key": host_key, "updated_at": datetime.now(timezone.utc)}
+        )
+        store.save(updated)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "HOST_KEY_APPROVED",
+            "path": str(store.path_for(updated.profile_id)),
+            "profile": updated.model_dump(mode="json"),
+        }
+    )
 
 
 @app.command("adapt")
