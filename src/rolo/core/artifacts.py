@@ -14,19 +14,22 @@ class ArtifactStore:
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def append_jsonl(self, relative_path: str, value: dict[str, Any]) -> Path:
+    def _prepare_path(self, relative_path: str) -> Path:
+        """Create the bounded directory for an artifact and return its path."""
         self.ensure()
         path = self.root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def append_jsonl(self, relative_path: str, value: dict[str, Any]) -> Path:
+        path = self._prepare_path(relative_path)
         append_text_record(
             path, json.dumps(value, ensure_ascii=False, default=str) + "\n"
         )
         return path
 
     def write_json(self, relative_path: str, value: dict[str, Any]) -> Path:
-        self.ensure()
-        path = self.root / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path = self._prepare_path(relative_path)
         atomic_write_text(
             path,
             json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n",
@@ -34,8 +37,6 @@ class ArtifactStore:
         return path
 
     def write_text(self, relative_path: str, value: str) -> Path:
-        self.ensure()
-        path = self.root / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path = self._prepare_path(relative_path)
         atomic_write_text(path, value)
         return path
