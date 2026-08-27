@@ -4,10 +4,12 @@ import hmac
 import ipaddress
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from rolo import __version__
 from rolo.adapt_observability_read_models import (
@@ -37,6 +39,7 @@ from rolo.capability_read_models import (
     build_capability_collection,
     get_capability_detail,
 )
+from rolo.core.config import get_settings
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
 from rolo.discovery_history_read_models import (
     DiscoverySnapshotCollection,
@@ -72,6 +75,8 @@ from rolo.fleet_read_models import (
     build_fleet_collection,
     get_fleet_blocker_detail,
 )
+from rolo.job_service import JobService, JobServiceError
+from rolo.jobs import JobEventPage, JobPage, JobRecovery, run_bootstrap_job
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
     LifecycleRunDetail,
@@ -92,6 +97,11 @@ from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.workset import TargetOperationSlice
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.pipeline import assess_pipeline
+from rolo.target_ref import SshTargetRef
+from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
+from rolo.targets.bootstrap import SubprocessBootstrapTransport
+from rolo.targets.models import TargetBootstrapPlan
+from rolo.targets.security import validate_bootstrap_security
 from rolo.topology_history_read_models import (
     TopologyDiff,
     TopologySnapshotCollection,
@@ -136,6 +146,14 @@ def _loopback_host(value: str) -> bool:
         return False
 
 
+def _required_scope(path: str, method: str) -> str | None:
+    if method == "GET" and (path == "/v1/jobs" or path.startswith("/v1/jobs/")):
+        return "jobs:read"
+    if method == "POST" and path == "/v1/targets/bootstrap-execute":
+        return "jobs:execute"
+    return None
+
+
 @app.middleware("http")
 async def protect_control_plane(request: Request, call_next):
     runtime = get_runtime(request)
@@ -167,11 +185,45 @@ async def protect_control_plane(request: Request, call_next):
             )
         if not supplied or not hmac.compare_digest(supplied, token):
             return JSONResponse(status_code=401, content={"detail": "Invalid API token"})
+        required_scope = _required_scope(request.url.path, request.method)
+        configured_scopes = {
+            item.strip()
+            for item in settings.rolo_api_token_scopes.split(",")
+            if item.strip()
+        }
+        if required_scope and configured_scopes and required_scope not in configured_scopes:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": {
+                        "code": "SCOPE_REQUIRED",
+                        "message": f"API token requires scope {required_scope}",
+                    }
+                },
+            )
     return await call_next(request)
 
 
 def get_runtime(request: Request) -> RobotUseRuntime:
     return request.app.state.runtime
+
+
+def get_job_service() -> JobService:
+    return JobService(get_settings().rolo_config_dir / "jobs")
+
+
+class BootstrapExecutePayload(BaseModel):
+    """File-backed bootstrap inputs; secrets never travel in the request body."""
+
+    plan_file: Path
+    request_file: Path
+    decision_file: Path
+    manifest_file: Path
+    package_file: Path
+    verification_key_file: Path
+    known_hosts: Path
+    execute: bool = False
+    timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -190,6 +242,95 @@ async def health(request: Request) -> HealthResponse:
 @app.get("/v1/robots", response_model=list[RobotCapability])
 async def list_robots(request: Request) -> list[RobotCapability]:
     return get_runtime(request).registry.list()
+
+
+@app.post("/v1/targets/bootstrap-execute")
+def execute_target_bootstrap(payload: BootstrapExecutePayload) -> dict[str, object]:
+    """Validate an approved bootstrap, or explicitly execute it through fixed SSH argv."""
+    try:
+        plan = TargetBootstrapPlan.model_validate_json(
+            payload.plan_file.read_text(encoding="utf-8")
+        )
+        approval_request = BootstrapApprovalRequest.model_validate_json(
+            payload.request_file.read_text(encoding="utf-8")
+        )
+        decision = BootstrapApprovalDecision.model_validate_json(
+            payload.decision_file.read_text(encoding="utf-8")
+        )
+        if not isinstance(plan.target, SshTargetRef):
+            raise ValueError("bootstrap execution requires an SSH target")
+        if not payload.execute:
+            return {
+                "status": "BOOTSTRAP_EXECUTION_READY",
+                "plan_sha256": approval_request.plan_sha256,
+                "approval_request_id": approval_request.request_id,
+                "target": plan.target.model_dump(mode="json"),
+                "mutation_started": False,
+            }
+        known_hosts, verification_key_path = validate_bootstrap_security(
+            payload.known_hosts, payload.verification_key_file
+        )
+        verification_key = verification_key_path.read_bytes()
+        transport = SubprocessBootstrapTransport(plan.target, known_hosts=known_hosts)
+        job, result = run_bootstrap_job(
+            JobService(get_settings().rolo_config_dir / "jobs").store,
+            plan,
+            approval_request,
+            decision,
+            manifest_path=payload.manifest_file,
+            package_path=payload.package_file,
+            verification_key=verification_key,
+            transport=transport,
+            timeout_s=payload.timeout_s,
+            rollback_on_failure=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"bootstrap input file not found: {exc}"
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "BOOTSTRAP_EXECUTED", "job_id": job.job_id, "result": result}
+
+
+@app.get("/v1/jobs", response_model=JobPage)
+def list_jobs(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> JobPage:
+    try:
+        return get_job_service().list(limit=limit, offset=offset)
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+@app.get("/v1/jobs/{job_id}", response_model=JobRecovery)
+def recover_job(job_id: str) -> JobRecovery:
+    try:
+        return get_job_service().recover(job_id)
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+@app.get("/v1/jobs/{job_id}/events", response_model=JobEventPage)
+def list_job_events(
+    job_id: str,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> JobEventPage:
+    try:
+        return get_job_service().events(job_id, limit=limit, offset=offset)
+    except JobServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.get("/v1/operations/governance", response_model=OperationGovernanceCollection)
