@@ -15,6 +15,7 @@ def test_registry_migration_report_has_disjoint_complete_views() -> None:
         "PROVIDER": 11,
     }
     assert report["v1_v2_identity_distinct"] is True
+    assert report["v2_registry_operation_count"] == 197
 
 
 def test_agent_native_ids_do_not_shadow_canonical_operation_ids() -> None:

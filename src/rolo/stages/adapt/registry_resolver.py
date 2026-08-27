@@ -8,7 +8,11 @@ from rolo.stages.adapt.operation_registry import (
     CanonicalOperationRegistry,
     canonical_operation_registry,
 )
-from rolo.stages.adapt.operation_registry_v2 import RegistryView, build_registry_projection
+from rolo.stages.adapt.operation_registry_v2 import (
+    RegistryView,
+    build_registry_projection,
+    canonical_operation_registry_v2,
+)
 
 
 def _catalog_digest(registry: CanonicalOperationRegistry, operations: set[str]) -> str:
@@ -90,10 +94,13 @@ def load_registry_resolver(
     *,
     registry: CanonicalOperationRegistry | None = None,
 ) -> BoundRegistryResolver:
-    """Load v1 or the non-authoritative v2 shadow view by explicit version."""
+    """Load a version-bound v1, reduced v2, or legacy shadow resolver."""
     registry = registry or canonical_operation_registry()
     if version == "v1":
         return BoundRegistryResolver(registry, registry_version="v1")
+    if version == "v2":
+        reduced = canonical_operation_registry_v2(registry)
+        return BoundRegistryResolver(reduced, registry_version="v2")
     if version == "v2-shadow":
         projection = build_registry_projection(registry)
         return BoundRegistryResolver(

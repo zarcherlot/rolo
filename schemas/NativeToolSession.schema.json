@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "NativeToolSessionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_calls": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "max_elapsed_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 86400},
+        "max_result_bytes": {"type": "integer", "minimum": 1, "maximum": 1000000000}
+      },
+      "required": ["max_calls", "max_elapsed_s", "max_result_bytes"]
+    }
+  },
+  "title": "NativeToolSessionDescriptor",
+  "description": "Immutable authority for one Agent-native tool session.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "rolo-native-tool-session/v1"},
+    "session_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$"},
+    "robot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "stage": {"type": "string", "enum": ["adapt", "diagnose", "verify"]},
+    "native_catalog_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "allowed_tools": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 256},
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "budget": {"$ref": "#/$defs/NativeToolSessionBudget"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "required": [
+    "session_id", "nonce", "robot_id", "stage", "native_catalog_sha256",
+    "allowed_tools", "policy_version", "budget", "created_at", "expires_at"
+  ]
+}

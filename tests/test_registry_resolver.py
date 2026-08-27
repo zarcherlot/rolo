@@ -30,3 +30,12 @@ def test_resolver_rejects_cross_generation_identity() -> None:
     with pytest.raises(ValueError, match="does not match"):
         resolver_for_identity("v2-shadow", v1.registry_sha256)
 
+
+def test_v2_resolver_uses_reduced_canonical_registry() -> None:
+    resolver = load_registry_resolver("v2")
+
+    assert resolver.registry_version == "v2"
+    assert resolver.operation_count == 197
+    assert resolver.contract_sha256_for("app.teleop.velocity") is not None
+    assert resolver.contract_sha256_for("linux.process.list") is None
+

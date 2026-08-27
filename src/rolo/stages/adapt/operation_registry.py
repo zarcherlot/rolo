@@ -60,7 +60,10 @@ class CanonicalOperationDefinition(BaseModel):
 class CanonicalOperationRegistry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-canonical-operation-registry/v1"] = (
+    schema_version: Literal[
+        "robot-canonical-operation-registry/v1",
+        "robot-canonical-operation-registry/v2",
+    ] = (
         "robot-canonical-operation-registry/v1"
     )
     contract_catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -282,6 +283,42 @@ def _wiki_content(snapshot: dict[str, Any]) -> str:
     return content
 
 
+def _native_broker_request(action: str, *, tool_id: str | None = None) -> Any:
+    address = os.environ.get("ROLO_NATIVE_BROKER_ADDRESS", "")
+    token = os.environ.get("ROLO_NATIVE_BROKER_TOKEN", "")
+    if not address or not token or ":" not in address:
+        raise ValueError("Agent-native broker is not available in this session")
+    host, port_text = address.rsplit(":", 1)
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError("Agent-native broker address is invalid") from exc
+    request: dict[str, Any] = {"action": action}
+    if tool_id is not None:
+        request["tool_id"] = tool_id
+    encoded = (json.dumps({**request, "token": token}, separators=(",", ":")) + "\n").encode(
+        "utf-8"
+    )
+    if len(encoded) > 16 * 1024:
+        raise ValueError("Agent-native broker request exceeds its byte limit")
+    with socket.create_connection((host, port), timeout=15) as connection:
+        connection.sendall(encoded)
+        payload = bytearray()
+        while len(payload) <= 512 * 1024:
+            chunk = connection.recv(16 * 1024)
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if b"\n" in chunk:
+                break
+    if len(payload) > 512 * 1024:
+        raise ValueError("Agent-native broker response exceeds its byte limit")
+    response = json.loads(bytes(payload).decode("utf-8"))
+    if not isinstance(response, dict) or response.get("status") == "ERROR":
+        raise ValueError(str(response.get("message", "Agent-native broker request failed")))
+    return response
+
+
 def _query(snapshot: dict[str, Any], arguments: list[str]) -> Any:
     if arguments and arguments[0] == "adapt":
         arguments.pop(0)
@@ -292,6 +329,11 @@ def _query(snapshot: dict[str, Any], arguments: list[str]) -> Any:
     robot = _take_option(rest, "--robot")
     if robot is not None and robot != snapshot["robot_id"]:
         raise ValueError(f"snapshot is pinned to robot {snapshot['robot_id']}")
+
+    if group == "native" and action in {"list", "run"}:
+        if action == "list":
+            return _native_broker_request("list")
+        return _native_broker_request("run", tool_id=_required_argument(rest))
 
     if group == "operations" and action == "summary":
         return snapshot["workset_summary"]

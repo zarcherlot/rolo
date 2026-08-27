@@ -5,6 +5,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from rolo.agent_tools import (
+    AgentNativeToolDescriptor,
+    AgentNativeToolResult,
+    NativeToolSessionBudget,
+    NativeToolSessionDescriptor,
+)
 from rolo.capabilities import (
     CapabilityDescriptor,
     CapabilityResolutionShadow,
@@ -131,6 +137,10 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     PlatformProfile,
     CapabilityResolutionShadow,
     ToolDescriptor,
+    AgentNativeToolDescriptor,
+    AgentNativeToolResult,
+    NativeToolSessionBudget,
+    NativeToolSessionDescriptor,
     AdaptInputs,
     AdaptJourneyResult,
     AdaptPlan,

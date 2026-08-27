@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -19,6 +19,7 @@ from rolo.stages.adapt.discovery import (
 )
 from rolo.stages.adapt.models import StateGraphBaseline, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.operation_registry_v2 import canonical_operation_registry_v2
 
 tool_app = typer.Typer(help="Inspect the generated canonical tool catalog.")
 contract_app = typer.Typer(help="Validate and inspect product-owned operation contracts.")
@@ -82,11 +83,23 @@ state_app.add_typer(state_graph_app, name="graph")
 tool_app.add_typer(contract_app, name="contract")
 
 
+def _registry_for_version(
+    registry_version: Literal["v1", "v2"],
+):
+    if registry_version == "v2":
+        return canonical_operation_registry_v2()
+    return canonical_operation_registry()
+
+
 @contract_app.command("validate")
-def contract_validate() -> None:
+def contract_validate(
+    registry_version: Annotated[
+        Literal["v1", "v2"], typer.Option("--registry-version")
+    ] = "v2",
+) -> None:
     """Compile all contract files and validate them against the product vocabulary."""
     catalog = load_operation_contracts()
-    registry = canonical_operation_registry()
+    registry = _registry_for_version(registry_version)
     counts: dict[str, int] = {}
     for operation in registry.operations:
         counts[operation.contract_lifecycle.value] = (
@@ -95,21 +108,28 @@ def contract_validate() -> None:
     emit(
         {
             "status": "SUCCEEDED",
+            "registry_version": registry_version,
             "registry_operations": len(registry.operations),
             "authored_contracts": len(catalog.contracts),
             "contract_lifecycle_counts": counts,
-            "contract_catalog_sha256": catalog.sha256,
+            "contract_catalog_sha256": registry.contract_catalog_sha256,
+            "authored_contract_catalog_sha256": catalog.sha256,
         }
     )
 
 
 @contract_app.command("show")
-def contract_show(operation: Annotated[str, typer.Argument()]) -> None:
+def contract_show(
+    operation: Annotated[str, typer.Argument()],
+    registry_version: Annotated[
+        Literal["v1", "v2"], typer.Option("--registry-version")
+    ] = "v2",
+) -> None:
     """Show the compiled product contract or DRAFT vocabulary entry."""
     definition = next(
         (
             item
-            for item in canonical_operation_registry().operations
+            for item in _registry_for_version(registry_version).operations
             if item.operation == operation
         ),
         None,
@@ -135,15 +155,20 @@ def contract_export(
 @tool_app.command("registry")
 def tool_registry(
     layer: Annotated[str | None, typer.Option("--layer")] = None,
+    registry_version: Annotated[
+        Literal["v1", "v2"], typer.Option("--registry-version")
+    ] = "v2",
 ) -> None:
-    """Inspect product-defined operations without probing a robot host."""
-    registry = canonical_operation_registry()
+    """Inspect the reduced v2 Canonical Registry (use v1 for legacy audit)."""
+    registry = _registry_for_version(registry_version)
     operations = registry.operations
     if layer:
         operations = [operation for operation in operations if operation.layer == layer]
     emit(
         {
             "schema_version": registry.schema_version,
+            "registry_version": registry_version,
+            "operation_count": len(operations),
             "operations": [operation.model_dump(mode="json") for operation in operations],
         }
     )

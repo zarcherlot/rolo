@@ -5,12 +5,24 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import zlib
+from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from rolo.agent_tools import (
+    AgentNativeRunner,
+    NativeToolBroker,
+    NativeToolSession,
+    NativeToolSessionBudget,
+    NativeToolSessionDescriptor,
+    default_agent_native_catalog,
+    native_catalog_sha256,
+)
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import sha256_file
 from rolo.core.models import utc_now
@@ -331,6 +343,8 @@ class CodexAdaptExecutor:
                 "agent_native_operation_count": len(
                     snapshot["target_operation_slice"]["agent_native_operations"]
                 ),
+                "agent_native_tool_count": len(snapshot["agent_native"]["tools"]),
+                "agent_native_catalog_sha256": snapshot["agent_native"]["catalog_sha256"],
                 "target_adapter_operation_count": len(
                     snapshot["target_operation_slice"]["target_adapter_operations"]
                 ),
@@ -374,7 +388,31 @@ class CodexAdaptExecutor:
             config=plan.adapter_agent,
             api_key_configured=bool(self.api_key),
         )
-        environment = self._child_environment(agent_tool, plan)
+        native_catalog = default_agent_native_catalog()
+        native_session_descriptor = NativeToolSessionDescriptor(
+            session_id=f"native-{run_id}",
+            nonce=uuid4().hex,
+            robot_id=robot_id,
+            stage="adapt",
+            native_catalog_sha256=native_catalog_sha256(native_catalog),
+            allowed_tools=[item.tool_id for item in native_catalog],
+            policy_version="native-policy-v1",
+            budget=NativeToolSessionBudget(
+                max_calls=64,
+                max_elapsed_s=max(60.0, float(timeout_s)),
+                max_result_bytes=8_000_000,
+            ),
+            created_at=started_at,
+            expires_at=started_at + timedelta(seconds=max(60, timeout_s)),
+        )
+        native_session = NativeToolSession(
+            descriptor=native_session_descriptor,
+            runner=AgentNativeRunner(native_catalog),
+            artifacts=self.artifacts,
+        )
+        native_broker = NativeToolBroker(native_session)
+        native_broker.start()
+        environment = self._child_environment(agent_tool, plan, native_broker=native_broker)
 
         stdout = ""
         stderr = ""
@@ -421,6 +459,8 @@ class CodexAdaptExecutor:
             error = f"Codex exceeded the {timeout_s}-second timeout"
         except OSError as exc:
             error = f"Could not start Codex: {exc}"
+        finally:
+            native_broker.stop()
 
         query_metrics_path = workspace / "rolo-agent-query-metrics.json"
         if query_metrics_path.is_file():
@@ -477,7 +517,77 @@ class CodexAdaptExecutor:
         )
         return run, run_path
 
-    def _child_environment(self, agent_tool: Path, plan: AdaptPlan) -> dict[str, str]:
+    @staticmethod
+    def _run_streaming(
+        command: list[str],
+        *,
+        prompt: str,
+        cwd: Path,
+        environment: dict[str, str],
+        timeout_s: int,
+        on_output: Callable[[str, str], None],
+    ) -> tuple[str, str, int]:
+        """Run Codex while forwarding bounded line output to the active UI.
+
+        stdout and stderr are drained concurrently so a verbose provider cannot
+        deadlock the child process. The complete streams are still returned for
+        the immutable audit artifact; the callback is only a presentation sink.
+        """
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            env=environment,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        assert process.stdin is not None
+        assert process.stdout is not None
+        assert process.stderr is not None
+        process.stdin.write(prompt)
+        process.stdin.close()
+        streams: dict[str, list[str]] = {"stdout": [], "stderr": []}
+
+        def drain(name: str, pipe) -> None:
+            for line in iter(pipe.readline, ""):
+                streams[name].append(line)
+                on_output(name, line.rstrip("\r\n"))
+            pipe.close()
+
+        workers = [
+            threading.Thread(target=drain, args=("stdout", process.stdout), daemon=True),
+            threading.Thread(target=drain, args=("stderr", process.stderr), daemon=True),
+        ]
+        for worker in workers:
+            worker.start()
+        try:
+            process.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            process.wait()
+            for worker in workers:
+                worker.join(timeout=2)
+            raise subprocess.TimeoutExpired(
+                exc.cmd,
+                exc.timeout,
+                output="".join(streams["stdout"]),
+                stderr="".join(streams["stderr"]),
+            ) from exc
+        for worker in workers:
+            worker.join(timeout=2)
+        return "".join(streams["stdout"]), "".join(streams["stderr"]), process.returncode
+
+    def _child_environment(
+        self,
+        agent_tool: Path,
+        plan: AdaptPlan,
+        *,
+        native_broker: NativeToolBroker | None = None,
+    ) -> dict[str, str]:
         environment = os.environ.copy()
         # Keep host credentials unrelated to the configured coding provider out of
         # the Codex process itself, in addition to Codex's tool environment policy.
@@ -497,6 +607,10 @@ class CodexAdaptExecutor:
                 environment.setdefault("CODEX_HOME", str(codex_home))
         environment["ROLO_AGENT_TOOL"] = str(agent_tool)
         environment["ROLO_AGENT_DISCOVERY_ID"] = plan.source_discovery_id
+        if native_broker is not None:
+            host, port = native_broker.address
+            environment["ROLO_NATIVE_BROKER_ADDRESS"] = f"{host}:{port}"
+            environment["ROLO_NATIVE_BROKER_TOKEN"] = native_broker.token
         # Agent-authored tests and advisory describe must not leave bytecode
         # directories carrying a child sandbox ACL into workspace cleanup.
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -615,6 +729,13 @@ class CodexAdaptExecutor:
                 "AdapterConformanceReport": AdapterConformanceReport.model_json_schema(),
             },
             "evidence": {},
+            "agent_native": {
+                "catalog_sha256": native_catalog_sha256(default_agent_native_catalog()),
+                "tools": [
+                    item.model_dump(mode="json")
+                    for item in default_agent_native_catalog()
+                ],
+            },
         }
         snapshot_path = workspace / "rolo-agent-inspection.json"
         snapshot_path.write_text(
@@ -646,6 +767,9 @@ class CodexAdaptExecutor:
             "# Rolo Stage 1 adapter workspace\n\n"
             "- Work only in this directory. On Windows, explicitly Set-Location to this "
             "directory before every shell command.\n"
+            "- For Linux/ROS/HW read-only observations, use the supplied `rolo-agent-tool native "
+            "list` and `rolo-agent-tool native run TOOL_ID` commands. Do not construct arbitrary "
+            "argv or treat native evidence as Verified.\n"
             "- Do not inventory the directory, run `rg --files`, recurse above it, or inspect "
             "the drive root. Start with the supplied rolo-agent-tool and the compact plan.\n"
             "- Run focused adapter tests, then run `adapt handoff pack`. A failed pack may be "
@@ -743,6 +867,8 @@ class CodexAdaptExecutor:
             "discovery_pinned": plan.source_discovery_id,
             "examples": [
                 f"{tool_prefix} adapt operations summary --robot {plan.robot_id}",
+                f"{tool_prefix} native list --robot {plan.robot_id}",
+                f"{tool_prefix} native run native.linux.host.status --robot {plan.robot_id}",
                 f"{tool_prefix} adapt operations list --robot {plan.robot_id} "
                 "--scope current-task --limit 20",
                 f"{tool_prefix} adapt operations search --robot {plan.robot_id} QUERY",

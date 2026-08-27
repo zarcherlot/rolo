@@ -49,6 +49,9 @@ class RegistryProjection(BaseModel):
         }[view]
 
 
+V2_REGISTRY_VERSION = "v2"
+
+
 def _registry_sha256(registry: CanonicalOperationRegistry) -> str:
     payload = json.dumps(
         registry.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -86,6 +89,48 @@ def project_definitions(
     projection = build_registry_projection(registry)
     allowed = set(projection.operations(view))
     return [item for item in registry.operations if item.operation in allowed]
+
+
+def _subset_catalog_sha256(
+    definitions: list[CanonicalOperationDefinition],
+) -> str:
+    """Digest only the contracts that remain in the v2 Canonical Registry."""
+
+    payload = json.dumps(
+        {
+            definition.operation: definition.contract_sha256
+            for definition in definitions
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def canonical_operation_registry_v2(
+    registry: CanonicalOperationRegistry | None = None,
+) -> CanonicalOperationRegistry:
+    """Materialize the reduced v2 Canonical Registry.
+
+    The v1 Registry remains the source of truth for compatibility and audit.  This
+    function creates an independent, deterministic v2 artifact containing only
+    product-semantic Canonical Operations; Linux/ROS/HW probe operations are
+    intentionally absent and must be served by the Agent-native catalog.
+    """
+
+    registry = registry or canonical_operation_registry()
+    definitions = project_definitions(RegistryView.CANONICAL, registry)
+    if not definitions:
+        raise ValueError("v2 Canonical Registry cannot be empty")
+    native_ids = set(build_registry_projection(registry).agent_native_operations)
+    if native_ids & {definition.operation for definition in definitions}:
+        raise ValueError("v2 Canonical Registry contains an Agent-native operation")
+    return CanonicalOperationRegistry(
+        schema_version="robot-canonical-operation-registry/v2",
+        contract_catalog_sha256=_subset_catalog_sha256(definitions),
+        operations=definitions,
+    )
 
 
 def role_projection_by_operation(
