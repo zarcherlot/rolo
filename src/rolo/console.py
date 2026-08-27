@@ -118,12 +118,27 @@ class RoloConsole:
 
     def _execute(self, intent, output_stream: TextIO) -> None:
         try:
-            result = self.service.execute(intent)
+            if getattr(intent, "operation", None) == NaturalLanguageOperation.ADAPT_START:
+                result = self.service.execute(
+                    intent,
+                    on_output=lambda stream, line: self._render_agent_output(
+                        stream, line, output_stream
+                    ),
+                )
+            else:
+                result = self.service.execute(intent)
         except (OSError, ValueError) as exc:
             self._write(output_stream, f"ERROR EXECUTION_FAILED: {exc}")
             return
         payload = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
         self._write(output_stream, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+    def _render_agent_output(self, stream: str, line: str, output_stream: TextIO) -> None:
+        """Forward Agent events immediately while retaining the final summary below."""
+        if not line:
+            return
+        prefix = "Agent" if stream == "stdout" else "Agent stderr"
+        self._write(output_stream, f"{prefix}> {line}")
 
     def _render_jobs(self, output_stream: TextIO) -> None:
         state = self.adapter.safe_list_view()

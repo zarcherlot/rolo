@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -95,9 +95,10 @@ class AdaptExecutionService:
         *,
         robot_id: str,
         workspace: Path,
-        timeout_s: int,
+        timeout_s: int | None,
         plan: AdaptPlan,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdapterAgentDependencyReport, AdapterAgentRun | None, Path | None]:
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
             raise ValueError(f"Adapt plan for {robot_id} is {plan.status.value}")
@@ -125,6 +126,7 @@ class AdaptExecutionService:
             timeout_s=timeout_s,
             plan=plan,
             slice_canary=slice_canary,
+            on_output=on_output,
         )
         return dependency, run, artifact
 
@@ -148,8 +150,9 @@ class AdaptRunService:
         *,
         robot_id: str,
         scratch_root: Path | None,
-        timeout_s: int,
+        timeout_s: int | None,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdaptRunSummary, Path]:
         plan = self.dry_run(robot_id)
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
@@ -185,6 +188,7 @@ class AdaptRunService:
                 timeout_s=timeout_s,
                 plan=plan,
                 slice_canary=slice_canary,
+                on_output=on_output,
             )
             if agent_run is None or agent_run_path is None:
                 raise ValueError(

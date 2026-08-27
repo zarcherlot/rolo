@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -35,6 +36,55 @@ def test_adapter_agent_output_schema_is_strict_for_every_object() -> None:
                 assert_strict(child)
 
     assert_strict(schema)
+
+
+def test_streaming_runner_forwards_agent_output_without_a_default_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            class Stdin(io.StringIO):
+                def close(self) -> None:
+                    self.closed_for_test = True
+
+            self.stdin = Stdin()
+            self.stdout = io.StringIO('{"type":"thread.started"}\n')
+            self.stderr = io.StringIO("agent warning\n")
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("the no-timeout run must not be killed")
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        "rolo.stages.adapt.executor.subprocess.Popen", lambda *args, **kwargs: process
+    )
+    received: list[tuple[str, str]] = []
+
+    stdout, stderr, exit_code = CodexAdaptExecutor._run_streaming(
+        ["codex", "exec"],
+        prompt="hello",
+        cwd=tmp_path,
+        environment={},
+        timeout_s=None,
+        on_output=lambda stream, line: received.append((stream, line)),
+    )
+
+    assert process.stdin.getvalue() == "hello"
+    assert stdout == '{"type":"thread.started"}\n'
+    assert stderr == "agent warning\n"
+    assert exit_code == 0
+    assert set(received) == {
+        ("stdout", '{"type":"thread.started"}'),
+        ("stderr", "agent warning"),
+    }
 
 
 def prepare_plan(artifact_root: Path, source_root: Path) -> AdaptPlan:

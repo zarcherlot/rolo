@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -59,6 +60,7 @@ def run_adapt_start(
     known_hosts: Path | None,
     collector_config: str,
     evidence_timeout: float,
+    on_output: Callable[[str, str], None] | None = None,
 ) -> AdaptJourneyResult:
     """Run the shared Adapt start application service used by product and expert CLIs."""
     settings = get_settings()
@@ -139,6 +141,7 @@ def run_adapt_start(
         timeout_s=timeout or settings.coding_agent_timeout_s,
         evidence_deployment=evidence_deployment,
         evidence_timeout_s=evidence_timeout,
+        on_output=on_output,
     )
 
 

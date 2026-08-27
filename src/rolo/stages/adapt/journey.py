@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -197,9 +198,10 @@ class AdaptJourneyService:
         active_probe: ActiveProbeMode,
         run_agent: bool,
         scratch_root: Path | None,
-        timeout_s: int,
+        timeout_s: int | None,
         evidence_deployment: EvidenceDeploymentConfig | None = None,
         evidence_timeout_s: float = 45.0,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> AdaptJourneyResult:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
             robot_id=robot_id
@@ -344,6 +346,7 @@ class AdaptJourneyService:
                 robot_id=robot_id,
                 scratch_root=scratch_root,
                 timeout_s=timeout_s,
+                on_output=on_output,
             )
         except ValueError as exc:
             return AdaptJourneyResult(

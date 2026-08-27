@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -224,14 +228,15 @@ class CodexAdaptExecutor:
         *,
         robot_id: str,
         workspace: Path,
-        timeout_s: int = 1800,
+        timeout_s: int | None = None,
         plan: AdaptPlan,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdapterAgentRun, Path]:
         workspace = workspace.resolve()
         if not workspace.is_dir():
             raise ValueError(f"Adapter Agent workspace is not a directory: {workspace}")
-        if timeout_s < 1:
+        if timeout_s is not None and timeout_s < 1:
             raise ValueError("Adapter Agent timeout must be at least one second")
         if plan.robot_id != robot_id:
             raise ValueError("Adapter Agent plan robot_id does not match the execution request")
@@ -382,23 +387,33 @@ class CodexAdaptExecutor:
         status = AdapterAgentRunStatus.FAILED
         error: str | None = None
         try:
-            completed = subprocess.run(
-                command,
-                input=prompt,
-                capture_output=True,
-                check=False,
-                cwd=workspace,
-                env=environment,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_s,
-            )
-            stdout = completed.stdout
-            stderr = completed.stderr
-            exit_code = completed.returncode
-            if completed.returncode != 0:
-                error = f"Codex exited with code {completed.returncode}"
+            if on_output is None:
+                completed = subprocess.run(
+                    command,
+                    input=prompt,
+                    capture_output=True,
+                    check=False,
+                    cwd=workspace,
+                    env=environment,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_s,
+                )
+                stdout = completed.stdout
+                stderr = completed.stderr
+                exit_code = completed.returncode
+            else:
+                stdout, stderr, exit_code = self._run_streaming(
+                    command,
+                    prompt=prompt,
+                    cwd=workspace,
+                    environment=environment,
+                    timeout_s=timeout_s,
+                    on_output=on_output,
+                )
+            if exit_code != 0:
+                error = f"Codex exited with code {exit_code}"
             elif not final_message_path.is_file():
                 error = "Codex did not write the required structured final message"
             else:
@@ -476,6 +491,96 @@ class CodexAdaptExecutor:
             f"{relative_run_root}/run.json", run.model_dump(mode="json")
         )
         return run, run_path
+
+    @staticmethod
+    def _run_streaming(
+        command: list[str],
+        *,
+        prompt: str,
+        cwd: Path,
+        environment: dict[str, str],
+        timeout_s: int | None,
+        on_output: Callable[[str, str], None],
+    ) -> tuple[str, str, int]:
+        """Run Codex while forwarding stdout/stderr lines as they arrive."""
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            env=environment,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        assert process.stdin is not None
+        assert process.stdout is not None
+        assert process.stderr is not None
+        process.stdin.write(prompt)
+        process.stdin.close()
+
+        output_queue: queue.Queue[tuple[str, str] | None] = queue.Queue()
+        streams = (("stdout", process.stdout), ("stderr", process.stderr))
+
+        def pump(kind: str, stream: Any) -> None:
+            try:
+                for line in iter(stream.readline, ""):
+                    output_queue.put((kind, line))
+            finally:
+                stream.close()
+                output_queue.put(None)
+
+        readers = [
+            threading.Thread(target=pump, args=(kind, stream), daemon=True)
+            for kind, stream in streams
+        ]
+        for reader in readers:
+            reader.start()
+
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        finished_readers = 0
+        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
+        timed_out = False
+        while finished_readers < len(readers):
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            if remaining == 0.0:
+                timed_out = True
+                process.kill()
+                deadline = None
+            try:
+                item = output_queue.get(timeout=0.1 if remaining is None else min(0.1, remaining))
+            except queue.Empty:
+                if process.poll() is not None and all(not reader.is_alive() for reader in readers):
+                    break
+                continue
+            if item is None:
+                finished_readers += 1
+                continue
+            kind, line = item
+            if kind == "stdout":
+                stdout_chunks.append(line)
+            else:
+                stderr_chunks.append(line)
+            on_output(kind, line.rstrip("\r\n"))
+
+        for reader in readers:
+            reader.join(timeout=1)
+        try:
+            returncode = process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            returncode = process.wait()
+        if timed_out:
+            raise subprocess.TimeoutExpired(
+                command,
+                timeout_s,
+                output="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+            )
+        return "".join(stdout_chunks), "".join(stderr_chunks), returncode
 
     def _child_environment(self, agent_tool: Path, plan: AdaptPlan) -> dict[str, str]:
         environment = os.environ.copy()
