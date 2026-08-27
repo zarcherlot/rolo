@@ -12,6 +12,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from rolo.core.models import utc_now
+from rolo.core.persistence import atomic_write_text
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import BootstrapExecutionResult, BootstrapTransport, execute_bootstrap
 from rolo.targets.models import TargetBootstrapPlan
@@ -215,11 +216,10 @@ class JobStore:
 
     def _write(self, job_id: str, data: dict[str, Any]) -> None:
         path = self._path(job_id)
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        atomic_write_text(
+            path,
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
         )
-        temporary.replace(path)
 
     @staticmethod
     def _check_revision(job: Job, expected_revision: int) -> None:
