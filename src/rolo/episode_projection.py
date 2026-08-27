@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -16,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from rolo.core.hashing import canonical_json_sha256
 from rolo.core.persistence import atomic_write_text
 from rolo.episode_read_models import (
     EpisodeAssetAvailability,
@@ -256,13 +256,7 @@ def episode_record_content_sha256(value: dict[str, Any] | EpisodeRecordContent) 
         raw = dict(value)
         raw.pop("content_sha256", None)
         content = EpisodeRecordContent.model_validate(raw).model_dump(mode="json")
-    encoded = json.dumps(
-        content,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return sha256(encoded).hexdigest()
+    return canonical_json_sha256(content)
 
 
 class CommittedEpisodeRecord(EpisodeRecordContent):

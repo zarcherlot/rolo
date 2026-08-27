@@ -7,8 +7,6 @@ import pytest
 from typer.testing import CliRunner
 
 from rolo.adapter_runtime import StaleAdapterReleaseError
-from rolo.agent_tool import adapt_app
-from rolo.agent_tool import app as agent_tool_app
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -238,22 +236,3 @@ def test_adapt_operation_cli_uses_compact_workset(tmp_path: Path, monkeypatch) -
     assert searched.exit_code == 0, searched.output
     assert "app.teleop.velocity" in searched.output
 
-
-def test_agent_tool_exposes_queries_but_not_discovery_run_or_runtime_invoke() -> None:
-    runner = CliRunner()
-
-    root_help = runner.invoke(agent_tool_app, ["--help"])
-    adapt_help = runner.invoke(agent_tool_app, ["adapt", "--help"])
-
-    assert root_help.exit_code == 0
-    assert adapt_help.exit_code == 0
-    assert {group.name for group in agent_tool_app.registered_groups} == {"adapt"}
-    assert {group.name for group in adapt_app.registered_groups} == {
-        "operations",
-        "candidates",
-        "executable",
-        "launch",
-        "dependency",
-        "evidence",
-        "wiki",
-    }

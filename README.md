@@ -88,6 +88,14 @@ git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
+uv run rolo adapt /path/to/robot-workspace \
+  --robot your_robot_id \
+  --urdf /path/to/robot.urdf  # 可省略
+```
+
+需要远程证据、细粒度门禁或专家参数时，再使用底层专家 CLI：
+
+```bash
 uv run robotctl adapt start \
   --robot-id your_robot_id \
   --project-root /path/to/robot-workspace \
@@ -107,12 +115,13 @@ CLI，不在 TUI 内直接执行。
 再要求确认 Adapt、Bootstrap 等会写入状态的操作；`/jobs`、`/show JOB_ID`、`/events JOB_ID`
 和 `/quit` 是内置快捷命令。非交互环境下不会启动 REPL，而是输出帮助，适合 CI 和脚本调用。
 
-不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；此后的正式产品
-入口只有一条 `robotctl adapt start`。它自动注册或复用机器人身份、检查环境、识别工程证据、
+不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；面向用户的正式产品
+入口首选 `rolo adapt <本地工作区> --robot <机器人 ID>`。它自动注册或复用机器人身份、检查环境、识别工程证据、
 幂等建立本地 collector、采集并验证新鲜签名证据、执行只读发现、生成 Wiki，并在存在目标机
 观测路由时继续完成 Adapter Agent、独立门禁、State Graph、Tool Catalog、handoff 和
 release。Codex 首次认证是独立的人工安全门；尚未认证
-时，以运行 Rolo 的同一操作系统用户执行一次 `codex login --device-auth`。
+时，以运行 Rolo 的同一操作系统用户执行一次 `codex login --device-auth`。需要远程证据或专家参数时使用
+`robotctl adapt start`。
 
 Rolo 默认把配置、证据和发布分别保存到用户级 XDG 目录，不需要创建 `/var/lib/rolo` 或设置
 `ROLO_ARTIFACT_DIR`/`ROLO_OUTPUT_DIR`。对于存在 ROS 证据的目标，它会在目标证据采集前

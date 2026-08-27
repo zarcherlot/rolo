@@ -383,3 +383,22 @@ class DownstreamToolConsumer:
         if value.tzinfo is None:
             raise ValueError("downstream Tool Session clock must include timezone")
         return value.astimezone(timezone.utc)
+
+
+def create_downstream_tool_consumer(
+    *,
+    artifact_root: Path,
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    gateway: DownstreamToolGateway,
+    clock: Callable[[], datetime] | None = None,
+) -> DownstreamToolConsumer:
+    """Create the bounded consumer shared by the Diagnose and Verify stages."""
+
+    return DownstreamToolConsumer.from_handoff(
+        artifact_root=artifact_root,
+        robot_id=robot_id,
+        stage=stage,
+        gateway=gateway,
+        clock=clock,
+    )

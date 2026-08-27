@@ -1,10 +1,35 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
+from rolo.stages.downstream_tools import (
+    DownstreamToolConsumer,
+    DownstreamToolGateway,
+    create_downstream_tool_consumer,
+)
 from rolo.stages.handoffs import validate_diagnosis_handoff, validate_verification_handoff
+
+
+def create_verification_tool_consumer(
+    *,
+    artifact_root: Path,
+    robot_id: str,
+    gateway: DownstreamToolGateway,
+    clock: Callable[[], datetime] | None = None,
+) -> DownstreamToolConsumer:
+    """Bind a Verify Agent to its frozen, read-only Tool Session handoff."""
+
+    return create_downstream_tool_consumer(
+        artifact_root=artifact_root,
+        robot_id=robot_id,
+        stage="verify",
+        gateway=gateway,
+        clock=clock,
+    )
 
 
 def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:

@@ -2,7 +2,7 @@
 
 ## 目标
 
-`robotctl adapt start` 是面向机器人研发人员的正式一站式入口。它将原先需要人工串联的
+`rolo adapt` 是面向产品用户的正式一站式入口。它将原先需要人工串联的
 身份注册、环境检查、工程证据选择、只读发现、Wiki 生成、Adapter Agent、独立门禁和
 release 发布编排为一次操作，同时保留原有细粒度命令供 ROLO 开发调试使用。
 
@@ -18,9 +18,8 @@ Discovery 只消费带目标绑定的 Hardware、Linux、Application 和可选 R
 加载唯一的 ROS 基础环境和 `project-root/install` overlay；非 ROS 工程不要求 ROS setup：
 
 ```bash
-robotctl adapt start \
-  --robot-id "$ROBOT_ID" \
-  --project-root /path/to/robot-workspace \
+rolo adapt /path/to/robot-workspace \
+  --robot "$ROBOT_ID" \
   --urdf /path/to/robot.urdf
 ```
 
@@ -43,9 +42,8 @@ robotctl adapt start \
 如果只需要 Wiki 和发现证据：
 
 ```bash
-robotctl adapt start \
-  --robot-id "$ROBOT_ID" \
-  --project-root /path/to/robot-workspace \
+rolo adapt /path/to/robot-workspace \
+  --robot "$ROBOT_ID" \
   --discover-only
 ```
 

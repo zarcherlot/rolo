@@ -16,6 +16,7 @@ from pydantic import (
     model_validator,
 )
 
+from rolo.core.hashing import canonical_json_sha256
 from rolo.core.persistence import atomic_write_text
 from rolo.episode_projection import _require_artifact_path
 from rolo.episode_read_models import (
@@ -391,13 +392,7 @@ def episode_observation_record_content_sha256(
         raw = dict(value)
         raw.pop("content_sha256", None)
         content = EpisodeObservationRecordContent.model_validate(raw).model_dump(mode="json")
-    encoded = json.dumps(
-        content,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return sha256(encoded).hexdigest()
+    return canonical_json_sha256(content)
 
 
 class CommittedEpisodeObservationRecord(EpisodeObservationRecordContent):

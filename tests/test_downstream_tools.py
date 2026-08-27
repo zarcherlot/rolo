@@ -16,12 +16,14 @@ from rolo.stages.adapt.tool_gateway import (
     ToolSessionBudgetError,
 )
 from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.stages.diagnose import create_diagnosis_tool_consumer
 from rolo.stages.downstream_tools import (
     DownstreamToolConsumer,
     DownstreamToolFailure,
     DownstreamToolHandoff,
     validate_downstream_tool_handoff,
 )
+from rolo.stages.verify import create_verification_tool_consumer
 
 NOW = datetime(2026, 8, 22, 12, tzinfo=timezone.utc)
 OPERATION = "app.camera.snapshot"
@@ -187,8 +189,30 @@ def test_stage_handoff_binds_exact_tool_session_and_consumes_only_gateway_subset
     assert gateway.invoked == [OPERATION]
     assert consumer.handoff.publication_authority == "none"
 
-    exposed = consumer.session
-    exposed.allowed_operations.clear()
+
+@pytest.mark.parametrize(
+    ("stage", "factory"),
+    [
+        ("diagnose", create_diagnosis_tool_consumer),
+        ("verify", create_verification_tool_consumer),
+    ],
+)
+def test_stage_packages_bind_their_downstream_tool_consumer(
+    tmp_path: Path,
+    stage: str,
+    factory: Any,
+) -> None:
+    _write_handoff(tmp_path, stage=stage)
+
+    consumer = factory(
+        artifact_root=tmp_path,
+        robot_id="robot-1",
+        gateway=_Gateway(),
+        clock=lambda: NOW,
+    )
+
+    assert consumer.session.stage == stage
+    assert consumer.open().status == "READY"
     assert consumer.list_tools().status == "SUCCEEDED"
 
 

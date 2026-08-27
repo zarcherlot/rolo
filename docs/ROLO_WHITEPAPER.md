@@ -127,7 +127,7 @@ Active Tool Catalog 保留完整产品词汇；不适用、未观察、未注册
 
 阶段间通过结构化 handoff 传递身份、Schema、引用和 SHA-256；下游必须重新验证，不能仅凭文件存在打开下一阶段。
 
-`robotctl adapt start` 是产品用户的一站式入口，复用同一套服务和制品完成 enrollment、环境检查、签名目标证据、Discovery、Wiki、Adapter Agent、Gate、handoff 和 release。远程模式固定 Collector、验证密钥和 SSH host key；本地或远程失败都不能退回控制器探针。生成 Adapter 默认需要部署方提供受保护的 OS sandbox launcher；缺失时失败关闭。
+`rolo adapt <本地工作区> --robot <机器人 ID>` 是产品用户的首选入口，复用同一套服务和制品完成 enrollment、环境检查、签名目标证据、Discovery、Wiki、Adapter Agent、Gate、handoff 和 release。需要远程证据或专家参数时使用 `robotctl adapt start`。远程模式固定 Collector、验证密钥和 SSH host key；本地或远程失败都不能退回控制器探针。生成 Adapter 默认需要部署方提供受保护的 OS sandbox launcher；缺失时失败关闭。
 
 ## 5. Episode、观察与安全
 

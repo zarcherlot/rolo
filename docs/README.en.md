@@ -112,13 +112,12 @@ git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
 cd rolo
 uv sync --frozen
 
-uv run robotctl adapt start \
-  --robot-id your_robot_id \
-  --project-root /path/to/robot-workspace \
+uv run rolo adapt /path/to/robot-workspace \
+  --robot your_robot_id \
   --urdf /path/to/robot.urdf  # optional
 ```
 
-`adapt start` is the shortest safe product path. It enrolls the identity, idempotently establishes a
+`rolo adapt` is the preferred product path for local workspaces. It enrolls the identity, idempotently establishes a
 local collector, collects and verifies fresh signed target evidence, runs readiness checks, finds
 conventional build/install/document/launch evidence, performs read-only runtime discovery,
 generates the editable Wiki, and—when target-observed routes exist—continues through the Adapter
