@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +15,7 @@ from rolo.stages.adapt.ros_environment import select_ros_setup_files
 from rolo.stages.adapt.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
+    SSHTransportError,
     TargetEvidenceBundle,
     TargetEvidenceRequest,
     collect_over_ssh,
@@ -23,6 +26,7 @@ from rolo.stages.adapt.target_evidence import (
     load_deployment,
     new_request,
     reenroll_deployment,
+    restricted_collector_authorized_key,
     stage_collector_rotation,
     verify_evidence_bundle,
 )
@@ -30,6 +34,28 @@ from rolo.stages.adapt.target_evidence import (
 target_evidence_app = typer.Typer(
     help="Configure and collect target-bound, read-only Adapt evidence."
 )
+
+
+@target_evidence_app.command("ssh-authorized-key")
+def ssh_authorized_key(
+    public_key: Annotated[Path, typer.Option("--public-key")],
+    collector_executable: Annotated[
+        str, typer.Option("--collector-executable")
+    ] = "robotctl",
+    collector_config: Annotated[
+        str, typer.Option("--collector-config")
+    ] = ".rolo/config/target-evidence-collector.json",
+) -> None:
+    """Generate a forced-command authorized_keys entry for a dedicated Collector account."""
+    try:
+        entry = restricted_collector_authorized_key(
+            public_key.read_text(encoding="utf-8"),
+            collector_executable=collector_executable,
+            collector_config=collector_config,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "GENERATED", "authorized_keys_entry": entry})
 
 
 def deployment_path(robot_id: str) -> Path:
@@ -180,10 +206,22 @@ def configure(
         Path | None,
         typer.Option("--known-hosts", help="Pinned SSH known_hosts file; required remotely"),
     ] = None,
+    ssh_port: Annotated[int | None, typer.Option("--ssh-port", min=1, max=65535)] = None,
+    ssh_identity_file: Annotated[
+        Path | None,
+        typer.Option("--ssh-identity-file", help="Pinned controller-side SSH private key"),
+    ] = None,
     collector_config: Annotated[
         str,
         typer.Option("--collector-config", help="Collector state path on the target"),
     ] = ".rolo/config/target-evidence-collector.json",
+    collector_executable: Annotated[
+        str,
+        typer.Option(
+            "--collector-executable",
+            help="Pinned robotctl executable name or absolute path on the remote target",
+        ),
+    ] = "robotctl",
     output: Annotated[Path | None, typer.Option("--output")] = None,
 ) -> None:
     """Select local or remote evidence mode for this Rolo installation."""
@@ -199,7 +237,10 @@ def configure(
             output_path=output or deployment_path(robot_id),
             ssh_target=ssh_target,
             known_hosts_path=known_hosts,
+            ssh_port=ssh_port,
+            ssh_identity_file=ssh_identity_file,
             collector_config=collector_config,
+            collector_executable=collector_executable,
             local_collector_state_path=(
                 Path(collector_config) if mode == EvidenceDeploymentMode.LOCAL else None
             ),
@@ -225,7 +266,15 @@ def re_enroll(
     mode: Annotated[EvidenceDeploymentMode | None, typer.Option("--mode")] = None,
     ssh_target: Annotated[str | None, typer.Option("--ssh-target")] = None,
     known_hosts: Annotated[Path | None, typer.Option("--known-hosts")] = None,
+    ssh_port: Annotated[int | None, typer.Option("--ssh-port", min=1, max=65535)] = None,
+    ssh_identity_file: Annotated[
+        Path | None, typer.Option("--ssh-identity-file")
+    ] = None,
     collector_config: Annotated[str | None, typer.Option("--collector-config")] = None,
+    collector_executable: Annotated[
+        str | None,
+        typer.Option("--collector-executable"),
+    ] = None,
     collector_state: Annotated[Path | None, typer.Option("--collector-state")] = None,
     deployment_config: Annotated[Path | None, typer.Option("--deployment-config")] = None,
     transition_dir: Annotated[Path | None, typer.Option("--transition-dir")] = None,
@@ -245,7 +294,10 @@ def re_enroll(
             mode=mode,
             ssh_target=ssh_target,
             known_hosts_path=known_hosts,
+            ssh_port=ssh_port,
+            ssh_identity_file=ssh_identity_file,
             collector_config=collector_config,
+            collector_executable=collector_executable,
             local_collector_state_path=collector_state,
             transition_dir=transition_dir,
         )
@@ -289,6 +341,7 @@ def collect(
     ] = None,
     output: Annotated[Path | None, typer.Option("--output")] = None,
     timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=300.0)] = 45.0,
+    attempts: Annotated[int, typer.Option("--attempts", min=1, max=3)] = 2,
     executable_help_id: Annotated[
         list[str] | None,
         typer.Option(
@@ -305,7 +358,9 @@ def collect(
             state_path = collector_state or Path(deployment.local_collector_state_path or "")
             bundle = collect_target_evidence(request, load_collector_state(state_path))
         else:
-            bundle = collect_over_ssh(deployment, request, timeout_s=timeout)
+            bundle = collect_over_ssh(
+                deployment, request, timeout_s=timeout, max_attempts=attempts
+            )
         verify_evidence_bundle(bundle, deployment=deployment, request=request)
         destination = output or (
             get_settings().rolo_artifact_dir
@@ -337,6 +392,53 @@ def collect(
                 f"robotctl adapt discover run --robot {robot_id} "
                 f"--target-evidence-bundle {destination}"
             ),
+        }
+    )
+
+
+@target_evidence_app.command("preflight")
+def preflight(
+    robot_id: Annotated[str, typer.Option("--robot-id", "--robot")],
+    deployment_config: Annotated[Path | None, typer.Option("--deployment-config")] = None,
+    timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=300.0)] = 30.0,
+    attempts: Annotated[int, typer.Option("--attempts", min=1, max=3)] = 2,
+) -> None:
+    """Verify pinned SSH transport and collect one disposable signed evidence bundle."""
+    started = time.monotonic()
+    try:
+        if shutil.which("ssh") is None:
+            raise SSHTransportError("SSH_CLIENT_UNAVAILABLE", "ssh executable is not installed")
+        deployment = load_deployment(deployment_config or deployment_path(robot_id))
+        if deployment.mode != EvidenceDeploymentMode.REMOTE:
+            raise ValueError("SSH preflight requires a remote target evidence deployment")
+        request = new_request(robot_id)
+        bundle = collect_over_ssh(
+            deployment,
+            request,
+            timeout_s=timeout,
+            max_attempts=attempts,
+        )
+        verify_evidence_bundle(bundle, deployment=deployment, request=request)
+    except (OSError, ValueError) as exc:
+        emit(
+            {
+                "status": "NOT_READY",
+                "error_code": getattr(exc, "code", "SSH_PREFLIGHT_FAILED"),
+                "error": str(exc),
+                "elapsed_ms": round((time.monotonic() - started) * 1000),
+            }
+        )
+        raise typer.Exit(code=1) from exc
+    emit(
+        {
+            "status": "READY",
+            "robot_id": robot_id,
+            "ssh_target": deployment.ssh_target,
+            "ssh_port": deployment.ssh_port,
+            "collector_id": bundle.collector_id,
+            "target_host_fingerprint": bundle.target_host_fingerprint,
+            "known_hosts_sha256": deployment.known_hosts_sha256,
+            "elapsed_ms": round((time.monotonic() - started) * 1000),
         }
     )
 

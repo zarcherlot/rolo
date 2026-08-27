@@ -22,7 +22,10 @@ does not change verification or Operation eligibility.
   verification-secret digest, and transport paths are unchanged. Replacement or credential
   rotation uses the explicit staged workflow below; ordinary `configure` never overwrites a pin.
 - Remote transport uses SSH with `BatchMode=yes`, `StrictHostKeyChecking=yes`, and an explicit
-  `known_hosts` file. Host-key prompts and fallback to an unpinned host are forbidden.
+  `known_hosts` file. Deployment schema v3 pins the SHA-256 of that file and verifies it before
+  every connection, so replacing contents at the same path fails closed and requires explicit
+  re-enrollment. Host-key prompts and fallback to an unpinned host are forbidden. Use one dedicated
+  `known_hosts` file per target so unrelated host rotations do not change its digest.
 - With a verified bundle, Discovery uses its target `hw`, `linux`, and `ros` probes and does not
   run those probes on the controller. Controller source trees are supporting static evidence only.
 - In remote mode, an Agent-requested second-round hardware, Linux, ROS, or executable-help Probe
@@ -96,6 +99,20 @@ Provision the descriptor through the configuration channel, the secret through a
 channel, and the SSH host key through an independently verified `known_hosts` file. Use a dedicated
 SSH account and, where supported, restrict it to the fixed collector command.
 
+Rolo can generate the hardened `authorized_keys` line without modifying the target account:
+
+```bash
+robotctl target-evidence ssh-authorized-key \
+  --public-key ./controller_ed25519.pub \
+  --collector-executable /opt/rolo/.venv/bin/robotctl \
+  --collector-config /etc/rolo/target-evidence-collector.json
+```
+
+Install the returned line for the dedicated account through the operator's provisioning system. It
+uses an exact forced command and disables agent, port and X11 forwarding, PTY allocation, and user
+startup files. The generator validates the public key and permits no shell metacharacters in either
+Collector path. It deliberately does not create users, edit `sshd_config`, or copy secrets.
+
 On the controller, the initial independent provisioning values can be supplied to the same product
 journey. Subsequent runs may omit them and reuse the pinned deployment:
 
@@ -108,9 +125,35 @@ uv run robotctl adapt start \
   --verification-secret /etc/rolo/secrets/wheeltec-collector.key \
   --ssh-target rolo-evidence@wheeltec-host \
   --known-hosts /etc/rolo/ssh/known_hosts \
+  --ssh-port 22 \
+  --ssh-identity-file /etc/rolo/ssh/wheeltec_ed25519 \
+  --collector-executable /opt/rolo/.venv/bin/robotctl \
   --collector-config /etc/rolo/target-evidence-collector.json \
   --discover-only
 ```
+
+`--collector-executable` pins the target-side CLI used by the fixed SSH command. Use the absolute
+path from the target checkout's locked virtual environment when `robotctl` is not installed in the
+SSH account's non-interactive `PATH`. Changing this path later requires explicit re-enrollment, just
+like changing the collector config or transport identity.
+
+`--ssh-port` defaults to 22. When `--ssh-identity-file` is supplied, Rolo requires private POSIX
+permissions, pins its SHA-256, and invokes OpenSSH with `IdentitiesOnly=yes`. The transport also sets
+bounded connect attempts, keepalives, no TTY, and no forwarding. Changing the port or identity later
+requires explicit re-enrollment. Rolo retries only transient DNS/TCP timeout, reset, refused, or lost
+connection failures, at most twice by default and within the original evidence timeout. It never
+retries authentication, host-key, signature, invalid-bundle, or Collector rejection failures.
+
+Before a full Journey, verify the complete pinned path with one disposable signed collection:
+
+```bash
+robotctl target-evidence preflight --robot wheeltec --timeout 30 --attempts 2
+```
+
+The command returns structured `READY` or `NOT_READY` JSON, including a stable error code, elapsed
+time, Collector identity, target fingerprint, SSH port, and `known_hosts` digest. It does not persist
+the disposable bundle. Normal `collect` and `adapt start` accept `--attempts` and
+`--evidence-attempts`, respectively, from 1 through 3.
 
 Remove `--discover-only` to continue through the Adapter Agent and release. Every executable in the
 target collector descriptor's allowlist is requested automatically; the target still verifies its
@@ -153,7 +196,10 @@ robotctl target-evidence re-enroll \
   --reason "scheduled credential rotation" \
   --collector-descriptor ./wheeltec-collector-next.json \
   --verification-secret /etc/rolo/secrets/wheeltec-collector-next.key \
-  --collector-config /etc/rolo/target-evidence-collector-next.json
+  --collector-config /etc/rolo/target-evidence-collector-next.json \
+  --known-hosts /etc/rolo/ssh/known_hosts \
+  --ssh-port 22 \
+  --ssh-identity-file /etc/rolo/ssh/wheeltec_ed25519
 ```
 
 For local mode, pass `--collector-state` with the new local state path. For physical target
@@ -165,7 +211,11 @@ Re-enrollment fails when the expected old collector does not match, the descript
 disagree, or local signing and verification secrets differ. It writes a
 `robot-target-evidence-transition/v1` record under the deployment's `transitions/` directory before
 atomically replacing the active configuration. The record contains IDs, fingerprints, secret
-digests, modes, reason, and timestamp—never secret bytes. Collect and verify a fresh bundle using the
+digests, modes, the old and new collector executable pins, reason, and timestamp—never secret bytes.
+Transition v2 also records the old and new Collector config, SSH target and port, `known_hosts`
+digest, and identity-file digest. Existing deployment v1/v2 files are atomically migrated to v3 by
+pinning the already-provisioned files on first load; all later in-place changes fail closed.
+Collect and verify a fresh bundle using the
 new pin before retiring the old collector through the operator's normal secrets-management process.
 Rolo does not delete the old state or secret automatically. Rotation creates a fresh executable
 allowlist, so repeat every still-approved `--allow-executable`; omitted entries are revoked.
@@ -194,3 +244,8 @@ Never bypass these errors:
 - executable help ID rejected or digest changed: review the target binary and rotate/re-enroll the
   collector allowlist; never substitute an unpinned path;
 - SSH host-key failure: update the pin only after independent host verification.
+
+Stable transport error codes include `SSH_CLIENT_UNAVAILABLE`, `SSH_DNS_FAILED`,
+`SSH_CONNECTION_REFUSED`, `SSH_TIMEOUT`, `SSH_CONNECTION_LOST`, `SSH_AUTH_FAILED`,
+`SSH_HOST_KEY_MISMATCH`, `SSH_HOST_KEY_PIN_CHANGED`, `SSH_IDENTITY_PIN_CHANGED`,
+`SSH_OUTPUT_LIMIT`, `COLLECTOR_REJECTED`, and `COLLECTOR_INVALID_BUNDLE`.
