@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     rolo_host: str = "127.0.0.1"
     rolo_port: int = 8080
     rolo_api_token: str | None = None
+    rolo_api_token_scopes: str = ""
     rolo_api_max_body_bytes: int = Field(default=16 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
     coding_agent_provider: str = "codex"
     coding_agent_executor: str = "codex"
