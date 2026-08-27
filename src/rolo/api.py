@@ -139,6 +139,12 @@ def _loopback_host(value: str) -> bool:
         return False
 
 
+def _required_scope(path: str, method: str) -> str | None:
+    if method == "GET" and (path == "/v1/jobs" or path.startswith("/v1/jobs/")):
+        return "jobs:read"
+    return None
+
+
 @app.middleware("http")
 async def protect_control_plane(request: Request, call_next):
     runtime = get_runtime(request)
@@ -170,6 +176,22 @@ async def protect_control_plane(request: Request, call_next):
             )
         if not supplied or not hmac.compare_digest(supplied, token):
             return JSONResponse(status_code=401, content={"detail": "Invalid API token"})
+        required_scope = _required_scope(request.url.path, request.method)
+        configured_scopes = {
+            item.strip()
+            for item in settings.rolo_api_token_scopes.split(",")
+            if item.strip()
+        }
+        if required_scope and configured_scopes and required_scope not in configured_scopes:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": {
+                        "code": "SCOPE_REQUIRED",
+                        "message": f"API token requires scope {required_scope}",
+                    }
+                },
+            )
     return await call_next(request)
 
 
