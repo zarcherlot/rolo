@@ -12,18 +12,20 @@ from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.core.config import get_settings
 from rolo.job_service import JobService
-from rolo.jobs import JobStatus, JobStore
+from rolo.jobs import JobStatus, JobStore, run_bootstrap_job
 from rolo.natural_language import intent_to_argv, parse_natural_language
 from rolo.natural_service import NaturalLanguageService
 from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
-from rolo.target_ref import LocalTargetRef, parse_target_ref
+from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
+    BootstrapApprovalDecision,
     BootstrapApprovalRequest,
     approve_bootstrap,
     request_bootstrap_approval,
 )
+from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
@@ -292,6 +294,63 @@ def target_bootstrap_approve(
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(decision)
+
+
+@target_app.command("bootstrap-execute")
+def target_bootstrap_execute(
+    plan_file: Annotated[Path, typer.Argument(help="Approval-required plan JSON")],
+    request_file: Annotated[Path, typer.Argument(help="Pending approval request JSON")],
+    decision_file: Annotated[Path, typer.Argument(help="Approved decision JSON")],
+    manifest_file: Annotated[Path, typer.Option("--manifest")],
+    package_file: Annotated[Path, typer.Option("--package")],
+    verification_key_file: Annotated[Path, typer.Option("--verification-key-file")],
+    known_hosts: Annotated[Path, typer.Option("--known-hosts")],
+    execute: Annotated[
+        bool,
+        typer.Option("--execute/--plan-only", help="Perform approved remote mutation"),
+    ] = False,
+    timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=600.0)] = 60.0,
+) -> None:
+    """Validate an approved bootstrap, or explicitly execute it through fixed SSH argv."""
+    try:
+        plan = TargetBootstrapPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+        request = BootstrapApprovalRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+        decision = BootstrapApprovalDecision.model_validate_json(
+            decision_file.read_text(encoding="utf-8")
+        )
+        if not isinstance(plan.target, SshTargetRef):
+            raise ValueError("bootstrap execution requires an SSH target")
+        if not execute:
+            emit(
+                {
+                    "status": "BOOTSTRAP_EXECUTION_READY",
+                    "plan_sha256": request.plan_sha256,
+                    "approval_request_id": request.request_id,
+                    "target": plan.target.model_dump(mode="json"),
+                    "mutation_started": False,
+                }
+            )
+            return
+        verification_key = verification_key_file.read_bytes()
+        transport = SubprocessBootstrapTransport(plan.target, known_hosts=known_hosts)
+        job, result = run_bootstrap_job(
+            _job_store(),
+            plan,
+            request,
+            decision,
+            manifest_path=manifest_file,
+            package_path=package_file,
+            verification_key=verification_key,
+            transport=transport,
+            timeout_s=timeout,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "BOOTSTRAP_EXECUTED", "job_id": job.job_id, "result": result})
+    if result.status == "FAILED":
+        raise typer.Exit(code=2)
 
 
 @profile_app.command("init")
