@@ -12,16 +12,72 @@ from rolo.commands.lifecycle import run_adapt_start
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
+from rolo.targets.executor import create_target_executor
+from rolo.targets.models import BootstrapPlanStatus, TargetConnectionState
 
 app = typer.Typer(
     help="Adapt a local or remote robot workspace.",
     no_args_is_help=True,
 )
+target_app = typer.Typer(help="Inspect targets and plan approved bootstrap changes.")
+app.add_typer(target_app, name="target")
 
 
 @app.callback()
 def product_root() -> None:
     """Rolo product commands."""
+
+
+def _target_executor(target: str, known_hosts: Path | None, timeout: float):
+    return create_target_executor(
+        parse_target_ref(target),
+        known_hosts=known_hosts,
+        timeout_s=timeout,
+    )
+
+
+@target_app.command("inspect")
+def target_inspect(
+    target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
+    known_hosts: Annotated[
+        Path | None,
+        typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
+    ] = None,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
+    ] = 10.0,
+) -> None:
+    """Inspect a target without installing or changing anything."""
+    try:
+        assessment = _target_executor(target, known_hosts, timeout).inspect()
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(assessment)
+    if assessment.state != TargetConnectionState.READY:
+        raise typer.Exit(code=2)
+
+
+@target_app.command("bootstrap-plan")
+def target_bootstrap_plan(
+    target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
+    known_hosts: Annotated[
+        Path | None,
+        typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
+    ] = None,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
+    ] = 10.0,
+) -> None:
+    """Return a typed bootstrap plan without executing host mutations."""
+    try:
+        plan = _target_executor(target, known_hosts, timeout).plan_bootstrap()
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(plan)
+    if plan.status == BootstrapPlanStatus.BLOCKED:
+        raise typer.Exit(code=2)
 
 
 @app.command("adapt")
