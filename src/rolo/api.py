@@ -37,6 +37,7 @@ from rolo.capability_read_models import (
     build_capability_collection,
     get_capability_detail,
 )
+from rolo.core.config import get_settings
 from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
 from rolo.discovery_history_read_models import (
     DiscoverySnapshotCollection,
@@ -72,6 +73,8 @@ from rolo.fleet_read_models import (
     build_fleet_collection,
     get_fleet_blocker_detail,
 )
+from rolo.job_service import JobService
+from rolo.jobs import JobEventPage, JobPage, JobRecovery
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
     LifecycleRunDetail,
@@ -174,6 +177,10 @@ def get_runtime(request: Request) -> RobotUseRuntime:
     return request.app.state.runtime
 
 
+def get_job_service() -> JobService:
+    return JobService(get_settings().rolo_config_dir / "jobs")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     runtime = get_runtime(request)
@@ -190,6 +197,41 @@ async def health(request: Request) -> HealthResponse:
 @app.get("/v1/robots", response_model=list[RobotCapability])
 async def list_robots(request: Request) -> list[RobotCapability]:
     return get_runtime(request).registry.list()
+
+
+@app.get("/v1/jobs", response_model=JobPage)
+def list_jobs(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> JobPage:
+    try:
+        return get_job_service().list(limit=limit, offset=offset)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/jobs/{job_id}", response_model=JobRecovery)
+def recover_job(job_id: str) -> JobRecovery:
+    try:
+        return get_job_service().recover(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="job not found") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/jobs/{job_id}/events", response_model=JobEventPage)
+def list_job_events(
+    job_id: str,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> JobEventPage:
+    try:
+        return get_job_service().events(job_id, limit=limit, offset=offset)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="job not found") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/v1/operations/governance", response_model=OperationGovernanceCollection)
