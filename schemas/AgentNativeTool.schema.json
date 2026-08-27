@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentNativeToolDescriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool_id", "family", "execution_path", "executable", "argv_template", "access", "risk", "max_duration_s", "max_output_bytes", "evidence_kind", "sensitive", "allowed_env_keys"],
+  "properties": {
+    "schema_version": {"const": "rolo-agent-native-tool/v1"},
+    "tool_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{1,127}$"},
+    "family": {"type": "string", "minLength": 1, "maxLength": 32},
+    "execution_path": {"enum": ["DIRECT_RUNNER", "ROS_CLI"]},
+    "executable": {"type": "string", "minLength": 1, "maxLength": 256},
+    "argv_template": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "string"}},
+    "access": {"const": "read"},
+    "risk": {"enum": ["R0", "R1"]},
+    "max_duration_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},
+    "max_output_bytes": {"type": "integer", "exclusiveMinimum": 0, "maximum": 1000000},
+    "evidence_kind": {"type": "string", "minLength": 1, "maxLength": 64},
+    "sensitive": {"type": "boolean"},
+    "allowed_env_keys": {"type": "array", "maxItems": 16, "items": {"type": "string"}}
+  }
+}
