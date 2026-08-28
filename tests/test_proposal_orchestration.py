@@ -191,6 +191,9 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
     assert by_operation["app.localization.status"]["properties"]["route_resource_ids"][
         "items"
     ]["enum"] == ["ros_topic:/odom"]
+    assert by_operation["app.camera.snapshot"]["properties"]["counter_evidence_refs"][
+        "maxItems"
+    ] == 0
 
 
 def test_codex_event_usage_reads_largest_cumulative_jsonl_record() -> None:

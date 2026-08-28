@@ -2,7 +2,11 @@
   "$defs": {
     "ConformanceScope": {
       "enum": [
-        "LOCAL_STATIC"
+        "LOCAL_STATIC",
+        "TARGET_RUNTIME_READONLY",
+        "PHYSICAL_HARDWARE",
+        "TARGET_RUNTIME",
+        "PHYSICAL"
       ],
       "title": "ConformanceScope",
       "type": "string"

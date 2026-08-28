@@ -71,7 +71,10 @@ Clone the same commit and run `uv sync --frozen` on both systems. The target nee
 The controller runs Discovery and the complete `rolo-adapt-discovery`,
 `rolo-operation-mapping`, and `rolo-wiki-authoring` chain.
 
-For a non-ROS application, omit ROS setup paths and allowlist only reviewed application CLIs.
+For a non-ROS application, omit ROS setup paths. When `--project-root` is supplied,
+`collector-init` discovers declared console entrypoints and conventional robot/application binaries
+without executing them, then pins their paths and digests. Use repeated `--allow-executable` options
+to override that candidate set with an explicitly reviewed subset.
 After signature verification, the controller deterministically derives `cli` Route Evidence from
 successful target-side help records. A source manifest declaration with the same canonical entrypoint
 name is also required before a product semantic rule can create an Operation candidate. Missing ROS
@@ -159,7 +162,9 @@ the disposable bundle. Normal `collect` and `adapt start` accept `--attempts` an
 
 Remove `--discover-only` to continue through the Adapter Agent and release. Every executable in the
 target collector descriptor's allowlist is requested automatically; the target still verifies its
-exact path and digest before bounded `--help` execution.
+exact path and digest before bounded `--help` execution. The release gate records whether its
+scope is `STRUCTURAL_ONLY` or `TARGET_RUNTIME_READONLY`; the latter proves route identity/help
+evidence only and never claims operation outcome or physical behavior.
 
 Controller build/install roots must be target artifacts copied without mutation; never pass
 controller-native binaries as target evidence. Each `--allow-executable` is resolved and hashed on
