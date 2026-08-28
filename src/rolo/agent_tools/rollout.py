@@ -36,6 +36,7 @@ class NativeToolRunSummary(BaseModel):
     schema_version: Literal["rolo-native-tool-run-summary/v1"] = "rolo-native-tool-run-summary/v1"
     robot_id: str = Field(min_length=1, max_length=128)
     run_id: str = Field(min_length=1, max_length=128)
+    session_id: str | None = Field(default=None, min_length=1, max_length=128)
     mode: NativeToolRolloutMode
     selected: bool
     catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -98,6 +99,8 @@ def decide_native_tool_rollout(
 def summarize_native_tool_run(
     decision: NativeToolRolloutDecision,
     results: Iterable[AgentNativeToolResult],
+    *,
+    session_id: str | None = None,
 ) -> NativeToolRunSummary:
     values = list(results)
     counts: dict[str, int] = {}
@@ -107,6 +110,7 @@ def summarize_native_tool_run(
     return NativeToolRunSummary(
         robot_id=decision.robot_id,
         run_id=decision.run_id,
+        session_id=session_id,
         mode=decision.mode,
         selected=decision.selected,
         catalog_sha256=decision.catalog_sha256,

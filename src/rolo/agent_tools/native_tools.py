@@ -177,12 +177,14 @@ class NativeToolInvocation(BaseModel):
     executable: str = Field(min_length=1, max_length=256)
     argv_template: list[str] = Field(min_length=1, max_length=32)
     required_parameters: list[str] = Field(default_factory=list, max_length=32)
+    unavailable_return_codes: list[int] = Field(default_factory=list, max_length=8)
 
     def __init__(
         self,
         executable: str | None = None,
         argv_template: list[str] | None = None,
         required_parameters: list[str] | None = None,
+        unavailable_return_codes: list[int] | None = None,
         **data: Any,
     ) -> None:
         if executable is not None:
@@ -191,6 +193,8 @@ class NativeToolInvocation(BaseModel):
             data["argv_template"] = argv_template
         if required_parameters is not None:
             data["required_parameters"] = required_parameters
+        if unavailable_return_codes is not None:
+            data["unavailable_return_codes"] = unavailable_return_codes
         super().__init__(**data)
 
     @field_validator("argv_template")
@@ -209,6 +213,13 @@ class NativeToolInvocation(BaseModel):
     def unique_required_parameters(cls, value: list[str]) -> list[str]:
         if len(value) != len(set(value)):
             raise ValueError("native invocation parameters must be unique")
+        return value
+
+    @field_validator("unavailable_return_codes")
+    @classmethod
+    def validate_unavailable_return_codes(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)) or any(item < 0 or item > 255 for item in value):
+            raise ValueError("native unavailable return codes must be unique bytes")
         return value
 
 
@@ -343,13 +354,26 @@ class AgentNativeRunner:
         finally:
             if ros_log_dir is not None:
                 ros_log_dir.cleanup()
+        no_output = not (completed.stdout or "").strip() and not (completed.stderr or "").strip()
+        unavailable = completed.returncode in invocation.unavailable_return_codes and no_output
         status = (
-            NativeToolStatus.SUCCEEDED if completed.returncode == 0 else NativeToolStatus.FAILED
+            NativeToolStatus.SUCCEEDED
+            if completed.returncode == 0
+            else NativeToolStatus.UNAVAILABLE
+            if unavailable
+            else NativeToolStatus.FAILED
         )
         limitations = (
             []
             if status == NativeToolStatus.SUCCEEDED
-            else [f"command exited with return code {completed.returncode}"]
+            else [
+                (
+                    f"command exited with return code {completed.returncode}; "
+                    "environment resource is unavailable"
+                    if status == NativeToolStatus.UNAVAILABLE
+                    else f"command exited with return code {completed.returncode}"
+                )
+            ]
         )
         return self._result(
             descriptor,
@@ -896,7 +920,9 @@ def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
             "hw",
             "HARDWARE_INVENTORY",
             {
-                "usb": NativeToolInvocation("lsusb", ["lsusb"]),
+                "usb": NativeToolInvocation(
+                    "lsusb", ["lsusb"], unavailable_return_codes=[1]
+                ),
                 "pci": NativeToolInvocation("lspci", ["lspci"]),
             },
             max_output_bytes=200_000,

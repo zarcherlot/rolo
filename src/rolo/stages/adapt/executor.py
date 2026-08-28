@@ -423,8 +423,10 @@ class CodexAdaptExecutor:
             robot_selectors=self.native_tool_robot_ids,
             run_selectors=self.native_tool_run_ids,
         )
+        native_rollout_relative = f"{relative_run_root}/native-tool-rollout.json"
+        native_summary_relative = f"{relative_run_root}/native-tool-summary.json"
         self.artifacts.write_json(
-            f"{relative_run_root}/native-tool-rollout.json",
+            native_rollout_relative,
             native_rollout.model_dump(mode="json"),
         )
         native_broker: NativeToolBroker | None = None
@@ -513,11 +515,15 @@ class CodexAdaptExecutor:
         finally:
             if native_broker is not None:
                 native_broker.stop()
+        native_session_id = (
+            native_session.descriptor.session_id if native_session is not None else None
+        )
         self.artifacts.write_json(
-            f"{relative_run_root}/native-tool-summary.json",
+            native_summary_relative,
             summarize_native_tool_run(
                 native_rollout,
                 native_session.results if native_session is not None else (),
+                session_id=native_session_id,
             ).model_dump(mode="json"),
         )
 
@@ -563,6 +569,9 @@ class CodexAdaptExecutor:
             result_ref=(
                 f"artifact://{relative_run_root}/result.json" if result_path.is_file() else None
             ),
+            native_tool_rollout_ref=f"artifact://{native_rollout_relative}",
+            native_tool_summary_ref=f"artifact://{native_summary_relative}",
+            native_tool_session_id=native_session_id,
             thread_id=thread_id,
             event_count=event_count,
             exit_code=exit_code,

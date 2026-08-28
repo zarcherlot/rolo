@@ -93,6 +93,42 @@
       "default": null,
       "title": "Result Ref"
     },
+    "native_tool_rollout_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Rollout Ref"
+    },
+    "native_tool_summary_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Summary Ref"
+    },
+    "native_tool_session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Session Id"
+    },
     "thread_id": {
       "anyOf": [
         {

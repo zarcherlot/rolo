@@ -424,6 +424,9 @@ class AdapterAgentRun(BaseModel):
     stderr_ref: str
     final_message_ref: str
     result_ref: str | None = None
+    native_tool_rollout_ref: str | None = None
+    native_tool_summary_ref: str | None = None
+    native_tool_session_id: str | None = None
     thread_id: str | None = None
     event_count: int = 0
     exit_code: int | None = None

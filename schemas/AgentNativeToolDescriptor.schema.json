@@ -26,6 +26,14 @@
           "maxItems": 32,
           "title": "Required Parameters",
           "type": "array"
+        },
+        "unavailable_return_codes": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 8,
+          "title": "Unavailable Return Codes",
+          "type": "array"
         }
       },
       "required": [

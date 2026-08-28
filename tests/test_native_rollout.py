@@ -54,8 +54,10 @@ def test_native_rollout_summary_counts_bounded_results() -> None:
     summary = summarize_native_tool_run(
         decision,
         [_result(NativeToolStatus.SUCCEEDED), _result(NativeToolStatus.TIMEOUT, truncated=True)],
+        session_id="native-session",
     )
 
+    assert summary.session_id == "native-session"
     assert summary.call_count == 2
     assert summary.status_counts == {"SUCCEEDED": 1, "TIMEOUT": 1}
     assert summary.timeout_count == 1

@@ -324,6 +324,12 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert native_rollout["mode"] == "off"
     assert native_rollout["selected"] is False
     assert native_summary["call_count"] == 0
+    assert run.native_tool_rollout_ref is not None
+    assert run.native_tool_summary_ref is not None
+    assert run.native_tool_session_id is None
+    assert run.native_tool_rollout_ref.endswith("/native-tool-rollout.json")
+    assert run.native_tool_summary_ref.endswith("/native-tool-summary.json")
+    assert native_summary["session_id"] is None
     assert native_summary["influences_release"] is False
     assert context_metrics["shadow_influences_release"] is False
     assert context_metrics["slice_activation_affects_agent_context"] is False

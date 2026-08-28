@@ -62,6 +62,23 @@ def test_runner_rejects_unknown_tool_and_reports_nonzero_exit() -> None:
     assert runner.run("test.echo").status == NativeToolStatus.FAILED
 
 
+def test_runner_classifies_empty_usb_inventory_as_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_executor(command: list[str], **kwargs: object):
+        return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
+
+    result = runner.run("native.hw.inventory", {"mode": "usb"})
+
+    assert result.status == NativeToolStatus.UNAVAILABLE
+    assert result.limitations == [
+        "command exited with return code 1; environment resource is unavailable"
+    ]
+
+
 def test_runner_timeout_is_fail_closed() -> None:
     descriptor = _descriptor("-c", "import time; time.sleep(10)")
     result = AgentNativeRunner([descriptor]).run("test.echo")
