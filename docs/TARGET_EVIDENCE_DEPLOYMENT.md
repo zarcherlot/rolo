@@ -72,10 +72,13 @@ without executing them, then pins their paths and digests. Use repeated `--allow
 to override that candidate set with an explicitly reviewed subset.
 After signature verification, the controller deterministically derives `cli` Route Evidence from
 successful target-side help records. A source manifest declaration with the same canonical entrypoint
-name is also required before a product semantic rule can create an Operation candidate. Missing ROS
-therefore does not block application discovery, while source-only or failed-help routes remain
-unverified. See [NON_ROS_ADAPTATION.md](NON_ROS_ADAPTATION.md) for the LeRobot example and exact
-release boundary.
+name is also required before a product semantic rule or registry-linked heuristic can create an
+Operation candidate. Stable, platform-neutral topic patterns are handled deterministically; other
+signals (for example voltage telemetry) are proposed by the heuristic scorer from topic/type
+evidence and the canonical Registry descriptions, never from a vendor-specific mapping table.
+Missing ROS therefore does not block application discovery, while source-only or failed-help routes
+remain unverified. See [NON_ROS_ADAPTATION.md](NON_ROS_ADAPTATION.md) for the LeRobot example and
+exact release boundary.
 
 On the target:
 

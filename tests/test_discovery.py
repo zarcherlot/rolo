@@ -24,7 +24,7 @@ from rolo.stages.adapt.discovery import (
 )
 from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.operation_registry import materialize_active_catalog
-from rolo.stages.adapt.semantic_mapping import SemanticOperationRule
+from rolo.stages.adapt.semantic_mapping import SemanticOperationRule, infer_topic_operations
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 
 
@@ -342,6 +342,43 @@ def test_semantic_rules_expand_beyond_camera_and_velocity() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("topic", "interface_type"),
+    [
+        ("/power_voltage", "std_msgs/msg/Float32"),
+        ("/battery/voltage", "sensor_msgs/msg/BatteryState"),
+        ("/pack/current", "std_msgs/msg/Float32"),
+    ],
+)
+def test_topic_heuristic_maps_generic_energy_evidence_to_battery_registry_operation(
+    topic: str,
+    interface_type: str,
+) -> None:
+    matches = infer_topic_operations(
+        topic,
+        interface_type=interface_type,
+    )
+
+    assert matches
+    assert matches[0].operation == "hw.power.battery.status"
+    assert matches[0].semantic_uri.startswith("semantic://heuristic/topic/")
+    assert any(item.startswith("topic:") for item in matches[0].evidence)
+
+
+def test_operation_candidates_reject_multiple_write_operations_on_one_route() -> None:
+    with pytest.raises(ValueError, match="multiple write Operations"):
+        _build_operation_candidates(
+            {
+                "semantic://actuator/shared_velocity": {
+                    "binding": "/cmd_vel",
+                    "operations": ["app.base.velocity", "app.teleop.velocity"],
+                    "route_kind": "ros_topic",
+                    "resource_id": "ros_topic:/cmd_vel",
+                }
+            }
+        )
+
+
 def test_literal_topic_parameters_are_discovered_from_config_and_cpp_defaults() -> None:
     config_names = _extract_ros_config_names(
         """
@@ -408,8 +445,9 @@ def test_discovery_service_persists_report_and_operation_candidates(tmp_path: Pa
     assert loaded.discovery_id == report.discovery_id
     assert {candidate.operation for candidate in report.operation_candidates} >= {
         "app.teleop.velocity",
-        "app.localization.status",
         "app.camera.snapshot",
+        "app.localization.pose",
+        "app.odometry.sample",
     }
     camera = next(
         candidate
@@ -621,7 +659,11 @@ def test_discovery_allows_missing_hardware_profile_in_test_environment(tmp_path:
             "wheeltec",
             'node.create_publisher(Twist, "/cmd_vel", 10)\n'
             'node.create_subscription(Odometry, "/odom", callback, 10)\n',
-            {"app.teleop.velocity", "app.localization.status"},
+            {
+                "app.teleop.velocity",
+                "app.localization.pose",
+                "app.odometry.sample",
+            },
         ),
     ],
 )
