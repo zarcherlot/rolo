@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import configparser
+import hashlib
 import io
 import math
 import os
@@ -520,9 +521,13 @@ class RosProbe:
         *,
         ros_root: Path = Path("/opt/ros"),
         environment: Mapping[str, str] | None = None,
+        enrich_routes: bool = False,
+        stabilize: bool = False,
     ) -> None:
         self.ros_root = ros_root
         self.environment = dict(os.environ if environment is None else environment)
+        self.enrich_routes = enrich_routes
+        self.stabilize = stabilize
 
     def _resolve_setup(self) -> Path | None:
         os_version = _parse_os_release().get("VERSION_ID")
@@ -653,6 +658,61 @@ class RosProbe:
                 "Codex network sandbox blocked one or more ROS graph queries; collect runtime "
                 "ROS evidence from a target terminal outside the coding sandbox."
             )
+
+        if self.stabilize and successes:
+            first = {field: list(data[field]) for field in command_map}
+            second: dict[str, list[str]] = {}
+            for field, args in command_map.items():
+                sample = self._run_ros(args)
+                second[field] = (
+                    sample.get("stdout", "").splitlines()[:MAX_DISCOVERED_ITEMS]
+                    if sample.get("returncode") == 0
+                    else []
+                )
+            stable = all(first[field] == second[field] for field in command_map)
+            data["stability"] = {
+                "attempts": 2,
+                "stable": stable,
+                "sampled_fields": sorted(command_map),
+            }
+            if stable:
+                for field in command_map:
+                    data[field] = second[field]
+            else:
+                warnings.append(
+                    "ROS runtime graph did not stabilize across bounded samples; route "
+                    "verification remains conservative."
+                )
+
+        if self.enrich_routes:
+            providers: dict[str, str] = {}
+            schemas: dict[str, str] = {}
+            for raw_topic in data.get("topics", [])[:MAX_DISCOVERED_ITEMS]:
+                endpoint, interface_type = _ros_entity_name(raw_topic), _ros_entity_type(raw_topic)
+                if not endpoint:
+                    continue
+                info = self._run_ros(["topic", "info", "-v", endpoint])
+                if info.get("returncode") == 0:
+                    node_names = sorted(
+                        {
+                            match.group(1).strip()
+                            for line in info.get("stdout", "").splitlines()
+                            if (match := re.search(r"Node name:\s*([^,\s]+)", line))
+                        }
+                    )
+                    if len(node_names) == 1:
+                        providers[endpoint] = f"ros_node:{node_names[0]}"
+                if interface_type:
+                    schema = self._run_ros(["interface", "show", interface_type])
+                    if schema.get("returncode") == 0:
+                        payload = schema.get("stdout", "").encode("utf-8")
+                        schemas[interface_type] = hashlib.sha256(payload).hexdigest()
+            data["route_enrichment"] = {
+                "provider_ids": providers,
+                "interface_schema_sha256": schemas,
+                "provider_evidence_source": "ros2 topic info -v",
+                "schema_evidence_source": "ros2 interface show",
+            }
 
         if successes:
             status = (
@@ -1391,6 +1451,11 @@ def _ros_entity_type(value: str) -> str | None:
 def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, Any]]:
     bindings: dict[str, dict[str, Any]] = {}
     ros_probe = probes["ros"]
+    enrichment = ros_probe.data.get("route_enrichment", {})
+    provider_ids = enrichment.get("provider_ids", {}) if isinstance(enrichment, dict) else {}
+    schema_digests = (
+        enrichment.get("interface_schema_sha256", {}) if isinstance(enrichment, dict) else {}
+    )
     ros_revision = ":".join(
         str(value)
         for value in (ros_probe.data.get("ros_distro"), ros_probe.data.get("rmw"))
@@ -1443,6 +1508,11 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "interface_schema_sha256": None,
                     "observed": source == "live_ros_graph",
                 }
+                if source == "live_ros_graph":
+                    bindings[semantic_uri]["provider_id"] = provider_ids.get(topic)
+                    bindings[semantic_uri]["interface_schema_sha256"] = schema_digests.get(
+                        _ros_entity_type(raw_topic)
+                    )
 
         # Keep the deterministic rule set small and platform-neutral.  When a
         # topic has no concrete rule-backed Operation (for example a battery
@@ -1474,6 +1544,11 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "interface_schema_sha256": None,
                     "observed": source == "live_ros_graph",
                 }
+                if source == "live_ros_graph":
+                    bindings[semantic_uri]["provider_id"] = provider_ids.get(topic)
+                    bindings[semantic_uri]["interface_schema_sha256"] = schema_digests.get(
+                        interface_type
+                    )
 
     application_probe = probes.get(
         "application",
@@ -1866,10 +1941,13 @@ def _build_operation_candidates(
         endpoint = str(binding["binding"])
         if kind.startswith("ros_"):
             endpoint = _ros_entity_name(endpoint)
-            limitations = [
-                "ROS interface schema digest was not collected",
-                "ROS publisher/provider identity was not collected",
-            ]
+            limitations = []
+            if not binding.get("interface_schema_sha256"):
+                limitations.append("ROS interface schema digest was not collected")
+            if not binding.get("provider_id"):
+                limitations.append("ROS publisher/provider identity was not collected")
+            if not binding.get("runtime_revision"):
+                limitations.append("ROS runtime revision was not collected")
         else:
             limitations = [
                 "CLI self-description does not prove Operation result semantics",
@@ -2179,7 +2257,15 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
         inputs = ActiveDiscoveryInputs.model_validate(active.inputs)
         if inputs.active_probe != ActiveProbeMode.RUNTIME_READONLY:
             raise RuntimeError("ROS runtime Probe was not authorized at installation/run time")
-        return self._replace_probe(report, active, "ros", RosProbe().run())
+        ros_probe = RosProbe()
+        ros_probe.enrich_routes = True
+        ros_probe.stabilize = True
+        return self._replace_probe(
+            report,
+            active,
+            "ros",
+            ros_probe.run(),
+        )
 
     def _refresh_application(
         self,

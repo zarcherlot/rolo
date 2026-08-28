@@ -811,10 +811,19 @@ def collect_target_evidence(
         state.ros_setup_files,
         environment=environment,
     )
+    def collect_ros() -> ProbeResult:
+        # Configure after construction so tests and downstream deployments that
+        # provide a small RosProbe-compatible shim remain source-compatible.
+        probe = RosProbe()
+        if hasattr(probe, "enrich_routes"):
+            probe.enrich_routes = True
+            probe.stabilize = True
+        return probe.run()
+
     collectors = {
         "hw": lambda: HardwareProbe().run(robot_id=state.robot_id),
         "linux": lambda: LinuxProbe().run(),
-        "ros": lambda: RosProbe().run(),
+        "ros": collect_ros,
     }
     with _temporary_environment(ros_environment.environment):
         probes = {

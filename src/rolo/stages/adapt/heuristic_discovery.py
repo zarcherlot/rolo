@@ -1187,8 +1187,12 @@ class HeuristicDiscoveryOrchestrator:
                 if validation.metrics.fallback_reason is not None
                 else None
             )
+            if validation.metrics.fallback_reason is not None:
+                # Planning success does not make a failed/timeout mapping run a
+                # completed discovery.  Preserve an explicit FALLBACK status.
+                agent_completed = False
             if bundle is not None:
-                agent_completed = True
+                agent_completed = agent_completed and validation.metrics.fallback_reason is None
                 for unknown in bundle.unknowns:
                     gaps.append(
                         HeuristicEvidenceGap(

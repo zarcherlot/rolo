@@ -34,6 +34,7 @@ class CapabilityApplicability(str, Enum):
 
 class CapabilityAvailability(str, Enum):
     VERIFIED = "VERIFIED"
+    ROUTE_VERIFIED = "ROUTE_VERIFIED"
     AVAILABLE = "AVAILABLE"
     UNAVAILABLE = "UNAVAILABLE"
     UNKNOWN = "UNKNOWN"
@@ -216,6 +217,8 @@ def _operation_evidence(
 def _availability(value: str | None) -> CapabilityAvailability:
     if value == "VERIFIED":
         return CapabilityAvailability.VERIFIED
+    if value == "ROUTE_VERIFIED":
+        return CapabilityAvailability.ROUTE_VERIFIED
     if value == "AVAILABLE":
         return CapabilityAvailability.AVAILABLE
     if value in {"UNAVAILABLE", "BLOCKED"}:
@@ -272,7 +275,11 @@ def _summary(
     else:
         applicability = CapabilityApplicability.NOT_OBSERVED
 
-    verified = active is not None and registration is CapabilityRegistration.REGISTERED
+    verified = (
+        active is not None
+        and registration is CapabilityRegistration.REGISTERED
+        and active.availability == CapabilityAvailability.VERIFIED.value
+    )
     binding_count = len(deterministic_candidate.route_evidence) if deterministic_candidate else 0
     inferred_binding_count = len(heuristic_candidate.route_evidence) if heuristic_candidate else 0
     if active is not None:
@@ -293,6 +300,11 @@ def _summary(
         limitations.append("No gated adapter binding is registered for this operation.")
     if registration is CapabilityRegistration.BUILTIN:
         limitations.append("Built-in availability does not prove a successful physical outcome.")
+    if availability is CapabilityAvailability.ROUTE_VERIFIED:
+        limitations.append(
+            "Target route existence is verified, but provider/schema evidence is incomplete; "
+            "runtime invocation remains blocked."
+        )
     return CapabilitySummary(
         operation=definition.operation,
         layer=_layer(definition.layer),

@@ -44,7 +44,12 @@ from rolo.stages.adapt.operation_registry import (
     required_builtin_conformance_operations,
     validate_definition_contract,
 )
-from rolo.stages.adapt.routes import ROUTE_PROBE_LAYER, candidate_route_observed
+from rolo.stages.adapt.routes import (
+    ROUTE_PROBE_LAYER,
+    candidate_route_observed,
+    candidate_routes_fully_observed,
+    candidate_runtime_evidence_complete,
+)
 from rolo.stages.adapt.state_graph import (
     build_state_graph_baseline,
     validate_state_graph_baseline,
@@ -148,6 +153,27 @@ def _reject_hardcoded_target_paths(
                 raise ValueError(
                     "adapter bundle hardcodes a target executable path; resolve it through "
                     f"the target environment instead: {target_path}"
+                )
+
+
+def _reject_hardcoded_route_endpoints(
+    discovery: object,
+    bundle_files: list[tuple[object, Path]],
+) -> None:
+    """Prevent generated adapters from baking target ROS graph names into source."""
+    endpoints = {
+        str(route.endpoint)
+        for candidate in getattr(discovery, "operation_candidates", [])
+        for route in getattr(candidate, "route_evidence", [])
+        if str(getattr(route, "kind", "")).startswith("ros_")
+        and str(getattr(route, "endpoint", "")).startswith("/")
+    }
+    for declared, path in bundle_files:
+        payload = path.read_bytes()
+        for endpoint in endpoints:
+            if endpoint.encode("utf-8") in payload:
+                raise ValueError(
+                    f"adapter bundle hardcodes target ROS endpoint {endpoint}: {declared.path}"
                 )
 
 
@@ -493,6 +519,18 @@ class AdapterPromotionService:
                     )
                 ],
             )
+            _reject_hardcoded_route_endpoints(
+                discovery,
+                [
+                    (
+                        declared,
+                        resolve_artifact_ref(self.artifacts.root, published.path),
+                    )
+                    for declared, published in zip(
+                        bundle.declared_files(), snapshot.adapter_files, strict=True
+                    )
+                ],
+            )
             checks.append("adapter target paths are resolved portably")
             identified_outputs = (
                 (graph, "State Graph"),
@@ -590,6 +628,16 @@ class AdapterPromotionService:
                     )
                 if not candidate_route_observed(candidate, discovery.probes):
                     raise ValueError(f"target operation route was not observed: {operation}")
+                if not candidate_routes_fully_observed(candidate, discovery.probes):
+                    raise ValueError(
+                        "target operation has declared routes that were not observed; "
+                        f"static evidence cannot be promoted to VERIFIED: {operation}"
+                    )
+                if not candidate_runtime_evidence_complete(candidate, discovery.probes):
+                    raise ValueError(
+                        "target operation route evidence lacks provider identity, interface "
+                        f"schema, or runtime revision: {operation}"
+                    )
             checks.append("product-owned operation contracts")
             checks.append("Adapter Agent bundle local-static declarations (advisory)")
             validation_scope = (

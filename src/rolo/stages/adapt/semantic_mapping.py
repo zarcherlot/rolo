@@ -157,6 +157,16 @@ def infer_topic_operations(
         type_overlap = type_tokens & terms
         signal_overlap = evidence_tokens & _ENERGY_SIGNAL_TOKENS
         energy_contract = terms & {"battery", "power", "voltage", "current", "charge", "capacity"}
+        if definition.operation == "hw.power.battery.status" and not signal_overlap:
+            # Generic telemetry (temperature, diagnostics, etc.) is not battery
+            # evidence merely because the contract description mentions telemetry.
+            continue
+        generic_telemetry = "telemetry" in evidence_tokens and not signal_overlap
+        if generic_telemetry and not definition.operation.startswith("app.telemetry."):
+            # A generic telemetry stream should stay in the application telemetry
+            # family; do not misclassify it as power/storage just because those
+            # contracts use the word telemetry in their prose.
+            continue
         if not direct_overlap and not (signal_overlap and energy_contract):
             continue
         score = (
@@ -197,7 +207,14 @@ def infer_topic_operations(
                 ),
             )
         )
-    matches.sort(key=lambda item: (-item.score, item.operation))
+    telemetry_priority = {
+        "app.telemetry.snapshot": 0,
+        "app.telemetry.watch": 1,
+        "app.telemetry.export": 2,
+    }
+    matches.sort(
+        key=lambda item: (-item.score, telemetry_priority.get(item.operation, 9), item.operation)
+    )
     if not matches:
         return []
     top = matches[0].score

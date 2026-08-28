@@ -132,10 +132,66 @@ def observed_probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
 def persist_route_evidence(probe: ProbeResult) -> ProbeResult:
     """Attach immutable v2 route records while retaining existing probe fields."""
     if "route_evidence" in probe.data:
+        routes = [RouteEvidence.model_validate(item) for item in probe.data["route_evidence"]]
+        enrichment = probe.data.get("route_enrichment")
+        if probe.layer == "ros" and isinstance(enrichment, dict):
+            providers = enrichment.get("provider_ids", {})
+            schemas = enrichment.get("interface_schema_sha256", {})
+            routes = [
+                route.model_copy(
+                    update={
+                        "provider_id": route.provider_id or providers.get(route.endpoint),
+                        "interface_schema_sha256": route.interface_schema_sha256
+                        or schemas.get(route.interface_type),
+                        "limitations": [
+                            item
+                            for item in route.limitations
+                            if not (
+                                item == "ROS interface schema digest was not collected"
+                                and schemas.get(route.interface_type)
+                            )
+                            and not (
+                                item == "ROS provider identity was not collected"
+                                and providers.get(route.endpoint)
+                            )
+                        ],
+                    }
+                )
+                for route in routes
+            ]
+            data = dict(probe.data)
+            data["route_evidence"] = [route.model_dump(mode="json") for route in routes]
+            return probe.model_copy(update={"data": data})
         observed_probe_routes(probe)
         return probe
     data = dict(probe.data)
-    data["route_evidence"] = [route.model_dump(mode="json") for route in legacy_probe_routes(probe)]
+    routes = legacy_probe_routes(probe)
+    enrichment = probe.data.get("route_enrichment")
+    if probe.layer == "ros" and isinstance(enrichment, dict):
+        providers = enrichment.get("provider_ids", {})
+        schemas = enrichment.get("interface_schema_sha256", {})
+        routes = [
+            route.model_copy(
+                update={
+                    "provider_id": providers.get(route.endpoint),
+                    "interface_schema_sha256": schemas.get(route.interface_type),
+                    "limitations": [
+                        item
+                        for item in route.limitations
+                        if not (
+                            item == "ROS interface schema digest was not collected"
+                            and schemas.get(route.interface_type)
+                        )
+                        and not (
+                            item == "ROS provider identity was not collected"
+                            and providers.get(route.endpoint)
+                        )
+                    ],
+                }
+            )
+            for route in routes
+        ]
+    data["route_evidence"] = [route.model_dump(mode="json") for route in routes]
     return probe.model_copy(update={"data": data})
 
 
@@ -170,3 +226,56 @@ def candidate_route_observed(candidate: OperationCandidate, probes: dict[str, Pr
         if any(_route_matches(route, observed) for observed in observed_probe_routes(probe)):
             return True
     return False
+
+
+def candidate_routes_fully_observed(
+    candidate: OperationCandidate, probes: dict[str, ProbeResult]
+) -> bool:
+    """Require every declared route to have an exact target observation.
+
+    The previous helper intentionally answered the weaker question "did any route
+    match?".  That is useful for applicability, but it is not sufficient to
+    promote a multi-route adapter to a runtime-verified catalog entry.
+    """
+    if not candidate.route_evidence:
+        return False
+    for route in candidate.route_evidence:
+        probe = probes.get(ROUTE_PROBE_LAYER[route.kind])
+        if probe is None or probe.status not in {
+            DiscoveryStatus.SUCCEEDED,
+            DiscoveryStatus.PARTIAL,
+        }:
+            return False
+        if not any(_route_matches(route, observed) for observed in observed_probe_routes(probe)):
+            return False
+    return True
+
+
+def candidate_runtime_evidence_complete(
+    candidate: OperationCandidate, probes: dict[str, ProbeResult]
+) -> bool:
+    """Check provider/schema/revision evidence for every observed route."""
+    if not candidate_routes_fully_observed(candidate, probes):
+        return False
+    # Legacy v2 snapshots predate the enrichment collector.  Preserve their
+    # historical route-only semantics for compatibility; production probes set
+    # ``route_enrichment`` and therefore take the strict evidence path below.
+    strict_ros_evidence = any(
+        route.kind.startswith("ros_")
+        and isinstance((probe := probes.get(ROUTE_PROBE_LAYER[route.kind])), ProbeResult)
+        and "route_enrichment" in probe.data
+        for route in candidate.route_evidence
+    )
+    if not strict_ros_evidence:
+        return True
+    for route in candidate.route_evidence:
+        probe = probes.get(ROUTE_PROBE_LAYER[route.kind])
+        assert probe is not None
+        observed = next(
+            item for item in observed_probe_routes(probe) if _route_matches(route, item)
+        )
+        if route.kind.startswith("ros_") and not (
+            observed.provider_id and observed.interface_schema_sha256 and observed.runtime_revision
+        ):
+            return False
+    return True

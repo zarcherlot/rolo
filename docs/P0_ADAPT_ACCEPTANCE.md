@@ -14,6 +14,10 @@ contains:
 - observed-runtime or declared-static origin and evidence source;
 - optional interface type and interface-schema SHA-256;
 - optional provider/executable identity and runtime revision;
+
+`ROUTE_VERIFIED` is an explicit intermediate availability state: the target route
+exists, but provider identity, interface schema, or runtime revision is incomplete.
+It is visible for diagnosis only and is never invocable or promotable as `VERIFIED`.
 - optional observation timestamp and explicit collection limitations.
 
 The gate supports exact matching for ROS topics, services, actions, device paths, and CLI
@@ -64,7 +68,10 @@ rebuilding its frozen snapshot. Workspace file paths are not trusted as the hand
 
 ### Source-only negative path
 
-Source and documentation may create `DISCOVERED_UNVERIFIED` candidates, but never `VERIFIED`
+Source and documentation may create `DISCOVERED_UNVERIFIED` candidates, but never `VERIFIED`.
+Generated adapters must resolve ROS/device endpoints from the invocation-scoped
+`ROLO_TARGET_ROUTE_BINDINGS_JSON` document; embedding discovered topic or device names in a
+bundle is rejected by the gate.
 catalog entries. With no matching target runtime probe, promotion must fail and no current release
 index may be activated.
 

@@ -540,7 +540,7 @@ class CodexOperationMappingProvider:
         provider: str = "codex",
         base_url: str | None = None,
         api_key: str | None = None,
-        timeout_s: int = 120,
+        timeout_s: int = 30,
     ) -> None:
         if timeout_s < 1:
             raise ValueError("Operation mapping Agent timeout must be at least one second")

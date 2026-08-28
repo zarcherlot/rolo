@@ -371,13 +371,37 @@ def invoke_adapter(
     )
     started = time.monotonic()
     try:
+        runtime_environment = release.runtime_environment.as_environment()
+        # Route bindings are supplied at invocation time from the gated catalog,
+        # so generated adapters resolve the target graph dynamically instead of
+        # baking vendor- or deployment-specific topic names into their package.
+        runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
+            {
+                "schema_version": "rolo-target-route-bindings/v1",
+                "robot_id": robot_id,
+                "operation": operation,
+                "bindings": [
+                    {
+                        "semantic_binding": semantic,
+                        "endpoint": endpoint,
+                    }
+                    for semantic, endpoint in zip(
+                        descriptor.semantic_bindings,
+                        descriptor.evidence,
+                        strict=False,
+                    )
+                ],
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         completed = (runner or BoundedAdapterRunner()).run(
             adapter_command(package_path)
             + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
             stdin=json.dumps(payload, ensure_ascii=False),
             cwd=release_root,
             timeout_s=min(timeout_s, descriptor.max_duration_s),
-            runtime_environment=release.runtime_environment.as_environment(),
+            runtime_environment=runtime_environment,
         )
     except Exception:
         write_adapter_execution_audit(
