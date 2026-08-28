@@ -47,6 +47,26 @@ def test_runner_wraps_adapter_argv_with_protected_launcher(tmp_path: Path) -> No
     ]
 
 
+def test_runner_process_budget_is_additional_to_existing_user_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("rolo.adapter_runner._current_real_user_task_count", lambda: 256)
+    runner = BoundedAdapterRunner(
+        allow_unsandboxed_development=True,
+        max_processes=16,
+    )
+    runner.sandbox_launcher = None
+
+    result = runner.run(
+        [sys.executable, "-c", "print('bounded')"],
+        cwd=tmp_path,
+        timeout_s=5,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "bounded"
+
+
 def test_runner_sanitizes_environment_and_private_home(
     tmp_path: Path, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]
@@ -151,6 +171,39 @@ def test_runner_passes_only_admitted_robot_runtime_context(tmp_path: Path) -> No
         "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
         "AMENT_PREFIX_PATH": str(overlay.resolve()),
         "OPENAI_API_KEY": None,
+    }
+
+
+def test_runner_passes_only_the_bounded_rolo_binding_control(tmp_path: Path) -> None:
+    binding_document = json.dumps(
+        {
+            "schema_version": "rolo-target-route-bindings/v1",
+            "operation": "app.camera.list",
+            "bindings": [{"endpoint": "lerobot-find-cameras"}],
+        }
+    )
+
+    result = BoundedAdapterRunner().run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,os; print(json.dumps({key: os.getenv(key) for key in "
+                "['ROLO_TARGET_ROUTE_BINDINGS_JSON','ROLO_UNTRUSTED_CONTROL']}))"
+            ),
+        ],
+        cwd=tmp_path,
+        timeout_s=5,
+        runtime_environment={
+            "ROLO_TARGET_ROUTE_BINDINGS_JSON": binding_document,
+            "ROLO_UNTRUSTED_CONTROL": "must-not-be-admitted",
+        },
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {
+        "ROLO_TARGET_ROUTE_BINDINGS_JSON": binding_document,
+        "ROLO_UNTRUSTED_CONTROL": None,
     }
 
 

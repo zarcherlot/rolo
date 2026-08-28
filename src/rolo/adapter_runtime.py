@@ -59,6 +59,53 @@ def _relative_file(root: Path, relative: str) -> Path:
     return resolved
 
 
+def operation_route_binding_document(
+    graph: StateGraphBaseline,
+    operation: str,
+    *,
+    semantic_bindings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the immutable runtime binding ABI from the gated State Graph."""
+
+    operation_node = f"operation:{operation}"
+    nodes = {str(node.get("id", "")): node for node in graph.nodes}
+    if nodes.get(operation_node, {}).get("operation") != operation:
+        raise ValueError(f"State Graph lacks operation route binding: {operation}")
+    route_ids = {
+        str(edge.get("target", ""))
+        for edge in graph.edges
+        if edge.get("source") == operation_node and edge.get("relation") == "routes_to"
+    }
+    bindings: list[dict[str, Any]] = []
+    for route_id in sorted(route_ids):
+        route = nodes.get(route_id, {})
+        if route.get("kind") != "route":
+            raise ValueError(f"State Graph operation has invalid route node: {operation}")
+        bindings.append(
+            {
+                "operation": operation,
+                "resource_id": route.get("resource_id"),
+                "kind": route.get("route_kind"),
+                "endpoint": route.get("endpoint"),
+                "interface_type": route.get("interface_type"),
+                "interface_schema_sha256": route.get("interface_schema_sha256"),
+                "provider_id": route.get("provider_id"),
+                "runtime_revision": route.get("runtime_revision"),
+                "evidence_origin": route.get("evidence_origin"),
+                "semantic_bindings": list(route.get("semantic_bindings", [])),
+            }
+        )
+    if not bindings:
+        raise ValueError(f"State Graph operation has no route bindings: {operation}")
+    return {
+        "schema_version": "rolo-target-route-bindings/v1",
+        "robot_id": graph.robot_id,
+        "operation": operation,
+        "semantic_bindings": list(semantic_bindings or []),
+        "bindings": bindings,
+    }
+
+
 def _load_release_manifest(path: Path) -> AdapterReleaseManifest:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -375,23 +422,15 @@ def invoke_adapter(
         # Route bindings are supplied at invocation time from the gated catalog,
         # so generated adapters resolve the target graph dynamically instead of
         # baking vendor- or deployment-specific topic names into their package.
+        state_graph = StateGraphBaseline.model_validate_json(
+            _relative_file(release_root, release.state_graph).read_text(encoding="utf-8")
+        )
         runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
-            {
-                "schema_version": "rolo-target-route-bindings/v1",
-                "robot_id": robot_id,
-                "operation": operation,
-                "bindings": [
-                    {
-                        "semantic_binding": semantic,
-                        "endpoint": endpoint,
-                    }
-                    for semantic, endpoint in zip(
-                        descriptor.semantic_bindings,
-                        descriptor.evidence,
-                        strict=False,
-                    )
-                ],
-            },
+            operation_route_binding_document(
+                state_graph,
+                operation,
+                semantic_bindings=descriptor.semantic_bindings,
+            ),
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -500,7 +539,7 @@ def _validate_object_schema(value: dict[str, Any], schema: dict[str, Any], label
 
 def adapter_command(package_path: Path) -> list[str]:
     """Return an argv-only launcher for a standalone executable or Python adapter package."""
-    if package_path.suffix.lower() == ".py":
+    if package_path.suffix.lower() in {".py", ".pyz"}:
         return [sys.executable, str(package_path)]
     return [str(package_path)]
 
@@ -512,14 +551,16 @@ def probe_adapter_package(
     timeout_s: float = 10.0,
     runner: AdapterRunner | None = None,
     runtime_environment: Mapping[str, str] | None = None,
+    state_graph: StateGraphBaseline | None = None,
 ) -> None:
-    """Require the generated package to self-describe declared entrypoints.
+    """Require the package to self-describe and parse gated route bindings.
 
-    Promotion intentionally never executes ``invoke``.  Runtime ABI behavior is
-    covered by deterministic conformance fixtures; only an authorized runtime
-    request may cross the invocation boundary.
+    Promotion never executes ``invoke``.  ``validate-binding`` is a mandatory,
+    side-effect-free ABI check: it may parse only the supplied immutable route
+    document and must not call a target executable or touch hardware.
     """
-    completed = (runner or BoundedAdapterRunner()).run(
+    effective_runner = runner or BoundedAdapterRunner()
+    completed = effective_runner.run(
         adapter_command(package_path) + ["describe"],
         cwd=package_path.parent,
         timeout_s=timeout_s,
@@ -543,6 +584,56 @@ def probe_adapter_package(
     expected = {item.operation: item.entrypoint for item in manifest.operations}
     if not isinstance(described, dict) or described.get("operations") != expected:
         raise ValueError("adapter package describe does not match its bundle manifest")
+    if state_graph is None:
+        return
+    for entry in manifest.operations:
+        environment = dict(runtime_environment or {})
+        environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
+            operation_route_binding_document(state_graph, entry.operation),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        completed = effective_runner.run(
+            adapter_command(package_path)
+            + [
+                "validate-binding",
+                "--operation",
+                entry.operation,
+                "--entrypoint",
+                entry.entrypoint,
+            ],
+            cwd=package_path.parent,
+            timeout_s=timeout_s,
+            max_stdout_bytes=200_000,
+            max_stderr_bytes=200_000,
+            runtime_environment=environment,
+        )
+        if completed.timed_out:
+            raise ValueError(f"adapter binding validation timed out: {entry.operation}")
+        if completed.output_limited:
+            raise ValueError(
+                f"adapter binding validation exceeded its output limit: {entry.operation}"
+            )
+        if completed.returncode != 0:
+            raise ValueError(
+                f"adapter binding validation failed with code {completed.returncode}: "
+                f"{entry.operation}: {completed.stderr.strip()[:1000]}"
+            )
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"adapter binding validation returned invalid JSON: {entry.operation}"
+            ) from exc
+        if result != {
+            "schema_version": "robot-adapter-binding-validation/v1",
+            "operation": entry.operation,
+            "entrypoint": entry.entrypoint,
+            "status": "VALID",
+        }:
+            raise ValueError(
+                f"adapter binding validation result is invalid: {entry.operation}"
+            )
 
 
 def publish_release(

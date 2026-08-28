@@ -18,6 +18,7 @@ from rolo.core.models import (
 )
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.state_graph import build_state_graph_baseline
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 _OPERATIONS = (
@@ -208,10 +209,10 @@ def _publish_runtime_matrix(tmp_path: Path) -> Path:
     )
     catalog_path = source / "tool-catalog.json"
     catalog_path.write_text(catalog.model_dump_json(indent=2), encoding="utf-8")
+    report = _target_report()
     state_graph = source / "state-graph.json"
     state_graph.write_text(
-        '{"schema_version":"robot-state-graph/v1","robot_id":"r",'
-        '"discovery_id":"d","nodes":[],"edges":[]}',
+        build_state_graph_baseline(report, bundle).model_dump_json(indent=2),
         encoding="utf-8",
     )
     conformance = source / "conformance-report.json"
@@ -236,7 +237,6 @@ def _publish_runtime_matrix(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     output = tmp_path / "o"
-    report = _target_report()
     publish_release(
         output_root=output,
         robot_id="r",

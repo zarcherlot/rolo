@@ -42,9 +42,33 @@ def build_state_graph_baseline(
             "evidence_refs": [f"discovery:{report.discovery_id}"],
         }
     ]
-    seen_routes: set[str] = set()
+    route_node_indexes: dict[str, int] = {}
+    seen_route_edges: set[tuple[str, str]] = set()
+
+    def route_rank(route: object) -> tuple[int, int]:
+        return (
+            int(getattr(route, "observed", False)),
+            sum(
+                getattr(route, field, None) is not None
+                for field in (
+                    "interface_type",
+                    "interface_schema_sha256",
+                    "provider_id",
+                    "runtime_revision",
+                )
+            ),
+        )
+
+    route_ranks: dict[str, tuple[int, int]] = {}
     for entry in sorted(bundle.operations, key=lambda item: item.operation):
         candidate = candidates[entry.operation]
+        semantic_bindings_by_endpoint: dict[str, list[str]] = {}
+        for semantic_binding, endpoint in zip(
+            candidate.semantic_bindings,
+            candidate.evidence,
+            strict=False,
+        ):
+            semantic_bindings_by_endpoint.setdefault(endpoint, []).append(semantic_binding)
         operation_node = f"operation:{entry.operation}"
         nodes.append(
             {
@@ -69,29 +93,57 @@ def build_state_graph_baseline(
         )
         for route in candidate.route_evidence:
             route_node = _route_node_id(route.resource_id)
-            if route_node not in seen_routes:
-                seen_routes.add(route_node)
-                nodes.append(
+            route_payload = {
+                "id": route_node,
+                "kind": "route",
+                "resource_id": route.resource_id,
+                "route_kind": route.kind,
+                "endpoint": route.endpoint,
+                "interface_type": route.interface_type,
+                "interface_schema_sha256": route.interface_schema_sha256,
+                "provider_id": route.provider_id,
+                "runtime_revision": route.runtime_revision,
+                "evidence_origin": route.evidence_origin,
+                "semantic_bindings": semantic_bindings_by_endpoint.get(route.endpoint, []),
+                "evidence_refs": [route.source],
+            }
+            rank = route_rank(route)
+            if route_node not in route_node_indexes:
+                route_node_indexes[route_node] = len(nodes)
+                route_ranks[route_node] = rank
+                nodes.append(route_payload)
+            else:
+                node = nodes[route_node_indexes[route_node]]
+                evidence_refs = list(
+                    dict.fromkeys([*node["evidence_refs"], route.source])
+                )
+                semantic_bindings = list(
+                    dict.fromkeys(
+                        [
+                            *node.get("semantic_bindings", []),
+                            *route_payload["semantic_bindings"],
+                        ]
+                    )
+                )
+                if rank > route_ranks[route_node]:
+                    route_ranks[route_node] = rank
+                    route_payload["evidence_refs"] = evidence_refs
+                    route_payload["semantic_bindings"] = semantic_bindings
+                    nodes[route_node_indexes[route_node]] = route_payload
+                else:
+                    node["evidence_refs"] = evidence_refs
+                    node["semantic_bindings"] = semantic_bindings
+            edge_identity = (operation_node, route_node)
+            if edge_identity not in seen_route_edges:
+                seen_route_edges.add(edge_identity)
+                edges.append(
                     {
-                        "id": route_node,
-                        "kind": "route",
-                        "resource_id": route.resource_id,
-                        "route_kind": route.kind,
-                        "endpoint": route.endpoint,
-                        "interface_type": route.interface_type,
-                        "provider_id": route.provider_id,
-                        "evidence_origin": route.evidence_origin,
+                        "source": operation_node,
+                        "target": route_node,
+                        "relation": "routes_to",
                         "evidence_refs": [route.source],
                     }
                 )
-            edges.append(
-                {
-                    "source": operation_node,
-                    "target": route_node,
-                    "relation": "routes_to",
-                    "evidence_refs": [route.source],
-                }
-            )
     graph = StateGraphBaseline(
         schema_version="robot-state-graph/v2",
         robot_id=report.robot_id,

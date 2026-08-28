@@ -71,6 +71,45 @@ def _decode_process_output(value: str | bytes | None) -> str:
     return value
 
 
+def _recover_successful_handoff_pack(
+    final_payload: dict[str, Any], codex_events: str
+) -> dict[str, Any]:
+    """Recover files from the last successful product-owned handoff pack event."""
+    if not final_payload.get("handoff_ready") or final_payload.get("files"):
+        return final_payload
+    recovered: dict[str, Any] | None = None
+    for line in codex_events.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        item = event.get("item") if isinstance(event, dict) else None
+        if not isinstance(item, dict) or item.get("type") != "command_execution":
+            continue
+        if item.get("status") != "completed" or item.get("exit_code") != 0:
+            continue
+        command = item.get("command")
+        if not isinstance(command, str) or "adapt handoff pack" not in command:
+            continue
+        output = item.get("aggregated_output")
+        if not isinstance(output, str):
+            continue
+        try:
+            packed = json.loads(output)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(packed, dict)
+            and isinstance(packed.get("outputs"), dict)
+            and isinstance(packed.get("files"), list)
+            and packed["files"]
+        ):
+            recovered = packed
+    if recovered is None or final_payload.get("outputs") != recovered["outputs"]:
+        return final_payload
+    return {**final_payload, "files": recovered["files"]}
+
+
 def _codex_user_home(environment: dict[str, str], executable: str) -> Path | None:
     """Resolve a usable user home even in stripped service/test environments."""
     candidates: list[Path] = []
@@ -418,10 +457,15 @@ class CodexAdaptExecutor:
                 error = "Codex did not write the required structured final message"
             else:
                 try:
-                    result = AdapterAgentResult.model_validate_json(
+                    final_payload = json.loads(
                         final_message_path.read_text(encoding="utf-8")
                     )
-                except ValueError as exc:
+                    if not isinstance(final_payload, dict):
+                        raise ValueError("Codex final message must be a JSON object")
+                    result = AdapterAgentResult.model_validate(
+                        _recover_successful_handoff_pack(final_payload, stdout)
+                    )
+                except (json.JSONDecodeError, ValueError) as exc:
                     error = f"Codex final message failed schema validation: {exc}"
                 else:
                     self.artifacts.write_json(
@@ -939,7 +983,8 @@ class CodexAdaptExecutor:
             "unregistered and must not block otherwise eligible operations. For every bundle "
             "operation, copy contract_version and contract_sha256 exactly from "
             "the operation contract returned by the read-only inspection tool. "
-            "The executable must support `describe` and bounded `invoke` commands. The exact "
+            "The executable must support `describe`, side-effect-free `validate-binding`, and "
+            "bounded `invoke` commands. The exact "
             "runtime invocation ABI is `ENTRYPOINT invoke --operation OPERATION --entrypoint "
             "MANIFEST_ENTRYPOINT`, with the operation input supplied as one JSON object on stdin. "
             "Do not require an input positional argument or `--input` flag. Validate that the "
@@ -949,6 +994,23 @@ class CodexAdaptExecutor:
             "must emit a JSON object whose `operations` value is exactly a mapping from every "
             "bundle operation name to its manifest entrypoint, with no missing or extra "
             "operations. "
+            "The binding validation ABI is `ENTRYPOINT validate-binding --operation OPERATION "
+            "--entrypoint MANIFEST_ENTRYPOINT`. It must parse and validate only "
+            "ROLO_TARGET_ROUTE_BINDINGS_JSON, must not execute a target command or access "
+            "hardware, and on success must emit exactly a JSON object with schema_version "
+            "robot-adapter-binding-validation/v1, the requested operation and entrypoint, and "
+            "status VALID. The route document has schema_version "
+            "rolo-target-route-bindings/v1, top-level robot_id, operation and semantic_bindings, "
+            "and a bindings array. Every binding item includes operation, resource_id, kind, "
+            "endpoint, interface_type, interface_schema_sha256, provider_id, runtime_revision, "
+            "evidence_origin, and the semantic_bindings associated with that route. Optional "
+            "fields may be null. `validate-binding` must accept one or more structurally complete "
+            "matching route items; multiple routes are not by themselves ambiguous during this "
+            "side-effect-free ABI validation. During `invoke`, use the operation input and each "
+            "item's resource_id, endpoint and semantic_bindings to select a route "
+            "deterministically, or fail closed if that request cannot identify one. Reject a "
+            "document whose top-level "
+            "operation or any binding item operation differs from the requested Operation. "
             "Never embed an absolute target filesystem path (for example /home/... or "
             "C:\\Users\\...) in the adapter package. Resolve target executables from the "
             "target environment using the inspected executable identity, PATH, or an explicit "
@@ -968,7 +1030,9 @@ class CodexAdaptExecutor:
             "Do not weaken the read-only Operation semantics merely to make the command run. When "
             "handoff_ready is true, outputs "
             "must name workspace-relative final files for all four outputs. Return only the JSON "
-            "object required by the supplied output schema. Before authoring each artifact, query "
+            "object required by the supplied output schema. After a successful `adapt handoff "
+            "pack`, copy both its outputs and its complete non-empty files array verbatim; never "
+            "summarize or omit the packed file payload. Before authoring each artifact, query "
             "the exact AdapterBundleManifest, StateGraphBaseline, and AdapterConformanceReport "
             "schemas through `adapt schema inspect`; do not guess product-owned fields. Use "
             "robot-adapter-agent-result/v2. For every final file named by outputs and every file "

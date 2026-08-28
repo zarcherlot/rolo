@@ -122,6 +122,15 @@ def infer_topic_operations(
     evidence_tokens = endpoint_tokens | type_tokens
     if not evidence_tokens:
         return []
+    if (
+        "parameter" in endpoint_tokens
+        and "events" in endpoint_tokens
+    ) or "parameterevent" in type_tokens:
+        # A ParameterEvent stream reports changes after they occur.  It does
+        # not provide the request/response semantics needed by parameter get,
+        # list, inspect, or validate Operations.  Treating the lexical token
+        # "parameter" as current-value evidence creates a false capability.
+        return []
 
     from rolo.stages.adapt.operation_registry import canonical_operation_registry
 

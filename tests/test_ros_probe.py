@@ -174,6 +174,142 @@ def test_ros_probe_uses_humble_compatible_action_arguments(
     assert all("--no-daemon" in args for args in calls[:-1])
 
 
+def test_ros_probe_filters_topics_owned_only_by_its_ros2cli_daemon(
+    tmp_path: Path, monkeypatch
+) -> None:
+    probe = RosProbe(
+        ros_root=tmp_path / "missing",
+        environment={"ROS_DISTRO": "humble"},
+        enrich_routes=True,
+    )
+
+    def succeeded(args):
+        if args[:2] == ["topic", "list"]:
+            stdout = (
+                "/parameter_events [rcl_interfaces/msg/ParameterEvent]\n"
+                "/rosout [rcl_interfaces/msg/Log]\n"
+            )
+        elif args[:3] == ["topic", "info", "-v"]:
+            stdout = (
+                "Node name: _ros2cli_daemon_0_fixture\n"
+                "Endpoint type: PUBLISHER\n"
+            )
+        elif args[:2] == ["interface", "show"]:
+            stdout = "string fixture\n"
+        elif args[:2] == ["node", "list"]:
+            stdout = "/_ros2cli_daemon_0_fixture\n"
+        else:
+            stdout = ""
+        return {
+            "available": True,
+            "argv": ["ros2", *args],
+            "returncode": 0,
+            "stdout": stdout,
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(probe, "_run_ros", succeeded)
+
+    result = probe.run()
+
+    assert result.data["topics"] == []
+    assert result.data["nodes"] == []
+    assert result.data["route_enrichment"]["provider_ids"] == {}
+    assert result.data["route_enrichment"]["filtered_probe_owned_endpoints"] == [
+        "/parameter_events",
+        "/rosout",
+    ]
+
+
+def test_ros_probe_keeps_multi_publisher_topic_without_claiming_one_provider(
+    tmp_path: Path, monkeypatch
+) -> None:
+    probe = RosProbe(
+        ros_root=tmp_path / "missing",
+        environment={"ROS_DISTRO": "humble"},
+        enrich_routes=True,
+    )
+
+    def succeeded(args):
+        if args[:2] == ["topic", "list"]:
+            stdout = (
+                "/global_costmap/global_costmap/transition_event "
+                "[lifecycle_msgs/msg/TransitionEvent]\n"
+            )
+        elif args[:3] == ["topic", "info", "-v"]:
+            stdout = (
+                "Node name: global_costmap\n"
+                "Endpoint type: PUBLISHER\n"
+                "Node name: rolo_validation_fixture\n"
+                "Endpoint type: PUBLISHER\n"
+            )
+        elif args[:2] == ["interface", "show"]:
+            stdout = "uint64 timestamp\n"
+        else:
+            stdout = ""
+        return {
+            "available": True,
+            "argv": ["ros2", *args],
+            "returncode": 0,
+            "stdout": stdout,
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(probe, "_run_ros", succeeded)
+
+    result = probe.run()
+
+    assert result.data["topics"] == [
+        "/global_costmap/global_costmap/transition_event "
+        "[lifecycle_msgs/msg/TransitionEvent]"
+    ]
+    assert "/global_costmap/global_costmap/transition_event" not in result.data[
+        "route_enrichment"
+    ]["provider_ids"]
+
+
+def test_ros_probe_ignores_subscribers_when_identifying_topic_provider(
+    tmp_path: Path, monkeypatch
+) -> None:
+    probe = RosProbe(
+        ros_root=tmp_path / "missing",
+        environment={"ROS_DISTRO": "humble"},
+        enrich_routes=True,
+    )
+
+    def succeeded(args):
+        if args[:2] == ["topic", "list"]:
+            stdout = "/scan [sensor_msgs/msg/LaserScan]\n"
+        elif args[:3] == ["topic", "info", "-v"]:
+            stdout = (
+                "Node name: rolo_validation_fixture\n"
+                "Endpoint type: PUBLISHER\n"
+                "Node name: local_costmap\n"
+                "Endpoint type: SUBSCRIPTION\n"
+                "Node name: global_costmap\n"
+                "Endpoint type: SUBSCRIPTION\n"
+            )
+        elif args[:2] == ["interface", "show"]:
+            stdout = "float32[] ranges\n"
+        else:
+            stdout = ""
+        return {
+            "available": True,
+            "argv": ["ros2", *args],
+            "returncode": 0,
+            "stdout": stdout,
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(probe, "_run_ros", succeeded)
+
+    result = probe.run()
+
+    assert result.data["route_enrichment"]["provider_ids"]["/scan"] == (
+        "ros_node:rolo_validation_fixture"
+    )
+
+
 def test_ros_probe_does_not_misclassify_argument_error_as_sandbox(
     tmp_path: Path,
     monkeypatch,

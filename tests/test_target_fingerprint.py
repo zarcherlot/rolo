@@ -12,7 +12,10 @@ from rolo.core.models import (
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs
 from rolo.stages.adapt.discovery import DiscoveryService
-from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
+from rolo.stages.adapt.target_fingerprint import (
+    runtime_environment_from_report,
+    target_fingerprint_sha256,
+)
 from rolo.stages.artifact_paths import resolve_artifact_ref
 
 
@@ -157,6 +160,58 @@ def test_scoped_fingerprint_binds_runtime_context() -> None:
     )
 
     assert after != before
+
+
+def test_runtime_environment_resolves_normalized_cli_from_target_help(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / ".venv/bin/lerobot-find-cameras"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    route = RouteEvidence(
+        resource_id="cli:lerobot-find-cameras",
+        kind="cli",
+        endpoint="lerobot-find-cameras",
+        interface_type="application/cli",
+        provider_id="target-exe-camera",
+        evidence_origin="OBSERVED_RUNTIME",
+        source="target-evidence:fixture",
+    )
+    report = DiscoveryReport(
+        discovery_id="disc-cli",
+        robot_id="lerobot",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={},
+        capability_manifest={},
+        probes={
+            "linux": ProbeResult(
+                layer="linux",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "target_evidence": {
+                        "executable_help": [
+                            {
+                                "executable_id": "target-exe-camera",
+                                "path": str(executable),
+                            }
+                        ]
+                    }
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.camera.list",
+                route_evidence=[route],
+            )
+        ],
+    )
+
+    environment = runtime_environment_from_report(
+        report, operations={"app.camera.list"}
+    )
+
+    assert environment["PATH"] == str(executable.parent.resolve())
 
 
 def test_scoped_fingerprint_binds_only_relevant_hardware() -> None:

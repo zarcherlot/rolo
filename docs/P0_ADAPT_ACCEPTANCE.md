@@ -61,8 +61,12 @@ sandbox, encodes only final files, and rejects path escape,
 symlinks, duplicates, more than 256 files, files over 2 MiB, or an Agent response over 8 MiB. This
 first execution never runs `invoke`, grants `VERIFIED`, or authorizes publication. Rolo then rechecks
 base64, hashes, identities, operation coverage and larger product limits, and independently executes
-the package `describe` command through the protected generated-code runner while
-rebuilding its frozen snapshot. Workspace file paths are not trusted as the handoff authority.
+the package `describe` command through the protected generated-code runner while rebuilding its
+frozen snapshot. For every promoted operation, Rolo also runs the side-effect-free
+`validate-binding --operation ... --entrypoint ...` command with the operation-scoped State Graph
+route document in `ROLO_TARGET_ROUTE_BINDINGS_JSON`. This command may parse and validate only; it
+must not invoke a target executable, contact hardware, or cross the runtime authorization boundary.
+Workspace file paths are not trusted as the handoff authority.
 
 ## Acceptance paths
 

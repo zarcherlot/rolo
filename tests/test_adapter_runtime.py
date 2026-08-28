@@ -1,6 +1,7 @@
 import getpass
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,9 @@ from typer.testing import CliRunner
 from rolo.adapter_runner import AdapterProcessResult
 from rolo.adapter_runtime import (
     activate_release,
+    adapter_command,
     invoke_adapter,
+    operation_route_binding_document,
     probe_adapter_package,
     publish_release,
 )
@@ -24,8 +27,9 @@ from rolo.core.models import (
     RouteEvidence,
     ToolDescriptor,
 )
-from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
+from rolo.stages.adapt.models import AdapterBundleManifest, StateGraphBaseline, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.state_graph import build_state_graph_baseline
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 
@@ -122,6 +126,74 @@ def test_package_probe_runs_describe_without_crossing_invoke_boundary(
     assert runner.commands[0][-1] == "describe"
 
 
+def test_python_zipapp_uses_the_runtime_interpreter_after_handoff() -> None:
+    package = Path("adapter.pyz")
+
+    assert adapter_command(package) == [sys.executable, str(package)]
+
+
+def test_operation_route_binding_document_preserves_gated_route_identity() -> None:
+    graph = StateGraphBaseline(
+        schema_version="robot-state-graph/v2",
+        robot_id="demo",
+        discovery_id="disc-1",
+        owner="ROLO_GATE",
+        nodes=[
+            {
+                "id": "operation:app.camera.list",
+                "kind": "operation",
+                "operation": "app.camera.list",
+                "evidence_refs": ["bundle:test"],
+            },
+            {
+                "id": "route:camera",
+                "kind": "route",
+                "resource_id": "cli:lerobot-find-cameras",
+                "route_kind": "cli",
+                "endpoint": "lerobot-find-cameras",
+                "interface_type": "application/cli",
+                "interface_schema_sha256": "a" * 64,
+                "provider_id": "target-exe-camera",
+            "runtime_revision": "b" * 64,
+            "evidence_origin": "OBSERVED_RUNTIME",
+            "semantic_bindings": ["semantic://cli/app/camera/list"],
+            "evidence_refs": ["target-evidence:fixture"],
+            },
+        ],
+        edges=[
+            {
+                "source": "operation:app.camera.list",
+                "target": "route:camera",
+                "relation": "routes_to",
+                "evidence_refs": ["target-evidence:fixture"],
+            }
+        ],
+    )
+
+    document = operation_route_binding_document(
+        graph,
+        "app.camera.list",
+        semantic_bindings=["semantic://cli/app/camera/list"],
+    )
+
+    assert document["operation"] == "app.camera.list"
+    assert document["semantic_bindings"] == ["semantic://cli/app/camera/list"]
+    assert document["bindings"] == [
+        {
+            "operation": "app.camera.list",
+            "resource_id": "cli:lerobot-find-cameras",
+            "kind": "cli",
+            "endpoint": "lerobot-find-cameras",
+            "interface_type": "application/cli",
+            "interface_schema_sha256": "a" * 64,
+            "provider_id": "target-exe-camera",
+            "runtime_revision": "b" * 64,
+            "evidence_origin": "OBSERVED_RUNTIME",
+            "semantic_bindings": ["semantic://cli/app/camera/list"],
+        }
+    ]
+
+
 @pytest.fixture(autouse=True)
 def _latest_target_report(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -196,6 +268,7 @@ def _publish_demo_release(
     )
     bundle_path = source / "adapter-manifest.json"
     bundle_path.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+    report = target_report or _target_report()
     catalog = ToolCatalog(
         robot_id="demo",
         discovery_id="disc-1",
@@ -245,10 +318,10 @@ def _publish_demo_release(
     )
     catalog_path = source / "tool-catalog.json"
     catalog_path.write_text(catalog.model_dump_json(indent=2), encoding="utf-8")
-    generic = '{"robot_id":"demo","discovery_id":"disc-1","nodes":[],"edges":[]}'
     state_graph = source / "state-graph.json"
     state_graph.write_text(
-        '{"schema_version":"robot-state-graph/v1",' + generic[1:], encoding="utf-8"
+        build_state_graph_baseline(report, bundle).model_dump_json(indent=2),
+        encoding="utf-8",
     )
     conformance = source / "conformance-report.json"
     conformance.write_text(
@@ -271,7 +344,6 @@ def _publish_demo_release(
         encoding="utf-8",
     )
     output = tmp_path / "output"
-    report = target_report or _target_report()
     publish_release(
         output_root=output,
         robot_id="demo",
@@ -620,6 +692,6 @@ def test_state_graph_cli_reads_only_the_active_gated_release(
 
     get_settings.cache_clear()
     assert snapshot.exit_code == 0, snapshot.output
-    assert json.loads(snapshot.output)["schema_version"] == "robot-state-graph/v1"
+    assert json.loads(snapshot.output)["schema_version"] == "robot-state-graph/v2"
     assert query.exit_code == 0, query.output
     assert json.loads(query.output)["query"] == "camera"

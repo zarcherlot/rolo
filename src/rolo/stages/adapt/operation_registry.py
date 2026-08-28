@@ -17,7 +17,6 @@ from rolo.core.models import DiscoveryReport, OperationCandidate, ToolDescriptor
 from rolo.schema_subset import validate_schema_definition
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
 from rolo.stages.adapt.routes import (
-    candidate_route_observed,
     candidate_routes_fully_observed,
     candidate_runtime_evidence_complete,
 )
@@ -535,8 +534,10 @@ def adapter_operation_eligibility(
             deferred[candidate.operation] = "PRODUCT_CONTRACT_NOT_GATEABLE"
         elif not candidate.route_evidence:
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_DECLARED"
-        elif not candidate_route_observed(candidate, report.probes):
+        elif not candidate_routes_fully_observed(candidate, report.probes):
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_OBSERVED"
+        elif not candidate_runtime_evidence_complete(candidate, report.probes):
+            deferred[candidate.operation] = "TARGET_ROUTE_IDENTITY_INCOMPLETE"
         else:
             eligible.add(candidate.operation)
     return eligible, deferred

@@ -693,13 +693,7 @@ class RosProbe:
                     continue
                 info = self._run_ros(["topic", "info", "-v", endpoint])
                 if info.get("returncode") == 0:
-                    node_names = sorted(
-                        {
-                            match.group(1).strip()
-                            for line in info.get("stdout", "").splitlines()
-                            if (match := re.search(r"Node name:\s*([^,\s]+)", line))
-                        }
-                    )
+                    node_names = _ros_topic_publisher_names(info.get("stdout", ""))
                     if len(node_names) == 1:
                         providers[endpoint] = f"ros_node:{node_names[0]}"
                 if interface_type:
@@ -713,6 +707,27 @@ class RosProbe:
                 "provider_evidence_source": "ros2 topic info -v",
                 "schema_evidence_source": "ros2 interface show",
             }
+            probe_owned_endpoints = {
+                endpoint
+                for endpoint, provider in providers.items()
+                if provider.removeprefix("ros_node:").lstrip("/").startswith("_ros2cli_")
+            }
+            if probe_owned_endpoints:
+                data["topics"] = [
+                    raw
+                    for raw in data.get("topics", [])
+                    if _ros_entity_name(raw) not in probe_owned_endpoints
+                ]
+                data["nodes"] = [
+                    raw
+                    for raw in data.get("nodes", [])
+                    if not _ros_entity_name(raw).lstrip("/").startswith("_ros2cli_")
+                ]
+                for endpoint in probe_owned_endpoints:
+                    providers.pop(endpoint, None)
+                data["route_enrichment"]["filtered_probe_owned_endpoints"] = sorted(
+                    probe_owned_endpoints
+                )
 
         if successes:
             status = (
@@ -1446,6 +1461,21 @@ def _ros_entity_type(value: str) -> str | None:
     if interface_type.startswith("[") and interface_type.endswith("]"):
         interface_type = interface_type[1:-1].strip()
     return interface_type or None
+
+
+def _ros_topic_publisher_names(verbose_info: str) -> list[str]:
+    """Extract publishers only from ``ros2 topic info -v`` endpoint blocks."""
+    publishers: set[str] = set()
+    node_name: str | None = None
+    for line in verbose_info.splitlines():
+        if match := re.search(r"Node name:\s*([^,\s]+)", line):
+            node_name = match.group(1).strip()
+            continue
+        if match := re.search(r"Endpoint type:\s*([^,\s]+)", line):
+            if match.group(1).strip().upper() == "PUBLISHER" and node_name:
+                publishers.add(node_name)
+            node_name = None
+    return sorted(publishers)
 
 
 def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, Any]]:

@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.environment import canonical_environment
 from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport, OperationCandidate
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport, ActiveProbeMode
@@ -401,11 +402,7 @@ class CodexDiscoveryPlanningProvider:
             "ALL_PROXY",
             "NO_PROXY",
         }
-        environment = {
-            key.upper(): value
-            for key, value in os.environ.items()
-            if key.upper() in allowed
-        }
+        environment = canonical_environment(os.environ, allowed)
         if "HOME" not in environment and environment.get("USERPROFILE"):
             environment["HOME"] = environment["USERPROFILE"]
         if (

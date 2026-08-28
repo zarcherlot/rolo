@@ -365,6 +365,13 @@ def test_topic_heuristic_maps_generic_energy_evidence_to_battery_registry_operat
     assert any(item.startswith("topic:") for item in matches[0].evidence)
 
 
+def test_topic_heuristic_does_not_treat_parameter_events_as_current_value_route() -> None:
+    assert not infer_topic_operations(
+        "/parameter_events",
+        interface_type="rcl_interfaces/msg/ParameterEvent",
+    )
+
+
 def test_operation_candidates_reject_multiple_write_operations_on_one_route() -> None:
     with pytest.raises(ValueError, match="multiple write Operations"):
         _build_operation_candidates(

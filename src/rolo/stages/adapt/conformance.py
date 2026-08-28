@@ -565,8 +565,9 @@ class AdapterPromotionService:
                 package_path,
                 bundle,
                 runtime_environment=runtime_environment,
+                state_graph=graph,
             )
-            checks.append("adapter package describe and entrypoint binding")
+            checks.append("adapter package describe and route-binding ABI")
             actual = {item.operation: item for item in conformance.operations}
             if (
                 len(actual) != len(conformance.operations)

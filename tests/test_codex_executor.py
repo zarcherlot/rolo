@@ -14,7 +14,11 @@ from rolo.core.models import ProbeResult
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService
-from rolo.stages.adapt.executor import CodexAdaptExecutor, build_codex_command
+from rolo.stages.adapt.executor import (
+    CodexAdaptExecutor,
+    _recover_successful_handoff_pack,
+    build_codex_command,
+)
 from rolo.stages.adapt.models import AdapterAgentConfig, AdapterAgentResult, AdaptPlan
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.service import AdaptStageService
@@ -36,6 +40,51 @@ def test_adapter_agent_output_schema_is_strict_for_every_object() -> None:
                 assert_strict(child)
 
     assert_strict(schema)
+
+
+def test_executor_recovers_files_from_matching_successful_handoff_pack() -> None:
+    outputs = {
+        "adapter_manifest": "adapter-manifest.json",
+        "adapter_package": "adapter.py",
+        "state_graph": "state-graph.json",
+        "conformance_report": "conformance-report.json",
+    }
+    files = [
+        {
+            "path": "adapter.py",
+            "encoding": "base64",
+            "content": "cHJpbnQoJ29rJykK",
+            "sha256": "a" * 64,
+        }
+    ]
+    final_payload = {
+        "schema_version": "robot-adapter-agent-result/v2",
+        "summary": "packed",
+        "completed_tasks": [],
+        "changed_files": [],
+        "validation": [],
+        "blockers": [],
+        "handoff_ready": True,
+        "outputs": outputs,
+        "files": [],
+    }
+    events = json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "./rolo-agent-tool adapt handoff pack --robot demo",
+                "status": "completed",
+                "exit_code": 0,
+                "aggregated_output": json.dumps({"outputs": outputs, "files": files}),
+            },
+        }
+    )
+
+    recovered = _recover_successful_handoff_pack(final_payload, events)
+
+    assert recovered["files"] == files
+    assert AdapterAgentResult.model_validate(recovered).handoff_ready is True
 
 
 def test_streaming_runner_forwards_agent_output_without_a_default_deadline(

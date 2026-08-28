@@ -51,6 +51,48 @@ _INHERITED_ENVIRONMENT = {
 }
 _SANDBOX_TARGET_PATH = "_ROLO_ADAPTER_TARGET_PATH"
 
+_ADAPTER_CONTROL_ENVIRONMENT = {"ROLO_TARGET_ROUTE_BINDINGS_JSON"}
+
+
+def _admitted_adapter_control_environment(
+    source: Mapping[str, str],
+) -> dict[str, str]:
+    """Admit bounded ROLO-owned process controls outside target Runtime Context."""
+    admitted: dict[str, str] = {}
+    for name in _ADAPTER_CONTROL_ENVIRONMENT:
+        value = source.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value or len(value) > 1_000_000:
+            raise ValueError(f"invalid adapter control environment value for {name}")
+        if any(character in value for character in ("\x00", "\r", "\n")):
+            raise ValueError(f"adapter control environment contains control characters: {name}")
+        admitted[name] = value
+    return admitted
+
+
+def _current_real_user_task_count() -> int:
+    """Count Linux tasks charged to this real UID for RLIMIT_NPROC accounting."""
+    if os.name == "nt" or not Path("/proc").is_dir():
+        return 1
+    real_uid = os.getuid()
+    tasks = 0
+    for status_path in Path("/proc").glob("[0-9]*/status"):
+        try:
+            uid: int | None = None
+            threads = 1
+            for line in status_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("Uid:"):
+                    uid = int(line.split()[1])
+                elif line.startswith("Threads:"):
+                    threads = max(1, int(line.split()[1]))
+            if uid == real_uid:
+                tasks += threads
+        except (OSError, ValueError, IndexError):
+            continue
+    return max(1, tasks)
+
+
 def sanitized_adapter_environment(
     private_home: Path,
     runtime_environment: Mapping[str, str] | None = None,
@@ -76,6 +118,7 @@ def sanitized_adapter_environment(
         runtime_environment or {},
         include_executable_path=True,
     )
+    admitted.update(_admitted_adapter_control_environment(runtime_environment or {}))
     target_path = admitted.pop("PATH", None)
     if target_path:
         environment[_SANDBOX_TARGET_PATH] = target_path
@@ -259,9 +302,17 @@ class BoundedAdapterRunner:
                 resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
                 resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
                 if hasattr(resource, "RLIMIT_NPROC"):
+                    # RLIMIT_NPROC is charged against every task owned by the real
+                    # UID, not just this adapter subtree.  Reserve a bounded
+                    # *additional* budget so unrelated ROS executor threads do
+                    # not prevent bubblewrap from creating its namespace.
+                    process_limit = _current_real_user_task_count() + self.max_processes
+                    _, inherited_hard = resource.getrlimit(resource.RLIMIT_NPROC)
+                    if inherited_hard != resource.RLIM_INFINITY:
+                        process_limit = min(process_limit, inherited_hard)
                     resource.setrlimit(
                         resource.RLIMIT_NPROC,
-                        (self.max_processes,) * 2,
+                        (process_limit,) * 2,
                     )
                 if hasattr(resource, "RLIMIT_AS"):
                     resource.setrlimit(

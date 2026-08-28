@@ -107,7 +107,41 @@ def _selected_cli_directories(
         for route in candidate.route_evidence:
             if route.kind != "cli":
                 continue
-            endpoint = Path(route.endpoint).expanduser()
+            endpoints = [Path(route.endpoint).expanduser()]
+            linux_probe = report.probes.get("linux")
+            target_evidence = (
+                linux_probe.data.get("target_evidence", {})
+                if linux_probe is not None
+                else {}
+            )
+            help_records = (
+                target_evidence.get("executable_help", [])
+                if isinstance(target_evidence, Mapping)
+                else []
+            )
+            for record in help_records if isinstance(help_records, list) else []:
+                if not isinstance(record, Mapping):
+                    continue
+                raw_path = record.get("path")
+                executable_id = record.get("executable_id")
+                if not isinstance(raw_path, str):
+                    continue
+                target_path = Path(raw_path).expanduser()
+                if (
+                    route.provider_id == executable_id
+                    or target_path.name == Path(route.endpoint).name
+                ):
+                    endpoints.append(target_path)
+            endpoint = next(
+                (
+                    candidate_path
+                    for candidate_path in endpoints
+                    if candidate_path.is_absolute() and candidate_path.is_file()
+                ),
+                None,
+            )
+            if endpoint is None:
+                continue
             try:
                 available = endpoint.is_absolute() and endpoint.is_file()
             except OSError:
