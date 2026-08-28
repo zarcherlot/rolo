@@ -181,7 +181,8 @@ class Settings(BaseSettings):
     coding_agent_api_key_env: str = "CODING_AGENT_API_KEY"
     coding_agent_model: str | None = None
     coding_agent_executable: str = "codex"
-    coding_agent_timeout_s: int = 1800
+    # Agent runs are interactive; only impose a deadline when explicitly set.
+    coding_agent_timeout_s: int | None = None
     coding_agent_auto_install: bool = True
     coding_agent_require_auth: bool = True
     coding_agent_install_timeout_s: int = 300

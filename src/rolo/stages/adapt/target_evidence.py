@@ -7,6 +7,8 @@ freshness and an integrity signature that remains verifiable after transport.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -14,9 +16,11 @@ import os
 import platform
 import re
 import secrets
+import signal
 import stat
 import subprocess
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -49,9 +53,14 @@ MAX_CLOCK_SKEW = timedelta(minutes=2)
 MAX_REQUEST_LIFETIME = timedelta(minutes=5)
 MAX_HELP_EXECUTABLES = 4
 MAX_HELP_EXECUTABLE_BYTES = 250_000_000
+MAX_SSH_STDERR_BYTES = 1_000_000
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _SSH_TARGET_PATTERN = re.compile(r"^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$")
-_REMOTE_CONFIG_PATTERN = re.compile(r"^[/A-Za-z0-9_.-]+$")
+_REMOTE_PATH_PATTERN = re.compile(r"^[/A-Za-z0-9_.-]+$")
+_SSH_PUBLIC_KEY_TYPE_PATTERN = re.compile(
+    r"^(?:ssh-(?:ed25519|rsa)|ecdsa-sha2-nistp(?:256|384|521)|"
+    r"sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$"
+)
 
 
 def _utc_now() -> datetime:
@@ -68,9 +77,47 @@ def _canonical_json(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def restricted_collector_authorized_key(
+    public_key: str,
+    *,
+    collector_executable: str,
+    collector_config: str,
+) -> str:
+    """Build one injection-safe authorized_keys entry restricted to the Collector protocol."""
+    if not _REMOTE_PATH_PATTERN.fullmatch(collector_executable):
+        raise ValueError("collector_executable contains unsupported characters")
+    if not _REMOTE_PATH_PATTERN.fullmatch(collector_config):
+        raise ValueError("collector_config contains unsupported characters")
+    parts = public_key.strip().split()
+    if len(parts) < 2 or not _SSH_PUBLIC_KEY_TYPE_PATTERN.fullmatch(parts[0]):
+        raise ValueError("unsupported or invalid SSH public key")
+    try:
+        decoded = base64.b64decode(parts[1], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("SSH public key payload is invalid") from exc
+    if len(decoded) < 32:
+        raise ValueError("SSH public key payload is invalid")
+    forced_command = (
+        f"{collector_executable} target-evidence collector-run --config {collector_config}"
+    )
+    restrictions = (
+        "restrict,no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding"
+    )
+    return f'{restrictions},command="{forced_command}" {parts[0]} {parts[1]}'
+
+
 class EvidenceDeploymentMode(str, Enum):
     LOCAL = "local"
     REMOTE = "remote"
+
+
+class SSHTransportError(ValueError):
+    """Stable, redacted failure classification for the SSH evidence transport."""
+
+    def __init__(self, code: str, message: str, *, retryable: bool = False) -> None:
+        self.code = code
+        self.retryable = retryable
+        super().__init__(f"{code}: {message}")
 
 
 class CollectorHelpExecutable(BaseModel):
@@ -119,8 +166,10 @@ class EvidenceDeploymentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[
-        "robot-target-evidence-deployment/v1", "robot-target-evidence-deployment/v2"
-    ] = "robot-target-evidence-deployment/v2"
+        "robot-target-evidence-deployment/v1",
+        "robot-target-evidence-deployment/v2",
+        "robot-target-evidence-deployment/v3",
+    ] = "robot-target-evidence-deployment/v3"
     robot_id: str = Field(min_length=1, max_length=128)
     mode: EvidenceDeploymentMode
     collector: CollectorDescriptor
@@ -128,8 +177,13 @@ class EvidenceDeploymentConfig(BaseModel):
     verification_secret_sha256: str = Field(pattern=_SHA256_PATTERN)
     local_collector_state_path: str | None = None
     collector_config: str = ".rolo/config/target-evidence-collector.json"
+    collector_executable: str = "robotctl"
     ssh_target: str | None = None
     known_hosts_path: str | None = None
+    known_hosts_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    ssh_port: int | None = Field(default=None, ge=1, le=65535)
+    ssh_identity_file: str | None = None
+    ssh_identity_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     transition_id: str | None = Field(default=None, pattern=r"^transition-[0-9a-f]{32}$")
     configured_at: datetime = Field(default_factory=_utc_now)
 
@@ -140,11 +194,26 @@ class EvidenceDeploymentConfig(BaseModel):
         if self.mode == EvidenceDeploymentMode.REMOTE:
             if not self.ssh_target or not self.known_hosts_path:
                 raise ValueError("remote mode requires ssh_target and known_hosts_path")
+            if self.schema_version == "robot-target-evidence-deployment/v3":
+                if not self.known_hosts_sha256 or self.ssh_port is None:
+                    raise ValueError("remote mode requires pinned known_hosts content and SSH port")
             if not _SSH_TARGET_PATTERN.fullmatch(self.ssh_target):
                 raise ValueError("ssh_target contains unsupported characters")
-            if not _REMOTE_CONFIG_PATTERN.fullmatch(self.collector_config):
+            if not _REMOTE_PATH_PATTERN.fullmatch(self.collector_config):
                 raise ValueError("collector_config contains unsupported characters")
-        elif self.ssh_target or self.known_hosts_path:
+            if not _REMOTE_PATH_PATTERN.fullmatch(self.collector_executable):
+                raise ValueError("collector_executable contains unsupported characters")
+            if bool(self.ssh_identity_file) != bool(self.ssh_identity_sha256):
+                raise ValueError("SSH identity path and digest must be configured together")
+        elif (
+            self.ssh_target
+            or self.known_hosts_path
+            or self.known_hosts_sha256
+            or self.ssh_port is not None
+            or self.ssh_identity_file
+            or self.ssh_identity_sha256
+            or self.collector_executable != "robotctl"
+        ):
             raise ValueError("local mode cannot configure a remote transport")
         if self.mode == EvidenceDeploymentMode.LOCAL and not self.local_collector_state_path:
             raise ValueError("local mode requires local_collector_state_path")
@@ -158,9 +227,9 @@ class EvidenceDeploymentTransition(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-target-evidence-transition/v1"] = (
-        "robot-target-evidence-transition/v1"
-    )
+    schema_version: Literal[
+        "robot-target-evidence-transition/v1", "robot-target-evidence-transition/v2"
+    ] = "robot-target-evidence-transition/v2"
     transition_id: str = Field(pattern=r"^transition-[0-9a-f]{32}$")
     robot_id: str = Field(min_length=1, max_length=128)
     reason: str = Field(min_length=8, max_length=500)
@@ -172,6 +241,18 @@ class EvidenceDeploymentTransition(BaseModel):
     new_verification_secret_sha256: str = Field(pattern=_SHA256_PATTERN)
     previous_mode: EvidenceDeploymentMode
     new_mode: EvidenceDeploymentMode
+    previous_collector_executable: str
+    new_collector_executable: str
+    previous_collector_config: str | None = None
+    new_collector_config: str | None = None
+    previous_ssh_target: str | None = None
+    new_ssh_target: str | None = None
+    previous_ssh_port: int | None = None
+    new_ssh_port: int | None = None
+    previous_known_hosts_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    new_known_hosts_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    previous_ssh_identity_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    new_ssh_identity_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     authorized_at: datetime = Field(default_factory=_utc_now)
 
 
@@ -419,7 +500,10 @@ def configure_deployment(
     output_path: Path,
     ssh_target: str | None = None,
     known_hosts_path: Path | None = None,
+    ssh_port: int | None = None,
+    ssh_identity_file: Path | None = None,
     collector_config: str = ".rolo/config/target-evidence-collector.json",
+    collector_executable: str = "robotctl",
     local_collector_state_path: Path | None = None,
 ) -> EvidenceDeploymentConfig:
     config = _build_deployment_config(
@@ -429,7 +513,10 @@ def configure_deployment(
         verification_secret_path=verification_secret_path,
         ssh_target=ssh_target,
         known_hosts_path=known_hosts_path,
+        ssh_port=ssh_port,
+        ssh_identity_file=ssh_identity_file,
         collector_config=collector_config,
+        collector_executable=collector_executable,
         local_collector_state_path=local_collector_state_path,
     )
     if output_path.exists():
@@ -442,8 +529,13 @@ def configure_deployment(
             "verification_secret_sha256",
             "local_collector_state_path",
             "collector_config",
+            "collector_executable",
             "ssh_target",
             "known_hosts_path",
+            "known_hosts_sha256",
+            "ssh_port",
+            "ssh_identity_file",
+            "ssh_identity_sha256",
         }
         existing_stable = existing.model_dump(mode="json", include=stable_fields)
         proposed_stable = config.model_dump(mode="json", include=stable_fields)
@@ -527,7 +619,10 @@ def _build_deployment_config(
     verification_secret_path: Path,
     ssh_target: str | None,
     known_hosts_path: Path | None,
+    ssh_port: int | None,
+    ssh_identity_file: Path | None,
     collector_config: str,
+    collector_executable: str,
     local_collector_state_path: Path | None,
     transition_id: str | None = None,
 ) -> EvidenceDeploymentConfig:
@@ -551,11 +646,23 @@ def _build_deployment_config(
         ):
             raise ValueError("local collector signing and verification secrets differ")
     known_hosts = None
+    known_hosts_sha256 = None
     if known_hosts_path is not None:
         known_hosts_path = known_hosts_path.expanduser().resolve()
         if not known_hosts_path.is_file():
             raise ValueError("known_hosts_path must be an existing regular file")
         known_hosts = str(known_hosts_path)
+        known_hosts_sha256 = sha256_file(known_hosts_path)
+    identity_file = None
+    identity_sha256 = None
+    if ssh_identity_file is not None:
+        ssh_identity_file = ssh_identity_file.expanduser().resolve()
+        if not ssh_identity_file.is_file():
+            raise ValueError("ssh_identity_file must be an existing regular file")
+        if os.name != "nt" and stat.S_IMODE(ssh_identity_file.stat().st_mode) & 0o077:
+            raise ValueError("SSH identity permissions must not allow group or other access")
+        identity_file = str(ssh_identity_file)
+        identity_sha256 = sha256_file(ssh_identity_file)
     config = EvidenceDeploymentConfig(
         robot_id=robot_id,
         mode=mode,
@@ -564,7 +671,14 @@ def _build_deployment_config(
         verification_secret_sha256=verification_secret_sha256,
         ssh_target=ssh_target,
         known_hosts_path=known_hosts,
+        known_hosts_sha256=known_hosts_sha256,
+        ssh_port=(ssh_port if ssh_port is not None else 22)
+        if mode == EvidenceDeploymentMode.REMOTE
+        else None,
+        ssh_identity_file=identity_file,
+        ssh_identity_sha256=identity_sha256,
         collector_config=collector_config,
+        collector_executable=collector_executable,
         local_collector_state_path=(
             str(resolved_local_state) if resolved_local_state is not None else None
         ),
@@ -597,7 +711,10 @@ def reenroll_deployment(
     mode: EvidenceDeploymentMode | None = None,
     ssh_target: str | None = None,
     known_hosts_path: Path | None = None,
+    ssh_port: int | None = None,
+    ssh_identity_file: Path | None = None,
     collector_config: str | None = None,
+    collector_executable: str | None = None,
     local_collector_state_path: Path | None = None,
     transition_dir: Path | None = None,
 ) -> tuple[EvidenceDeploymentConfig, EvidenceDeploymentTransition, Path]:
@@ -610,14 +727,24 @@ def reenroll_deployment(
     transition_id = f"transition-{uuid4().hex}"
     selected_mode = mode or previous.mode
     selected_collector_config = collector_config or previous.collector_config
+    selected_collector_executable = collector_executable or previous.collector_executable
     selected_ssh_target = ssh_target if selected_mode == EvidenceDeploymentMode.REMOTE else None
     selected_known_hosts = (
         known_hosts_path if selected_mode == EvidenceDeploymentMode.REMOTE else None
+    )
+    selected_ssh_port = ssh_port if selected_mode == EvidenceDeploymentMode.REMOTE else None
+    selected_ssh_identity = (
+        ssh_identity_file if selected_mode == EvidenceDeploymentMode.REMOTE else None
     )
     if selected_mode == EvidenceDeploymentMode.REMOTE:
         selected_ssh_target = selected_ssh_target or previous.ssh_target
         selected_known_hosts = selected_known_hosts or (
             Path(previous.known_hosts_path) if previous.known_hosts_path else None
+        )
+        if selected_ssh_port is None:
+            selected_ssh_port = previous.ssh_port or 22
+        selected_ssh_identity = selected_ssh_identity or (
+            Path(previous.ssh_identity_file) if previous.ssh_identity_file else None
         )
     elif local_collector_state_path is None and previous.local_collector_state_path:
         local_collector_state_path = Path(previous.local_collector_state_path)
@@ -628,7 +755,10 @@ def reenroll_deployment(
         verification_secret_path=verification_secret_path,
         ssh_target=selected_ssh_target,
         known_hosts_path=selected_known_hosts,
+        ssh_port=selected_ssh_port,
+        ssh_identity_file=selected_ssh_identity,
         collector_config=selected_collector_config,
+        collector_executable=selected_collector_executable,
         local_collector_state_path=local_collector_state_path,
         transition_id=transition_id,
     )
@@ -637,8 +767,18 @@ def reenroll_deployment(
         and proposed.verification_secret_sha256 == previous.verification_secret_sha256
         and proposed.mode == previous.mode
         and proposed.collector_config == previous.collector_config
+        and proposed.collector_executable == previous.collector_executable
+        and proposed.ssh_target == previous.ssh_target
+        and proposed.known_hosts_path == previous.known_hosts_path
+        and proposed.known_hosts_sha256 == previous.known_hosts_sha256
+        and proposed.ssh_port == previous.ssh_port
+        and proposed.ssh_identity_file == previous.ssh_identity_file
+        and proposed.ssh_identity_sha256 == previous.ssh_identity_sha256
+        and proposed.local_collector_state_path == previous.local_collector_state_path
     ):
-        raise ValueError("re-enrollment must change collector identity, credentials, or mode")
+        raise ValueError(
+            "re-enrollment must change collector identity, credentials, mode, or transport"
+        )
     transition = EvidenceDeploymentTransition(
         transition_id=transition_id,
         robot_id=previous.robot_id,
@@ -651,6 +791,18 @@ def reenroll_deployment(
         new_verification_secret_sha256=proposed.verification_secret_sha256,
         previous_mode=previous.mode,
         new_mode=proposed.mode,
+        previous_collector_executable=previous.collector_executable,
+        new_collector_executable=proposed.collector_executable,
+        previous_collector_config=previous.collector_config,
+        new_collector_config=proposed.collector_config,
+        previous_ssh_target=previous.ssh_target,
+        new_ssh_target=proposed.ssh_target,
+        previous_ssh_port=previous.ssh_port,
+        new_ssh_port=proposed.ssh_port,
+        previous_known_hosts_sha256=previous.known_hosts_sha256,
+        new_known_hosts_sha256=proposed.known_hosts_sha256,
+        previous_ssh_identity_sha256=previous.ssh_identity_sha256,
+        new_ssh_identity_sha256=proposed.ssh_identity_sha256,
     )
     transitions = (
         transition_dir.expanduser().resolve()
@@ -670,9 +822,68 @@ def reenroll_deployment(
 
 def load_deployment(path: Path) -> EvidenceDeploymentConfig:
     try:
-        return EvidenceDeploymentConfig.model_validate_json(path.read_text(encoding="utf-8"))
+        deployment = EvidenceDeploymentConfig.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"invalid target evidence deployment: {exc}") from exc
+    if (
+        deployment.mode == EvidenceDeploymentMode.REMOTE
+        and deployment.schema_version != "robot-target-evidence-deployment/v3"
+    ):
+        known_hosts = Path(deployment.known_hosts_path or "").expanduser().resolve()
+        if not known_hosts.is_file():
+            raise ValueError(
+                "legacy remote deployment cannot migrate because known_hosts is unavailable"
+            )
+        identity = (
+            Path(deployment.ssh_identity_file).expanduser().resolve()
+            if deployment.ssh_identity_file
+            else None
+        )
+        if identity is not None and not identity.is_file():
+            raise ValueError(
+                "legacy remote deployment cannot migrate because its SSH identity is unavailable"
+            )
+        deployment = deployment.model_copy(
+            update={
+                "schema_version": "robot-target-evidence-deployment/v3",
+                "known_hosts_sha256": sha256_file(known_hosts),
+                "ssh_port": deployment.ssh_port or 22,
+                "ssh_identity_sha256": sha256_file(identity) if identity is not None else None,
+            }
+        )
+        deployment = EvidenceDeploymentConfig.model_validate(deployment.model_dump(mode="json"))
+        _atomic_write_text(path, deployment.model_dump_json(indent=2) + "\n")
+    return deployment
+
+
+def verify_ssh_transport_pins(deployment: EvidenceDeploymentConfig) -> None:
+    """Fail before SSH when persisted transport files differ from their enrollment pins."""
+    if deployment.mode != EvidenceDeploymentMode.REMOTE:
+        raise ValueError("SSH transport pin verification requires remote deployment mode")
+    known_hosts = Path(deployment.known_hosts_path or "").expanduser().resolve()
+    if not known_hosts.is_file():
+        raise SSHTransportError("SSH_KNOWN_HOSTS_UNAVAILABLE", "pinned known_hosts is unavailable")
+    if sha256_file(known_hosts) != deployment.known_hosts_sha256:
+        raise SSHTransportError(
+            "SSH_HOST_KEY_PIN_CHANGED",
+            "known_hosts content differs from its enrollment pin; use explicit re-enrollment",
+        )
+    if deployment.ssh_identity_file:
+        identity = Path(deployment.ssh_identity_file).expanduser().resolve()
+        if not identity.is_file():
+            raise SSHTransportError(
+                "SSH_IDENTITY_UNAVAILABLE", "pinned SSH identity file is unavailable"
+            )
+        if os.name != "nt" and stat.S_IMODE(identity.stat().st_mode) & 0o077:
+            raise SSHTransportError(
+                "SSH_IDENTITY_PERMISSIONS",
+                "SSH identity permissions allow group or other access",
+            )
+        if sha256_file(identity) != deployment.ssh_identity_sha256:
+            raise SSHTransportError(
+                "SSH_IDENTITY_PIN_CHANGED",
+                "SSH identity content differs from its enrollment pin; use explicit re-enrollment",
+            )
 
 
 def new_request(
@@ -926,17 +1137,11 @@ def verify_evidence_bundle(
     return bound
 
 
-def collect_over_ssh(
+def _ssh_transport_command(
     deployment: EvidenceDeploymentConfig,
-    request: TargetEvidenceRequest,
     *,
-    timeout_s: float = 45.0,
-) -> TargetEvidenceBundle:
-    if deployment.mode != EvidenceDeploymentMode.REMOTE:
-        raise ValueError("SSH collection requires remote deployment mode")
-    known_hosts = Path(deployment.known_hosts_path or "").expanduser().resolve()
-    if not known_hosts.is_file():
-        raise ValueError("pinned SSH known_hosts file is unavailable")
+    connect_timeout_s: float,
+) -> list[str]:
     command = [
         "ssh",
         "-o",
@@ -944,34 +1149,182 @@ def collect_over_ssh(
         "-o",
         "StrictHostKeyChecking=yes",
         "-o",
-        f"UserKnownHostsFile={known_hosts}",
-        deployment.ssh_target or "",
-        "robotctl",
-        "target-evidence",
-        "collector-run",
-        "--config",
-        deployment.collector_config,
+        f"UserKnownHostsFile={Path(deployment.known_hosts_path or '').expanduser().resolve()}",
+        "-o",
+        f"ConnectTimeout={max(1, min(15, int(connect_timeout_s)))}",
+        "-o",
+        "ConnectionAttempts=1",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=2",
+        "-o",
+        "RequestTTY=no",
+        "-o",
+        "ClearAllForwardings=yes",
+        "-o",
+        "LogLevel=ERROR",
+        "-p",
+        str(deployment.ssh_port or 22),
     ]
-    try:
-        completed = subprocess.run(
-            command,
-            input=request.model_dump_json(),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_s,
-            check=False,
+    if deployment.ssh_identity_file:
+        command.extend(
+            [
+                "-o",
+                "IdentitiesOnly=yes",
+                "-i",
+                str(Path(deployment.ssh_identity_file).expanduser().resolve()),
+            ]
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError(f"remote target evidence transport failed: {exc}") from exc
-    if completed.returncode != 0:
-        raise ValueError(
-            "remote target evidence collector failed: " + completed.stderr.strip()[:1000]
-        )
-    if len(completed.stdout.encode("utf-8")) > MAX_BUNDLE_BYTES:
-        raise ValueError("remote target evidence bundle exceeded its size limit")
+    command.extend(
+        [
+            deployment.ssh_target or "",
+            deployment.collector_executable,
+            "target-evidence",
+            "collector-run",
+            "--config",
+            deployment.collector_config,
+        ]
+    )
+    return command
+
+
+def _stop_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
     try:
-        return TargetEvidenceBundle.model_validate_json(completed.stdout)
+        if os.name != "nt":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except (OSError, ProcessLookupError):
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _classify_ssh_failure(returncode: int, stderr: str) -> SSHTransportError:
+    message = stderr.strip()[:1000] or f"SSH exited with status {returncode}"
+    lowered = message.lower()
+    if (
+        "host key verification failed" in lowered
+        or "remote host identification has changed" in lowered
+    ):
+        return SSHTransportError("SSH_HOST_KEY_MISMATCH", message)
+    if "permission denied" in lowered or "no supported authentication methods" in lowered:
+        return SSHTransportError("SSH_AUTH_FAILED", message)
+    if "could not resolve hostname" in lowered or "name or service not known" in lowered:
+        return SSHTransportError("SSH_DNS_FAILED", message, retryable=True)
+    if "connection refused" in lowered:
+        return SSHTransportError("SSH_CONNECTION_REFUSED", message, retryable=True)
+    if "connection timed out" in lowered or "operation timed out" in lowered:
+        return SSHTransportError("SSH_TIMEOUT", message, retryable=True)
+    if any(
+        phrase in lowered
+        for phrase in ("connection reset", "connection closed", "broken pipe", "connection aborted")
+    ):
+        return SSHTransportError("SSH_CONNECTION_LOST", message, retryable=True)
+    if returncode == 255:
+        return SSHTransportError("SSH_TRANSPORT_FAILED", message)
+    return SSHTransportError("COLLECTOR_REJECTED", message)
+
+
+def _run_ssh_transport(command: Sequence[str], request: bytes, *, timeout_s: float) -> bytes:
+    with (
+        tempfile.TemporaryFile() as request_stream,
+        tempfile.TemporaryFile() as stdout_stream,
+        tempfile.TemporaryFile() as stderr_stream,
+    ):
+        request_stream.write(request)
+        request_stream.seek(0)
+        popen_options: dict[str, object] = {
+            "stdin": request_stream,
+            "stdout": stdout_stream,
+            "stderr": stderr_stream,
+        }
+        if os.name == "nt":
+            popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_options["start_new_session"] = True
+        try:
+            process = subprocess.Popen(list(command), **popen_options)
+        except OSError as exc:
+            raise SSHTransportError("SSH_CLIENT_UNAVAILABLE", str(exc)) from exc
+        deadline = time.monotonic() + timeout_s
+        while process.poll() is None:
+            if os.fstat(stdout_stream.fileno()).st_size > MAX_BUNDLE_BYTES:
+                _stop_process(process)
+                raise SSHTransportError(
+                    "SSH_OUTPUT_LIMIT", "remote target evidence bundle exceeded its size limit"
+                )
+            if os.fstat(stderr_stream.fileno()).st_size > MAX_SSH_STDERR_BYTES:
+                _stop_process(process)
+                raise SSHTransportError(
+                    "SSH_ERROR_OUTPUT_LIMIT", "SSH error output exceeded its size limit"
+                )
+            if time.monotonic() >= deadline:
+                _stop_process(process)
+                raise SSHTransportError(
+                    "SSH_TIMEOUT", "remote target evidence transport timed out", retryable=True
+                )
+            time.sleep(0.02)
+        stdout_size = os.fstat(stdout_stream.fileno()).st_size
+        if stdout_size > MAX_BUNDLE_BYTES:
+            raise SSHTransportError(
+                "SSH_OUTPUT_LIMIT", "remote target evidence bundle exceeded its size limit"
+            )
+        if os.fstat(stderr_stream.fileno()).st_size > MAX_SSH_STDERR_BYTES:
+            raise SSHTransportError(
+                "SSH_ERROR_OUTPUT_LIMIT", "SSH error output exceeded its size limit"
+            )
+        stderr_stream.seek(0)
+        stderr = stderr_stream.read(MAX_SSH_STDERR_BYTES).decode("utf-8", errors="replace")
+        if process.returncode != 0:
+            raise _classify_ssh_failure(process.returncode or 1, stderr)
+        stdout_stream.seek(0)
+        return stdout_stream.read(MAX_BUNDLE_BYTES + 1)
+
+
+def collect_over_ssh(
+    deployment: EvidenceDeploymentConfig,
+    request: TargetEvidenceRequest,
+    *,
+    timeout_s: float = 45.0,
+    max_attempts: int = 2,
+) -> TargetEvidenceBundle:
+    if deployment.mode != EvidenceDeploymentMode.REMOTE:
+        raise ValueError("SSH collection requires remote deployment mode")
+    if not 1 <= max_attempts <= 3:
+        raise ValueError("SSH collection attempts must be between 1 and 3")
+    verify_ssh_transport_pins(deployment)
+    deadline = time.monotonic() + timeout_s
+    response: bytes | None = None
+    for attempt in range(max_attempts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SSHTransportError("SSH_TIMEOUT", "remote target evidence transport timed out")
+        command = _ssh_transport_command(deployment, connect_timeout_s=remaining)
+        try:
+            response = _run_ssh_transport(
+                command,
+                request.model_dump_json().encode("utf-8"),
+                timeout_s=remaining,
+            )
+            break
+        except SSHTransportError as exc:
+            if not exc.retryable or attempt + 1 >= max_attempts:
+                raise
+            delay = min(0.25 * (2**attempt), max(0.0, deadline - time.monotonic()))
+            if delay:
+                time.sleep(delay)
+    if response is None:
+        raise SSHTransportError("SSH_TRANSPORT_FAILED", "SSH transport returned no response")
+    try:
+        return TargetEvidenceBundle.model_validate_json(response)
     except ValueError as exc:
-        raise ValueError(f"remote target evidence collector returned invalid JSON: {exc}") from exc
+        raise SSHTransportError(
+            "COLLECTOR_INVALID_BUNDLE", f"remote collector returned invalid JSON: {exc}"
+        ) from exc

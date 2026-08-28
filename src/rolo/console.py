@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 import tempfile
@@ -126,22 +127,25 @@ class RoloConsole:
 
     def _execute(self, intent, output_stream: TextIO, *, confirmed: bool = False) -> None:
         try:
-            result = self.service.execute(
-                intent,
-                confirmed=confirmed,
-                on_output=(
-                    lambda stream, line: self._render_agent_output(
-                        stream, line, output_stream
-                    )
-                    if intent.operation
-                    in {
-                        NaturalLanguageOperation.ADAPT_START,
-                        NaturalLanguageOperation.DIAGNOSE_RUN,
-                        NaturalLanguageOperation.VERIFY_RUN,
-                    }
-                    else None
-                ),
+            stream_callback = None
+            if intent.operation in {
+                NaturalLanguageOperation.ADAPT_START,
+                NaturalLanguageOperation.DIAGNOSE_RUN,
+                NaturalLanguageOperation.VERIFY_RUN,
+            }:
+                def stream_callback(stream: str, line: str) -> None:
+                    self._render_agent_output(stream, line, output_stream)
+            parameters = inspect.signature(self.service.execute).parameters
+            accepts_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
             )
+            kwargs = {}
+            if accepts_kwargs or "confirmed" in parameters:
+                kwargs["confirmed"] = confirmed
+            if accepts_kwargs or "on_output" in parameters:
+                kwargs["on_output"] = stream_callback
+            result = self.service.execute(intent, **kwargs)
         except (OSError, ValueError) as exc:
             self._write(output_stream, f"ERROR EXECUTION_FAILED: {exc}")
             return
@@ -166,7 +170,7 @@ class RoloConsole:
             with tempfile.TemporaryDirectory(prefix="rolo-chat-") as temporary:
                 _, stderr, code = self.harness.run(
                     HarnessRequest(prompt=prompt, workspace=Path(temporary)),
-                    on_output=lambda stream, line: self._render_agent_output(
+                    on_output=lambda stream, line: self._render_chat_output(
                         stream, line, output_stream
                     ),
                 )
@@ -178,6 +182,11 @@ class RoloConsole:
         return True
 
     def _render_agent_output(self, stream: str, line: str, output_stream: TextIO) -> None:
+        if line:
+            prefix = "Agent" if stream == "stdout" else "Agent stderr"
+            self._write(output_stream, f"{prefix}> {line}")
+
+    def _render_chat_output(self, stream: str, line: str, output_stream: TextIO) -> None:
         if line:
             prefix = "agent" if stream == "stdout" else "agent stderr"
             self._write(output_stream, f"[{prefix}] {line[:8_000]}")

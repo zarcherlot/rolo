@@ -18,12 +18,12 @@ from rolo.capabilities import (
 )
 from rolo.capabilities import SemanticLayer as CapabilitySemanticLayer
 from rolo.core.models import DiscoveryReport
-from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.adapt.operation_governance import (
     SemanticLayer as GovernanceSemanticLayer,
 )
 from rolo.stages.adapt.operation_governance import load_operation_dispositions
 from rolo.stages.adapt.workset import TargetOperationSlice
+from rolo.stages.artifact_paths import ArtifactLayout
 
 
 class TargetOperationSliceShadowReport(BaseModel):

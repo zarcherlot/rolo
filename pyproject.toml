@@ -49,6 +49,7 @@ addopts = "-q"
 testpaths = ["tests"]
 markers = [
   "lerobot: opt-in integration test requiring a separately installed LeRobot checkout",
+  "ssh: opt-in integration test requiring OpenSSH client and server",
 ]
 
 [tool.ruff]

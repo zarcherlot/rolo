@@ -55,9 +55,12 @@ no separate `init`, evidence collection, or Discovery command:
 uv run robotctl adapt start \
   --robot-id "$ROBOT_ID" \
   --project-root /path/to/robot-workspace \
-  --urdf /path/to/robot.urdf \
-  --timeout 1800
+  --urdf /path/to/robot.urdf
 ```
+
+Adapter Agent runs do not have an implicit 1800-second cutoff. The interactive console streams
+Agent events while the run is active; set `--timeout <seconds>` only when a bounded deadline is
+required by automation or CI.
 
 The command idempotently enrolls the robot and local collector, creates a fresh signed target
 evidence bundle, binds its Hardware/Linux/Application and optional ROS probes to Discovery, runs the

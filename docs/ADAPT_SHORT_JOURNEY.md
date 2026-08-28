@@ -53,6 +53,12 @@ rolo adapt /path/to/robot-workspace \
 控制器与目标机分离时，首次 descriptor、secret 和 SSH host-key pin 仍需独立置备；完成后
 使用 `robotctl adapt start --evidence-mode remote`，Journey 会通过固定 collector 采集、验签，
 且任何远程失败都不会回退到控制器 host probes。
+若目标侧仅按仓库方式执行过 `uv sync --frozen`，请同时传入
+`--collector-executable /path/to/rolo/.venv/bin/robotctl`，将 SSH 固定命令绑定到目标虚拟环境；
+该路径会随部署 pin 持久化，后续修改必须显式 re-enroll。
+生产连接还可固定 `--ssh-port` 与 `--ssh-identity-file`；`known_hosts` 和身份文件内容摘要
+会在每次连接前复核。先运行 `robotctl target-evidence preflight --robot ROBOT_ID`，再执行
+Journey。瞬时网络故障默认最多尝试两次，认证、Host Key、签名或 Collector 拒绝不会重试。
 
 ## ROLO 开发者：保留可拆解路径
 

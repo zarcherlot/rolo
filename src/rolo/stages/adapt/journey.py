@@ -224,9 +224,10 @@ class AdaptJourneyService:
         active_probe: ActiveProbeMode,
         run_agent: bool,
         scratch_root: Path | None,
-        timeout_s: int,
+        timeout_s: int | None,
         evidence_deployment: EvidenceDeploymentConfig | None = None,
         evidence_timeout_s: float = 45.0,
+        evidence_max_attempts: int = 2,
         on_output: Callable[[str, str], None] | None = None,
     ) -> AdaptJourneyResult:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
@@ -280,6 +281,7 @@ class AdaptJourneyService:
                         evidence_deployment,
                         request,
                         timeout_s=evidence_timeout_s,
+                        max_attempts=evidence_max_attempts,
                     )
                 target_probes = verify_evidence_bundle(
                     bundle,

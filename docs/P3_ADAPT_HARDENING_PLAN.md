@@ -88,6 +88,16 @@ release 继续由原 eligibility 决定。权限扩张、空 Slice 或预算超�
 
 状态：已完成首版。提供 `adapt slice-observability` 只读命令和严格稳定性报告 Schema。
 
+Capability shadow 同样提供只读聚合命令：
+
+```bash
+uv run robotctl adapt capability-observability --robot <robot-id> --max-runs 50
+```
+
+该命令聚合 `capability-resolution-shadow.json`，统计 `RESOLVED`、`UNAVAILABLE` 和
+`AMBIGUOUS`，仅输出 `INSUFFICIENT_DATA`、`HOLD` 或 `READY_FOR_REVIEW` 建议，始终
+保持 `influences_release=false`，不会改变 eligibility、Catalog 或 release。
+
 ## 当前基线影响
 
 | 项目 | P3 首批影响 |

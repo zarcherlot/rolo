@@ -260,7 +260,7 @@ def test_adapt_start_collects_remote_pinned_evidence_in_the_same_journey(
     known_hosts.write_text("target ssh-ed25519 AAAATEST\n", encoding="utf-8")
     monkeypatch.setattr(
         "rolo.stages.adapt.journey.collect_over_ssh",
-        lambda deployment, request, *, timeout_s: collect_target_evidence(
+        lambda deployment, request, *, timeout_s, max_attempts: collect_target_evidence(
             request,
             load_collector_state(target_state),
         ),

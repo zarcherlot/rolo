@@ -92,10 +92,8 @@ def test_capability_shadow_stability_is_release_neutral_and_counts_runs(tmp_path
                 "operation": "linux.process.list",
                 "capability_id": "os.workload.inspect",
                 "capability_version": "1.0",
-                "semantic_layer": "os",
                 "status": "UNAVAILABLE",
                 "provider_id": None,
-                "provider_version": None,
                 "reason": "no provider",
             }
         ],
@@ -125,10 +123,9 @@ def test_capability_shadow_stability_holds_on_ambiguous_resolution(tmp_path: Pat
                 "operation": "linux.process.list",
                 "capability_id": "os.workload.inspect",
                 "capability_version": "1.0",
-                "semantic_layer": "os",
                 "status": "AMBIGUOUS",
                 "provider_id": None,
-                "provider_version": None,
+                "candidate_provider_ids": ["provider-a", "provider-b"],
                 "reason": "two providers",
             }
         ],

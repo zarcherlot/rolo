@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
 import threading
+import time
 import zlib
 from collections.abc import Callable
 from datetime import timedelta
@@ -272,7 +274,7 @@ class CodexAdaptExecutor:
         *,
         robot_id: str,
         workspace: Path,
-        timeout_s: int = 1800,
+        timeout_s: int | None = None,
         plan: AdaptPlan,
         slice_canary: bool = False,
         on_output: Callable[[str, str], None] | None = None,
@@ -280,7 +282,7 @@ class CodexAdaptExecutor:
         workspace = workspace.resolve()
         if not workspace.is_dir():
             raise ValueError(f"Adapter Agent workspace is not a directory: {workspace}")
-        if timeout_s < 1:
+        if timeout_s is not None and timeout_s < 1:
             raise ValueError("Adapter Agent timeout must be at least one second")
         if plan.robot_id != robot_id:
             raise ValueError("Adapter Agent plan robot_id does not match the execution request")
@@ -599,15 +601,10 @@ class CodexAdaptExecutor:
         prompt: str,
         cwd: Path,
         environment: dict[str, str],
-        timeout_s: int,
+        timeout_s: int | None,
         on_output: Callable[[str, str], None],
     ) -> tuple[str, str, int]:
-        """Run Codex while forwarding bounded line output to the active UI.
-
-        stdout and stderr are drained concurrently so a verbose provider cannot
-        deadlock the child process. The complete streams are still returned for
-        the immutable audit artifact; the callback is only a presentation sink.
-        """
+        """Run Codex while forwarding stdout/stderr lines as they arrive."""
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -625,36 +622,66 @@ class CodexAdaptExecutor:
         assert process.stderr is not None
         process.stdin.write(prompt)
         process.stdin.close()
-        streams: dict[str, list[str]] = {"stdout": [], "stderr": []}
+        output_queue: queue.Queue[tuple[str, str] | None] = queue.Queue()
+        streams = (("stdout", process.stdout), ("stderr", process.stderr))
 
-        def drain(name: str, pipe) -> None:
-            for line in iter(pipe.readline, ""):
-                streams[name].append(line)
-                on_output(name, CodexAdaptExecutor._presentation_line(line))
-            pipe.close()
+        def pump(kind: str, stream: Any) -> None:
+            try:
+                for line in iter(stream.readline, ""):
+                    output_queue.put((kind, line))
+            finally:
+                stream.close()
+                output_queue.put(None)
 
-        workers = [
-            threading.Thread(target=drain, args=("stdout", process.stdout), daemon=True),
-            threading.Thread(target=drain, args=("stderr", process.stderr), daemon=True),
+        readers = [
+            threading.Thread(target=pump, args=(kind, stream), daemon=True)
+            for kind, stream in streams
         ]
-        for worker in workers:
-            worker.start()
+        for reader in readers:
+            reader.start()
+
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        finished_readers = 0
+        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
+        timed_out = False
+        while finished_readers < len(readers):
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            if remaining == 0.0:
+                timed_out = True
+                process.kill()
+                deadline = None
+            try:
+                item = output_queue.get(timeout=0.1 if remaining is None else min(0.1, remaining))
+            except queue.Empty:
+                if process.poll() is not None and all(not reader.is_alive() for reader in readers):
+                    break
+                continue
+            if item is None:
+                finished_readers += 1
+                continue
+            kind, line = item
+            if kind == "stdout":
+                stdout_chunks.append(line)
+            else:
+                stderr_chunks.append(line)
+            on_output(kind, CodexAdaptExecutor._presentation_line(line))
+
+        for reader in readers:
+            reader.join(timeout=1)
         try:
-            process.wait(timeout=timeout_s)
-        except subprocess.TimeoutExpired as exc:
+            returncode = process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
             process.kill()
-            process.wait()
-            for worker in workers:
-                worker.join(timeout=2)
+            returncode = process.wait()
+        if timed_out:
             raise subprocess.TimeoutExpired(
-                exc.cmd,
-                exc.timeout,
-                output="".join(streams["stdout"]),
-                stderr="".join(streams["stderr"]),
-            ) from exc
-        for worker in workers:
-            worker.join(timeout=2)
-        return "".join(streams["stdout"]), "".join(streams["stderr"]), process.returncode
+                command,
+                timeout_s,
+                output="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+            )
+        return "".join(stdout_chunks), "".join(stderr_chunks), returncode
 
     @staticmethod
     def _presentation_line(line: str) -> str:

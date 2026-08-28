@@ -66,6 +66,10 @@ def run_adapt_start(
     known_hosts: Path | None,
     collector_config: str,
     evidence_timeout: float,
+    collector_executable: str | None = None,
+    ssh_port: int | None = None,
+    ssh_identity_file: Path | None = None,
+    evidence_attempts: int = 2,
     on_output: Callable[[str, str], None] | None = None,
 ) -> AdaptJourneyResult:
     """Run the shared Adapt start application service used by product and expert CLIs."""
@@ -81,7 +85,12 @@ def run_adapt_start(
     )
     if active_probe == ActiveProbeMode.RUNTIME_READONLY:
         if evidence_mode == EvidenceDeploymentMode.LOCAL:
-            if any(value is not None for value in remote_options):
+            if (
+                collector_executable is not None
+                or ssh_port is not None
+                or ssh_identity_file is not None
+                or any(value is not None for value in remote_options)
+            ):
                 raise ValueError("local evidence mode does not accept remote collector options")
             _, ros_setup_files = select_ros_setup_files(
                 auto_source=settings.ros_auto_source,
@@ -107,6 +116,24 @@ def run_adapt_start(
                 evidence_deployment = load_deployment(deployment_path)
                 if evidence_deployment.mode != EvidenceDeploymentMode.REMOTE:
                     raise ValueError("existing target evidence deployment is not remote")
+                if (
+                    collector_executable is not None
+                    and collector_executable != evidence_deployment.collector_executable
+                ):
+                    raise ValueError(
+                        "target collector executable is already pinned; use explicit "
+                        "re-enrollment to change it"
+                    )
+                if ssh_port is not None and ssh_port != evidence_deployment.ssh_port:
+                    raise ValueError(
+                        "SSH port is already pinned; use explicit re-enrollment to change it"
+                    )
+                if ssh_identity_file is not None and str(
+                    ssh_identity_file.expanduser().resolve()
+                ) != evidence_deployment.ssh_identity_file:
+                    raise ValueError(
+                        "SSH identity is already pinned; use explicit re-enrollment to change it"
+                    )
             else:
                 if not all(value is not None for value in remote_options):
                     raise ValueError(
@@ -125,10 +152,18 @@ def run_adapt_start(
                     output_path=deployment_path,
                     ssh_target=ssh_target,
                     known_hosts_path=known_hosts,
+                    ssh_port=ssh_port,
+                    ssh_identity_file=ssh_identity_file,
                     collector_config=collector_config,
+                    collector_executable=collector_executable or "robotctl",
                 )
-    elif evidence_mode == EvidenceDeploymentMode.REMOTE or allow_executable or any(
-        value is not None for value in remote_options
+    elif (
+        evidence_mode == EvidenceDeploymentMode.REMOTE
+        or allow_executable
+        or collector_executable is not None
+        or ssh_port is not None
+        or ssh_identity_file is not None
+        or any(value is not None for value in remote_options)
     ):
         raise ValueError("target evidence options require --active-probe runtime-readonly")
     return AdaptJourneyService(
@@ -147,6 +182,7 @@ def run_adapt_start(
         timeout_s=timeout or settings.coding_agent_timeout_s,
         evidence_deployment=evidence_deployment,
         evidence_timeout_s=evidence_timeout,
+        evidence_max_attempts=evidence_attempts,
         on_output=on_output,
     )
 
@@ -217,14 +253,30 @@ def adapt_stage_start(
         Path | None,
         typer.Option("--known-hosts", help="Pinned SSH known_hosts file"),
     ] = None,
+    ssh_port: Annotated[int | None, typer.Option("--ssh-port", min=1, max=65535)] = None,
+    ssh_identity_file: Annotated[
+        Path | None,
+        typer.Option("--ssh-identity-file", help="Pinned controller-side SSH private key"),
+    ] = None,
     collector_config: Annotated[
         str,
         typer.Option("--collector-config", help="Collector state path on the remote target"),
     ] = ".rolo/config/target-evidence-collector.json",
+    collector_executable: Annotated[
+        str | None,
+        typer.Option(
+            "--collector-executable",
+            help="Pinned robotctl executable name or absolute path on the remote target",
+        ),
+    ] = None,
     evidence_timeout: Annotated[
         float,
         typer.Option("--evidence-timeout", min=1.0, max=300.0),
     ] = 45.0,
+    evidence_attempts: Annotated[
+        int,
+        typer.Option("--evidence-attempts", min=1, max=3),
+    ] = 2,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
     try:
@@ -244,6 +296,10 @@ def adapt_stage_start(
             known_hosts=known_hosts,
             collector_config=collector_config,
             evidence_timeout=evidence_timeout,
+            collector_executable=collector_executable,
+            ssh_port=ssh_port,
+            ssh_identity_file=ssh_identity_file,
+            evidence_attempts=evidence_attempts,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

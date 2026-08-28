@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import base64
 import json
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import rolo.stages.adapt.target_evidence as target_evidence_module
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -25,6 +26,7 @@ from rolo.stages.adapt.ros_environment import select_ros_setup_files
 from rolo.stages.adapt.software_relevance import SoftwareDiscoveryPolicy
 from rolo.stages.adapt.target_evidence import (
     EvidenceDeploymentMode,
+    SSHTransportError,
     collect_over_ssh,
     collect_target_evidence,
     configure_deployment,
@@ -34,6 +36,7 @@ from rolo.stages.adapt.target_evidence import (
     load_deployment,
     new_request,
     reenroll_deployment,
+    restricted_collector_authorized_key,
     stage_collector_rotation,
     verify_evidence_bundle,
 )
@@ -74,6 +77,26 @@ def _stub_probes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rolo.stages.adapt.target_evidence.HardwareProbe", Hardware)
     monkeypatch.setattr("rolo.stages.adapt.target_evidence.LinuxProbe", Linux)
     monkeypatch.setattr("rolo.stages.adapt.target_evidence.RosProbe", Ros)
+
+
+def test_collector_authorized_key_is_forced_and_rejects_command_injection() -> None:
+    key = "ssh-ed25519 " + base64.b64encode(b"a" * 48).decode("ascii") + " ignored-comment"
+
+    entry = restricted_collector_authorized_key(
+        key,
+        collector_executable="/opt/rolo/.venv/bin/robotctl",
+        collector_config="/etc/rolo/collector.json",
+    )
+
+    assert entry.startswith("restrict,no-agent-forwarding,no-port-forwarding,no-pty")
+    assert 'command="/opt/rolo/.venv/bin/robotctl target-evidence collector-run ' in entry
+    assert "ignored-comment" not in entry
+    with pytest.raises(ValueError, match="unsupported characters"):
+        restricted_collector_authorized_key(
+            key,
+            collector_executable="robotctl;sh",
+            collector_config="/etc/rolo/collector.json",
+        )
 
 
 def test_local_bundle_is_target_bound_signed_and_read_only(
@@ -421,6 +444,98 @@ def test_remote_transport_pins_known_hosts_and_invokes_only_collector(
     _stub_probes(monkeypatch)
     known_hosts = tmp_path / "known_hosts"
     known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("test-only-private-key\n", encoding="utf-8")
+    identity.chmod(0o600)
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+        ssh_port=2222,
+        ssh_identity_file=identity,
+        collector_executable="/opt/rolo/.venv/bin/robotctl",
+    )
+    request = new_request("wheeltec")
+    bundle = collect_target_evidence(request, load_collector_state(state_path))
+    captured: dict[str, object] = {}
+
+    def fake_transport(command, request_bytes, *, timeout_s):
+        del timeout_s
+        captured["command"] = command
+        captured["input"] = request_bytes
+        return bundle.model_dump_json().encode("utf-8")
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence._run_ssh_transport", fake_transport
+    )
+    received = collect_over_ssh(deployment, request)
+
+    command = captured["command"]
+    assert "StrictHostKeyChecking=yes" in command
+    assert f"UserKnownHostsFile={known_hosts.resolve()}" in command
+    assert deployment.known_hosts_sha256 is not None
+    assert deployment.ssh_port == 2222
+    assert deployment.ssh_identity_sha256 is not None
+    assert "IdentitiesOnly=yes" in command
+    assert str(identity.resolve()) in command
+    assert command[-5:] == [
+        "/opt/rolo/.venv/bin/robotctl",
+        "target-evidence",
+        "collector-run",
+        "--config",
+        ".rolo/config/target-evidence-collector.json",
+    ]
+    assert received.request_nonce == request.nonce
+
+
+def test_remote_transport_rejects_in_place_known_hosts_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, _, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+    )
+    known_hosts.write_text("target ssh-ed25519 BBBB\n", encoding="utf-8")
+
+    with pytest.raises(SSHTransportError, match="SSH_HOST_KEY_PIN_CHANGED"):
+        collect_over_ssh(deployment, new_request("wheeltec"))
+
+    preflight = CliRunner().invoke(
+        app,
+        [
+            "target-evidence",
+            "preflight",
+            "--robot",
+            "wheeltec",
+            "--deployment-config",
+            str(tmp_path / "deployment.json"),
+        ],
+    )
+    payload = json.loads(preflight.output)
+    assert preflight.exit_code == 1
+    assert payload["status"] == "NOT_READY"
+    assert payload["error_code"] == "SSH_HOST_KEY_PIN_CHANGED"
+
+
+def test_remote_transport_retries_only_retryable_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, state_path, secret_path = _collector(tmp_path, monkeypatch)
+    _stub_probes(monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
     deployment = configure_deployment(
         robot_id="wheeltec",
         mode=EvidenceDeploymentMode.REMOTE,
@@ -432,26 +547,69 @@ def test_remote_transport_pins_known_hosts_and_invokes_only_collector(
     )
     request = new_request("wheeltec")
     bundle = collect_target_evidence(request, load_collector_state(state_path))
-    captured: dict[str, object] = {}
+    calls = 0
 
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["input"] = kwargs["input"]
-        return subprocess.CompletedProcess(command, 0, bundle.model_dump_json(), "")
+    def flaky_transport(command, request_bytes, *, timeout_s):
+        nonlocal calls
+        del command, request_bytes, timeout_s
+        calls += 1
+        if calls == 1:
+            raise SSHTransportError("SSH_CONNECTION_LOST", "reset", retryable=True)
+        return bundle.model_dump_json().encode("utf-8")
 
-    monkeypatch.setattr("rolo.stages.adapt.target_evidence.subprocess.run", fake_run)
-    received = collect_over_ssh(deployment, request)
+    monkeypatch.setattr(target_evidence_module, "_run_ssh_transport", flaky_transport)
+    monkeypatch.setattr(target_evidence_module.time, "sleep", lambda delay: None)
 
-    command = captured["command"]
-    assert "StrictHostKeyChecking=yes" in command
-    assert f"UserKnownHostsFile={known_hosts.resolve()}" in command
-    assert command[-4:] == [
-        "target-evidence",
-        "collector-run",
-        "--config",
-        ".rolo/config/target-evidence-collector.json",
-    ]
+    received = collect_over_ssh(deployment, request, max_attempts=2)
+
+    assert calls == 2
     assert received.request_nonce == request.nonce
+
+
+def test_legacy_remote_deployment_migrates_to_content_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, _, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    deployment_path = tmp_path / "deployment.json"
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=deployment_path,
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+    )
+    legacy = deployment.model_dump(mode="json")
+    legacy["schema_version"] = "robot-target-evidence-deployment/v2"
+    legacy.pop("known_hosts_sha256")
+    legacy.pop("ssh_port")
+    legacy.pop("ssh_identity_file")
+    legacy.pop("ssh_identity_sha256")
+    deployment_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    migrated = load_deployment(deployment_path)
+    persisted = json.loads(deployment_path.read_text(encoding="utf-8"))
+
+    assert migrated.schema_version == "robot-target-evidence-deployment/v3"
+    assert migrated.known_hosts_sha256 == target_evidence_module.sha256_file(known_hosts)
+    assert migrated.ssh_port == 22
+    assert persisted["known_hosts_sha256"] == migrated.known_hosts_sha256
+
+
+def test_ssh_transport_enforces_output_limit_while_process_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(target_evidence_module, "MAX_BUNDLE_BYTES", 1024)
+
+    with pytest.raises(SSHTransportError, match="SSH_OUTPUT_LIMIT"):
+        target_evidence_module._run_ssh_transport(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'x' * 2048)"],
+            b"{}",
+            timeout_s=5,
+        )
 
 
 def test_init_exposes_local_mode_as_install_time_choice(
@@ -491,6 +649,26 @@ def test_remote_configuration_rejects_unpinned_ssh_host(
         )
 
 
+def test_remote_configuration_rejects_unsafe_collector_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, _, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="collector_executable"):
+        configure_deployment(
+            robot_id="wheeltec",
+            mode=EvidenceDeploymentMode.REMOTE,
+            descriptor=descriptor,
+            verification_secret_path=secret_path,
+            output_path=tmp_path / "deployment.json",
+            ssh_target="rolo@target",
+            known_hosts_path=known_hosts,
+            collector_executable="robotctl;touch /tmp/unsafe",
+        )
+
+
 def test_remote_configuration_rejects_collector_repin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -518,6 +696,18 @@ def test_remote_configuration_rejects_collector_repin(
         known_hosts_path=known_hosts,
     )
     assert repeated == first
+
+    with pytest.raises(ValueError, match="already pinned"):
+        configure_deployment(
+            robot_id="wheeltec",
+            mode=EvidenceDeploymentMode.REMOTE,
+            descriptor=descriptor,
+            verification_secret_path=secret_path,
+            output_path=output,
+            ssh_target="rolo@target",
+            known_hosts_path=known_hosts,
+            collector_executable="/opt/rolo/.venv/bin/robotctl",
+        )
 
     replacement = descriptor.model_copy(update={"collector_id": "collector-replacement"})
     with pytest.raises(ValueError, match="already pinned"):
@@ -593,6 +783,76 @@ def test_reenroll_replaces_expected_pin_and_persists_transition_record(
     assert transition.new_collector_id == replacement.collector_id
     assert transition_path.is_file()
     assert transition_path.parent.name == "transitions"
+
+
+def test_reenroll_records_a_remote_collector_executable_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, _, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    deployment_path = tmp_path / "deployment.json"
+    configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=deployment_path,
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+    )
+
+    deployment, transition, _ = reenroll_deployment(
+        output_path=deployment_path,
+        expected_collector_id=descriptor.collector_id,
+        reason="pin virtualenv robotctl",
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        collector_executable="/opt/rolo/.venv/bin/robotctl",
+    )
+
+    assert deployment.collector_executable == "/opt/rolo/.venv/bin/robotctl"
+    assert transition.previous_collector_executable == "robotctl"
+    assert transition.new_collector_executable == "/opt/rolo/.venv/bin/robotctl"
+    assert transition.previous_ssh_target == "rolo@target"
+    assert transition.new_ssh_target == "rolo@target"
+    assert transition.previous_ssh_port == 22
+    assert transition.new_ssh_port == 22
+    assert transition.previous_collector_config == (
+        ".rolo/config/target-evidence-collector.json"
+    )
+
+
+def test_reenroll_audits_known_hosts_content_rotation_at_the_same_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, _, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    deployment_path = tmp_path / "deployment.json"
+    previous = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=deployment_path,
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+    )
+    known_hosts.write_text("target ssh-ed25519 BBBB\n", encoding="utf-8")
+
+    deployment, transition, _ = reenroll_deployment(
+        output_path=deployment_path,
+        expected_collector_id=descriptor.collector_id,
+        reason="verified SSH host key rotation",
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        known_hosts_path=known_hosts,
+    )
+
+    assert deployment.known_hosts_sha256 != previous.known_hosts_sha256
+    assert transition.previous_known_hosts_sha256 == previous.known_hosts_sha256
+    assert transition.new_known_hosts_sha256 == deployment.known_hosts_sha256
 
 
 def test_local_journey_reuses_reenrolled_collector_state(

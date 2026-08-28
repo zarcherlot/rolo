@@ -216,6 +216,11 @@ descriptor、secret 和 SSH host-key 必须独立置备，按
 [`TARGET_EVIDENCE_DEPLOYMENT.md`](docs/TARGET_EVIDENCE_DEPLOYMENT.md) 使用签名证据流程，不能为
 追求“一条命令”而取消信任绑定。远程 pin 完成后，同样由
 `robotctl adapt start --evidence-mode remote` 在一次 Journey 中采集、验签并完成 Adapt。
+远程部署可固定 `--ssh-port`、`--ssh-identity-file` 和目标虚拟环境中的
+`--collector-executable`；运行前可用 `robotctl target-evidence preflight --robot ROBOT_ID`
+验证 Host Key 内容 pin、认证、Collector 身份和签名链。
+目标侧 `robotctl` 不在 SSH 非交互 PATH 时，首次配置需额外传入目标 checkout 中的
+`--collector-executable /path/to/rolo/.venv/bin/robotctl`；此路径会作为 transport pin 保存。
 
 ### 访问管理 API
 
