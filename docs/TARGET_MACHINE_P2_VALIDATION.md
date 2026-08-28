@@ -30,6 +30,19 @@ ros2 service list
 ros2 topic echo /tf --once
 ```
 
+若本地 WSL 只验证 ROS/native 通道、尚未启动真实目标工作负载，可在独立终端启动最小
+只读 fixture：
+
+```bash
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=50
+export ROS_LOCALHOST_ONLY=1
+scripts/run_p2_ros_fixture.sh
+```
+
+fixture 只证明 `/tf` 采集链路可执行，不得作为真实机器人行为、canary 稳定性或产品
+功能证据。进入真实目标机或 canary 验证前必须改用实际工作负载的 `/tf` 发布者。
+
 如果目标环境需要 Clash 或其他代理才能访问外部网络，记录实际使用的代理变量和
 middleware 结果。不要把代理变量写入仓库配置或 artifact 内容。
 
@@ -69,7 +82,12 @@ capability-resolution-shadow.json
 target-operation-slice-shadow.json
 platform-profile.json
 context_metrics.json
+native-tool-execution-parity.json
 ```
+
+选中的 shadow/canary session 会由 Rolo 先执行一次确定性的 Linux host baseline，保证
+即使 Adapter Agent 不主动调用 native 工具，也能生成至少一个 `calls/*.json` 和对应的
+execution parity 证据；Agent 后续调用仍使用同一受预算约束的 session。
 
 ## 5. 目标机产物自检
 
@@ -102,4 +120,3 @@ active 或删除旧 wrapper。
 
 HW USB、写操作、calibration、actuator、power、firmware、reset、navigation 和
 其他高风险能力不进入本轮 native canary。
-

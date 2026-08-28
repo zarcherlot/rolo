@@ -15,12 +15,30 @@ from rolo.stages.adapt.conformance import (
     validate_adapter_handoff,
 )
 from rolo.stages.adapt.discovery import DiscoveryService, load_report
-from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun
+from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun, AdaptGateReport
 from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
     required_adapter_agent_conformance_operations,
 )
 from rolo.stages.adapt.routes import candidate_route_observed
+
+
+def test_adapt_gate_report_reads_legacy_validation_scope() -> None:
+    report = AdaptGateReport.model_validate(
+        {
+            "schema_version": "robot-adapt-gate/v1",
+            "run_id": "run-legacy",
+            "robot_id": "robot-1",
+            "discovery_id": "disc-1",
+            "status": "PASSED",
+            "checks": [],
+            "error": None,
+            "validation_scope": "TARGET_RUNTIME_READONLY",
+        }
+    )
+
+    assert report.status == "PASSED"
+    assert "validation_scope" not in report.model_dump(mode="json")
 
 
 def _prepare_promotion(

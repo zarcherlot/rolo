@@ -139,6 +139,31 @@
       "default": null,
       "title": "Native Tool Gate Sha256"
     },
+    "native_tool_execution_parity_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Execution Parity Ref"
+    },
+    "native_tool_execution_parity_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Execution Parity Sha256"
+    },
     "native_tool_session_id": {
       "anyOf": [
         {

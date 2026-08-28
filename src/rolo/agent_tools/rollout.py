@@ -218,6 +218,7 @@ def compare_native_to_direct(
 
 def evaluate_native_tool_canary_gate(
     summary: NativeToolRunSummary,
+    execution_parity: Iterable[NativeToolExecutionParity] = (),
 ) -> NativeToolCanaryGateReport:
     """Evaluate a selected cohort without granting release authority."""
     if not summary.selected:
@@ -230,6 +231,11 @@ def evaluate_native_tool_canary_gate(
             blocking_reasons=[],
         )
     reasons: list[str] = []
+    if summary.call_count == 0:
+        reasons.append("selected native session produced no calls")
+    parity_diffs = sum(item.status == "DIFF" for item in execution_parity)
+    if parity_diffs:
+        reasons.append(f"{parity_diffs} native execution parity checks differed")
     if summary.failed_count:
         reasons.append(f"{summary.failed_count} native calls failed")
     if summary.rejected_count:
