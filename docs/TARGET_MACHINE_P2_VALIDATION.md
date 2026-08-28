@@ -132,6 +132,8 @@ sha256sum -c SHA256SUMS
 - 所有 release-neutral artifact 的 `influences_release` 为 `false`；
 - rollout、summary、gate 的 robot/run/session/catalog digest 一致；
 - execution parity 没有 `DIFF` 或 silent drop；
+- `context_metrics.json` 记录实际 `adapter_max_processes`、ROS domain/RMW 及 Agent
+  provider/executor；Diagnose/Verify 缺省 provider/executor 必须仍为 `codex`；
 - `UNAVAILABLE` 仅对应已解释的环境限制；
 - capability resolution 仅出现可解释的 `RESOLVED`、`UNAVAILABLE` 或 `AMBIGUOUS`；
 - Adapt 的 authoritative eligibility、Bundle 和 release 没有被 shadow 结果改变。

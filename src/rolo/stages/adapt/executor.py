@@ -33,6 +33,7 @@ from rolo.agent_tools import (
     summarize_native_tool_run,
 )
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import utc_now
 from rolo.stages.adapt.discovery import load_report
@@ -403,6 +404,7 @@ class CodexAdaptExecutor:
         boot_context_bytes = len(
             json.dumps(boot_context, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         )
+        runtime_settings = get_settings()
         context_metrics_path = self.artifacts.write_json(
             f"{relative_run_root}/context_metrics.json",
             {
@@ -451,6 +453,17 @@ class CodexAdaptExecutor:
                 "slice_activation_affects_agent_context": (activation.affects_agent_context),
                 "slice_activation_alert_count": len(activation.alerts),
                 "slice_activation_fallback_reason": activation.fallback_reason,
+                # Keep the effective non-secret runtime profile beside the shadow
+                # artifacts so target-specific overrides (for example WSL's
+                # process budget) are auditable rather than inferred from logs.
+                "adapter_max_processes": runtime_settings.rolo_adapter_max_processes,
+                "adapter_max_address_space_bytes": (
+                    runtime_settings.rolo_adapter_max_address_space_bytes
+                ),
+                "ros_domain_id": runtime_settings.ros_domain_id,
+                "ros_rmw_implementation": runtime_settings.ros_rmw_implementation,
+                "coding_agent_provider": runtime_settings.coding_agent_provider,
+                "coding_agent_executor": runtime_settings.coding_agent_executor,
             },
         )
         schema_path.write_text(

@@ -30,6 +30,13 @@ def _task(stage: str) -> StageAgentTask:
     )
 
 
+def test_diagnose_and_verify_default_to_codex_provider_and_executor() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.coding_agent_provider == "codex"
+    assert settings.coding_agent_executor == "codex"
+
+
 class _FakeHarness:
     def __init__(self, payload: dict[str, object]) -> None:
         self.payload = payload
