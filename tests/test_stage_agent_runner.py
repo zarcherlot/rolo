@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ from rolo.stages.agent_runner import (
     StageAgentRunner,
     StageAgentTask,
     list_stage_authorization_requests,
+    recover_stale_stage_runs,
 )
 
 
@@ -176,3 +179,43 @@ def test_stage_runner_rejects_changed_hashed_input(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="input artifact hash mismatch"):
         runner.run(task, workspace=tmp_path / "workspace", confirmed=False)
+
+
+def test_stage_runner_recovers_an_interrupted_running_run(tmp_path: Path) -> None:
+    run_root = tmp_path / "diagnose" / "robot-1" / "runs" / "abandoned"
+    run_root.mkdir(parents=True)
+    started = datetime.now(timezone.utc) - timedelta(hours=2)
+    run = {
+        "schema_version": "rolo-stage-agent-run/v1",
+        "stage": "diagnose",
+        "robot_id": "robot-1",
+        "run_id": "abandoned",
+        "status": "RUNNING",
+        "provider": "fake",
+        "executor": "fake",
+        "task_ref": "artifact://diagnose/robot-1/runs/abandoned/task.json",
+        "started_at": started.isoformat(),
+    }
+    (run_root / "run.json").write_text(json.dumps(run), encoding="utf-8")
+
+    recovered = recover_stale_stage_runs(tmp_path, "diagnose", "robot-1", stale_after_s=60)
+
+    assert len(recovered) == 1
+    assert recovered[0].status == "FAILED"
+    assert "lease expired" in (recovered[0].error or "")
+    persisted = json.loads((run_root / "run.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "FAILED"
+
+
+def test_stage_runner_rejects_concurrent_execution_for_one_robot_stage(tmp_path: Path) -> None:
+    lock_target = tmp_path / "diagnose" / "robot-1" / ".stage-execution.lock"
+    lock_target.parent.mkdir(parents=True)
+    from rolo.core.persistence import interprocess_lock
+
+    with interprocess_lock(lock_target):
+        run = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor()).run(
+            _task(), workspace=tmp_path / "workspace", confirmed=True
+        )
+
+    assert run.status == "FAILED"
+    assert "artifact lock" in (run.error or "")

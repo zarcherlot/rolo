@@ -19,7 +19,7 @@ $env:CODING_AGENT_EXECUTOR = "fake"
 启用前，artifact tree 仍需有一个通过 Adapt gate 的最新 handoff，并准备好：
 
 ```text
-adapt/<robot>/latest/index.json       # 指向并绑定 Adapt handoff
+adapt/<robot>/latest.json             # 指向并绑定 Adapt handoff
 diagnose/<robot>/latest/inputs.json
 verify/<robot>/latest/inputs.json
 ```
@@ -57,6 +57,10 @@ uv run rolo verify run --robot <robot> --confirm
   acceptance 通过。
 - `runs/<run_id>/run.json`、stdout/stderr、handoff 和所有摘要均由现有
   `StageAgentRunner` 与 handoff validator 校验并持久化。
+- 同一个 robot/stage 同时只有一个 downstream executor；竞争调用会快速失败，避免
+  交叉写入 evidence 或 handoff。
+- 超过 lease 的 `RUNNING` run 可由 `recover_stale_stage_runs()` 标记为 `FAILED`，
+  不会被恢复成成功。
 
 查看阶段状态和产物：
 
@@ -75,3 +79,7 @@ uv run pytest -q tests/test_fake_downstream.py tests/test_codex_downstream.py te
 fake executor 不接入 Adapt 的通用 executor 列表，也不改变 Codex 默认值；后续接入
 真实 Diagnose Episode 或 Verify provider 时，只需替换 stage executor，并继续复用同一
 contract、授权、artifact hash 和 handoff validator。
+
+插件接入约束：第三方 executor 通过 `rolo.agent_executors` entry point 注册，并实现
+`execute(**kwargs)` 以及 Diagnose/Verify 所需的 `execute_stage(...)`；插件失败只能使
+当前 run 失败，不能绕过授权、handoff 校验或 release gate。

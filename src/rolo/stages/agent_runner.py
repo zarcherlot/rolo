@@ -132,6 +132,61 @@ def list_stage_authorization_requests(
     return requests
 
 
+def recover_stale_stage_runs(
+    artifact_root: Path,
+    stage: StageName,
+    robot_id: str,
+    *,
+    stale_after_s: float = 3600.0,
+) -> list[StageAgentRun]:
+    """Mark abandoned RUNNING stage runs as FAILED after a bounded lease.
+
+    Recovery is deliberately conservative: only persisted runs whose start time is
+    older than the lease are changed.  A live executor keeps its run younger than the
+    lease; a later run can therefore be retried explicitly without reusing a stale
+    authorization or pretending that an interrupted process completed.
+    """
+
+    if stale_after_s <= 0:
+        raise ValueError("stale_after_s must be positive")
+    runs_root = ArtifactLayout(artifact_root).stage_latest(stage, robot_id).parent / "runs"
+    if not runs_root.is_dir():
+        return []
+    now = datetime.now(timezone.utc)
+    recovered: list[StageAgentRun] = []
+    for run_path in sorted(runs_root.glob("*/run.json")):
+        try:
+            run = StageAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if run.status != "RUNNING":
+            continue
+        age_s = (now - run.started_at).total_seconds()
+        if age_s <= stale_after_s:
+            continue
+        with interprocess_lock(run_path):
+            try:
+                current = StageAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if current.status != "RUNNING":
+                continue
+            failed = current.model_copy(
+                update={
+                    "status": "FAILED",
+                    "error": "stage Agent run lease expired; recovered after interruption",
+                    "completed_at": now,
+                }
+            )
+            atomic_write_text(
+                run_path,
+                json.dumps(failed.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
+                acquire_lock=False,
+            )
+            recovered.append(failed)
+    return recovered
+
+
 class StageAgentRunner:
     """Run one downstream Agent with explicit user authorization and audit refs."""
 
@@ -273,32 +328,43 @@ class StageAgentRunner:
                 on_output(stream, safe_line)
 
         try:
-            result = self.executor.execute_stage(
-                task, workspace=workspace, on_output=stream_output
+            # A robot/stage gets one active downstream executor.  Fail fast when a
+            # second caller races an existing run; it may retry after the first run
+            # is persisted instead of interleaving evidence or handoffs.
+            execution_lock = (
+                self.artifacts.root / task.stage / task.robot_id / ".stage-execution.lock"
             )
-            output_refs = dict(result)
-            self._validate_output_refs(output_refs)
-            if self.handoff_validator is not None:
-                self.handoff_validator(task)
-            completed = datetime.now(timezone.utc)
-            stdout_ref = layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
-            stderr_ref = layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
-            run = StageAgentRun(
-                stage=task.stage,
-                robot_id=task.robot_id,
-                run_id=run_id,
-                status="SUCCEEDED",
-                provider=task.provider,
-                executor=task.executor,
-                model=task.model,
-                task_ref=task_ref,
-                request_ref=request_ref,
-                stdout_ref=stdout_ref,
-                stderr_ref=stderr_ref,
-                output_refs=output_refs,
-                started_at=started,
-                completed_at=completed,
-            )
+            with interprocess_lock(execution_lock, timeout_s=0.0, stale_after_s=3600.0):
+                result = self.executor.execute_stage(
+                    task, workspace=workspace, on_output=stream_output
+                )
+                output_refs = dict(result)
+                self._validate_output_refs(output_refs)
+                if self.handoff_validator is not None:
+                    self.handoff_validator(task)
+                completed = datetime.now(timezone.utc)
+                stdout_ref = (
+                    layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
+                )
+                stderr_ref = (
+                    layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
+                )
+                run = StageAgentRun(
+                    stage=task.stage,
+                    robot_id=task.robot_id,
+                    run_id=run_id,
+                    status="SUCCEEDED",
+                    provider=task.provider,
+                    executor=task.executor,
+                    model=task.model,
+                    task_ref=task_ref,
+                    request_ref=request_ref,
+                    stdout_ref=stdout_ref,
+                    stderr_ref=stderr_ref,
+                    output_refs=output_refs,
+                    started_at=started,
+                    completed_at=completed,
+                )
         except Exception as exc:
             stdout_ref = layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
             stderr_ref = layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
