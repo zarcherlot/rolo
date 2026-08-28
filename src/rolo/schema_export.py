@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from rolo.agent_tools import (
     AgentNativeToolDescriptor,
     AgentNativeToolResult,
+    NativeToolCanaryGateReport,
+    NativeToolExecutionParity,
     NativeToolParityReport,
     NativeToolRolloutDecision,
     NativeToolRunSummary,
@@ -152,6 +154,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     NativeToolSessionDescriptor,
     NativeToolRolloutDecision,
     NativeToolParityReport,
+    NativeToolExecutionParity,
+    NativeToolCanaryGateReport,
     NativeToolRunSummary,
     AdaptInputs,
     AdaptJourneyResult,
