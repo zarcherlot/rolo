@@ -18,6 +18,7 @@
 - [R5 WSL 验证](R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
 - [目标机 / WSL P2 验证](TARGET_MACHINE_P2_VALIDATION.md)：目标机证据采集、产物自检和 canary 前置条件；
 - [P0 Adapt 验收](P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
+- [本地 Diagnose/Verify fake 流程](LOCAL_DIAGNOSE_VERIFY_FAKE.md)：不依赖目标机的 contract、授权和 handoff 开发回归。
 
 中文项目入口位于仓库根目录 [README](../README.md)，英文项目介绍见 [README.en.md](README.en.md)。
 面向用户的本地 Adapt 首选入口是 `rolo adapt <本地工作区> --robot <机器人 ID>`；需要

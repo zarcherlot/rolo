@@ -58,10 +58,17 @@ def create_agent_executor(name: str, **kwargs: Any) -> AgentExecutor:
 
 def create_stage_agent_executor(name: str, **kwargs: Any) -> Any:
     """Create an executor implementing the Diagnose/Verify stage SPI."""
-    if name.strip().lower() == "codex" and {"artifacts", "settings", "stage"} <= set(kwargs):
+    key = name.strip().lower()
+    if key == "codex" and {"artifacts", "settings", "stage"} <= set(kwargs):
         from rolo.stages.codex_downstream import CodexStageAgentExecutor
 
         return CodexStageAgentExecutor(
+            artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
+        )
+    if key == "fake" and {"artifacts", "settings", "stage"} <= set(kwargs):
+        from rolo.stages.fake_downstream import FakeStageAgentExecutor
+
+        return FakeStageAgentExecutor(
             artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
         )
     try:
