@@ -29,22 +29,22 @@ verify/<robot>/latest/inputs.json
 先只构建任务，确认 provider、executor、输入引用和 `plan_sha256`：
 
 ```powershell
-uv run rolo diagnose plan --robot <robot>
-uv run rolo verify plan --robot <robot>
+uv run robotctl diagnose plan --robot <robot>
+uv run robotctl verify plan --robot <robot>
 ```
 
 首次运行不确认时只创建 `WAITING_FOR_AUTH` 和短期授权请求，不执行 fake executor：
 
 ```powershell
-uv run rolo diagnose run --robot <robot>
+uv run robotctl diagnose run --robot <robot>
 # 或通过 rolo-vis 的 GET /v1/robots/<robot>/stage-auth-requests 查看 request_ref
 ```
 
 确认后执行（也可用返回的 `authorization_ref` 恢复同一个 run）：
 
 ```powershell
-uv run rolo diagnose run --robot <robot> --confirm
-uv run rolo verify run --robot <robot> --confirm
+uv run robotctl diagnose run --robot <robot> --confirm
+uv run robotctl verify run --robot <robot> --confirm
 ```
 
 预期结果：
@@ -65,8 +65,8 @@ uv run rolo verify run --robot <robot> --confirm
 查看阶段状态和产物：
 
 ```powershell
-uv run rolo diagnose status --robot <robot>
-uv run rolo verify status --robot <robot>
+uv run robotctl diagnose status --robot <robot>
+uv run robotctl verify status --robot <robot>
 ```
 
 ## 本地回归
