@@ -12,6 +12,7 @@
 - [归档文档](archive/README.md)：已完成或被替代的计划、评审样本和一次性验证材料；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
 - [Registry Operation 重设计计划](REGISTRY_OPERATION_REDESIGN_PLAN.md)：Canonical Registry 与 Agent-native Tool 双轨边界、迁移阶段和验收标准；
+- [R5 之后 P0–P2 产品化计划](POST_R5_PRODUCTIZATION_PLAN.md)：真实目标机、CLI/harness、授权、插件、Verify 和 Registry canary/retirement 的启动顺序；
 - [Registry Operation Worktree 计划](REGISTRY_OPERATION_WORKTREE_PLAN.md)：实现 worktree、文件所有权、接口冻结和合并顺序；
 - [Agent-native Tool 运行边界](AGENT_NATIVE_TOOLS.md)：受控 Linux/ROS/HW 观测、Native Session 和 v2 Registry 使用方式；
 - [R5 WSL 验证](R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；

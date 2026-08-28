@@ -1,6 +1,6 @@
 # Registry Operation 双轨重设计与实施计划
 
-状态：实施中（R0-R4 基础能力已落地，R5/R6 仍需运行窗口和人工评审）。本文不改变当前
+状态：R0-R4 基础能力已落地；真实目标机 shadow 仍在进行，R5/R6 仍需 shadow 收敛、canary 运行窗口和人工评审。本文不改变当前
 v1 Registry、294 项基线或旧 release；v2 Canonical、family-level Agent-native catalog、
 Native Session/Broker、灰度开关和迁移校验已在 integration 分支实现，native 默认仍为
 `off`。
