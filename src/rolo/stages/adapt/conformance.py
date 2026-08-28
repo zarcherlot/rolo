@@ -567,7 +567,9 @@ class AdapterPromotionService:
                 runtime_environment=runtime_environment,
                 state_graph=graph,
             )
-            checks.append("adapter package describe and route-binding ABI")
+            checks.append(
+                "adapter package describe, route-binding ABI, and target CLI sandbox visibility"
+            )
             actual = {item.operation: item for item in conformance.operations}
             if (
                 len(actual) != len(conformance.operations)
