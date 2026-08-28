@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -59,6 +61,7 @@ def run_adapt_start(
     known_hosts: Path | None,
     collector_config: str,
     evidence_timeout: float,
+    on_output: Callable[[str, str], None] | None = None,
 ) -> AdaptJourneyResult:
     """Run the shared Adapt start application service used by product and expert CLIs."""
     settings = get_settings()
@@ -139,6 +142,7 @@ def run_adapt_start(
         timeout_s=timeout or settings.coding_agent_timeout_s,
         evidence_deployment=evidence_deployment,
         evidence_timeout_s=evidence_timeout,
+        on_output=on_output,
     )
 
 
@@ -218,6 +222,12 @@ def adapt_stage_start(
     ] = 45.0,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
+    if sys.stdin.isatty() and not typer.confirm(
+        "Adapt may install/use the configured Agent and write evidence artifacts. Continue?",
+        default=False,
+    ):
+        emit({"status": "CANCELLED", "mutation_started": False})
+        return
     try:
         result = run_adapt_start(
             robot_id=robot_id,
@@ -239,7 +249,7 @@ def adapt_stage_start(
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(result)
-    if result.status == "BLOCKED":
+    if result.status in {"BLOCKED", "WAITING_FOR_AUTH"}:
         raise typer.Exit(code=2)
 
 

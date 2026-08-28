@@ -7,6 +7,8 @@ from rolo.agent_tools.native_tools import (
     AgentNativeToolDescriptor,
     NativeToolStatus,
     default_agent_native_catalog,
+    native_operation_family_map,
+    reduced_agent_native_catalog,
 )
 
 
@@ -71,3 +73,46 @@ def test_descriptor_rejects_interpolation_and_unsafe_environment() -> None:
         _descriptor("{user}")
     with pytest.raises(ValueError, match="approved environment"):
         _descriptor("-c", "print('ok')", allowed_env_keys=["PATH"])
+
+
+def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
+    catalog = reduced_agent_native_catalog()
+
+    assert len(catalog) == 22
+    assert len({item.tool_id for item in catalog}) == len(catalog)
+    assert "native.linux.host.status" not in {item.tool_id for item in catalog}
+    host = next(item for item in catalog if item.tool_id == "native.linux.host.inspect")
+    assert set(host.variants) == {"inventory", "status", "time", "uptime"}
+    assert host.variants["status"].argv_template == ["uname", "-a"]
+
+
+def test_family_runner_resolves_only_allowlisted_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_executor(command: list[str], **kwargs: object):
+        captured["command"] = command
+        return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
+    result = runner.run("native.linux.process.inspect", {"mode": "inspect", "pid": "42"})
+
+    assert captured["command"] == ["ps", "-p", "42", "-o", "pid,ppid,stat,comm,args"]
+    assert result.arguments == {"mode": "inspect", "pid": "42"}
+    with pytest.raises(ValueError, match="positive integer"):
+        runner.run("native.linux.process.inspect", {"mode": "inspect", "pid": "4;2"})
+    with pytest.raises(ValueError, match="bounded relative path"):
+        runner.run("native.linux.file.inspect", {"mode": "read", "path": "../secret"})
+
+
+def test_governance_native_operations_have_family_replacements() -> None:
+    from rolo.stages.adapt.operation_registry_v2 import RegistryView, build_registry_projection
+
+    operations = build_registry_projection().operations(RegistryView.AGENT_NATIVE)
+    mapping = native_operation_family_map(operations)
+    family_ids = {item.tool_id for item in reduced_agent_native_catalog()}
+
+    assert len(mapping) == 73
+    assert set(mapping.values()).issubset(family_ids)

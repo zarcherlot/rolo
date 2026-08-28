@@ -283,7 +283,12 @@ def _wiki_content(snapshot: dict[str, Any]) -> str:
     return content
 
 
-def _native_broker_request(action: str, *, tool_id: str | None = None) -> Any:
+def _native_broker_request(
+    action: str,
+    *,
+    tool_id: str | None = None,
+    arguments: dict[str, str] | None = None,
+) -> Any:
     address = os.environ.get("ROLO_NATIVE_BROKER_ADDRESS", "")
     token = os.environ.get("ROLO_NATIVE_BROKER_TOKEN", "")
     if not address or not token or ":" not in address:
@@ -296,6 +301,8 @@ def _native_broker_request(action: str, *, tool_id: str | None = None) -> Any:
     request: dict[str, Any] = {"action": action}
     if tool_id is not None:
         request["tool_id"] = tool_id
+    if arguments:
+        request["arguments"] = arguments
     encoded = (json.dumps({**request, "token": token}, separators=(",", ":")) + "\n").encode(
         "utf-8"
     )
@@ -333,7 +340,23 @@ def _query(snapshot: dict[str, Any], arguments: list[str]) -> Any:
     if group == "native" and action in {"list", "run"}:
         if action == "list":
             return _native_broker_request("list")
-        return _native_broker_request("run", tool_id=_required_argument(rest))
+        positional = [value for value in rest if not value.startswith("--")]
+        if not positional:
+            raise ValueError("native run requires a family tool ID")
+        tool_id = positional[0]
+        rest.remove(tool_id)
+        native_arguments: dict[str, str] = {}
+        mode = _take_option(rest, "--mode")
+        if mode is not None:
+            native_arguments["mode"] = mode
+        while rest:
+            name = rest.pop(0)
+            if not name.startswith("--"):
+                raise ValueError("native run parameters must use --name value")
+            if not rest or rest[0].startswith("--"):
+                raise ValueError(f"missing value for {name}")
+            native_arguments[name[2:].replace("-", "_")] = rest.pop(0)
+        return _native_broker_request("run", tool_id=tool_id, arguments=native_arguments)
 
     if group == "operations" and action == "summary":
         return snapshot["workset_summary"]
@@ -353,9 +376,11 @@ def _query(snapshot: dict[str, Any], arguments: list[str]) -> Any:
             if all(value is None or item.get(key) == value for key, value in filters.items())
         ]
         # No paging options preserves the legacy full-list behavior.
-        if limit_value is None and not any(
-            value is not None for value in filters.values()
-        ) and scope == "all":
+        if (
+            limit_value is None
+            and not any(value is not None for value in filters.values())
+            and scope == "all"
+        ):
             page = {
                 "operations": filtered,
                 "returned_count": len(filtered),
@@ -542,9 +567,7 @@ def main() -> int:
     metrics_path = Path(__file__).with_name("rolo-agent-query-metrics.json")
     try:
         metrics = (
-            json.loads(metrics_path.read_text(encoding="utf-8"))
-            if metrics_path.is_file()
-            else {}
+            json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.is_file() else {}
         )
         metrics["query_count"] = int(metrics.get("query_count", 0)) + 1
         if "inspect" in original_arguments or "batch-inspect" in original_arguments:

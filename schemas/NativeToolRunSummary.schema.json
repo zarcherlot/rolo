@@ -1,0 +1,101 @@
+{
+  "additionalProperties": false,
+  "description": "Bounded native result summary suitable for rollout and parity dashboards.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-native-tool-run-summary/v1",
+      "default": "rolo-native-tool-run-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "canary",
+        "active"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "selected": {
+      "title": "Selected",
+      "type": "boolean"
+    },
+    "catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Catalog Sha256",
+      "type": "string"
+    },
+    "call_count": {
+      "minimum": 0,
+      "title": "Call Count",
+      "type": "integer"
+    },
+    "status_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Status Counts",
+      "type": "object"
+    },
+    "unavailable_count": {
+      "minimum": 0,
+      "title": "Unavailable Count",
+      "type": "integer"
+    },
+    "timeout_count": {
+      "minimum": 0,
+      "title": "Timeout Count",
+      "type": "integer"
+    },
+    "failed_count": {
+      "minimum": 0,
+      "title": "Failed Count",
+      "type": "integer"
+    },
+    "rejected_count": {
+      "minimum": 0,
+      "title": "Rejected Count",
+      "type": "integer"
+    },
+    "truncated_count": {
+      "minimum": 0,
+      "title": "Truncated Count",
+      "type": "integer"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "mode",
+    "selected",
+    "catalog_sha256",
+    "call_count",
+    "unavailable_count",
+    "timeout_count",
+    "failed_count",
+    "rejected_count",
+    "truncated_count"
+  ],
+  "title": "NativeToolRunSummary",
+  "type": "object"
+}

@@ -43,12 +43,14 @@
         "provider": {
           "default": "codex",
           "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
           "title": "Provider",
           "type": "string"
         },
         "executor": {
           "default": "codex",
           "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
           "title": "Executor",
           "type": "string"
         },
@@ -78,6 +80,7 @@
         },
         "api_key_env": {
           "default": "CODING_AGENT_API_KEY",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Api Key Env",
           "type": "string"
         },

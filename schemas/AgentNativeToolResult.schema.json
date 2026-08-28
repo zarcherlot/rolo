@@ -1,24 +1,118 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AgentNativeToolResult",
-  "type": "object",
+  "$defs": {
+    "NativeToolStatus": {
+      "enum": [
+        "SUCCEEDED",
+        "UNAVAILABLE",
+        "TIMEOUT",
+        "FAILED",
+        "REJECTED"
+      ],
+      "title": "NativeToolStatus",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
-  "required": ["schema_version", "tool_id", "status", "argv", "observed_at", "duration_ms", "stdout", "stderr", "stdout_sha256", "stderr_sha256", "truncated", "evidence_kind", "sensitive", "limitations", "evidence_refs"],
+  "description": "Bounded, auditable result returned to the Agent.",
   "properties": {
-    "schema_version": {"const": "rolo-agent-native-tool-result/v1"},
-    "tool_id": {"type": "string"},
-    "status": {"enum": ["SUCCEEDED", "UNAVAILABLE", "TIMEOUT", "FAILED", "REJECTED"]},
-    "argv": {"type": "array", "items": {"type": "string"}},
-    "observed_at": {"type": "string", "format": "date-time"},
-    "duration_ms": {"type": "number", "minimum": 0},
-    "stdout": {"type": "string"},
-    "stderr": {"type": "string"},
-    "stdout_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "stderr_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "truncated": {"type": "boolean"},
-    "evidence_kind": {"type": "string"},
-    "sensitive": {"type": "boolean"},
-    "limitations": {"type": "array", "items": {"type": "string"}},
-    "evidence_refs": {"type": "array", "items": {"type": "string"}}
-  }
+    "schema_version": {
+      "default": "rolo-agent-native-tool-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_id": {
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/NativeToolStatus"
+    },
+    "argv": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Argv",
+      "type": "array"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "duration_ms": {
+      "minimum": 0,
+      "title": "Duration Ms",
+      "type": "number"
+    },
+    "stdout": {
+      "default": "",
+      "title": "Stdout",
+      "type": "string"
+    },
+    "stderr": {
+      "default": "",
+      "title": "Stderr",
+      "type": "string"
+    },
+    "stdout_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Stdout Sha256",
+      "type": "string"
+    },
+    "stderr_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Stderr Sha256",
+      "type": "string"
+    },
+    "truncated": {
+      "default": false,
+      "title": "Truncated",
+      "type": "boolean"
+    },
+    "evidence_kind": {
+      "title": "Evidence Kind",
+      "type": "string"
+    },
+    "sensitive": {
+      "title": "Sensitive",
+      "type": "boolean"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "arguments": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 32,
+      "title": "Arguments",
+      "type": "object"
+    }
+  },
+  "required": [
+    "tool_id",
+    "status",
+    "argv",
+    "observed_at",
+    "duration_ms",
+    "stdout_sha256",
+    "stderr_sha256",
+    "evidence_kind",
+    "sensitive"
+  ],
+  "title": "AgentNativeToolResult",
+  "type": "object"
 }

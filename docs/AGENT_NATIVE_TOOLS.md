@@ -15,6 +15,12 @@ Release。
 - 每次调用写入 `artifact://native/<robot>/sessions/<session>/calls/...json`，并追加审计记录；
 - Session 的 `native_catalog_sha256` 必须与 Runner 的完整目录一致，防止 descriptor/catalog
   漂移。
+- v2 Adapt 使用 22 个 family-level descriptor，而不是为每个 Linux/ROS/HW 命令建立一个
+  descriptor；family 内的 `mode` 和参数都来自静态 allowlist，仍由 Runner 编译为固定 argv。
+- 当前默认 `adapt_native_tool_mode=off`。可按 `shadow`、`canary`、`active` 灰度打开；`shadow`
+  和 `canary` 只影响 Agent 观测通道，不改变 release authority。
+- 每次 Adapt Run 还会写入 `native-tool-rollout.json` 和 `native-tool-summary.json`；迁移校验
+  报告中的 `native_operation_parity` 用于阻止 73 个旧 native 名称出现 silent drop。
 
 ## 与 Registry 的关系
 
@@ -31,7 +37,34 @@ python scripts/validate_registry_migration.py
 ## 接入规则
 
 1. Adapt Agent 只能通过受控 Broker/Session 请求 `tool_id`，不能提交任意 argv；
+   family Tool 使用 `native run FAMILY_ID --mode MODE [--PARAM VALUE]`，参数由 Broker 和
+   Runner 双重校验；
 2. Native result 必须携带状态、输出 hash、限制说明和 artifact/evidence ref；
 3. Native evidence 只能作为 `OBSERVED`/`UNVERIFIED` 输入，不能替代独立 Gate；
 4. v2 Session 不得调用 v1 Legacy Operation，v1 release 继续使用 v1 resolver；
 5. 删除旧 Linux/ROS/HW wrapper 前，必须完成 shadow/canary parity 和人工评审。
+
+## Family catalog
+
+当前 v2 family catalog 包含：
+
+```text
+native.linux.host.inspect
+native.linux.resource.snapshot
+native.linux.process.inspect / native.linux.process.logs
+native.linux.service.inspect / native.linux.service.logs
+native.linux.container.inspect / native.linux.container.logs
+native.linux.schedule.inspect
+native.linux.binary.inspect
+native.linux.package.inspect
+native.linux.config.inspect
+native.linux.file.inspect
+native.linux.network.snapshot
+native.linux.log.query
+native.ros.graph.inspect / native.ros.observe / native.ros.tf.inspect / native.ros.bag.inspect
+native.middleware.snapshot
+native.hw.inventory / native.hw.status
+```
+
+`logs`、`observe`、`tf` monitor 类能力保留独立风险和时间预算；写操作、校准、reset、
+actuator、power、firmware 仍然属于 Canonical Operation。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,8 +21,11 @@ from rolo.agent_tools import (
     NativeToolSession,
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
-    default_agent_native_catalog,
+    decide_native_tool_rollout,
     native_catalog_sha256,
+    native_operation_family_map,
+    reduced_agent_native_catalog,
+    summarize_native_tool_run,
 )
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import sha256_file
@@ -208,28 +212,55 @@ class CodexAdaptExecutor:
         *,
         executable: str = "codex",
         api_key: str | None = None,
+        api_key_env: str = "CODING_AGENT_API_KEY",
         output_root: Path | None = None,
         slice_activation_mode: SliceActivationMode | str = SliceActivationMode.SHADOW,
         slice_activation_robot_ids: str | list[str] = "",
         slice_activation_run_ids: str | list[str] = "",
         slice_activation_max_operations: int = 20,
+        native_tool_mode: str = "off",
+        native_tool_robot_ids: str | list[str] = "",
+        native_tool_run_ids: str | list[str] = "",
+        native_tool_max_calls: int = 64,
+        native_tool_max_elapsed_s: float = 600,
+        native_tool_max_result_bytes: int = 8_000_000,
     ) -> None:
         self.artifacts = artifacts
         self.executable = executable
         self.api_key = api_key
+        self.api_key_env = api_key_env
         self.output_root = (output_root or Path(".rolo/output")).expanduser().resolve()
         self.slice_activation_mode = SliceActivationMode(
             slice_activation_mode.upper()
             if isinstance(slice_activation_mode, str)
             else slice_activation_mode
         )
-        self.slice_activation_robot_ids = parse_slice_selectors(
-            slice_activation_robot_ids
-        )
+        self.slice_activation_robot_ids = parse_slice_selectors(slice_activation_robot_ids)
         self.slice_activation_run_ids = parse_slice_selectors(slice_activation_run_ids)
         if not 1 <= slice_activation_max_operations <= 50:
             raise ValueError("Slice activation operation budget must be between 1 and 50")
         self.slice_activation_max_operations = slice_activation_max_operations
+        if native_tool_mode not in {"off", "shadow", "canary", "active"}:
+            raise ValueError("native tool mode must be off, shadow, canary, or active")
+        self.native_tool_mode = native_tool_mode
+        self.native_tool_robot_ids = parse_slice_selectors(native_tool_robot_ids)
+        self.native_tool_run_ids = parse_slice_selectors(native_tool_run_ids)
+        if native_tool_max_calls < 1 or native_tool_max_calls > 10_000:
+            raise ValueError("native tool call budget must be between 1 and 10000")
+        if native_tool_max_elapsed_s <= 0 or native_tool_max_elapsed_s > 86_400:
+            raise ValueError("native tool elapsed budget must be between 0 and 86400 seconds")
+        if native_tool_max_result_bytes < 1 or native_tool_max_result_bytes > 1_000_000_000:
+            raise ValueError("native tool result budget is out of bounds")
+        self.native_tool_max_calls = native_tool_max_calls
+        self.native_tool_max_elapsed_s = native_tool_max_elapsed_s
+        self.native_tool_max_result_bytes = native_tool_max_result_bytes
+
+    def _native_tools_enabled(self, robot_id: str, run_id: str) -> bool:
+        if self.native_tool_mode in {"off"}:
+            return False
+        if self.native_tool_mode in {"shadow", "active"}:
+            return True
+        return robot_id in self.native_tool_robot_ids or run_id in self.native_tool_run_ids
 
     def execute(
         self,
@@ -239,6 +270,7 @@ class CodexAdaptExecutor:
         timeout_s: int = 1800,
         plan: AdaptPlan,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdapterAgentRun, Path]:
         workspace = workspace.resolve()
         if not workspace.is_dir():
@@ -283,9 +315,7 @@ class CodexAdaptExecutor:
         wiki_data_path = workspace / "rolo-agent-wiki.zlib"
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
         target_slice = TargetOperationSlice.model_validate(snapshot["target_operation_slice"])
-        activation = SliceActivationDecision.model_validate(
-            snapshot["slice_activation_decision"]
-        )
+        activation = SliceActivationDecision.model_validate(snapshot["slice_activation_decision"])
         report = load_report(
             self.artifacts.root,
             plan.robot_id,
@@ -362,16 +392,12 @@ class CodexAdaptExecutor:
                 "shadow_target_adapter_not_in_eligible_count": len(
                     slice_shadow.shadow_not_in_eligible
                 ),
-                "capability_resolution_counts": resolution_status_counts(
-                    capability_shadow
-                ),
+                "capability_resolution_counts": resolution_status_counts(capability_shadow),
                 "shadow_influences_release": False,
                 "slice_activation_mode": activation.mode.value,
                 "slice_activation_outcome": activation.outcome.value,
                 "slice_activation_selected": activation.selected,
-                "slice_activation_affects_agent_context": (
-                    activation.affects_agent_context
-                ),
+                "slice_activation_affects_agent_context": (activation.affects_agent_context),
                 "slice_activation_alert_count": len(activation.alerts),
                 "slice_activation_fallback_reason": activation.fallback_reason,
             },
@@ -388,30 +414,45 @@ class CodexAdaptExecutor:
             config=plan.adapter_agent,
             api_key_configured=bool(self.api_key),
         )
-        native_catalog = default_agent_native_catalog()
-        native_session_descriptor = NativeToolSessionDescriptor(
-            session_id=f"native-{run_id}",
-            nonce=uuid4().hex,
+        native_catalog = reduced_agent_native_catalog()
+        native_rollout = decide_native_tool_rollout(
             robot_id=robot_id,
-            stage="adapt",
-            native_catalog_sha256=native_catalog_sha256(native_catalog),
-            allowed_tools=[item.tool_id for item in native_catalog],
-            policy_version="native-policy-v1",
-            budget=NativeToolSessionBudget(
-                max_calls=64,
-                max_elapsed_s=max(60.0, float(timeout_s)),
-                max_result_bytes=8_000_000,
-            ),
-            created_at=started_at,
-            expires_at=started_at + timedelta(seconds=max(60, timeout_s)),
+            run_id=run_id,
+            mode=self.native_tool_mode,
+            catalog=native_catalog,
+            robot_selectors=self.native_tool_robot_ids,
+            run_selectors=self.native_tool_run_ids,
         )
-        native_session = NativeToolSession(
-            descriptor=native_session_descriptor,
-            runner=AgentNativeRunner(native_catalog),
-            artifacts=self.artifacts,
+        self.artifacts.write_json(
+            f"{relative_run_root}/native-tool-rollout.json",
+            native_rollout.model_dump(mode="json"),
         )
-        native_broker = NativeToolBroker(native_session)
-        native_broker.start()
+        native_broker: NativeToolBroker | None = None
+        native_session: NativeToolSession | None = None
+        if native_rollout.selected:
+            native_session_descriptor = NativeToolSessionDescriptor(
+                session_id=f"native-{run_id}",
+                nonce=uuid4().hex,
+                robot_id=robot_id,
+                stage="adapt",
+                native_catalog_sha256=native_catalog_sha256(native_catalog),
+                allowed_tools=[item.tool_id for item in native_catalog],
+                policy_version="native-policy-v2-family",
+                budget=NativeToolSessionBudget(
+                    max_calls=self.native_tool_max_calls,
+                    max_elapsed_s=max(60.0, self.native_tool_max_elapsed_s),
+                    max_result_bytes=self.native_tool_max_result_bytes,
+                ),
+                created_at=started_at,
+                expires_at=started_at + timedelta(seconds=max(60, timeout_s)),
+            )
+            native_session = NativeToolSession(
+                descriptor=native_session_descriptor,
+                runner=AgentNativeRunner(native_catalog),
+                artifacts=self.artifacts,
+            )
+            native_broker = NativeToolBroker(native_session)
+            native_broker.start()
         environment = self._child_environment(agent_tool, plan, native_broker=native_broker)
 
         stdout = ""
@@ -420,23 +461,33 @@ class CodexAdaptExecutor:
         status = AdapterAgentRunStatus.FAILED
         error: str | None = None
         try:
-            completed = subprocess.run(
-                command,
-                input=prompt,
-                capture_output=True,
-                check=False,
-                cwd=workspace,
-                env=environment,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_s,
-            )
-            stdout = completed.stdout
-            stderr = completed.stderr
-            exit_code = completed.returncode
-            if completed.returncode != 0:
-                error = f"Codex exited with code {completed.returncode}"
+            if on_output is None:
+                completed = subprocess.run(
+                    command,
+                    input=prompt,
+                    capture_output=True,
+                    check=False,
+                    cwd=workspace,
+                    env=environment,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_s,
+                )
+                stdout = completed.stdout
+                stderr = completed.stderr
+                exit_code = completed.returncode
+            else:
+                stdout, stderr, exit_code = self._run_streaming(
+                    command,
+                    prompt=prompt,
+                    cwd=workspace,
+                    environment=environment,
+                    timeout_s=timeout_s,
+                    on_output=on_output,
+                )
+            if exit_code != 0:
+                error = f"Codex exited with code {exit_code}"
             elif not final_message_path.is_file():
                 error = "Codex did not write the required structured final message"
             else:
@@ -460,7 +511,15 @@ class CodexAdaptExecutor:
         except OSError as exc:
             error = f"Could not start Codex: {exc}"
         finally:
-            native_broker.stop()
+            if native_broker is not None:
+                native_broker.stop()
+        self.artifacts.write_json(
+            f"{relative_run_root}/native-tool-summary.json",
+            summarize_native_tool_run(
+                native_rollout,
+                native_session.results if native_session is not None else (),
+            ).model_dump(mode="json"),
+        )
 
         query_metrics_path = workspace / "rolo-agent-query-metrics.json"
         if query_metrics_path.is_file():
@@ -555,7 +614,7 @@ class CodexAdaptExecutor:
         def drain(name: str, pipe) -> None:
             for line in iter(pipe.readline, ""):
                 streams[name].append(line)
-                on_output(name, line.rstrip("\r\n"))
+                on_output(name, CodexAdaptExecutor._presentation_line(line))
             pipe.close()
 
         workers = [
@@ -581,6 +640,18 @@ class CodexAdaptExecutor:
             worker.join(timeout=2)
         return "".join(streams["stdout"]), "".join(streams["stderr"]), process.returncode
 
+    @staticmethod
+    def _presentation_line(line: str) -> str:
+        """Bound and redact live UI output; the immutable artifact keeps the raw stream."""
+        value = line.rstrip("\r\n")[:8_000]
+        value = re.sub(
+            r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization)\s*[:=]\s*\S+",
+            r"\1=<redacted>",
+            value,
+        )
+        value = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <redacted>", value)
+        return value
+
     def _child_environment(
         self,
         agent_tool: Path,
@@ -597,6 +668,8 @@ class CodexAdaptExecutor:
                 environment.pop(name, None)
         if self.api_key:
             environment["CODEX_API_KEY"] = self.api_key
+            if self.api_key_env and self.api_key_env != "CODEX_API_KEY":
+                environment[self.api_key_env] = self.api_key
         user_home = _codex_user_home(environment, self.executable)
         if user_home is not None:
             environment.setdefault("HOME", str(user_home))
@@ -679,14 +752,10 @@ class CodexAdaptExecutor:
                 )
         wiki_path = resolve_artifact_ref(self.artifacts.root, report.review_ref)
         wiki_content = wiki_path.read_text(encoding="utf-8", errors="replace")
-        definitions = {
-            item.operation: item for item in canonical_operation_registry().operations
-        }
+        definitions = {item.operation: item for item in canonical_operation_registry().operations}
         # The governance classification remains shadow-only in this release. The
         # executable task set stays pinned to the already-approved eligible list.
-        current_task_operations = sorted(
-            set(plan.eligible_operations) & set(task_operations)
-        )
+        current_task_operations = sorted(set(plan.eligible_operations) & set(task_operations))
         snapshot = {
             "schema_version": "robot-adapter-agent-inspection/v2",
             "robot_id": plan.robot_id,
@@ -730,11 +799,14 @@ class CodexAdaptExecutor:
             },
             "evidence": {},
             "agent_native": {
-                "catalog_sha256": native_catalog_sha256(default_agent_native_catalog()),
-                "tools": [
-                    item.model_dump(mode="json")
-                    for item in default_agent_native_catalog()
-                ],
+                "mode": self.native_tool_mode,
+                "selected": self._native_tools_enabled(plan.robot_id, run_id or ""),
+                "influences_release": False,
+                "catalog_sha256": native_catalog_sha256(reduced_agent_native_catalog()),
+                "operation_family_map": native_operation_family_map(
+                    target_slice.agent_native_operations
+                ),
+                "tools": [item.model_dump(mode="json") for item in reduced_agent_native_catalog()],
             },
         }
         snapshot_path = workspace / "rolo-agent-inspection.json"
@@ -768,8 +840,10 @@ class CodexAdaptExecutor:
             "- Work only in this directory. On Windows, explicitly Set-Location to this "
             "directory before every shell command.\n"
             "- For Linux/ROS/HW read-only observations, use the supplied `rolo-agent-tool native "
-            "list` and `rolo-agent-tool native run TOOL_ID` commands. Do not construct arbitrary "
-            "argv or treat native evidence as Verified.\n"
+            "list` and `rolo-agent-tool native run FAMILY_ID --mode MODE [--PARAM VALUE]` "
+            "commands. The family catalog is allowlisted; do not construct arbitrary argv or "
+            "treat native evidence as Verified. If the native mode is off, continue with the "
+            "pinned discovery evidence.\n"
             "- Do not inventory the directory, run `rg --files`, recurse above it, or inspect "
             "the drive root. Start with the supplied rolo-agent-tool and the compact plan.\n"
             "- Run focused adapter tests, then run `adapt handoff pack`. A failed pack may be "
@@ -868,7 +942,10 @@ class CodexAdaptExecutor:
             "examples": [
                 f"{tool_prefix} adapt operations summary --robot {plan.robot_id}",
                 f"{tool_prefix} native list --robot {plan.robot_id}",
-                f"{tool_prefix} native run native.linux.host.status --robot {plan.robot_id}",
+                f"{tool_prefix} native run native.linux.host.inspect --mode status "
+                f"--robot {plan.robot_id}",
+                f"{tool_prefix} native run native.ros.graph.inspect --mode nodes "
+                f"--robot {plan.robot_id}",
                 f"{tool_prefix} adapt operations list --robot {plan.robot_id} "
                 "--scope current-task --limit 20",
                 f"{tool_prefix} adapt operations search --robot {plan.robot_id} QUERY",
@@ -886,6 +963,9 @@ class CodexAdaptExecutor:
                 "--adapter-manifest MANIFEST --adapter-package ENTRYPOINT "
                 "--state-graph GRAPH --conformance-report REPORT",
             ],
+            "mode": self.native_tool_mode,
+            "selected": self._native_tools_enabled(plan.robot_id, run_id or ""),
+            "catalog_sha256": native_catalog_sha256(reduced_agent_native_catalog()),
         }
         current_task_operations = activation.effective_context_operations
         current_task_operation_set = set(current_task_operations)
@@ -898,9 +978,7 @@ class CodexAdaptExecutor:
             "slice_activation_mode": activation.mode.value,
             "slice_activation_outcome": activation.outcome.value,
             "slice_affects_agent_context": activation.affects_agent_context,
-            "release_authority_operation_count": len(
-                activation.release_authority_operations
-            ),
+            "release_authority_operation_count": len(activation.release_authority_operations),
             "target_adapter_operations": current_task_operations[:20],
             "target_adapter_operation_count": len(current_task_operations),
             "target_adapter_operations_truncated": len(current_task_operations) > 20,

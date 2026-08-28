@@ -20,6 +20,7 @@ dependencies = [
 [project.scripts]
 rolo = "rolo.product_cli:app"
 robotctl = "rolo.cli:app"
+rolo-mcp = "rolo.mcp_server:main"
 
 [dependency-groups]
 dev = [
@@ -40,6 +41,7 @@ packages = ["src/rolo"]
 "skills/rolo-adapt-discovery" = "rolo/bundled_skills/rolo-adapt-discovery"
 "skills/rolo-operation-mapping" = "rolo/bundled_skills/rolo-operation-mapping"
 "skills/rolo-wiki-authoring" = "rolo/bundled_skills/rolo-wiki-authoring"
+"skills/rolo" = "rolo/bundled_skills/rolo"
 
 [tool.pytest.ini_options]
 addopts = "-q"

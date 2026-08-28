@@ -137,9 +137,7 @@ def test_boot_prompt_does_not_scale_with_unrelated_registry_operations(tmp_path:
     ]
     expanded = registry.model_copy(update={"operations": [*registry.operations, *unrelated]})
 
-    with patch(
-        "rolo.stages.adapt.workset.canonical_operation_registry", return_value=expanded
-    ):
+    with patch("rolo.stages.adapt.workset.canonical_operation_registry", return_value=expanded):
         scaled = executor._build_prompt(plan)
 
     assert len(scaled) - len(baseline) < 100
@@ -157,16 +155,12 @@ def test_compact_plan_keeps_shadow_classification_out_of_current_eligibility(
     plan.deferred_operations[deferred] = "SHADOW_CLASSIFICATION_ONLY"
 
     prompt = CodexAdaptExecutor(ArtifactStore(artifact_root))._build_prompt(plan)
-    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
-        "\n\nDISCOVERY CONTEXT:\n", 1
-    )[0]
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split("\n\nDISCOVERY CONTEXT:\n", 1)[0]
     compact_plan = json.loads(serialized)
 
     assert deferred not in compact_plan["target_adapter_operations"]
     assert compact_plan["target_adapter_operation_count"] == len(plan.eligible_operations)
-    assert all(
-        deferred not in task["operations"] for task in compact_plan["tasks"]
-    )
+    assert all(deferred not in task["operations"] for task in compact_plan["tasks"])
     assert "authoritative bundle operation set" in prompt
     assert "If it fails, fix only the reported error" in prompt
     assert "At the first success" in prompt
@@ -185,9 +179,7 @@ def test_agent_workspace_instructions_prevent_recursive_inventory_and_rework(
     workspace.mkdir()
     plan = prepare_plan(artifact_root, evidence)
 
-    CodexAdaptExecutor(ArtifactStore(artifact_root))._install_agent_tool_launcher(
-        workspace, plan
-    )
+    CodexAdaptExecutor(ArtifactStore(artifact_root))._install_agent_tool_launcher(workspace, plan)
 
     instructions = (workspace / "AGENTS.md").read_text(encoding="utf-8")
     assert "Do not inventory the directory" in instructions
@@ -228,23 +220,15 @@ def test_explicit_canary_narrows_compact_focus_but_not_current_task_authority(
         prompt = executor._build_prompt(plan)
         executor._install_agent_tool_launcher(workspace, plan)
 
-    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split(
-        "\n\nDISCOVERY CONTEXT:\n", 1
-    )[0]
+    serialized = prompt.split("COMPACT ADAPT PLAN:\n", 1)[1].split("\n\nDISCOVERY CONTEXT:\n", 1)[0]
     compact_plan = json.loads(serialized)
-    snapshot = json.loads(
-        (workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8")
-    )
+    snapshot = json.loads((workspace / "rolo-agent-inspection.json").read_text(encoding="utf-8"))
 
     assert compact_plan["slice_activation_outcome"] == "ACTIVATED"
     assert compact_plan["target_adapter_operations"] == [focused]
-    assert compact_plan["release_authority_operation_count"] == len(
-        plan.eligible_operations
-    )
+    assert compact_plan["release_authority_operation_count"] == len(plan.eligible_operations)
     assert snapshot["current_task_operations"] == sorted(plan.eligible_operations)
-    assert snapshot["slice_activation_decision"]["effective_context_operations"] == [
-        focused
-    ]
+    assert snapshot["slice_activation_decision"]["effective_context_operations"] == [focused]
     assert snapshot["slice_activation_decision"]["release_authority_operations"] == sorted(
         plan.eligible_operations
     )
@@ -325,12 +309,22 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     activation = json.loads(
         (run_path.parent / "slice-activation-decision.json").read_text(encoding="utf-8")
     )
+    native_rollout = json.loads(
+        (run_path.parent / "native-tool-rollout.json").read_text(encoding="utf-8")
+    )
+    native_summary = json.loads(
+        (run_path.parent / "native-tool-summary.json").read_text(encoding="utf-8")
+    )
     assert (run_path.parent / "platform-profile.json").is_file()
     assert slice_shadow["influences_release"] is False
     assert capability_shadow["influences_release"] is False
     assert activation["mode"] == "SHADOW"
     assert activation["outcome"] == "SHADOW_ONLY"
     assert activation["influences_release"] is False
+    assert native_rollout["mode"] == "off"
+    assert native_rollout["selected"] is False
+    assert native_summary["call_count"] == 0
+    assert native_summary["influences_release"] is False
     assert context_metrics["shadow_influences_release"] is False
     assert context_metrics["slice_activation_affects_agent_context"] is False
     assert set(context_metrics["capability_resolution_counts"]) == {
@@ -595,9 +589,7 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
     assert "describe preflight does not match" in rejected.stderr
 
     (workspace / "adapter.py").write_text(
-        "import sys\n"
-        "if sys.argv[1] == 'describe':\n"
-        "    print('x' * 250_000)\n",
+        "import sys\nif sys.argv[1] == 'describe':\n    print('x' * 250_000)\n",
         encoding="utf-8",
     )
     oversized_sha = hashlib.sha256((workspace / "adapter.py").read_bytes()).hexdigest()
@@ -677,6 +669,21 @@ def test_codex_executor_removes_unrelated_host_credentials(
 
     assert "AWS_SECRET_ACCESS_KEY" not in environment
     assert "UNRELATED_SESSION_TOKEN" not in environment
+
+
+def test_native_tool_rollout_is_explicitly_gated() -> None:
+    off = CodexAdaptExecutor(ArtifactStore(Path(".")), native_tool_mode="off")
+    shadow = CodexAdaptExecutor(ArtifactStore(Path(".")), native_tool_mode="shadow")
+    canary = CodexAdaptExecutor(
+        ArtifactStore(Path(".")),
+        native_tool_mode="canary",
+        native_tool_robot_ids="robot-a",
+    )
+
+    assert off._native_tools_enabled("robot-a", "run-1") is False
+    assert shadow._native_tools_enabled("robot-a", "run-1") is True
+    assert canary._native_tools_enabled("robot-a", "run-1") is True
+    assert canary._native_tools_enabled("robot-b", "run-1") is False
 
 
 def test_codex_executor_restores_windows_home_from_codex_install(

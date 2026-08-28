@@ -8,6 +8,9 @@ from pydantic import BaseModel
 from rolo.agent_tools import (
     AgentNativeToolDescriptor,
     AgentNativeToolResult,
+    NativeToolParityReport,
+    NativeToolRolloutDecision,
+    NativeToolRunSummary,
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
 )
@@ -93,7 +96,11 @@ from rolo.stages.adapt.models import (
     StateGraphBaseline,
     ToolCatalog,
 )
-from rolo.stages.adapt.operation_governance import OperationDispositionLedger
+from rolo.stages.adapt.operation_governance import (
+    LegacyOperationDisposition,
+    LegacyOperationDispositionLedger,
+    OperationDispositionLedger,
+)
 from rolo.stages.adapt.operation_registry import CanonicalOperationRegistry
 from rolo.stages.adapt.shadow_observation import TargetOperationSliceShadowReport
 from rolo.stages.adapt.skill_contracts import AdaptDiscoveryPlan
@@ -129,6 +136,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     CanonicalOperationRegistry,
     AdaptBaselineSnapshot,
     OperationDispositionLedger,
+    LegacyOperationDisposition,
+    LegacyOperationDispositionLedger,
     CapabilityDescriptor,
     ProviderManifest,
     ProviderRegistration,
@@ -141,6 +150,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     AgentNativeToolResult,
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
+    NativeToolRolloutDecision,
+    NativeToolParityReport,
+    NativeToolRunSummary,
     AdaptInputs,
     AdaptJourneyResult,
     AdaptPlan,
@@ -200,12 +212,27 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     PublishedEpisodeObservationBundleProjection,
 )
 
+# Keep the pre-v2 filenames as compatibility exports for downstream consumers.
+# They intentionally point at the current descriptor models; no legacy model is
+# used by the runtime.
+COMPATIBILITY_SCHEMA_ALIASES: tuple[tuple[str, type[BaseModel]], ...] = (
+    ("AgentNativeTool", AgentNativeToolDescriptor),
+    ("NativeToolSession", NativeToolSessionDescriptor),
+)
+
 
 def export_canonical_schemas(output: Path) -> list[Path]:
     output.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for model in CANONICAL_SCHEMA_MODELS:
         path = output / f"{model.__name__}.schema.json"
+        path.write_text(
+            json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        written.append(path)
+    for alias, model in COMPATIBILITY_SCHEMA_ALIASES:
+        path = output / f"{alias}.schema.json"
         path.write_text(
             json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2),
             encoding="utf-8",

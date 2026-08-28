@@ -178,6 +178,45 @@ class OperationDispositionLedger(BaseModel):
         return {entry.current_operation: entry for entry in self.entries}
 
 
+class LegacyOperationDisposition(BaseModel):
+    """Versioned retirement record for a command-shaped operation ID.
+
+    This ledger is additive and does not alter the protected v1 disposition matrix.  It
+    records the replacement family and rollout state needed before a wrapper can be
+    removed from a future release.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-legacy-operation-disposition/v1"] = (
+        "rolo-legacy-operation-disposition/v1"
+    )
+    operation: str = Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
+    replacement_tool: str = Field(pattern=r"^native\.[a-z][a-z0-9_.-]{1,127}$")
+    migration_status: Literal["PLANNED", "SHADOW", "CANARY", "RETIRED"]
+    reason: str = Field(min_length=12, max_length=512)
+    sunset_version: str | None = Field(default=None, max_length=64)
+    v1_compatibility: Literal[True] = True
+
+
+class LegacyOperationDispositionLedger(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-legacy-operation-ledger/v1"] = (
+        "rolo-legacy-operation-ledger/v1"
+    )
+    entries: list[LegacyOperationDisposition] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_unique_operations(self) -> LegacyOperationDispositionLedger:
+        operations = [entry.operation for entry in self.entries]
+        if len(operations) != len(set(operations)):
+            raise ValueError("legacy operation disposition contains duplicates")
+        if operations != sorted(operations):
+            raise ValueError("legacy operation dispositions must be sorted")
+        return self
+
+
 class OperationRoleProjection(BaseModel):
     """Derived v2 role metadata used by shadow tooling and future Registry loaders."""
 

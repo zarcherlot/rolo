@@ -15,6 +15,29 @@ The runtime creates required directories for the current user. Environment varia
 `.env` deployments remain compatible. Precedence is CLI, environment, user YAML, `.env`, then
 built-in defaults.
 
+## Coding Agent selection
+
+The `agent` section is deliberately split into two independent choices:
+
+```yaml
+agent:
+  provider: anthropic       # model endpoint/vendor or an internal relay
+  executor: claude-code    # local Agent product/harness adapter
+  base_url: https://gateway.example/v1
+  model: claude-sonnet
+  api_key_env: ANTHROPIC_API_KEY
+  executable: claude
+  timeout_s: 1800
+  auto_install: false
+  require_auth: true
+```
+
+Rolo ships the Codex executor and exposes an executor SPI (`rolo.agent_provider`). Other
+products can register an adapter through the `rolo.agent_executors` Python entry-point group;
+the lifecycle, evidence, approval, and release contracts do not change. Rolo never persists the
+secret itself in plans or artifacts: only the environment-variable name and a boolean
+`api_key_configured` flag are recorded.
+
 ## Manage the user file
 
 ```bash
@@ -25,6 +48,25 @@ uv run robotctl config validate
 
 `init` never overwrites an existing file. `show` and `validate` emit only the supported non-secret
 settings. A complete template is checked in at [`../config/rolo.default.yaml`](../config/rolo.default.yaml).
+
+## Agent-native rollout
+
+The family-level Linux/ROS/HW observation catalog is disabled by default:
+
+```yaml
+agent_native:
+  mode: off       # off | shadow | canary | active
+  robot_ids: ""
+  run_ids: ""
+  max_calls: 64
+  max_elapsed_s: 600
+  max_result_bytes: 8000000
+```
+
+`shadow` enables bounded observations for comparison, while `canary` requires an exact robot or
+run selector. Neither mode changes eligibility or release authority. `active` should only be used
+after native parity and artifact/evidence review; writes, calibration, reset, actuator, power and
+firmware operations remain Canonical.
 
 ## ROS setup resolution
 

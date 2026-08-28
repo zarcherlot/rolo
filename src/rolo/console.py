@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
+from threading import Lock
 from typing import TextIO
 
 from rolo.core.config import get_settings
+from rolo.harness import HarnessError, HarnessRequest, ModelHarness, configured_harness
 from rolo.job_service import JobService
 from rolo.natural_language import (
     NaturalLanguageOperation,
@@ -30,12 +33,15 @@ class RoloConsole:
         input_stream: TextIO | None = None,
         output_stream: TextIO | None = None,
         confirm: Callable[[str], bool] | None = None,
+        harness: ModelHarness | None = None,
     ) -> None:
         self.service = service
         self.adapter = adapter
         self.input_stream = input_stream
         self.output_stream = output_stream
         self.confirm = confirm
+        self.harness = harness
+        self._output_lock = Lock()
 
     def run(self) -> None:
         input_stream = self.input_stream or sys.stdin
@@ -89,7 +95,8 @@ class RoloConsole:
             intent = parse_natural_language(request)
             argv = intent_to_argv(intent)
         except ValueError as exc:
-            self._write(output_stream, f"ERROR NATURAL_LANGUAGE_INVALID: {exc}")
+            if not self._chat(request, output_stream):
+                self._write(output_stream, f"ERROR NATURAL_LANGUAGE_INVALID: {exc}")
             return
         self._write(output_stream, f"Intent: {intent.operation.value}")
         self._write(output_stream, f"Canonical CLI: uv run rolo {' '.join(argv)}")
@@ -118,12 +125,50 @@ class RoloConsole:
 
     def _execute(self, intent, output_stream: TextIO) -> None:
         try:
-            result = self.service.execute(intent)
+            result = self.service.execute(
+                intent,
+                on_output=(
+                    lambda stream, line: self._render_agent_output(
+                        stream, line, output_stream
+                    )
+                    if intent.operation == NaturalLanguageOperation.ADAPT_START
+                    else None
+                ),
+            )
         except (OSError, ValueError) as exc:
             self._write(output_stream, f"ERROR EXECUTION_FAILED: {exc}")
             return
         payload = result.model_dump(mode="json") if hasattr(result, "model_dump") else result
         self._write(output_stream, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+    def _chat(self, request: str, output_stream: TextIO) -> bool:
+        """Fallback to model chat for conversational input, never for authority."""
+        if self.harness is None:
+            return False
+        prompt = (
+            "You are Rolo's conversational interface. Explain and plan clearly. "
+            "Never invent evidence, release status, authorization, or robot state. "
+            "Rolo deterministic services own all execution and user approval.\n\n"
+            + request
+        )
+        try:
+            _, stderr, code = self.harness.run(
+                HarnessRequest(prompt=prompt, workspace=Path.cwd()),
+                on_output=lambda stream, line: self._render_agent_output(
+                    stream, line, output_stream
+                ),
+            )
+        except HarnessError as exc:
+            self._write(output_stream, f"ERROR MODEL_HARNESS: {exc}")
+            return True
+        if code != 0 and stderr:
+            self._write(output_stream, f"ERROR MODEL_HARNESS: {stderr[-2_000:]}")
+        return True
+
+    def _render_agent_output(self, stream: str, line: str, output_stream: TextIO) -> None:
+        if line:
+            prefix = "agent" if stream == "stdout" else "agent stderr"
+            self._write(output_stream, f"[{prefix}] {line[:8_000]}")
 
     def _render_jobs(self, output_stream: TextIO) -> None:
         state = self.adapter.safe_list_view()
@@ -166,10 +211,10 @@ class RoloConsole:
                 f"  [{event.sequence}] {event.status.value:<9} {event.event_type}",
             )
 
-    @staticmethod
-    def _write(output_stream: TextIO, value: str, *, end: str = "\n") -> None:
-        output_stream.write(value + end)
-        output_stream.flush()
+    def _write(self, output_stream: TextIO, value: str, *, end: str = "\n") -> None:
+        with self._output_lock:
+            output_stream.write(value + end)
+            output_stream.flush()
 
 
 def run_console(
@@ -177,11 +222,19 @@ def run_console(
     input_stream: TextIO | None = None,
     output_stream: TextIO | None = None,
 ) -> None:
-    jobs = JobService(get_settings().rolo_config_dir / "jobs")
+    settings = get_settings()
+    jobs = JobService(settings.rolo_config_dir / "jobs")
     adapter = JobUiAdapter(ServiceJobQueryAdapter(jobs))
+    harness = None
+    if settings.coding_agent_executor:
+        try:
+            harness = configured_harness(settings)
+        except HarnessError:
+            harness = None
     RoloConsole(
         NaturalLanguageService(jobs),
         adapter,
         input_stream=input_stream,
         output_stream=output_stream,
+        harness=harness,
     ).run()

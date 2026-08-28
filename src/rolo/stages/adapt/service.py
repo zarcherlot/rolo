@@ -3,18 +3,19 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 from rolo.adapter_runtime import load_current_release
+from rolo.agent_provider import create_agent_executor
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings, get_settings
 from rolo.core.models import DiscoveryStatus
 from rolo.stages.adapt.conformance import AdapterPromotionService, validate_adapter_handoff
 from rolo.stages.adapt.dependencies import AdapterAgentDependencyManager
 from rolo.stages.adapt.discovery import load_latest_report, load_report
-from rolo.stages.adapt.executor import CodexAdaptExecutor
+from rolo.stages.adapt.executor import CodexAdaptExecutor  # noqa: F401 - v1 compatibility import
 from rolo.stages.adapt.inputs import AdaptInputs
 from rolo.stages.adapt.models import (
     AdapterAgentConfig,
@@ -32,6 +33,14 @@ from rolo.stages.adapt.operation_registry import (
 )
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.contracts import AgentRequirement, StageAssessment, StageName, StageStatus
+
+
+class AdaptAuthorizationRequired(ValueError):
+    """The journey is resumable, but a separate user capability is missing."""
+
+    def __init__(self, report: AdapterAgentDependencyReport) -> None:
+        super().__init__(f"Adapter Agent dependency is not ready: {report.status.value}")
+        self.authorization_report = report.model_dump(mode="json")
 
 
 @contextmanager
@@ -57,6 +66,7 @@ def coding_agent_config(settings: Settings) -> AdapterAgentConfig:
         executor=settings.coding_agent_executor.strip() or "codex",
         base_url=(settings.coding_agent_base_url or "").strip() or None,
         model=(settings.coding_agent_model or "").strip() or None,
+        api_key_env=settings.coding_agent_api_key_env.strip() or "CODING_AGENT_API_KEY",
         api_key_configured=bool(settings.coding_agent_api_key),
         auto_install=settings.coding_agent_auto_install,
         require_auth=settings.coding_agent_require_auth,
@@ -95,9 +105,10 @@ class AdaptExecutionService:
         *,
         robot_id: str,
         workspace: Path,
-        timeout_s: int,
+        timeout_s: int | None,
         plan: AdaptPlan,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdapterAgentDependencyReport, AdapterAgentRun | None, Path | None]:
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
             raise ValueError(f"Adapt plan for {robot_id} is {plan.status.value}")
@@ -106,25 +117,34 @@ class AdaptExecutionService:
             dependency,
             allow_installed=not self.settings.coding_agent_require_auth,
         ):
+            if dependency.status == AdapterAgentDependencyStatus.AUTH_REQUIRED:
+                raise AdaptAuthorizationRequired(dependency)
             return dependency, None, None
-        executor = CodexAdaptExecutor(
-            self.artifacts,
+        executor = create_agent_executor(
+            self.config.executor,
+            artifacts=self.artifacts,
             executable=dependency.executable or self.settings.coding_agent_executable,
             api_key=self.settings.coding_agent_api_key,
+            api_key_env=self.config.api_key_env,
             output_root=self.settings.rolo_output_dir,
             slice_activation_mode=self.settings.adapt_operation_slice_mode,
             slice_activation_robot_ids=self.settings.adapt_operation_slice_robot_ids,
             slice_activation_run_ids=self.settings.adapt_operation_slice_run_ids,
-            slice_activation_max_operations=(
-                self.settings.adapt_operation_slice_max_operations
-            ),
+            slice_activation_max_operations=(self.settings.adapt_operation_slice_max_operations),
+            native_tool_mode=self.settings.adapt_native_tool_mode,
+            native_tool_robot_ids=self.settings.adapt_native_tool_robot_ids,
+            native_tool_run_ids=self.settings.adapt_native_tool_run_ids,
+            native_tool_max_calls=self.settings.adapt_native_tool_max_calls,
+            native_tool_max_elapsed_s=self.settings.adapt_native_tool_max_elapsed_s,
+            native_tool_max_result_bytes=self.settings.adapt_native_tool_max_result_bytes,
         )
         run, artifact = executor.execute(
             robot_id=robot_id,
             workspace=workspace,
-            timeout_s=timeout_s,
+            timeout_s=timeout_s or self.settings.coding_agent_timeout_s or 1800,
             plan=plan,
             slice_canary=slice_canary,
+            on_output=on_output,
         )
         return dependency, run, artifact
 
@@ -148,8 +168,9 @@ class AdaptRunService:
         *,
         robot_id: str,
         scratch_root: Path | None,
-        timeout_s: int,
+        timeout_s: int | None,
         slice_canary: bool = False,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> tuple[AdaptRunSummary, Path]:
         plan = self.dry_run(robot_id)
         if plan.status != AdaptPlanStatus.REQUIRES_CODING:
@@ -185,6 +206,7 @@ class AdaptRunService:
                 timeout_s=timeout_s,
                 plan=plan,
                 slice_canary=slice_canary,
+                on_output=on_output,
             )
             if agent_run is None or agent_run_path is None:
                 raise ValueError(

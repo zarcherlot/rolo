@@ -115,9 +115,17 @@ class NativeToolBroker:
                     "tools": [item.model_dump(mode="json") for item in self.session.list_tools()],
                 }
             if action == "run" and isinstance(request.get("tool_id"), str):
+                raw_arguments = request.get("arguments", {})
+                if not isinstance(raw_arguments, dict) or any(
+                    not isinstance(key, str) or not isinstance(value, str)
+                    for key, value in raw_arguments.items()
+                ):
+                    return {"status": "ERROR", "message": "native tool arguments must be strings"}
                 return {
                     "status": "SUCCEEDED",
-                    "result": self.session.invoke(request["tool_id"]).model_dump(mode="json"),
+                    "result": self.session.invoke(request["tool_id"], raw_arguments).model_dump(
+                        mode="json"
+                    ),
                 }
             return {"status": "ERROR", "message": "invalid native broker request"}
         except Exception as exc:

@@ -93,6 +93,29 @@ uv run rolo adapt /path/to/robot-workspace \
   --urdf /path/to/robot.urdf  # 可省略
 ```
 
+### Codex/Claude Code 交互与自举授权
+
+Rolo 将模型 transport 与执行权分离：Codex harness/依赖管理层负责对话、流式输出和
+必要的登录/安装动作，Rolo 服务负责证据、计划、审批和 release 判定。模型 API
+可以通过 `CODING_AGENT_PROVIDER`、`CODING_AGENT_BASE_URL`、
+`CODING_AGENT_MODEL`、`CODING_AGENT_API_KEY` 配置；密钥只注入子进程环境，不写入
+提示词或 artifact。
+
+```bash
+# Codex 风格自然交互（仅在需要时询问当前用户）
+uv run rolo
+
+# 供 Codex/Claude Code 配置为 MCP server
+uv run rolo-mcp
+```
+
+MCP 暴露 `rolo_target_inspect`、`rolo_bootstrap_plan` 和
+`rolo_adapt_start`。后者必须携带当前用户明确确认的 `confirmed=true`；若 Codex
+能力尚未登录，Adapt 会返回短期 authorization request、`request_id`、
+`plan_sha256` 和恢复命令，并由 Rolo 在隔离的 Agent 工作区生成本次会话的
+`AGENTS.md`。因此授权只绑定到一个目标、一个计划和一个恢复操作，rolo-vis 后续
+可用同一标识精确关联 GUI 决策。
+
 需要远程证据、细粒度门禁或专家参数时，再使用底层专家 CLI：
 
 ```bash

@@ -125,6 +125,7 @@ class NativeToolSession:
             )
         self._calls = 0
         self._result_bytes = 0
+        self._results: list[AgentNativeToolResult] = []
         self._closed = False
         self._lock = threading.Lock()
 
@@ -133,7 +134,11 @@ class NativeToolSession:
         allowed = set(self.descriptor.allowed_tools)
         return [item for item in self.runner.list_tools() if item.tool_id in allowed]
 
-    def invoke(self, tool_id: str) -> AgentNativeToolResult:
+    def invoke(
+        self,
+        tool_id: str,
+        arguments: dict[str, str] | None = None,
+    ) -> AgentNativeToolResult:
         with self._lock:
             self._preflight()
             if tool_id not in self.descriptor.allowed_tools:
@@ -148,7 +153,7 @@ class NativeToolSession:
                     "native tool session result-byte budget is exhausted"
                 )
             self._calls += 1
-            result = self.runner.run(tool_id)
+            result = self.runner.run(tool_id, arguments)
             encoded = json.dumps(
                 result.model_dump(mode="json"),
                 ensure_ascii=False,
@@ -171,7 +176,14 @@ class NativeToolSession:
             enriched = result.model_copy(update={"evidence_refs": [ref]})
             self.artifacts.write_json(relative, enriched.model_dump(mode="json"))
             self._audit(tool_id, enriched, outcome=enriched.status.value, result_bytes=len(encoded))
+            self._results.append(enriched)
             return enriched
+
+    @property
+    def results(self) -> list[AgentNativeToolResult]:
+        """Return a defensive copy of results observed in this session."""
+        with self._lock:
+            return list(self._results)
 
     def close(self) -> None:
         self._closed = True

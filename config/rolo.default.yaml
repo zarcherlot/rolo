@@ -9,8 +9,15 @@ storage:
 
 agent:
   provider: codex
+  # executor is the local Agent product/harness; provider is its model endpoint.
+  executor: codex
+  base_url: null
+  model: null
+  api_key_env: CODING_AGENT_API_KEY
   executable: codex
   timeout_s: 1800
+  auto_install: true
+  require_auth: true
 
 ros:
   auto_source: true
@@ -22,3 +29,12 @@ adapter_runtime:
   # ML-backed CLIs reserve large virtual mappings; resident memory remains deployment-owned.
   max_address_space_bytes: 4294967296
   max_processes: 128
+
+agent_native:
+  # off is the safe default; shadow/canary do not affect release authority.
+  mode: off
+  robot_ids: ""
+  run_ids: ""
+  max_calls: 64
+  max_elapsed_s: 600
+  max_result_bytes: 8000000

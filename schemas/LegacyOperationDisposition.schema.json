@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "description": "Versioned retirement record for a command-shaped operation ID.\n\nThis ledger is additive and does not alter the protected v1 disposition matrix.  It\nrecords the replacement family and rollout state needed before a wrapper can be\nremoved from a future release.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-legacy-operation-disposition/v1",
+      "default": "rolo-legacy-operation-disposition/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "operation": {
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "replacement_tool": {
+      "pattern": "^native\\.[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Replacement Tool",
+      "type": "string"
+    },
+    "migration_status": {
+      "enum": [
+        "PLANNED",
+        "SHADOW",
+        "CANARY",
+        "RETIRED"
+      ],
+      "title": "Migration Status",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 512,
+      "minLength": 12,
+      "title": "Reason",
+      "type": "string"
+    },
+    "sunset_version": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sunset Version"
+    },
+    "v1_compatibility": {
+      "const": true,
+      "default": true,
+      "title": "V1 Compatibility",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "operation",
+    "replacement_tool",
+    "migration_status",
+    "reason"
+  ],
+  "title": "LegacyOperationDisposition",
+  "type": "object"
+}

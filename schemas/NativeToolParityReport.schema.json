@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "description": "Structural shadow report for command-shaped names versus family replacements.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-native-tool-parity/v1",
+      "default": "rolo-native-tool-parity/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_operation_count": {
+      "minimum": 0,
+      "title": "Source Operation Count",
+      "type": "integer"
+    },
+    "mapped_operation_count": {
+      "minimum": 0,
+      "title": "Mapped Operation Count",
+      "type": "integer"
+    },
+    "unmapped_operations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unmapped Operations",
+      "type": "array"
+    },
+    "unknown_family_tools": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unknown Family Tools",
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "DIFF"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "source_operation_count",
+    "mapped_operation_count",
+    "status"
+  ],
+  "title": "NativeToolParityReport",
+  "type": "object"
+}

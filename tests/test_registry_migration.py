@@ -16,6 +16,15 @@ def test_registry_migration_report_has_disjoint_complete_views() -> None:
     }
     assert report["v1_v2_identity_distinct"] is True
     assert report["v2_registry_operation_count"] == 197
+    assert report["native_family_tool_count"] == 22
+    assert report["native_family_catalog_sha256"]
+    assert report["native_operation_mapping_count"] == 73
+    assert sum(report["native_operation_family_counts"].values()) == 73
+    assert report["native_operation_parity"]["status"] == "PASS"
+    assert len(report["legacy_operation_ledger"]["entries"]) == 73
+    assert {item["migration_status"] for item in report["legacy_operation_ledger"]["entries"]} == {
+        "SHADOW"
+    }
 
 
 def test_agent_native_ids_do_not_shadow_canonical_operation_ids() -> None:
@@ -23,4 +32,3 @@ def test_agent_native_ids_do_not_shadow_canonical_operation_ids() -> None:
     native = {item.tool_id for item in default_agent_native_catalog()}
 
     assert native.isdisjoint(canonical)
-

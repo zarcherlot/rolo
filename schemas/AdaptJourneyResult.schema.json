@@ -122,7 +122,8 @@
       "enum": [
         "COMPLETE",
         "DISCOVERY_COMPLETE",
-        "BLOCKED"
+        "BLOCKED",
+        "WAITING_FOR_AUTH"
       ],
       "title": "Status",
       "type": "string"
@@ -278,6 +279,19 @@
         }
       ],
       "default": null
+    },
+    "authorization_request": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authorization Request"
     }
   },
   "required": [

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import deque
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +21,7 @@ from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProb
 from rolo.stages.adapt.discovery import DiscoveryService
 from rolo.stages.adapt.enrollment import EnrollmentService
 from rolo.stages.adapt.models import AdaptPlanStatus
-from rolo.stages.adapt.service import AdaptRunService, assess_adapt
+from rolo.stages.adapt.service import AdaptAuthorizationRequired, AdaptRunService, assess_adapt
 from rolo.stages.adapt.target_evidence import (
     EvidenceDeploymentConfig,
     EvidenceDeploymentMode,
@@ -85,7 +90,7 @@ class TargetEvidenceJourneySummary(BaseModel):
 
 class AdaptJourneyResult(BaseModel):
     schema_version: Literal["robot-adapt-journey/v2"] = "robot-adapt-journey/v2"
-    status: Literal["COMPLETE", "DISCOVERY_COMPLETE", "BLOCKED"]
+    status: Literal["COMPLETE", "DISCOVERY_COMPLETE", "BLOCKED", "WAITING_FOR_AUTH"]
     robot_id: str
     enrollment: str
     doctor_status: str
@@ -103,6 +108,28 @@ class AdaptJourneyResult(BaseModel):
     next_steps: list[str] = Field(default_factory=list)
     workbench_url: str
     target_evidence: TargetEvidenceJourneySummary | None = None
+    authorization_request: dict[str, object] | None = None
+
+
+def _authorization_request(
+    *, robot_id: str, project_root: Path, discovery_id: str | None, plan_sha256: str
+) -> dict[str, object]:
+    now = datetime.now(timezone.utc)
+    request_id = f"auth-{uuid4().hex}"
+    return {
+        "schema_version": "rolo-authorization-request/v1",
+        "request_id": request_id,
+        "status": "PENDING",
+        "scope": "agent.codex.login",
+        "reason": "Adapter Agent requires the configured Codex capability before execution.",
+        "robot_id": robot_id,
+        "project_root": str(project_root),
+        "discovery_id": discovery_id,
+        "plan_sha256": plan_sha256,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=15)).isoformat(),
+        "resume_command": f"rolo adapt {project_root} --robot-id {robot_id}",
+    }
 
 
 def _has_root_document(path: Path) -> bool:
@@ -200,6 +227,7 @@ class AdaptJourneyService:
         timeout_s: int,
         evidence_deployment: EvidenceDeploymentConfig | None = None,
         evidence_timeout_s: float = 45.0,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> AdaptJourneyResult:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
             robot_id=robot_id
@@ -344,6 +372,45 @@ class AdaptJourneyService:
                 robot_id=robot_id,
                 scratch_root=scratch_root,
                 timeout_s=timeout_s,
+                on_output=on_output,
+            )
+        except AdaptAuthorizationRequired as exc:
+            plan_payload = plan.model_dump(mode="json")
+            plan_sha = sha256(
+                json.dumps(plan_payload, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            store = ArtifactStore(self.settings.rolo_artifact_dir)
+            plan_path = store.write_json(
+                f"adapt/{robot_id}/authorization/plans/{plan_sha}.json", plan_payload
+            )
+            request = _authorization_request(
+                robot_id=robot_id,
+                project_root=evidence.project_root,
+                discovery_id=report.discovery_id,
+                plan_sha256=plan_sha,
+            )
+            request["plan_ref"] = str(plan_path)
+            request_path = store.write_json(
+                f"adapt/{robot_id}/authorization/requests/{request['request_id']}.json",
+                request,
+            )
+            request["request_ref"] = str(request_path)
+            return AdaptJourneyResult(
+                status="WAITING_FOR_AUTH",
+                adapt_status="WAITING_FOR_AUTH",
+                authorization_request=request,
+                blockers=[
+                    "Codex capability authorization is required before Adapter Agent execution.",
+                    str(exc.authorization_report),
+                ],
+                next_steps=[
+                    (
+                        "Confirm this request as the current user, then run "
+                        "`codex login --device-auth`."
+                    ),
+                    f"Resume with: rolo adapt {evidence.project_root} --robot-id {robot_id}",
+                ],
+                **{key: value for key, value in base.items() if key != "adapt_status"},
             )
         except ValueError as exc:
             return AdaptJourneyResult(

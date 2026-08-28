@@ -1,8 +1,9 @@
 # Registry Operation 双轨重设计与实施计划
 
-状态：实施基线（首轮切片已完成）。本文不改变当前 v1 Registry、294 项基线或现有
-release；R0-R2 及 R3 的 version-bound resolver 基础能力已在 integration 分支落地，尚未
-启用 v2 release/runtime 切换。
+状态：实施中（R0-R4 基础能力已落地，R5/R6 仍需运行窗口和人工评审）。本文不改变当前
+v1 Registry、294 项基线或旧 release；v2 Canonical、family-level Agent-native catalog、
+Native Session/Broker、灰度开关和迁移校验已在 integration 分支实现，native 默认仍为
+`off`。
 
 ## 1. 决策背景
 
@@ -301,8 +302,14 @@ HW: inventory + compute/thermal/status（只读）
 ```
 
 首轮实现已经覆盖该切片所需的治理投影、受控 Agent-native Runner、v2 shadow 视图、版本绑定
-resolver 和迁移报告。Linux/ROS/HW 工具目前以 `native.*` 命名空间提供，避免与 Canonical
-Operation ID 冲突；后续仍需接入 Adapt Agent、evidence/artifact store 及灰度 feature flag。
+resolver、family-level catalog、Native Session/Broker、Adapt workspace 接入和迁移报告。
+Linux/ROS/HW 工具使用 `native.*` 命名空间；旧 4 项 fixed-argv catalog 仅保留兼容测试和
+审计用途。后续仍需完成真实 Linux/ROS/HW 运行环境的 shadow/canary parity，并在稳定窗口后
+删除冗余 wrapper。
+
+迁移脚本同时生成 `rolo-legacy-operation-ledger/v1`：73 个旧命令形态 ID 当前处于 `SHADOW`，
+各自绑定一个 family Tool；只有通过运行窗口和人工评审后，才允许逐项推进到 `CANARY`、
+`RETIRED`。
 
 首个切片跑通后，再扩展 service/container/network、参数/TF、sensor/bus 和更多诊断工具。
 这样可以先验证“Agent-native Tool 能替代冗余封装”这一核心假设，而不是先进行一次大规模

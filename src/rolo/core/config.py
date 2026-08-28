@@ -24,8 +24,7 @@ def default_settings_path() -> Path:
     return Path(
         os.environ.get(
             "ROLO_SETTINGS_FILE",
-            _platform_home("XDG_CONFIG_HOME", Path.home() / ".config", "config")
-            / "config.yaml",
+            _platform_home("XDG_CONFIG_HOME", Path.home() / ".config", "config") / "config.yaml",
         )
     ).expanduser()
 
@@ -70,8 +69,14 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
     },
     "agent": {
         "provider": "coding_agent_provider",
+        "executor": "coding_agent_executor",
+        "base_url": "coding_agent_base_url",
+        "model": "coding_agent_model",
+        "api_key_env": "coding_agent_api_key_env",
         "executable": "coding_agent_executable",
         "timeout_s": "coding_agent_timeout_s",
+        "auto_install": "coding_agent_auto_install",
+        "require_auth": "coding_agent_require_auth",
     },
     "ros": {
         "auto_source": "ros_auto_source",
@@ -82,6 +87,14 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
     "adapter_runtime": {
         "max_address_space_bytes": "rolo_adapter_max_address_space_bytes",
         "max_processes": "rolo_adapter_max_processes",
+    },
+    "agent_native": {
+        "mode": "adapt_native_tool_mode",
+        "robot_ids": "adapt_native_tool_robot_ids",
+        "run_ids": "adapt_native_tool_run_ids",
+        "max_calls": "adapt_native_tool_max_calls",
+        "max_elapsed_s": "adapt_native_tool_max_elapsed_s",
+        "max_result_bytes": "adapt_native_tool_max_result_bytes",
     },
 }
 
@@ -165,6 +178,7 @@ class Settings(BaseSettings):
     coding_agent_executor: str = "codex"
     coding_agent_base_url: str | None = None
     coding_agent_api_key: str | None = None
+    coding_agent_api_key_env: str = "CODING_AGENT_API_KEY"
     coding_agent_model: str | None = None
     coding_agent_executable: str = "codex"
     coding_agent_timeout_s: int = 1800
@@ -181,6 +195,12 @@ class Settings(BaseSettings):
     adapt_operation_slice_robot_ids: str = ""
     adapt_operation_slice_run_ids: str = ""
     adapt_operation_slice_max_operations: int = Field(default=20, gt=0, le=50)
+    adapt_native_tool_mode: Literal["off", "shadow", "canary", "active"] = "off"
+    adapt_native_tool_robot_ids: str = ""
+    adapt_native_tool_run_ids: str = ""
+    adapt_native_tool_max_calls: int = Field(default=64, ge=1, le=10_000)
+    adapt_native_tool_max_elapsed_s: float = Field(default=600, gt=0, le=86_400)
+    adapt_native_tool_max_result_bytes: int = Field(default=8_000_000, ge=1, le=1_000_000_000)
     adapt_heuristic_agent_mode: Literal["disabled", "shadow", "enabled"] = "shadow"
     adapt_heuristic_agent_provider_enabled: bool = True
     adapt_heuristic_agent_timeout_s: int = Field(default=120, gt=0, le=3_600)
@@ -232,14 +252,28 @@ def settings_template() -> dict[str, Any]:
         },
         "agent": {
             "provider": defaults.coding_agent_provider,
+            "executor": defaults.coding_agent_executor,
+            "base_url": defaults.coding_agent_base_url,
+            "model": defaults.coding_agent_model,
+            "api_key_env": defaults.coding_agent_api_key_env,
             "executable": defaults.coding_agent_executable,
             "timeout_s": defaults.coding_agent_timeout_s,
+            "auto_install": defaults.coding_agent_auto_install,
+            "require_auth": defaults.coding_agent_require_auth,
         },
         "ros": {
             "auto_source": defaults.ros_auto_source,
             "setup_files": [],
             "domain_id": None,
             "rmw_implementation": None,
+        },
+        "agent_native": {
+            "mode": defaults.adapt_native_tool_mode,
+            "robot_ids": defaults.adapt_native_tool_robot_ids,
+            "run_ids": defaults.adapt_native_tool_run_ids,
+            "max_calls": defaults.adapt_native_tool_max_calls,
+            "max_elapsed_s": defaults.adapt_native_tool_max_elapsed_s,
+            "max_result_bytes": defaults.adapt_native_tool_max_result_bytes,
         },
     }
 

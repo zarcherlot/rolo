@@ -19,11 +19,14 @@ class AdaptPlanStatus(str, Enum):
 class AdapterAgentConfig(BaseModel):
     """Secret-free provider selection persisted with a Stage 1 Adapt plan."""
 
-    provider: str = Field(default="codex", min_length=1)
-    executor: str = Field(default="codex", min_length=1)
+    provider: str = Field(default="codex", min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
+    executor: str = Field(default="codex", min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
     base_url: str | None = None
     model: str | None = None
-    api_key_env: str = "CODING_AGENT_API_KEY"
+    api_key_env: str = Field(
+        default="CODING_AGENT_API_KEY",
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
+    )
     api_key_configured: bool = False
     auto_install: bool = True
     require_auth: bool = True

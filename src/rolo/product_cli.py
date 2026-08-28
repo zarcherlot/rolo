@@ -89,6 +89,12 @@ def _job_store() -> JobStore:
     return JobStore(get_settings().rolo_config_dir / "jobs")
 
 
+def _stream_agent_output(stream: str, line: str) -> None:
+    """Keep machine-readable CLI output on stdout and live Agent text on stderr."""
+    if line:
+        typer.echo(f"[agent{' stderr' if stream != 'stdout' else ''}] {line[:8_000]}", err=True)
+
+
 @app.command("natural")
 def natural(
     request: Annotated[str, typer.Argument(help="Explicit natural-language request")],
@@ -107,7 +113,12 @@ def natural(
         if execute:
             result = NaturalLanguageService(
                 JobService(get_settings().rolo_config_dir / "jobs")
-            ).execute(intent, known_hosts=known_hosts, timeout_s=timeout)
+            ).execute(
+                intent,
+                known_hosts=known_hosts,
+                timeout_s=timeout,
+                on_output=_stream_agent_output,
+            )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     payload = {
@@ -361,6 +372,12 @@ def target_bootstrap_execute(
                 }
             )
             return
+        if sys.stdin.isatty() and not typer.confirm(
+            "This will mutate the approved target and install Rolo. Continue?",
+            default=False,
+        ):
+            emit({"status": "CANCELLED", "mutation_started": False})
+            return
         known_hosts, verification_key_file = validate_bootstrap_security(
             known_hosts, verification_key_file
         )
@@ -588,6 +605,12 @@ def adapt(
     ] = 45.0,
 ) -> None:
     """Run the shortest safe Adapt journey for TARGET."""
+    if sys.stdin.isatty() and not typer.confirm(
+        "Adapt may install/use the configured Agent and write evidence artifacts. Continue?",
+        default=False,
+    ):
+        emit({"status": "CANCELLED", "mutation_started": False})
+        return
     try:
         target_ref = parse_target_ref(target)
         if not isinstance(target_ref, LocalTargetRef):
@@ -611,9 +634,10 @@ def adapt(
             known_hosts=None,
             collector_config=".rolo/config/target-evidence-collector.json",
             evidence_timeout=evidence_timeout,
+            on_output=_stream_agent_output,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(result)
-    if result.status == "BLOCKED":
+    if result.status in {"BLOCKED", "WAITING_FOR_AUTH"}:
         raise typer.Exit(code=2)

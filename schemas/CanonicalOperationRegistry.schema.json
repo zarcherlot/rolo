@@ -280,8 +280,11 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "robot-canonical-operation-registry/v1",
       "default": "robot-canonical-operation-registry/v1",
+      "enum": [
+        "robot-canonical-operation-registry/v1",
+        "robot-canonical-operation-registry/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

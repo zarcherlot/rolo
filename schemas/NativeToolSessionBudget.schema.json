@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "max_calls": {
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Max Calls",
+      "type": "integer"
+    },
+    "max_elapsed_s": {
+      "exclusiveMinimum": 0,
+      "maximum": 86400,
+      "title": "Max Elapsed S",
+      "type": "number"
+    },
+    "max_result_bytes": {
+      "maximum": 1000000000,
+      "minimum": 1,
+      "title": "Max Result Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "max_calls",
+    "max_elapsed_s",
+    "max_result_bytes"
+  ],
+  "title": "NativeToolSessionBudget",
+  "type": "object"
+}

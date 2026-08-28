@@ -27,6 +27,8 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     assert settings.adapt_heuristic_agent_provider_enabled is True
     assert settings.rolo_adapter_max_address_space_bytes == 4 * 1024 * 1024 * 1024
     assert settings.rolo_adapter_max_processes == 128
+    assert settings.adapt_native_tool_mode == "off"
+    assert settings.adapt_native_tool_max_calls == 64
 
 
 def test_user_yaml_is_loaded_below_environment_precedence(
@@ -52,6 +54,10 @@ ros:
 adapter_runtime:
   max_address_space_bytes: 2147483648
   max_processes: 64
+agent_native:
+  mode: canary
+  robot_ids: robot-a
+  max_calls: 12
 """,
         encoding="utf-8",
     )
@@ -69,6 +75,9 @@ adapter_runtime:
     assert settings.ros_domain_id == "7"
     assert settings.rolo_adapter_max_address_space_bytes == 2 * 1024 * 1024 * 1024
     assert settings.rolo_adapter_max_processes == 64
+    assert settings.adapt_native_tool_mode == "canary"
+    assert settings.adapt_native_tool_robot_ids == "robot-a"
+    assert settings.adapt_native_tool_max_calls == 12
 
 
 def test_base_runtime_does_not_require_optional_robot_use_backend() -> None:
@@ -110,3 +119,18 @@ def test_slice_activation_defaults_off_and_accepts_explicit_canary_selectors(
     assert defaults.adapt_operation_slice_max_operations == 20
     assert canary.adapt_operation_slice_mode == "canary"
     assert canary.adapt_operation_slice_max_operations == 12
+
+
+def test_native_tool_mode_is_explicitly_gated() -> None:
+    defaults = Settings(_env_file=None)
+    canary = Settings(
+        _env_file=None,
+        adapt_native_tool_mode="canary",
+        adapt_native_tool_robot_ids="robot-a,robot-b",
+        adapt_native_tool_max_calls=12,
+    )
+
+    assert defaults.adapt_native_tool_mode == "off"
+    assert canary.adapt_native_tool_mode == "canary"
+    assert canary.adapt_native_tool_robot_ids == "robot-a,robot-b"
+    assert canary.adapt_native_tool_max_calls == 12

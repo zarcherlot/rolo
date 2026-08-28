@@ -1,0 +1,83 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable per-run decision for exposing the native channel to an Agent.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-native-tool-rollout/v1",
+      "default": "rolo-native-tool-rollout/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "canary",
+        "active"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "selected": {
+      "title": "Selected",
+      "type": "boolean"
+    },
+    "selected_by": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Selected By",
+      "type": "array"
+    },
+    "catalog_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Catalog Sha256",
+      "type": "string"
+    },
+    "tool_count": {
+      "minimum": 0,
+      "title": "Tool Count",
+      "type": "integer"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Reason"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "mode",
+    "selected",
+    "catalog_sha256",
+    "tool_count"
+  ],
+  "title": "NativeToolRolloutDecision",
+  "type": "object"
+}

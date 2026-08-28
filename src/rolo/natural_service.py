@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ class NaturalLanguageService:
         *,
         known_hosts: Path | None = None,
         timeout_s: float = 10.0,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> Any:
         if intent.operation == NaturalLanguageOperation.ADAPT_START:
             if not intent.target or not intent.robot_id:
@@ -59,6 +61,7 @@ class NaturalLanguageService:
                 known_hosts=None,
                 collector_config=".rolo/config/target-evidence-collector.json",
                 evidence_timeout=45.0,
+                on_output=on_output,
             )
         if intent.operation == NaturalLanguageOperation.INSPECT:
             target = self._target(intent.target)

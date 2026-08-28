@@ -25,8 +25,9 @@ C:\Users\zarch\Desktop\robot_loop\.worktrees\registry-validation
 分支统一使用 `codex/registry-redesign-` 前缀。
 
 当前 integration 已合并提交：角色投影、bounded Agent-native Runner、Agent-native Schema、
-v2 shadow projection、version-bound resolver、迁移校验报告及 native tool ID 冲突测试。v1
-Registry、release 和现有运行时默认行为保持不变。
+v2 shadow projection、version-bound resolver、family-level native catalog、Native Session/Broker、
+Adapt 接入、迁移校验报告及 native tool ID 冲突测试。v1 Registry、release 和现有运行时默认
+行为保持不变；`adapt_native_tool_mode` 默认 `off`。
 
 ## 2. Worktree 矩阵
 
@@ -39,8 +40,8 @@ Registry、release 和现有运行时默认行为保持不变。
 | runtime | `codex/registry-redesign-runtime` | Registry resolver、v1/v2 release/session 兼容、交叉调用拒绝 | v2-core API、native-tools result Schema | `_GROUPS` 大规模删改、生成文档 |
 | validation | `codex/registry-redesign-validation` | 双 fixture、shadow/canary、迁移矩阵、验收脚本和文档校验 | 各 worktree 提交 SHA | 生产逻辑和基线常量 |
 
-如需拆分 Agent-native Runner 与 ROS/Linux/HW descriptors，应由 native-tools worktree 内部
-按目录分工，不再额外拆出共享核心 worktree。
+family-level descriptor、结构化参数和 ROS/Linux/HW mode 继续由 native-tools worktree 维护；
+不再按每条命令拆出新的共享核心 worktree。
 
 ## 3. 文件所有权
 
@@ -244,8 +245,8 @@ uv run pytest tests/test_conformance.py tests/test_discovery.py tests/test_stage
 
 ### native-tools
 
-至少一个 Linux、一个 ROS、一个 HW 只读工具跑通成功/失败/超时/截断/拒绝路径，并有审计
-和 evidence artifact。
+至少一个 Linux、一个 ROS、一个 HW 只读 family 跑通成功/失败/超时/截断/拒绝路径，并有审计
+和 evidence artifact；family 参数不得产生任意 argv。
 
 ### v2-core
 
@@ -263,7 +264,8 @@ shadow report 可复现；差异有分类和阈值；canary 回退路径通过�
 ### integration
 
 全量测试、lint、Schema export、Contract validate、v1 baseline 和 v2 migration report 全部通过，
-且 feature flag 默认关闭，等待人工评审后再启用。
+且 `adapt_native_tool_mode` 默认关闭；shadow/canary 报告、artifact/evidence 绑定和回退路径
+通过后，等待人工评审再启用 active。
 
 ## 9. 第一轮建议切片
 
