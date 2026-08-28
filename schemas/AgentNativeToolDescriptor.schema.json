@@ -34,6 +34,15 @@
           "maxItems": 8,
           "title": "Unavailable Return Codes",
           "type": "array"
+        },
+        "environment_dependency": {
+          "default": "NONE",
+          "enum": [
+            "NONE",
+            "NETWORK"
+          ],
+          "title": "Environment Dependency",
+          "type": "string"
         }
       },
       "required": [

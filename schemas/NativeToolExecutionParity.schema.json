@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "description": "Normalized parity result for one native call and its direct CLI probe.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-native-tool-execution-parity/v1",
+      "default": "rolo-native-tool-execution-parity/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_id": {
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "native_status": {
+      "title": "Native Status",
+      "type": "string"
+    },
+    "direct_status": {
+      "title": "Direct Status",
+      "type": "string"
+    },
+    "argv_match": {
+      "title": "Argv Match",
+      "type": "boolean"
+    },
+    "stdout_match": {
+      "title": "Stdout Match",
+      "type": "boolean"
+    },
+    "stderr_match": {
+      "title": "Stderr Match",
+      "type": "boolean"
+    },
+    "status_match": {
+      "title": "Status Match",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "DIFF"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "tool_id",
+    "native_status",
+    "direct_status",
+    "argv_match",
+    "stdout_match",
+    "stderr_match",
+    "status_match",
+    "status"
+  ],
+  "title": "NativeToolExecutionParity",
+  "type": "object"
+}

@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "description": "Release-neutral gate for deciding whether a selected native cohort is healthy.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-native-tool-canary-gate/v1",
+      "default": "rolo-native-tool-canary-gate/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "canary",
+        "active"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "selected": {
+      "title": "Selected",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "NOT_SELECTED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "blocking_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blocking Reasons",
+      "type": "array"
+    },
+    "influences_release": {
+      "const": false,
+      "default": false,
+      "title": "Influences Release",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "mode",
+    "selected",
+    "status"
+  ],
+  "title": "NativeToolCanaryGateReport",
+  "type": "object"
+}

@@ -328,6 +328,16 @@ class AdapterHandoff(BaseModel):
     conformance_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     gate_report_ref: str
     gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Native observation metadata is optional for v1 compatibility, but every
+    # new Adapt run writes and binds these refs so downstream stages can trace
+    # the exact Tool Session that produced the observations.
+    native_tool_rollout_ref: str | None = None
+    native_tool_rollout_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    native_tool_summary_ref: str | None = None
+    native_tool_summary_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    native_tool_gate_ref: str | None = None
+    native_tool_gate_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    native_tool_session_id: str | None = Field(default=None, min_length=1, max_length=128)
     release_ref: str
     release_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     promoted_at: datetime = Field(default_factory=utc_now)
@@ -426,6 +436,7 @@ class AdapterAgentRun(BaseModel):
     result_ref: str | None = None
     native_tool_rollout_ref: str | None = None
     native_tool_summary_ref: str | None = None
+    native_tool_gate_ref: str | None = None
     native_tool_session_id: str | None = None
     thread_id: str | None = None
     event_count: int = 0

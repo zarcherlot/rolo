@@ -90,6 +90,12 @@
       "title": "Truncated Count",
       "type": "integer"
     },
+    "environment_limited_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Environment Limited Count",
+      "type": "integer"
+    },
     "influences_release": {
       "const": false,
       "default": false,

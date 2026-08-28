@@ -178,6 +178,7 @@ class NativeToolInvocation(BaseModel):
     argv_template: list[str] = Field(min_length=1, max_length=32)
     required_parameters: list[str] = Field(default_factory=list, max_length=32)
     unavailable_return_codes: list[int] = Field(default_factory=list, max_length=8)
+    environment_dependency: Literal["NONE", "NETWORK"] = "NONE"
 
     def __init__(
         self,
@@ -242,6 +243,7 @@ class AgentNativeToolResult(BaseModel):
     stdout_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     stderr_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     truncated: bool = False
+    environment_limited: bool = False
     evidence_kind: str
     sensitive: bool
     limitations: list[str] = Field(default_factory=list, max_length=32)
@@ -337,8 +339,18 @@ class AgentNativeRunner:
                 stdout,
                 stderr,
                 (time.monotonic() - started) * 1000,
-                ["tool execution timed out"],
+                [
+                    "tool execution timed out",
+                    *(
+                        [
+                            "network-dependent check may be unavailable in the current environment"
+                        ]
+                        if invocation.environment_dependency == "NETWORK"
+                        else []
+                    ),
+                ],
                 arguments=requested_arguments,
+                environment_limited=invocation.environment_dependency != "NONE",
             )
         except OSError as exc:
             return self._result(
@@ -384,6 +396,10 @@ class AgentNativeRunner:
             (time.monotonic() - started) * 1000,
             limitations,
             arguments=requested_arguments,
+            environment_limited=(
+                invocation.environment_dependency != "NONE"
+                and status != NativeToolStatus.SUCCEEDED
+            ),
         )
 
     @staticmethod
@@ -457,6 +473,7 @@ class AgentNativeRunner:
         duration_ms: float,
         limitations: list[str],
         arguments: dict[str, str] | None = None,
+        environment_limited: bool = False,
     ) -> AgentNativeToolResult:
         stdout = _redact(stdout)
         stderr = _redact(stderr)
@@ -479,6 +496,7 @@ class AgentNativeRunner:
             stdout_sha256=hashlib.sha256(stdout.encode("utf-8")).hexdigest(),
             stderr_sha256=hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
             truncated=truncated,
+            environment_limited=environment_limited,
             evidence_kind=descriptor.evidence_kind,
             sensitive=descriptor.sensitive,
             limitations=limitations,
@@ -911,7 +929,13 @@ def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
             "native.middleware.snapshot",
             "middleware",
             "MIDDLEWARE_STATUS",
-            {"status": NativeToolInvocation("ros2", ["ros2", "doctor", "--report"])},
+            {
+                "status": NativeToolInvocation(
+                    "ros2",
+                    ["ros2", "doctor", "--report"],
+                    environment_dependency="NETWORK",
+                )
+            },
             allowed_env_keys=ros_env,
             max_output_bytes=500_000,
         ),
@@ -1010,3 +1034,32 @@ def native_operation_family_map(operations: Sequence[str]) -> dict[str, str]:
             raise ValueError(f"no Agent-native family replacement for {operation}")
         mapping[operation] = family
     return mapping
+
+
+def native_variant_aliases(
+    descriptors: Sequence[AgentNativeToolDescriptor],
+) -> dict[str, dict[str, list[str]]]:
+    """Report byte-for-byte equivalent modes as retirement candidates.
+
+    The result is informational only: mode names remain available until usage
+    telemetry and semantic review prove that an alias can be retired safely.
+    """
+    aliases: dict[str, dict[str, list[str]]] = {}
+    for descriptor in descriptors:
+        groups: dict[tuple[str, tuple[str, ...], tuple[str, ...], str], list[str]] = {}
+        for mode, invocation in descriptor.variants.items():
+            key = (
+                invocation.executable,
+                tuple(invocation.argv_template),
+                tuple(invocation.required_parameters),
+                invocation.environment_dependency,
+            )
+            groups.setdefault(key, []).append(mode)
+        duplicate_groups = {
+            repr(key): sorted(modes)
+            for key, modes in groups.items()
+            if len(modes) > 1
+        }
+        if duplicate_groups:
+            aliases[descriptor.tool_id] = duplicate_groups
+    return aliases

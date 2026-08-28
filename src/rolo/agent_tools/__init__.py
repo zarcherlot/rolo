@@ -11,14 +11,19 @@ from rolo.agent_tools.native_tools import (
     default_agent_native_catalog,
     load_agent_native_catalog,
     native_operation_family_map,
+    native_variant_aliases,
     reduced_agent_native_catalog,
 )
 from rolo.agent_tools.rollout import (
+    NativeToolCanaryGateReport,
+    NativeToolExecutionParity,
     NativeToolParityReport,
     NativeToolRolloutDecision,
     NativeToolRunSummary,
     build_native_operation_parity_report,
+    compare_native_to_direct,
     decide_native_tool_rollout,
+    evaluate_native_tool_canary_gate,
     summarize_native_tool_run,
 )
 from rolo.agent_tools.session import (
@@ -40,6 +45,7 @@ __all__ = [
     "default_agent_native_catalog",
     "load_agent_native_catalog",
     "native_operation_family_map",
+    "native_variant_aliases",
     "reduced_agent_native_catalog",
     "NativeToolSession",
     "NativeToolSessionAuthorizationError",
@@ -52,7 +58,11 @@ __all__ = [
     "NativeToolRolloutDecision",
     "NativeToolRunSummary",
     "NativeToolParityReport",
+    "NativeToolExecutionParity",
+    "NativeToolCanaryGateReport",
     "build_native_operation_parity_report",
+    "compare_native_to_direct",
     "decide_native_tool_rollout",
+    "evaluate_native_tool_canary_gate",
     "summarize_native_tool_run",
 ]

@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -7,9 +8,11 @@ import pytest
 from rolo.agent_tools.native_tools import (
     AgentNativeRunner,
     AgentNativeToolDescriptor,
+    NativeToolInvocation,
     NativeToolStatus,
     default_agent_native_catalog,
     native_operation_family_map,
+    native_variant_aliases,
     reduced_agent_native_catalog,
 )
 
@@ -85,6 +88,47 @@ def test_runner_timeout_is_fail_closed() -> None:
 
     assert result.status == NativeToolStatus.TIMEOUT
     assert result.limitations == ["tool execution timed out"]
+
+
+def test_network_timeout_is_explicitly_marked_as_environment_limited() -> None:
+    descriptor = AgentNativeToolDescriptor(
+        tool_id="test.network",
+        family="middleware",
+        execution_path="DIRECT_RUNNER",
+        executable=sys.executable,
+        argv_template=[sys.executable, "-c", "pass"],
+        access="read",
+        risk="R0",
+        max_duration_s=2,
+        max_output_bytes=64,
+        evidence_kind="TEST",
+        variants={
+            "status": NativeToolInvocation(
+                executable=sys.executable,
+                argv_template=[sys.executable, "-c", "pass"],
+                environment_dependency="NETWORK",
+            )
+        },
+    )
+
+    def timeout_executor(*args: object, **kwargs: object) -> object:
+        raise subprocess.TimeoutExpired(kwargs.get("timeout", 0), 0)
+
+    runner = AgentNativeRunner([descriptor], executor=timeout_executor)
+    result = runner.run("test.network", {"mode": "status"})
+
+    assert result.status == NativeToolStatus.TIMEOUT
+    assert result.environment_limited is True
+    assert "network-dependent check" in result.limitations[-1]
+
+
+def test_middleware_snapshot_declares_network_dependency() -> None:
+    middleware = next(
+        item
+        for item in reduced_agent_native_catalog()
+        if item.tool_id == "native.middleware.snapshot"
+    )
+    assert middleware.variants["status"].environment_dependency == "NETWORK"
 
 
 def test_descriptor_rejects_interpolation_and_unsafe_environment() -> None:
@@ -176,6 +220,16 @@ def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
     assert set(host.variants) == {"inventory", "status", "time", "uptime"}
     assert host.variants["status"].argv_template == ["uname", "-a"]
     assert {"PYTHONPATH", "LD_LIBRARY_PATH"}.issubset(ros.allowed_env_keys)
+
+
+def test_variant_alias_report_is_informational_and_finds_duplicate_ros_modes() -> None:
+    aliases = native_variant_aliases(reduced_agent_native_catalog())
+
+    assert "native.ros.tf.inspect" in aliases
+    assert any(
+        set(modes) >= {"monitor", "snapshot", "tree"}
+        for modes in aliases["native.ros.tf.inspect"].values()
+    )
 
 
 def test_family_runner_resolves_only_allowlisted_arguments(

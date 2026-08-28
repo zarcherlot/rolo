@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+import hashlib
+from collections.abc import Iterable, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,6 +48,7 @@ class NativeToolRunSummary(BaseModel):
     failed_count: int = Field(ge=0)
     rejected_count: int = Field(ge=0)
     truncated_count: int = Field(ge=0)
+    environment_limited_count: int = Field(default=0, ge=0)
     influences_release: Literal[False] = False
 
 
@@ -61,6 +63,42 @@ class NativeToolParityReport(BaseModel):
     unmapped_operations: list[str] = Field(default_factory=list)
     unknown_family_tools: list[str] = Field(default_factory=list)
     status: Literal["PASS", "DIFF"]
+    influences_release: Literal[False] = False
+
+
+class NativeToolExecutionParity(BaseModel):
+    """Normalized parity result for one native call and its direct CLI probe."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-native-tool-execution-parity/v1"] = (
+        "rolo-native-tool-execution-parity/v1"
+    )
+    tool_id: str
+    native_status: str
+    direct_status: str
+    argv_match: bool
+    stdout_match: bool
+    stderr_match: bool
+    status_match: bool
+    status: Literal["PASS", "DIFF"]
+    influences_release: Literal[False] = False
+
+
+class NativeToolCanaryGateReport(BaseModel):
+    """Release-neutral gate for deciding whether a selected native cohort is healthy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-native-tool-canary-gate/v1"] = (
+        "rolo-native-tool-canary-gate/v1"
+    )
+    robot_id: str
+    run_id: str
+    mode: NativeToolRolloutMode
+    selected: bool
+    status: Literal["PASS", "FAIL", "NOT_SELECTED"]
+    blocking_reasons: list[str] = Field(default_factory=list)
     influences_release: Literal[False] = False
 
 
@@ -81,6 +119,8 @@ def decide_native_tool_rollout(
         if selected
     ]
     selected = mode in {"shadow", "active"} or mode == "canary" and bool(selected_by)
+    if selected and mode in {"shadow", "active"}:
+        selected_by.insert(0, "mode")
     items = list(catalog)
     return NativeToolRolloutDecision(
         robot_id=robot_id,
@@ -121,6 +161,93 @@ def summarize_native_tool_run(
         failed_count=counts.get("FAILED", 0),
         rejected_count=counts.get("REJECTED", 0),
         truncated_count=sum(result.truncated for result in values),
+        environment_limited_count=sum(result.environment_limited for result in values),
+    )
+
+
+def _normalized_output(value: str) -> str:
+    """Normalize line endings and trailing whitespace without changing content."""
+    return "\n".join(line.rstrip() for line in value.replace("\r\n", "\n").split("\n")).rstrip(
+        "\n"
+    )
+
+
+def compare_native_to_direct(
+    result: AgentNativeToolResult,
+    *,
+    direct_argv: Sequence[str],
+    direct_stdout: str = "",
+    direct_stderr: str = "",
+    direct_status: str | None = None,
+    direct_return_code: int | None = None,
+) -> NativeToolExecutionParity:
+    """Compare a native result with a separately captured direct command.
+
+    Callers may provide a semantic ``direct_status`` for unavailable or timed
+    out probes; otherwise a zero return code is success and every other code is
+    failure. Only normalized hashes are compared, so the parity artifact never
+    duplicates potentially sensitive command output.
+    """
+    if direct_status is None:
+        if direct_return_code is None:
+            raise ValueError("direct_status or direct_return_code is required")
+        direct_status = "SUCCEEDED" if direct_return_code == 0 else "FAILED"
+    native_stdout = _normalized_output(result.stdout)
+    native_stderr = _normalized_output(result.stderr)
+    expected_stdout = _normalized_output(direct_stdout)
+    expected_stderr = _normalized_output(direct_stderr)
+    stdout_match = hashlib.sha256(native_stdout.encode("utf-8")).digest() == hashlib.sha256(
+        expected_stdout.encode("utf-8")
+    ).digest()
+    stderr_match = hashlib.sha256(native_stderr.encode("utf-8")).digest() == hashlib.sha256(
+        expected_stderr.encode("utf-8")
+    ).digest()
+    argv_match = list(result.argv) == list(direct_argv)
+    status_match = result.status.value == direct_status
+    return NativeToolExecutionParity(
+        tool_id=result.tool_id,
+        native_status=result.status.value,
+        direct_status=direct_status,
+        argv_match=argv_match,
+        stdout_match=stdout_match,
+        stderr_match=stderr_match,
+        status_match=status_match,
+        status="PASS" if argv_match and stdout_match and stderr_match and status_match else "DIFF",
+    )
+
+
+def evaluate_native_tool_canary_gate(
+    summary: NativeToolRunSummary,
+) -> NativeToolCanaryGateReport:
+    """Evaluate a selected cohort without granting release authority."""
+    if not summary.selected:
+        return NativeToolCanaryGateReport(
+            robot_id=summary.robot_id,
+            run_id=summary.run_id,
+            mode=summary.mode,
+            selected=False,
+            status="NOT_SELECTED",
+            blocking_reasons=[],
+        )
+    reasons: list[str] = []
+    if summary.failed_count:
+        reasons.append(f"{summary.failed_count} native calls failed")
+    if summary.rejected_count:
+        reasons.append(f"{summary.rejected_count} native calls were rejected")
+    if summary.truncated_count:
+        reasons.append(f"{summary.truncated_count} native calls were truncated")
+    non_environment_timeouts = max(
+        0, summary.timeout_count - summary.environment_limited_count
+    )
+    if non_environment_timeouts:
+        reasons.append(f"{non_environment_timeouts} native calls timed out")
+    return NativeToolCanaryGateReport(
+        robot_id=summary.robot_id,
+        run_id=summary.run_id,
+        mode=summary.mode,
+        selected=True,
+        status="PASS" if not reasons else "FAIL",
+        blocking_reasons=reasons,
     )
 
 

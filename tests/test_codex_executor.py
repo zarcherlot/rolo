@@ -315,6 +315,9 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     native_summary = json.loads(
         (run_path.parent / "native-tool-summary.json").read_text(encoding="utf-8")
     )
+    native_gate = json.loads(
+        (run_path.parent / "native-tool-gate.json").read_text(encoding="utf-8")
+    )
     assert (run_path.parent / "platform-profile.json").is_file()
     assert slice_shadow["influences_release"] is False
     assert capability_shadow["influences_release"] is False
@@ -331,6 +334,9 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert run.native_tool_summary_ref.endswith("/native-tool-summary.json")
     assert native_summary["session_id"] is None
     assert native_summary["influences_release"] is False
+    assert native_gate["status"] == "NOT_SELECTED"
+    assert run.native_tool_gate_ref is not None
+    assert run.native_tool_gate_ref.endswith("/native-tool-gate.json")
     assert context_metrics["shadow_influences_release"] is False
     assert context_metrics["slice_activation_affects_agent_context"] is False
     assert set(context_metrics["capability_resolution_counts"]) == {

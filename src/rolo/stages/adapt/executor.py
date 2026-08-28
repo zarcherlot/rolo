@@ -22,6 +22,7 @@ from rolo.agent_tools import (
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
     decide_native_tool_rollout,
+    evaluate_native_tool_canary_gate,
     native_catalog_sha256,
     native_operation_family_map,
     reduced_agent_native_catalog,
@@ -213,6 +214,7 @@ class CodexAdaptExecutor:
         executable: str = "codex",
         api_key: str | None = None,
         api_key_env: str = "CODING_AGENT_API_KEY",
+        agent_config: AdapterAgentConfig | None = None,
         output_root: Path | None = None,
         slice_activation_mode: SliceActivationMode | str = SliceActivationMode.SHADOW,
         slice_activation_robot_ids: str | list[str] = "",
@@ -229,6 +231,9 @@ class CodexAdaptExecutor:
         self.executable = executable
         self.api_key = api_key
         self.api_key_env = api_key_env
+        # Kept on the concrete adapter for plugin/factory parity; the plan is
+        # still the immutable source of truth at execution time.
+        self.agent_config = agent_config
         self.output_root = (output_root or Path(".rolo/output")).expanduser().resolve()
         self.slice_activation_mode = SliceActivationMode(
             slice_activation_mode.upper()
@@ -518,14 +523,15 @@ class CodexAdaptExecutor:
         native_session_id = (
             native_session.descriptor.session_id if native_session is not None else None
         )
-        self.artifacts.write_json(
-            native_summary_relative,
-            summarize_native_tool_run(
-                native_rollout,
-                native_session.results if native_session is not None else (),
-                session_id=native_session_id,
-            ).model_dump(mode="json"),
+        native_summary = summarize_native_tool_run(
+            native_rollout,
+            native_session.results if native_session is not None else (),
+            session_id=native_session_id,
         )
+        self.artifacts.write_json(native_summary_relative, native_summary.model_dump(mode="json"))
+        native_gate = evaluate_native_tool_canary_gate(native_summary)
+        native_gate_relative = f"{relative_run_root}/native-tool-gate.json"
+        self.artifacts.write_json(native_gate_relative, native_gate.model_dump(mode="json"))
 
         query_metrics_path = workspace / "rolo-agent-query-metrics.json"
         if query_metrics_path.is_file():
@@ -571,6 +577,7 @@ class CodexAdaptExecutor:
             ),
             native_tool_rollout_ref=f"artifact://{native_rollout_relative}",
             native_tool_summary_ref=f"artifact://{native_summary_relative}",
+            native_tool_gate_ref=f"artifact://{native_gate_relative}",
             native_tool_session_id=native_session_id,
             thread_id=thread_id,
             event_count=event_count,

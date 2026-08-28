@@ -69,6 +69,11 @@
       "title": "Truncated",
       "type": "boolean"
     },
+    "environment_limited": {
+      "default": false,
+      "title": "Environment Limited",
+      "type": "boolean"
+    },
     "evidence_kind": {
       "title": "Evidence Kind",
       "type": "string"

@@ -117,6 +117,18 @@
       "default": null,
       "title": "Native Tool Summary Ref"
     },
+    "native_tool_gate_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Gate Ref"
+    },
     "native_tool_session_id": {
       "anyOf": [
         {

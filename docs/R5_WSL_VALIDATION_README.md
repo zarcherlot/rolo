@@ -54,11 +54,20 @@ uv run robotctl adapt run --robot "$ADAPT_NATIVE_TOOL_ROBOT_IDS"
 ```text
 native-tool-rollout.json
 native-tool-summary.json
+native-tool-gate.json
 artifact://native/<robot>/sessions/<session>/calls/*.json
 ```
 
-关注成功/不可用/超时、输出截断/脱敏、evidence/artifact 引用和 fallback；`shadow` 与
-`canary` 不得产生 release 变更。出现异常时把 mode 改回 `off`，无需回滚 Registry。
+关注成功/不可用/超时、`environment_limited_count`、输出截断/脱敏、
+evidence/artifact 引用和 fallback。`native-tool-gate.json` 是 release-neutral 的健康
+判定：未选中为 `NOT_SELECTED`，仅环境依赖导致的超时不会阻断 gate，真实失败/拒绝/截断
+或非环境超时会报告 `FAIL`。`shadow` 与 `canary` 不得产生 release 变更。出现异常时把
+mode 改回 `off`，无需回滚 Registry。
+
+`native-tool-summary.json`、`native-tool-gate.json` 和 Adapt handoff 之间必须保持
+robot/run/session/catalog digest 一致；调用 artifact 的 stdout/stderr 由 hash 保护，
+敏感结果文件在 POSIX 目标机写入为 `0600`。重新拉取代码后请重新生成这些 artifacts，
+不要复用旧版本的 catalog digest。
 
 ## 4. 通过标准
 
@@ -67,4 +76,3 @@ artifact://native/<robot>/sessions/<session>/calls/*.json
 - artifact/evidence 可追溯，超时、输出上限和安全拒绝符合预期；
 - 至少连续多个 run 窗口无高严重度差异，人工确认后才允许 `canary`，再考虑 `active`；
 - 未通过前，不删除旧 wrapper、旧 contract 或 v1 审计材料。
-

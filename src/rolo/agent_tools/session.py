@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 from collections.abc import Callable
@@ -174,7 +175,9 @@ class NativeToolSession:
             )
             ref = f"artifact://{relative}"
             enriched = result.model_copy(update={"evidence_refs": [ref]})
-            self.artifacts.write_json(relative, enriched.model_dump(mode="json"))
+            artifact_path = self.artifacts.write_json(relative, enriched.model_dump(mode="json"))
+            if enriched.sensitive and os.name != "nt":
+                artifact_path.chmod(0o600)
             self._audit(tool_id, enriched, outcome=enriched.status.value, result_bytes=len(encoded))
             self._results.append(enriched)
             return enriched
@@ -186,6 +189,8 @@ class NativeToolSession:
             return list(self._results)
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
         self._audit(None, None, outcome="CLOSED", result_bytes=0)
 

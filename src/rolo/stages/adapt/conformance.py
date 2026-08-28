@@ -14,6 +14,11 @@ from rolo.adapter_runtime import (
     probe_adapter_package,
     publish_release,
 )
+from rolo.agent_tools.rollout import (
+    NativeToolCanaryGateReport,
+    NativeToolRolloutDecision,
+    NativeToolRunSummary,
+)
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_bytes, sha256_file
@@ -160,6 +165,102 @@ def latest_adapter_handoff_path(artifact_root: Path, robot_id: str) -> Path:
     return path
 
 
+def _validate_native_tool_bindings(
+    artifact_root: Path,
+    handoff: AdapterHandoff,
+) -> None:
+    """Validate the optional Adapt -> native Tool Session provenance chain.
+
+    v1 handoffs predate Agent-native execution and intentionally skip this
+    check. New handoffs carry both immutable rollout/summary artifacts and the
+    session identity; all three values must agree with the source Adapter run.
+    """
+    refs = (
+        (handoff.native_tool_rollout_ref, handoff.native_tool_rollout_sha256, "rollout"),
+        (handoff.native_tool_summary_ref, handoff.native_tool_summary_sha256, "summary"),
+        (handoff.native_tool_gate_ref, handoff.native_tool_gate_sha256, "gate"),
+    )
+    rollout_summary = refs[:2]
+    gate_ref, gate_digest, _ = refs[2]
+    supplied = [reference is not None or digest is not None for reference, digest, _ in refs]
+    rollout_summary_supplied = any(
+        reference is not None or digest is not None
+        for reference, digest, _ in rollout_summary
+    )
+    if rollout_summary_supplied and not all(
+        reference is not None and digest is not None
+        for reference, digest, _ in rollout_summary
+    ):
+        raise ValueError("native tool rollout and summary refs/hashes must be provided together")
+    if (gate_ref is None) != (gate_digest is None):
+        raise ValueError("native tool gate reference and hash must be provided together")
+    if gate_ref is not None and not rollout_summary_supplied:
+        raise ValueError("native tool gate requires rollout and summary refs")
+    if not any(supplied):
+        if handoff.native_tool_session_id is not None:
+            raise ValueError("native tool session id requires rollout and summary refs")
+        return
+
+    resolved: dict[str, Path] = {}
+    refs_to_validate = (
+        rollout_summary + ((gate_ref, gate_digest, "gate"),)
+        if gate_ref
+        else rollout_summary
+    )
+    for reference, digest, name in refs_to_validate:
+        assert reference is not None and digest is not None
+        path = resolve_artifact_ref(artifact_root, reference)
+        if not path.is_file() or sha256_file(path) != digest:
+            raise ValueError(f"native tool {name} artifact hash mismatch: {reference}")
+        resolved[name] = path
+
+    rollout = NativeToolRolloutDecision.model_validate_json(
+        resolved["rollout"].read_text(encoding="utf-8")
+    )
+    summary = NativeToolRunSummary.model_validate_json(
+        resolved["summary"].read_text(encoding="utf-8")
+    )
+    if rollout.robot_id != handoff.robot_id or summary.robot_id != handoff.robot_id:
+        raise ValueError("native tool artifact robot identity mismatch")
+    if (
+        rollout.run_id != handoff.source_agent_run_id
+        or summary.run_id != handoff.source_agent_run_id
+    ):
+        raise ValueError("native tool artifact run identity mismatch")
+    if rollout.catalog_sha256 != summary.catalog_sha256:
+        raise ValueError("native tool rollout and summary catalog digests differ")
+    if summary.session_id != handoff.native_tool_session_id:
+        raise ValueError("native tool summary session identity mismatch")
+    if "gate" in resolved:
+        gate = NativeToolCanaryGateReport.model_validate_json(
+            resolved["gate"].read_text(encoding="utf-8")
+        )
+        if (
+            gate.robot_id != handoff.robot_id
+            or gate.run_id != handoff.source_agent_run_id
+        ):
+            raise ValueError("native tool gate identity mismatch")
+        if gate.mode != summary.mode or gate.selected != summary.selected:
+            raise ValueError("native tool gate does not match the run summary")
+
+    # The source AdapterAgentRun is the authority for the provenance fields.
+    # Comparing the persisted run prevents a handoff from attaching an
+    # unrelated but otherwise valid native session after the fact.
+    layout = ArtifactLayout(artifact_root)
+    run_path = layout.stage_run("adapt", handoff.robot_id, handoff.source_agent_run_id) / "run.json"
+    if not run_path.is_file():
+        raise ValueError("native tool handoff source AdapterAgentRun is missing")
+    run = AdapterAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+    if run.native_tool_rollout_ref != handoff.native_tool_rollout_ref:
+        raise ValueError("native tool rollout ref is not bound to the AdapterAgentRun")
+    if run.native_tool_summary_ref != handoff.native_tool_summary_ref:
+        raise ValueError("native tool summary ref is not bound to the AdapterAgentRun")
+    if run.native_tool_gate_ref != handoff.native_tool_gate_ref:
+        raise ValueError("native tool gate ref is not bound to the AdapterAgentRun")
+    if run.native_tool_session_id != handoff.native_tool_session_id:
+        raise ValueError("native tool session id is not bound to the AdapterAgentRun")
+
+
 def validate_adapter_handoff(
     artifact_root: Path,
     robot_id: str,
@@ -209,6 +310,7 @@ def validate_adapter_handoff(
     release_path = ((output_root or get_settings().rolo_output_dir) / relative).resolve()
     if not release_path.is_file() or sha256_file(release_path) != handoff.release_manifest_sha256:
         raise ValueError("adapter handoff release manifest hash mismatch")
+    _validate_native_tool_bindings(artifact_root, handoff)
     return handoff
 
 
@@ -676,6 +778,31 @@ class AdapterPromotionService:
                 conformance_report_sha256=snapshot.conformance_report_sha256,
                 gate_report_ref=self.layout.ref(persisted_gate),
                 gate_report_sha256=sha256_file(persisted_gate),
+                native_tool_rollout_ref=run.native_tool_rollout_ref,
+                native_tool_rollout_sha256=(
+                    sha256_file(
+                        resolve_artifact_ref(self.artifacts.root, run.native_tool_rollout_ref)
+                    )
+                    if run.native_tool_rollout_ref
+                    else None
+                ),
+                native_tool_summary_ref=run.native_tool_summary_ref,
+                native_tool_summary_sha256=(
+                    sha256_file(
+                        resolve_artifact_ref(self.artifacts.root, run.native_tool_summary_ref)
+                    )
+                    if run.native_tool_summary_ref
+                    else None
+                ),
+                native_tool_gate_ref=run.native_tool_gate_ref,
+                native_tool_gate_sha256=(
+                    sha256_file(
+                        resolve_artifact_ref(self.artifacts.root, run.native_tool_gate_ref)
+                    )
+                    if run.native_tool_gate_ref
+                    else None
+                ),
+                native_tool_session_id=run.native_tool_session_id,
                 release_ref=(f"output://robots/{run.robot_id}/releases/{run.run_id}/manifest.json"),
                 release_manifest_sha256=sha256_file(release_manifest_path),
             )

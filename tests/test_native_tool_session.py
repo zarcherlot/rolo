@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -98,6 +99,21 @@ def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
             artifacts=ArtifactStore(tmp_path / "artifacts"),
             clock=lambda: now,
         )
+
+
+def test_native_session_close_is_idempotent_and_audits_once(tmp_path) -> None:
+    session = _session(tmp_path)
+
+    session.close()
+    session.close()
+
+    records = [
+        json.loads(line)
+        for line in (
+            tmp_path / "artifacts/native/demo/sessions/native-session-1/audit.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [item["outcome"] for item in records] == ["CLOSED"]
 
 
 def test_native_broker_keeps_runner_outside_agent_workspace(tmp_path) -> None:
