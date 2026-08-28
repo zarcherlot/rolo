@@ -28,6 +28,7 @@ from rolo.stages.adapt.target_evidence import (
     collect_over_ssh,
     collect_target_evidence,
     configure_deployment,
+    discover_help_executables,
     ensure_local_deployment,
     initialize_collector,
     load_collector_state,
@@ -40,6 +41,26 @@ from rolo.stages.adapt.target_evidence import (
 from rolo.stages.artifact_paths import resolve_artifact_ref
 
 
+def test_project_entrypoint_discovery_covers_all_application_clis(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.scripts]\n"
+        "lerobot-find-cameras = 'lerobot.cli:find'\n"
+        "lerobot-info = 'lerobot.cli:info'\n"
+        "lerobot-teleoperate = 'lerobot.cli:teleoperate'\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / ".venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("lerobot-find-cameras", "lerobot-info", "lerobot-teleoperate"):
+        (bin_dir / name).write_text("#!/bin/sh\n", encoding="utf-8")
+
+    discovered = discover_help_executables(tmp_path)
+
+    assert [item.name for item in discovered] == [
+        "lerobot-find-cameras",
+        "lerobot-info",
+        "lerobot-teleoperate",
+    ]
 def _collector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64

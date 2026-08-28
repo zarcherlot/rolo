@@ -488,7 +488,13 @@ def _mapping_output_schema(
         )
         _set_array_enum(
             properties["counter_evidence_refs"],
-            [aliases[item] for item in binding.evidence_refs],
+            # Supporting and counter evidence must be disjoint.  The old
+            # schema exposed the supporting slice again as the counter slice,
+            # which made an otherwise valid provider response fail the model
+            # validator whenever it cited the available evidence.  Counter
+            # evidence is optional here; if a provider has no separately
+            # indexed counter fact it must emit an empty array.
+            [],
         )
         _set_array_enum(properties["route_resource_ids"], binding.route_resource_ids)
         _set_array_enum(properties["executable_ids"], binding.executable_ids)
@@ -994,13 +1000,30 @@ class DiscoverySkillRunner:
         started = time.monotonic()
         bundle: OperationProposalBundle | None = None
         try:
-            bundle = self.provider.propose(request)
-            elapsed_ms = max(0, int((time.monotonic() - started) * 1_000))
-            artifact = self.validator.validate(
-                request,
-                bundle,
-                provider_elapsed_ms=elapsed_ms,
-            )
+            schema_error: ValidationError | None = None
+            artifact: ProposalValidationArtifact | None = None
+            # A provider response is untrusted and JSON-schema failures are
+            # often transient formatting mistakes.  Give the read-only
+            # provider one bounded retry, then preserve an explicit fallback
+            # reason instead of silently treating the first failure as a
+            # successful mapping run.
+            for attempt in range(2):
+                try:
+                    bundle = self.provider.propose(request)
+                    elapsed_ms = max(0, int((time.monotonic() - started) * 1_000))
+                    artifact = self.validator.validate(
+                        request,
+                        bundle,
+                        provider_elapsed_ms=elapsed_ms,
+                    )
+                    break
+                except ValidationError as exc:
+                    schema_error = exc
+                    if attempt == 1:
+                        raise
+            if artifact is None and schema_error is not None:
+                raise schema_error
+            assert artifact is not None
         except TimeoutError as exc:
             return bundle, self._fallback(
                 request,

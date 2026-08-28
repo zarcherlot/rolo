@@ -32,6 +32,15 @@
     "status": {
       "$ref": "#/$defs/AdaptGateStatus"
     },
+    "validation_scope": {
+      "default": "STRUCTURAL_ONLY",
+      "enum": [
+        "STRUCTURAL_ONLY",
+        "TARGET_RUNTIME_READONLY"
+      ],
+      "title": "Validation Scope",
+      "type": "string"
+    },
     "checks": {
       "items": {
         "type": "string"

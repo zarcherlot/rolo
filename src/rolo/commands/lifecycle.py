@@ -86,6 +86,7 @@ def run_adapt_start(
             evidence_deployment, _ = ensure_local_deployment(
                 robot_id=robot_id,
                 config_root=settings.rolo_config_dir,
+                project_root=evidence.project_root,
                 help_executables=allow_executable or (),
                 ros_setup_files=ros_setup_files,
             )
