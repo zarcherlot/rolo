@@ -51,7 +51,7 @@ def configured_discovery_service(
             model=settings.coding_agent_model,
             provider=settings.coding_agent_provider,
             base_url=settings.coding_agent_base_url,
-            api_key=settings.coding_agent_api_key,
+            api_key=settings.resolved_coding_agent_api_key,
             timeout_s=settings.wiki_insights_agent_timeout_s,
         )
         if settings.wiki_insights_agent_enabled
@@ -65,7 +65,7 @@ def configured_discovery_service(
             "model": settings.coding_agent_model,
             "provider": settings.coding_agent_provider,
             "base_url": settings.coding_agent_base_url,
-            "api_key": settings.coding_agent_api_key,
+            "api_key": settings.resolved_coding_agent_api_key,
             "timeout_s": settings.adapt_heuristic_agent_timeout_s,
         }
         planning_provider = (

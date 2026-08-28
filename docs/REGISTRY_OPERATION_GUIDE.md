@@ -68,7 +68,9 @@ Application 四层展示；代码内部用 `control`、`hw`、`linux`、`middlew
 | `RELEASED` | 产品维护的稳定跨目标语义，已有可复用实现或充分兼容性证据 | 可以使用 builtin 或 gated adapter | 可以 |
 | `DEPRECATED` | 仍保留迁移兼容，但不再用于新注册 | 不得新增绑定 | 否；迁移到替代项 |
 
-目标状态是另一条轴：`UNAVAILABLE`、`AVAILABLE`、`VERIFIED`。例如
+目标状态是另一条轴：`UNAVAILABLE`、`AVAILABLE`、`ROUTE_VERIFIED`、`VERIFIED`。其中
+`ROUTE_VERIFIED` 仅表示目标路由存在，仍缺少 provider/schema/revision 证据，不能调用或发布为
+`VERIFIED`。例如
 `linux.service.restart` 可以是 `GATEABLE`，但在没有 systemd、没有 candidate 或尚未完成
 adapter 门禁的主机上仍为 `UNAVAILABLE`；同一契约在另一台主机上可以是 `VERIFIED`。
 

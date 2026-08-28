@@ -1,0 +1,60 @@
+{
+  "properties": {
+    "schema_version": {
+      "const": "rolo-stage-agent-event/v1",
+      "default": "rolo-stage-agent-event/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "diagnose",
+        "verify"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "sequence": {
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "stream": {
+      "enum": [
+        "stdout",
+        "stderr"
+      ],
+      "title": "Stream",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "line": {
+      "maxLength": 8000,
+      "title": "Line",
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage",
+    "robot_id",
+    "run_id",
+    "sequence",
+    "stream",
+    "observed_at",
+    "line"
+  ],
+  "title": "StageAgentEvent",
+  "type": "object"
+}

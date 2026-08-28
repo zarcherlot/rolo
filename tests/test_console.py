@@ -46,3 +46,25 @@ def test_rolo_without_arguments_keeps_non_tty_invocation_safe():
     result = CliRunner().invoke(app, [])
     assert result.exit_code == 0, result.output
     assert "Usage:" in result.output
+
+
+def test_console_chat_uses_an_ephemeral_harness_workspace(tmp_path):
+    class Harness:
+        def __init__(self):
+            self.workspace = None
+
+        def run(self, request, *, on_output=None):
+            self.workspace = request.workspace
+            request.workspace.joinpath("AGENTS.md").write_text("temporary", encoding="utf-8")
+            if on_output:
+                on_output("stdout", "answer")
+            return "answer", "", 0
+
+    harness = Harness()
+    console = _console(tmp_path, input_text="请解释当前状态\n/quit\n")
+    console.harness = harness
+    console.run()
+
+    assert harness.workspace is not None
+    assert not harness.workspace.exists()
+    assert "[agent] answer" in console.output_stream.getvalue()

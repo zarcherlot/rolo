@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "The minimum closed-loop record required before Diagnose is COMPLETE.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-diagnosis-report/v1",
+      "default": "rolo-diagnosis-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "baseline": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "minProperties": 1,
+      "title": "Baseline",
+      "type": "object"
+    },
+    "observations": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Observations",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "type": "object"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Changes",
+      "type": "array"
+    },
+    "smoke": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "minProperties": 1,
+      "title": "Smoke",
+      "type": "object"
+    },
+    "decision": {
+      "enum": [
+        "COMMIT",
+        "ROLLBACK",
+        "INCONCLUSIVE"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "episode_refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Episode Refs",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "robot_id",
+    "baseline",
+    "observations",
+    "hypotheses",
+    "changes",
+    "smoke",
+    "decision",
+    "episode_refs"
+  ],
+  "title": "DiagnosisReport",
+  "type": "object"
+}

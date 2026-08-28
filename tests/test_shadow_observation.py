@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.shadow_observation import (
     build_capability_requirements,
     build_capability_shadow,
+    build_capability_shadow_stability_report,
     build_platform_profile,
     build_slice_shadow_report,
     resolution_status_counts,
@@ -74,3 +78,66 @@ def test_slice_shadow_reports_differences_without_changing_authority() -> None:
     assert shadow.eligible_not_in_shadow == ["app.teleop.velocity"]
     assert shadow.shadow_not_in_eligible == []
     assert shadow.influences_release is False
+
+
+def test_capability_shadow_stability_is_release_neutral_and_counts_runs(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    payload = {
+        "schema_version": "robot-capability-resolution-shadow/v1",
+        "profile_id": "robot-1:discovery-1",
+        "profile_sha256": "1" * 64,
+        "provider_manifest_sha256": [],
+        "resolutions": [
+            {
+                "operation": "linux.process.list",
+                "capability_id": "os.workload.inspect",
+                "capability_version": "1.0",
+                "semantic_layer": "os",
+                "status": "UNAVAILABLE",
+                "provider_id": None,
+                "provider_version": None,
+                "reason": "no provider",
+            }
+        ],
+        "discovery_evidence": ["discovery:discovery-1"],
+        "influences_release": False,
+    }
+    store.write_json("adapt/robot-1/runs/run-1/capability-resolution-shadow.json", payload)
+
+    report = build_capability_shadow_stability_report(tmp_path, "robot-1")
+
+    assert report.observation_count == 1
+    assert report.resolution_count == 1
+    assert report.status_counts == {"AMBIGUOUS": 0, "RESOLVED": 0, "UNAVAILABLE": 1}
+    assert report.recommendation == "READY_FOR_REVIEW"
+    assert report.influences_release is False
+
+
+def test_capability_shadow_stability_holds_on_ambiguous_resolution(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    payload = {
+        "schema_version": "robot-capability-resolution-shadow/v1",
+        "profile_id": "robot-1:discovery-1",
+        "profile_sha256": "1" * 64,
+        "provider_manifest_sha256": [],
+        "resolutions": [
+            {
+                "operation": "linux.process.list",
+                "capability_id": "os.workload.inspect",
+                "capability_version": "1.0",
+                "semantic_layer": "os",
+                "status": "AMBIGUOUS",
+                "provider_id": None,
+                "provider_version": None,
+                "reason": "two providers",
+            }
+        ],
+        "discovery_evidence": ["discovery:discovery-1"],
+        "influences_release": False,
+    }
+    store.write_json("adapt/robot-1/runs/run-1/capability-resolution-shadow.json", payload)
+
+    report = build_capability_shadow_stability_report(tmp_path, "robot-1")
+
+    assert report.recommendation == "HOLD"
+    assert report.ambiguous_count == 1

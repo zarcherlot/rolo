@@ -104,6 +104,13 @@ def natural(
         bool,
         typer.Option("--execute/--parse-only", help="Execute through canonical safe services"),
     ] = False,
+    confirmed: Annotated[
+        bool,
+        typer.Option(
+            "--confirm/--no-confirm",
+            help="Explicitly authorize a mutating request (required with --execute)",
+        ),
+    ] = False,
     known_hosts: Annotated[Path | None, typer.Option("--known-hosts")] = None,
     timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=300.0)] = 10.0,
 ) -> None:
@@ -119,6 +126,7 @@ def natural(
                 intent,
                 known_hosts=known_hosts,
                 timeout_s=timeout,
+                confirmed=confirmed,
                 on_output=_stream_agent_output,
             )
     except ValueError as exc:
@@ -133,6 +141,30 @@ def natural(
             result.model_dump(mode="json") if hasattr(result, "model_dump") else result
         )
     emit(payload)
+
+
+@app.command("run")
+def run(
+    once: Annotated[
+        bool,
+        typer.Option(
+            "--once",
+            help="Render the interactive prompt and exit (useful for smoke checks)",
+        ),
+    ] = False,
+) -> None:
+    """Start the Codex-style natural-language Rolo console.
+
+    ``rolo`` without arguments already opens this console on a TTY.  The explicit
+    spelling is useful in launchers and makes the two supported entry modes clear:
+    canonical subcommands (for example ``rolo adapt ...``) and conversational
+    interaction (``rolo run``).
+    """
+    if once:
+        typer.echo("Rolo — natural-language console")
+        typer.echo("Type a request, or /help and /quit.")
+        return
+    run_console()
 
 
 @app.command("tui")
@@ -586,6 +618,13 @@ def adapt(
             help="Continue through Adapter Agent, independent gate, and release",
         ),
     ] = True,
+    confirm: Annotated[
+        bool,
+        typer.Option(
+            "--confirm/--no-confirm",
+            help="Explicitly authorize Agent execution and local artifact writes",
+        ),
+    ] = False,
     scratch_root: Annotated[
         Path | None,
         typer.Option("--scratch-root", help="Optional parent for the Agent workspace"),
@@ -607,12 +646,26 @@ def adapt(
     ] = 45.0,
 ) -> None:
     """Run the shortest safe Adapt journey for TARGET."""
-    if sys.stdin.isatty() and not typer.confirm(
-        "Adapt may install/use the configured Agent and write evidence artifacts. Continue?",
-        default=False,
-    ):
-        emit({"status": "CANCELLED", "mutation_started": False})
-        return
+    if run_agent and not confirm:
+        if sys.stdin.isatty():
+            confirm = typer.confirm(
+                "Adapt may install/use the configured Agent and write evidence artifacts. "
+                "Continue?",
+                default=False,
+            )
+        if not confirm:
+            emit(
+                {
+                    "status": "AUTHORIZATION_REQUIRED",
+                    "scope": "adapt.run",
+                    "reason": (
+                        "Agent execution and artifact publication require explicit confirmation"
+                    ),
+                    "mutation_started": False,
+                    "resume": "rolo adapt ... --confirm",
+                }
+            )
+            raise typer.Exit(code=2)
     try:
         target_ref = parse_target_ref(target)
         if not isinstance(target_ref, LocalTargetRef):

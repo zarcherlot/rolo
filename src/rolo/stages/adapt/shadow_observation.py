@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +18,7 @@ from rolo.capabilities import (
 )
 from rolo.capabilities import SemanticLayer as CapabilitySemanticLayer
 from rolo.core.models import DiscoveryReport
+from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.adapt.operation_governance import (
     SemanticLayer as GovernanceSemanticLayer,
 )
@@ -38,6 +41,42 @@ class TargetOperationSliceShadowReport(BaseModel):
     shadow_target_adapter_operations: list[str] = Field(default_factory=list)
     eligible_not_in_shadow: list[str] = Field(default_factory=list)
     shadow_not_in_eligible: list[str] = Field(default_factory=list)
+    influences_release: Literal[False] = False
+
+
+class CapabilityShadowRunObservation(BaseModel):
+    """One immutable capability-resolution shadow artifact summarized for review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    artifact_ref: str
+    profile_id: str
+    resolution_count: int = Field(ge=0)
+    resolved_count: int = Field(ge=0)
+    unavailable_count: int = Field(ge=0)
+    ambiguous_count: int = Field(ge=0)
+
+
+class CapabilityShadowStabilityReport(BaseModel):
+    """Release-neutral aggregate for P2 capability resolver shadow runs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-capability-resolution-stability/v1"] = (
+        "robot-capability-resolution-stability/v1"
+    )
+    robot_id: str
+    max_runs: int = Field(gt=0)
+    observation_count: int = Field(ge=0)
+    resolution_count: int = Field(ge=0)
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    ambiguous_count: int = Field(ge=0)
+    unavailable_count: int = Field(ge=0)
+    resolved_count: int = Field(ge=0)
+    recommendation: Literal["INSUFFICIENT_DATA", "HOLD", "READY_FOR_REVIEW"]
+    recommendation_reasons: list[str] = Field(default_factory=list)
+    observations: list[CapabilityShadowRunObservation] = Field(default_factory=list)
     influences_release: Literal[False] = False
 
 
@@ -136,6 +175,92 @@ def resolution_status_counts(shadow: CapabilityResolutionShadow) -> dict[str, in
         status.value: sum(item.status == status for item in shadow.resolutions)
         for status in ResolutionStatus
     }
+
+
+def build_capability_shadow_stability_report(
+    artifact_root: Path,
+    robot_id: str,
+    *,
+    max_runs: int = 50,
+) -> CapabilityShadowStabilityReport:
+    """Aggregate existing Adapt capability-shadow artifacts without changing authority."""
+
+    if max_runs < 1:
+        raise ValueError("max_runs must be positive")
+    layout = ArtifactLayout(artifact_root)
+    runs_root = layout.stage_latest("adapt", robot_id).parent / "runs"
+    run_paths = (
+        sorted(
+            (path for path in runs_root.iterdir() if path.is_dir()),
+            key=lambda path: path.name,
+            reverse=True,
+        )
+        if runs_root.is_dir()
+        else []
+    )
+    observations: list[CapabilityShadowRunObservation] = []
+    for run_path in run_paths:
+        shadow_path = run_path / "capability-resolution-shadow.json"
+        if not shadow_path.is_file():
+            continue
+        shadow = CapabilityResolutionShadow.model_validate_json(
+            shadow_path.read_text(encoding="utf-8")
+        )
+        if not shadow.profile_id.startswith(f"{robot_id}:"):
+            raise ValueError(f"capability shadow robot mismatch in run {run_path.name}")
+        counts = resolution_status_counts(shadow)
+        observations.append(
+            CapabilityShadowRunObservation(
+                run_id=run_path.name,
+                artifact_ref=layout.ref(shadow_path),
+                profile_id=shadow.profile_id,
+                resolution_count=len(shadow.resolutions),
+                resolved_count=counts[ResolutionStatus.RESOLVED.value],
+                unavailable_count=counts[ResolutionStatus.UNAVAILABLE.value],
+                ambiguous_count=counts[ResolutionStatus.AMBIGUOUS.value],
+            )
+        )
+        if len(observations) >= max_runs:
+            break
+    status_counts = Counter(
+        status
+        for item in observations
+        for status in (
+            ResolutionStatus.RESOLVED.value,
+            ResolutionStatus.UNAVAILABLE.value,
+            ResolutionStatus.AMBIGUOUS.value,
+        )
+        for _ in range(getattr(item, f"{status.lower()}_count"))
+    )
+    normalized_counts = {
+        status.value: status_counts.get(status.value, 0) for status in ResolutionStatus
+    }
+    ambiguous = normalized_counts[ResolutionStatus.AMBIGUOUS.value]
+    reasons: list[str] = []
+    if not observations:
+        recommendation: Literal["INSUFFICIENT_DATA", "HOLD", "READY_FOR_REVIEW"] = (
+            "INSUFFICIENT_DATA"
+        )
+        reasons.append("NO_CAPABILITY_SHADOW_RUNS")
+    elif ambiguous:
+        recommendation = "HOLD"
+        reasons.append("AMBIGUOUS_CAPABILITY_RESOLUTION_OBSERVED")
+    else:
+        recommendation = "READY_FOR_REVIEW"
+        reasons.append("MANUAL_REVIEW_REQUIRED")
+    return CapabilityShadowStabilityReport(
+        robot_id=robot_id,
+        max_runs=max_runs,
+        observation_count=len(observations),
+        resolution_count=sum(item.resolution_count for item in observations),
+        status_counts=normalized_counts,
+        ambiguous_count=ambiguous,
+        unavailable_count=normalized_counts[ResolutionStatus.UNAVAILABLE.value],
+        resolved_count=normalized_counts[ResolutionStatus.RESOLVED.value],
+        recommendation=recommendation,
+        recommendation_reasons=reasons,
+        observations=observations,
+    )
 
 
 def _strings(value: Any) -> list[str]:

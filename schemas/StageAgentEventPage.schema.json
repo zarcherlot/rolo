@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "StageAgentEvent": {
+      "properties": {
+        "schema_version": {
+          "const": "rolo-stage-agent-event/v1",
+          "default": "rolo-stage-agent-event/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "diagnose",
+            "verify"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "robot_id": {
+          "title": "Robot Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "stream": {
+          "enum": [
+            "stdout",
+            "stderr"
+          ],
+          "title": "Stream",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "line": {
+          "maxLength": 8000,
+          "title": "Line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "robot_id",
+        "run_id",
+        "sequence",
+        "stream",
+        "observed_at",
+        "line"
+      ],
+      "title": "StageAgentEvent",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "rolo-stage-agent-event-page/v1",
+      "default": "rolo-stage-agent-event-page/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "diagnose",
+        "verify"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/StageAgentEvent"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "minimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "next_offset": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Offset"
+    }
+  },
+  "required": [
+    "stage",
+    "robot_id",
+    "run_id",
+    "items",
+    "total",
+    "limit",
+    "offset"
+  ],
+  "title": "StageAgentEventPage",
+  "type": "object"
+}

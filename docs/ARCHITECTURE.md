@@ -165,18 +165,73 @@ than retained as a duplicate.
   manifest validation, an isolated Adapter Agent project, bundle entrypoint validation, frozen
   output, independent conformance, external immutable release publication, and downstream
   validation. Robot-specific adapters never enter the rolo product source tree.
-- Diagnose contains `robot_use`, a validated adapt-handoff gate, and a structured diagnosis-handoff
-  contract. Closed-loop diagnosis transactions, tuning, and handoff production remain work.
-- Verify contains validated upstream and structured output gates. Runtime acceptance DSL, oracle
-  registry, autonomous execution, and evidence packaging remain work. Repository tests under
-  `tests/` are engineering tests, not robot acceptance runs.
+- Diagnose contains `robot_use`, a validated adapt-handoff gate, a structured diagnosis-handoff
+  contract, and a provider-neutral `diagnose plan`/Stage Agent task envelope. The built-in Codex
+  executor materializes the frozen configuration and report. A strict report may declare the
+  `baseline → observations → hypotheses → changes → smoke → decision` loop and immutable Episode
+  refs; Rolo re-validates it on read and refuses release/publication claims from untrusted JSON.
+  Legacy unstructured reports remain readable but cannot make Diagnose COMPLETE.
+- Verify contains validated upstream and structured output gates plus a provider-neutral
+  `verify plan`/Stage Agent task envelope. The built-in Codex executor materializes regression and
+  evidence artifacts with deterministic non-empty evidence/result guards and immutable hash
+  binding. A runtime acceptance DSL/oracle registry and robot-specific autonomous checks remain
+  extension points; repository tests are engineering tests, not robot acceptance runs.
+
+The shared Stage Agent runner writes a `WAITING_FOR_AUTH` run and a short-lived, plan-bound
+authorization request before invoking any downstream executor. A GUI or another same-user client
+resumes with that request's `artifact://` reference; Rolo checks the stage, robot, provider,
+executor, plan digest, pending state, and expiry before reusing the original run identity. An
+approved request is single-use and is marked `APPROVED` before execution. This is the handoff
+point for `rolo-vis`; it does not grant target runtime authority or bypass downstream validators.
+The HTTP equivalents are `GET /v1/robots/{robot_id}/stage-auth-requests`,
+`POST /v1/robots/{robot_id}/diagnose/run`, and
+`POST /v1/robots/{robot_id}/verify/run`, allowing a UI to approve one exact
+`authorization_ref` without constructing filesystem paths.
+Run state and persisted stream output are exposed through
+`GET /v1/robots/{robot_id}/{stage}/runs/{run_id}` and
+`GET /v1/robots/{robot_id}/{stage}/runs/{run_id}/events`; these endpoints return only
+the identity-bound run envelope and Rolo-owned JSONL projections.
+Before the built-in Codex downstream executor starts, each digest-bound `artifact://` input
+is copied into an ephemeral `rolo-stage-inputs/` directory with a bounded size and a collision-
+checked name map. This gives provider CLIs a concrete context without granting them direct
+access to the canonical artifact tree.
+The bundled `rolo-vis` entrypoint serves a same-origin, dependency-free dashboard over these
+endpoints. Its browser confirmation is only a user-experience affordance; the HTTP service
+revalidates the exact authorization reference, robot, stage, provider, executor, plan digest,
+expiry and single-use state before execution.
 
 ## CLI
 
+## Agent integration boundary
+
+Rolo does not make a particular coding-agent product part of its lifecycle contract. The
+provider-neutral boundary is:
+
+```text
+stage policy/evidence/gate
+          |
+   AgentExecutor SPI
+          |
+  Codex / Claude Code / relay plugin
+          |
+  provider + model + base_url + key env
+```
+
+`provider` identifies the model endpoint, while `executor` identifies the local Agent product.
+Install/authentication is a third, optional dependency adapter owned by the executor plugin.
+Adapt and the downstream stages ship a built-in Codex harness adapter; Claude Code, relays and
+other products register the same SPI. No Agent output can publish a release without the stage's
+Rolo-owned handoff validator.
+
+The interactive console resolves that transport through the `rolo.harnesses` entry-point group,
+so `rolo run` and stage execution can share one streaming harness while keeping provider/model/key
+selection in user settings. A harness is never an authorization provider: it may emit text and
+structured output, but only Rolo can approve a run or publish a handoff.
+
 ```text
 uv run robotctl adapt status|run|agent-config|enroll|discover
-uv run robotctl diagnose status|robot-use
-uv run robotctl verify status
+uv run robotctl diagnose status|plan|run|robot-use
+uv run robotctl verify status|plan|acceptance-plan|run
 uv run robotctl pipeline-status
 ```
 

@@ -63,6 +63,22 @@ def test_natural_language_maps_local_adapt_request():
     ]
 
 
+def test_natural_language_maps_downstream_stage_plans_with_explicit_robot():
+    diagnose = parse_natural_language("诊断计划 C:/robot/ws，机器人 wheeltec")
+    assert diagnose.operation == NaturalLanguageOperation.DIAGNOSE_PLAN
+    assert diagnose.robot_id == "wheeltec"
+    assert intent_to_argv(diagnose) == ["diagnose", "plan", "--robot", "wheeltec"]
+
+    verify = parse_natural_language("verify plan C:/robot/ws robot=wheeltec")
+    assert verify.operation == NaturalLanguageOperation.VERIFY_PLAN
+    assert verify.robot_id == "wheeltec"
+    assert intent_to_argv(verify) == ["verify", "plan", "--robot", "wheeltec"]
+
+    run = parse_natural_language("执行诊断 C:/robot/ws robot=wheeltec")
+    assert run.operation == NaturalLanguageOperation.DIAGNOSE_RUN
+    assert intent_to_argv(run) == ["diagnose", "run", "--robot", "wheeltec"]
+
+
 def test_natural_language_rejects_ambiguous_or_command_like_text():
     for text in ("帮我处理一下目标", "检查目标 C:/robot && whoami"):
         with pytest.raises(ValueError):

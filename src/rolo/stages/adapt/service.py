@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from rolo.adapter_runtime import load_current_release
-from rolo.agent_provider import create_agent_executor
+from rolo.agent_provider import create_agent_executor, dependency_adapter_for
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings, get_settings
 from rolo.core.models import DiscoveryStatus
@@ -67,7 +67,7 @@ def coding_agent_config(settings: Settings) -> AdapterAgentConfig:
         base_url=(settings.coding_agent_base_url or "").strip() or None,
         model=(settings.coding_agent_model or "").strip() or None,
         api_key_env=settings.coding_agent_api_key_env.strip() or "CODING_AGENT_API_KEY",
-        api_key_configured=bool(settings.coding_agent_api_key),
+        api_key_configured=bool(settings.resolved_coding_agent_api_key),
         auto_install=settings.coding_agent_auto_install,
         require_auth=settings.coding_agent_require_auth,
     )
@@ -82,7 +82,12 @@ class AdaptExecutionService:
         self.config = coding_agent_config(settings)
 
     def prepare(self, *, skip_auth: bool = False) -> tuple[AdapterAgentDependencyReport, Path]:
-        return AdapterAgentDependencyManager(self.artifacts).prepare(
+        adapter = dependency_adapter_for(self.config.executor)
+        return AdapterAgentDependencyManager(
+            self.artifacts,
+            adapter=adapter,
+            use_default_adapter=adapter is None and self.config.executor.strip().lower() == "codex",
+        ).prepare(
             config=self.config,
             executable=self.settings.coding_agent_executable,
             auto_install=self.settings.coding_agent_auto_install,
@@ -124,8 +129,9 @@ class AdaptExecutionService:
             self.config.executor,
             artifacts=self.artifacts,
             executable=dependency.executable or self.settings.coding_agent_executable,
-            api_key=self.settings.coding_agent_api_key,
+            api_key=self.settings.resolved_coding_agent_api_key,
             api_key_env=self.config.api_key_env,
+            agent_config=self.config,
             output_root=self.settings.rolo_output_dir,
             slice_activation_mode=self.settings.adapt_operation_slice_mode,
             slice_activation_robot_ids=self.settings.adapt_operation_slice_robot_ids,

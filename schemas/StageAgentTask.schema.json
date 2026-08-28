@@ -1,0 +1,93 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable, secret-free task envelope passed to a downstream Agent plugin.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-stage-agent-task/v1",
+      "default": "rolo-stage-agent-task/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "diagnose",
+        "verify"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "task": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Task",
+      "type": "string"
+    },
+    "input_refs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Refs",
+      "type": "object"
+    },
+    "input_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Sha256",
+      "type": "object"
+    },
+    "output_contract": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Output Contract",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "executor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Executor",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Plan Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage",
+    "robot_id",
+    "task",
+    "output_contract",
+    "provider",
+    "executor",
+    "plan_sha256"
+  ],
+  "title": "StageAgentTask",
+  "type": "object"
+}

@@ -86,6 +86,12 @@ from rolo.lifecycle_read_models import (
 )
 from rolo.read_models import OverviewState, RobotOverview, build_robot_overview
 from rolo.runtime import RobotUseRuntime, create_robot_use_runtime
+from rolo.stage_agent_read_models import (
+    StageAgentEventPage,
+    StageAgentRunDetail,
+    stage_agent_event_page,
+    stage_agent_run_detail,
+)
 from rolo.stages.adapt.operation_governance import (
     ExecutionClass,
     MigrationStatus,
@@ -95,7 +101,12 @@ from rolo.stages.adapt.operation_governance import (
 )
 from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.workset import TargetOperationSlice
+from rolo.stages.agent_runner import (
+    StageAgentRun,
+    list_stage_authorization_requests,
+)
 from rolo.stages.contracts import PipelineAssessment, StageName
+from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline
 from rolo.target_ref import SshTargetRef
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
@@ -149,8 +160,18 @@ def _loopback_host(value: str) -> bool:
 def _required_scope(path: str, method: str) -> str | None:
     if method == "GET" and (path == "/v1/jobs" or path.startswith("/v1/jobs/")):
         return "jobs:read"
+    if method == "GET" and path.endswith("/stage-auth-requests"):
+        return "agents:read"
+    if method == "GET" and "/runs/" in path and "/events" in path:
+        return "agents:read"
+    if method == "GET" and "/runs/" in path:
+        return "agents:read"
     if method == "POST" and path == "/v1/targets/bootstrap-execute":
         return "jobs:execute"
+    if method == "POST" and (
+        path.endswith("/diagnose/run") or path.endswith("/verify/run")
+    ):
+        return "agents:execute"
     return None
 
 
@@ -224,6 +245,22 @@ class BootstrapExecutePayload(BaseModel):
     known_hosts: Path
     execute: bool = False
     timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
+
+
+class StageAuthorizationRequestCollection(BaseModel):
+    """Read-only approval queue consumed by rolo-vis or another UI."""
+
+    schema_version: str = "rolo-stage-authorization-requests/v1"
+    robot_id: str | None = None
+    stage: Literal["diagnose", "verify"] | None = None
+    requests: list[dict[str, object]] = Field(default_factory=list)
+
+
+class StageRunPayload(BaseModel):
+    """Explicit approval for one digest-bound downstream Agent run."""
+
+    confirmed: bool = False
+    authorization_ref: str | None = Field(default=None, max_length=512)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -618,6 +655,132 @@ async def get_robot_pipeline(robot_id: str, request: Request) -> PipelineAssessm
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
+
+
+@app.get(
+    "/v1/robots/{robot_id}/stage-auth-requests",
+    response_model=StageAuthorizationRequestCollection,
+)
+async def list_robot_stage_authorizations(
+    robot_id: str,
+    request: Request,
+    stage: Annotated[Literal["diagnose", "verify"] | None, Query()] = None,
+) -> StageAuthorizationRequestCollection:
+    """Expose pending approvals so a UI can bind a click to one exact task digest."""
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        requests = list_stage_authorization_requests(
+            runtime.settings.rolo_artifact_dir,
+            stage=stage,
+            robot_id=robot_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="stage authorization evidence unavailable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StageAuthorizationRequestCollection(
+        robot_id=robot_id,
+        stage=stage,
+        requests=requests,
+    )
+
+
+async def _run_downstream_stage(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    payload: StageRunPayload,
+    request: Request,
+) -> StageAgentRun:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return DownstreamStageService(runtime.settings, stage).run(
+            robot_id,
+            confirmed=payload.confirmed,
+            authorization_ref=payload.authorization_ref,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/v1/robots/{robot_id}/diagnose/run", response_model=StageAgentRun)
+async def run_robot_diagnose(
+    robot_id: str, payload: StageRunPayload, request: Request
+) -> StageAgentRun:
+    return await _run_downstream_stage(robot_id, "diagnose", payload, request)
+
+
+@app.post("/v1/robots/{robot_id}/verify/run", response_model=StageAgentRun)
+async def run_robot_verify(
+    robot_id: str, payload: StageRunPayload, request: Request
+) -> StageAgentRun:
+    return await _run_downstream_stage(robot_id, "verify", payload, request)
+
+
+@app.get(
+    "/v1/robots/{robot_id}/{stage}/runs/{run_id}",
+    response_model=StageAgentRunDetail,
+)
+async def get_stage_agent_run(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    run_id: str,
+    request: Request,
+) -> StageAgentRunDetail:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return stage_agent_run_detail(
+            runtime.settings.rolo_artifact_dir, stage, robot_id, run_id
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="stage Agent run is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get(
+    "/v1/robots/{robot_id}/{stage}/runs/{run_id}/events",
+    response_model=StageAgentEventPage,
+)
+async def get_stage_agent_events(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    run_id: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> StageAgentEventPage:
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return stage_agent_event_page(
+            runtime.settings.rolo_artifact_dir,
+            stage,
+            robot_id,
+            run_id,
+            limit=limit,
+            offset=offset,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="stage Agent run is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/v1/robots/{robot_id}/overview", response_model=RobotOverview)

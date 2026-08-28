@@ -144,6 +144,23 @@ def test_prepare_rejects_unregistered_executor(tmp_path: Path) -> None:
     assert report.install_attempted is False
 
 
+def test_prepare_without_plugin_adapter_fails_closed(tmp_path: Path) -> None:
+    manager = AdapterAgentDependencyManager(
+        ArtifactStore(tmp_path / "artifacts"),
+        adapter=None,
+        use_default_adapter=False,
+    )
+    report, _ = manager.prepare(
+        config=AdapterAgentConfig(executor="claude-code"),
+        executable="claude",
+        auto_install=True,
+        require_auth=True,
+        install_timeout_s=30,
+    )
+    assert report.status == "UNSUPPORTED"
+    assert report.messages == ["No dependency adapter is registered for executor claude-code"]
+
+
 def test_codex_install_uses_fixed_official_source_and_argv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

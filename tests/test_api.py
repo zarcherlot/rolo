@@ -7,7 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rolo.api import app
+from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
+from rolo.stages.agent_runner import StageAgentRun
+from rolo.stages.artifact_paths import ArtifactLayout
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +29,7 @@ def test_health_and_robot_registry() -> None:
         fleet = client.get("/v1/fleet")
         blockers = client.get("/v1/blockers?limit=1")
         pipeline = client.get("/v1/robots/demo_diff/pipeline")
+        stage_auth = client.get("/v1/robots/demo_diff/stage-auth-requests")
         overview = client.get("/v1/robots/demo_diff/overview")
         topology = client.get("/v1/robots/demo_diff/topology")
         topology_payload = topology.json()
@@ -76,6 +80,9 @@ def test_health_and_robot_registry() -> None:
         "diagnose",
         "verify",
     ]
+    assert stage_auth.status_code == 200
+    assert stage_auth.json()["schema_version"] == "rolo-stage-authorization-requests/v1"
+    assert stage_auth.json()["requests"] == []
     assert overview.status_code == 200
     assert overview.json()["schema_version"] == "rolo-robot-overview/v2"
     assert overview.json()["robot_id"] == "demo_diff"
@@ -141,6 +148,37 @@ def test_health_and_robot_registry() -> None:
     assert evidence_detail.json()["reference_hint"] != ""
     assert "tests/" not in evidence_detail.text
     assert status.json()["local_visual_detection"] is False
+
+
+def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
+    settings = get_settings()
+    layout = ArtifactLayout(settings.rolo_artifact_dir)
+    store = ArtifactStore(settings.rolo_artifact_dir)
+    run = StageAgentRun(
+        stage="diagnose",
+        robot_id="demo_diff",
+        run_id="api-run-1",
+        status="RUNNING",
+        provider="codex",
+        executor="codex",
+        task_ref="artifact://diagnose/demo_diff/runs/api-run-1/task.json",
+        started_at=datetime.now(timezone.utc),
+    )
+    store.write_json(
+        layout.relative(layout.stage_run("diagnose", "demo_diff", "api-run-1") / "run.json"),
+        run.model_dump(mode="json"),
+    )
+    store.append_jsonl(
+        "diagnose/demo_diff/runs/api-run-1/stdout.jsonl",
+        {"observed_at": datetime.now(timezone.utc).isoformat(), "line": "streamed"},
+    )
+    with TestClient(app) as client:
+        detail = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1")
+        events = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1/events")
+    assert detail.status_code == 200
+    assert detail.json()["run"]["run_id"] == "api-run-1"
+    assert events.status_code == 200
+    assert events.json()["items"][0]["line"] == "streamed"
 
 
 def test_unknown_robot_is_404() -> None:

@@ -239,6 +239,14 @@ class Settings(BaseSettings):
     def robot_config_dir(self) -> Path:
         return self.rolo_config_dir / "robots"
 
+    @property
+    def resolved_coding_agent_api_key(self) -> str | None:
+        """Resolve the selected provider key without requiring it in YAML/config files."""
+        if self.coding_agent_api_key:
+            return self.coding_agent_api_key
+        name = self.coding_agent_api_key_env.strip()
+        return os.environ.get(name) if name else None
+
 
 def settings_template() -> dict[str, Any]:
     defaults = Settings(_env_file=None)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
@@ -101,13 +102,13 @@ class RoloConsole:
         self._write(output_stream, f"Intent: {intent.operation.value}")
         self._write(output_stream, f"Canonical CLI: uv run rolo {' '.join(argv)}")
         if not self._requires_confirmation(intent.operation):
-            self._execute(intent, output_stream)
+            self._execute(intent, output_stream, confirmed=False)
             return
         self._write(output_stream, "This operation may write local state or run Adapt.")
         if not self._confirm(input_stream, output_stream):
             self._write(output_stream, "cancelled")
             return
-        self._execute(intent, output_stream)
+        self._execute(intent, output_stream, confirmed=True)
 
     @staticmethod
     def _requires_confirmation(operation: NaturalLanguageOperation) -> bool:
@@ -123,15 +124,21 @@ class RoloConsole:
         answer = input_stream.readline().strip().casefold()
         return answer in {"y", "yes"}
 
-    def _execute(self, intent, output_stream: TextIO) -> None:
+    def _execute(self, intent, output_stream: TextIO, *, confirmed: bool = False) -> None:
         try:
             result = self.service.execute(
                 intent,
+                confirmed=confirmed,
                 on_output=(
                     lambda stream, line: self._render_agent_output(
                         stream, line, output_stream
                     )
-                    if intent.operation == NaturalLanguageOperation.ADAPT_START
+                    if intent.operation
+                    in {
+                        NaturalLanguageOperation.ADAPT_START,
+                        NaturalLanguageOperation.DIAGNOSE_RUN,
+                        NaturalLanguageOperation.VERIFY_RUN,
+                    }
                     else None
                 ),
             )
@@ -152,12 +159,17 @@ class RoloConsole:
             + request
         )
         try:
-            _, stderr, code = self.harness.run(
-                HarnessRequest(prompt=prompt, workspace=Path.cwd()),
-                on_output=lambda stream, line: self._render_agent_output(
-                    stream, line, output_stream
-                ),
-            )
+            # Conversational fallback is deliberately isolated: asking a question must
+            # never cause the harness to create ``AGENTS.md`` or other files in the
+            # user's current project. Canonical operations receive their own explicit
+            # workspace elsewhere in the lifecycle.
+            with tempfile.TemporaryDirectory(prefix="rolo-chat-") as temporary:
+                _, stderr, code = self.harness.run(
+                    HarnessRequest(prompt=prompt, workspace=Path(temporary)),
+                    on_output=lambda stream, line: self._render_agent_output(
+                        stream, line, output_stream
+                    ),
+                )
         except HarnessError as exc:
             self._write(output_stream, f"ERROR MODEL_HARNESS: {exc}")
             return True

@@ -18,6 +18,16 @@ def test_natural_execute_uses_canonical_inspect_service(tmp_path, monkeypatch):
     assert json.loads(result.output)["status"] == "INTENT_EXECUTED"
 
 
+def test_natural_mutation_requires_explicit_confirmation(tmp_path, monkeypatch):
+    monkeypatch.setenv("ROLO_CONFIG_DIR", str(tmp_path / "config"))
+    request = f"适配 {tmp_path} robot=demo"
+
+    result = CliRunner().invoke(app, ["natural", request, "--execute"])
+
+    assert result.exit_code != 0
+    assert "explicit current-user confirmation" in result.output
+
+
 def test_query_adapter_reuses_job_service_models(tmp_path):
     store = JobStore(tmp_path)
     job = store.create("target.inspect", "local:C:/robot")

@@ -90,7 +90,8 @@ uv sync --frozen
 
 uv run rolo adapt /path/to/robot-workspace \
   --robot your_robot_id \
-  --urdf /path/to/robot.urdf  # 可省略
+  --urdf /path/to/robot.urdf \
+  --confirm  # 可省略 URDF；非交互执行 Agent 时必须显式确认
 ```
 
 ### Codex/Claude Code 交互与自举授权
@@ -98,26 +99,67 @@ uv run rolo adapt /path/to/robot-workspace \
 Rolo 将模型 transport 与执行权分离：Codex harness/依赖管理层负责对话、流式输出和
 必要的登录/安装动作，Rolo 服务负责证据、计划、审批和 release 判定。模型 API
 可以通过 `CODING_AGENT_PROVIDER`、`CODING_AGENT_BASE_URL`、
-`CODING_AGENT_MODEL`、`CODING_AGENT_API_KEY` 配置；密钥只注入子进程环境，不写入
+`CODING_AGENT_MODEL`、`CODING_AGENT_API_KEY`、`CODING_AGENT_API_KEY_ENV` 配置；密钥只注入子进程环境，不写入
 提示词或 artifact。
 
 ```bash
 # Codex 风格自然交互（仅在需要时询问当前用户）
 uv run rolo
+# 等价的显式启动方式，适合脚本/桌面启动器
+uv run rolo run
 
 # 查看已注册的 Agent executor 及当前非秘密配置
 uv run rolo agent-providers
 
 # 供 Codex/Claude Code 配置为 MCP server
 uv run rolo-mcp
+
+# 启动同源授权与 run 监视面板
+uv run rolo-vis
 ```
 
-MCP 暴露 `rolo_target_inspect`、`rolo_bootstrap_plan` 和
-`rolo_adapt_start`。后者必须携带当前用户明确确认的 `confirmed=true`；若 Codex
+MCP 暴露 `rolo_target_inspect`、`rolo_bootstrap_plan`、`rolo_adapt_start`、
+`rolo_diagnose_run`、`rolo_verify_run`，以及只读的
+`rolo_diagnose_plan`/`rolo_verify_plan`/`rolo_stage_auth_requests`/`rolo_stage_run`/
+`rolo_stage_events`。所有 run 工具都必须携带当前用户明确确认的 `confirmed=true`；若 Codex
 能力尚未登录，Adapt 会返回短期 authorization request、`request_id`、
 `plan_sha256` 和恢复命令，并由 Rolo 在隔离的 Agent 工作区生成本次会话的
 `AGENTS.md`。因此授权只绑定到一个目标、一个计划和一个恢复操作，rolo-vis 后续
 可用同一标识精确关联 GUI 决策。
+
+Diagnose/Verify 的 Stage Agent runner 也使用同一授权模型：未确认时只写入
+`WAITING_FOR_AUTH` run 和短期 request；GUI 或 console 以 `artifact://` request ref 恢复时，
+Rolo 会重新校验 robot、provider、executor、plan digest 和过期时间，并复用原 run identity。
+
+rolo-vis 可直接使用 HTTP：`GET /v1/robots/{robot_id}/stage-auth-requests` 读取精确的待批
+准请求，再将其中的 `authorization_ref` 传给对应的
+`POST /v1/robots/{robot_id}/diagnose/run` 或 `POST /v1/robots/{robot_id}/verify/run`。
+Rolo 会在服务端再次校验请求身份、计划摘要和单次使用状态。Diagnose/Verify 结果还会经过
+非空结果、证据集合和“不得宣称 release/publication authority”的确定性检查。
+rolo-vis 可用 `GET /v1/robots/{robot_id}/{stage}/runs/{run_id}` 查看绑定的 run，
+并用同路径的 `/events` 分页读取 stdout/stderr 流，不需要直接访问 artifact 目录。
+`uv run rolo-vis` 提供一个零构建依赖的同源 GUI，待授权列表中的每个按钮都绑定一个
+具体 `authorization_ref`，浏览器二次确认后才提交；它不会在客户端自行决定 robot、stage
+或 plan digest。
+
+远程目标的自举仍按同一原则分成“检查/计划 → 审批 → 执行”三步：
+
+```bash
+uv run rolo target inspect ssh://robot@example.test/home/robot/ws --known-hosts ~/.ssh/known_hosts
+uv run rolo target bootstrap-plan ssh://robot@example.test/home/robot/ws --known-hosts ~/.ssh/known_hosts
+uv run rolo target bootstrap-request plan.json --requested-by operator
+uv run rolo target bootstrap-approve plan.json request.json --approved-by reviewer
+uv run rolo target bootstrap-execute plan.json request.json decision.json \
+  --manifest manifest.json --package rolo-target.pkg \
+  --verification-key-file publisher.pub --known-hosts ~/.ssh/known_hosts --execute
+```
+
+执行端只接受 pinned host key、签名 companion、固定 SSH/SCP argv 和非交互 sudo；平台、
+权限、网络或签名条件不满足时会在 mutation 之前阻断。远程自举目前以 Linux/SSH 为
+首个受支持实现，其他目标类型通过同一 Target Executor/Bootstrap Transport SPI 扩展。
+Diagnose 若要进入 `COMPLETE`，还必须返回 `rolo-diagnosis-report/v1`，完整记录
+baseline、observations、hypotheses、changes、smoke、decision 及 Episode artifact refs；
+旧格式报告只会保留为可读但未完成状态。
 
 需要远程证据、细粒度门禁或专家参数时，再使用底层专家 CLI：
 
@@ -140,6 +182,8 @@ CLI，不在 TUI 内直接执行。
 在交互式终端中直接运行 `uv run rolo` 会进入自然语言控制台。它会先展示规范 CLI 和风险提示，
 再要求确认 Adapt、Bootstrap 等会写入状态的操作；`/jobs`、`/show JOB_ID`、`/events JOB_ID`
 和 `/quit` 是内置快捷命令。非交互环境下不会启动 REPL，而是输出帮助，适合 CI 和脚本调用。
+脚本若使用 `rolo natural --execute`，必须额外传 `--confirm`；未确认的 Adapt/Bootstrap
+执行会在服务层直接拒绝。
 
 不需要下载或安装 wheel。`uv sync --frozen` 从 Git checkout 创建锁定环境；面向用户的正式产品
 入口首选 `rolo adapt <本地工作区> --robot <机器人 ID>`。它自动注册或复用机器人身份、检查环境、识别工程证据、
@@ -321,6 +365,8 @@ export OPENAI_API_KEY="..."
 export OPENAI_MODEL="an-image-capable-model-available-to-your-project"
 
 uv run robotctl diagnose status --robot "$ROBOT_ID"
+uv run robotctl diagnose plan --robot "$ROBOT_ID"
+uv run robotctl diagnose run --robot "$ROBOT_ID" --confirm
 uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.jpg
 ```
 
@@ -332,6 +378,10 @@ uv run robotctl diagnose robot-use poll --robot "$ROBOT_ID" --image /tmp/frame.j
 
 ```bash
 uv run robotctl verify status --robot "$ROBOT_ID"
+uv run robotctl verify plan --robot "$ROBOT_ID"
+# 可选：先发布结构化、只读 acceptance cases/oracles
+uv run robotctl verify acceptance-plan --robot "$ROBOT_ID" --plan-file verify-plan.json --confirm
+uv run robotctl verify run --robot "$ROBOT_ID" --confirm
 ```
 
 ## 工程结构

@@ -3,8 +3,8 @@
 Rolo does not require a particular coding-agent product.  An executor is a local
 transport adapter (Codex, Claude Code, an enterprise gateway, or a user plugin),
 while ``provider`` identifies the model endpoint selected by that executor.
-Only the Codex adapter ships in-tree today; registering another adapter does not
-change lifecycle, evidence, approval, or release code.
+Codex Adapt and downstream adapters ship in-tree today; registering another
+provider/product does not change lifecycle, evidence, approval, or release code.
 """
 
 from __future__ import annotations
@@ -22,15 +22,23 @@ class AgentExecutor(Protocol):
 
 AgentExecutorFactory = Callable[..., AgentExecutor]
 _EXECUTORS: dict[str, AgentExecutorFactory] = {}
+_DEPENDENCY_ADAPTERS: dict[str, Any] = {}
 
 
-def register_agent_executor(name: str, factory: AgentExecutorFactory) -> None:
+def register_agent_executor(
+    name: str,
+    factory: AgentExecutorFactory,
+    *,
+    dependency_adapter: Any | None = None,
+) -> None:
     key = name.strip().lower()
     if not key or any(char.isspace() for char in key):
         raise ValueError("agent executor name must be a non-empty token")
     if key in _EXECUTORS:
         raise ValueError(f"agent executor is already registered: {key}")
     _EXECUTORS[key] = factory
+    if dependency_adapter is not None:
+        _DEPENDENCY_ADAPTERS[key] = dependency_adapter
 
 
 def available_agent_executors() -> tuple[str, ...]:
@@ -48,11 +56,40 @@ def create_agent_executor(name: str, **kwargs: Any) -> AgentExecutor:
     return factory(**kwargs)
 
 
+def create_stage_agent_executor(name: str, **kwargs: Any) -> Any:
+    """Create an executor implementing the Diagnose/Verify stage SPI."""
+    if name.strip().lower() == "codex" and {"artifacts", "settings", "stage"} <= set(kwargs):
+        from rolo.stages.codex_downstream import CodexStageAgentExecutor
+
+        return CodexStageAgentExecutor(
+            artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
+        )
+    try:
+        executor = create_agent_executor(name, **kwargs)
+    except TypeError as exc:
+        raise ValueError(
+            f"agent executor {name!r} does not implement the downstream Stage Agent SPI"
+        ) from exc
+    if not callable(getattr(executor, "execute_stage", None)):
+        raise ValueError(
+            f"agent executor {name!r} does not implement the downstream Stage Agent SPI"
+        )
+    return executor
+
+
+def dependency_adapter_for(name: str) -> Any | None:
+    """Return an optional plugin-owned install/auth adapter for an executor."""
+    _ensure_builtins()
+    return _DEPENDENCY_ADAPTERS.get(name.strip().lower())
+
+
 def _ensure_builtins() -> None:
     if "codex" not in _EXECUTORS:
+        from rolo.stages.adapt.dependencies import CodexDependencyAdapter
         from rolo.stages.adapt.executor import CodexAdaptExecutor
 
         _EXECUTORS["codex"] = CodexAdaptExecutor
+        _DEPENDENCY_ADAPTERS["codex"] = CodexDependencyAdapter()
     # Open-source installations can add providers without changing Rolo.  A
     # broken optional plugin is ignored here and reported only when selected.
     try:

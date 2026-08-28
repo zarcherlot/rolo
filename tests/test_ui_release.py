@@ -26,6 +26,7 @@ def test_release_check_and_cli_smoke_pass():
     result = run_release_check()
     assert result.status == "PASS", result.failures
     assert "api-route:/v1/jobs" in result.checks
+    assert "import:rolo.vis" in result.checks
     cli = CliRunner().invoke(app, ["release-check"])
     assert cli.exit_code == 0, cli.output
     tui = CliRunner().invoke(app, ["tui", "--once"])

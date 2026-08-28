@@ -32,11 +32,31 @@ agent:
   require_auth: true
 ```
 
-Rolo ships the Codex executor and exposes an executor SPI (`rolo.agent_provider`). Other
+Rolo ships the Codex Adapt and downstream executors and exposes an executor SPI (`rolo.agent_provider`). Other
 products can register an adapter through the `rolo.agent_executors` Python entry-point group;
-the lifecycle, evidence, approval, and release contracts do not change. Rolo never persists the
+plugins may also provide their own dependency adapter for installation and authentication. The
+lifecycle, evidence, approval, and release contracts do not change. Rolo never persists the
 secret itself in plans or artifacts: only the environment-variable name and a boolean
 `api_key_configured` flag are recorded.
+
+The interactive chat transport uses the same split through the harness registry. Codex is built in;
+Claude Code or another product can register a `settings=...` harness factory through the
+`rolo.harnesses` entry-point group. Harnesses receive the configured provider/model/base URL and
+resolved key at runtime, stream output through the console callback, and do not receive lifecycle
+authority. This lets a product plugin change the model transport without changing Rolo's
+authorization or artifact contracts.
+
+Executor factories receive the immutable `AdapterAgentConfig` as `agent_config`, so a plugin can
+choose its own invocation protocol while preserving the same provider/model/key contract.
+
+Downstream plugins additionally implement `execute_stage(task, workspace, on_output)` and return
+only artifact references. The canonical `diagnose run`/`verify run` commands wrap that method with
+Rolo authorization, stream persistence, output-root checks, and the stage handoff validator; a
+plugin cannot publish `latest/handoff.json` directly through the CLI contract.
+
+If `coding_agent_api_key` is omitted, Rolo resolves the key from the configured
+`coding_agent_api_key_env` variable at runtime. This permits the same checked-in YAML to be
+used with OpenAI, Anthropic, or a relay by changing only the provider-specific environment.
 
 ## Manage the user file
 

@@ -92,3 +92,29 @@ def test_rolo_adapt_fails_closed_for_ssh_until_bootstrap_is_implemented() -> Non
 
     assert result.exit_code == 2
     assert "SSH target bootstrap is not available yet" in result.output
+
+
+def test_rolo_run_exposes_explicit_console_launcher() -> None:
+    result = CliRunner().invoke(app, ["run", "--once"])
+
+    assert result.exit_code == 0, result.output
+    assert "natural-language console" in result.output
+    assert "Type a request" in result.output
+
+
+def test_rolo_adapt_requires_confirmation_for_noninteractive_agent_run(tmp_path: Path) -> None:
+    project = tmp_path / "robot-project"
+    project.mkdir()
+
+    result = CliRunner().invoke(
+        app,
+        ["adapt", str(project), "--robot", "robot-1", "--active-probe", "none"],
+        env={
+            "ROLO_CONFIG_DIR": str(tmp_path / "config"),
+            "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+            "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+        },
+    )
+
+    assert result.exit_code == 2
+    assert json.loads(result.output)["status"] == "AUTHORIZATION_REQUIRED"

@@ -15,6 +15,7 @@
 - [Registry Operation Worktree 计划](REGISTRY_OPERATION_WORKTREE_PLAN.md)：实现 worktree、文件所有权、接口冻结和合并顺序；
 - [Agent-native Tool 运行边界](AGENT_NATIVE_TOOLS.md)：受控 Linux/ROS/HW 观测、Native Session 和 v2 Registry 使用方式；
 - [R5 WSL 验证](R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
+- [目标机 / WSL P2 验证](TARGET_MACHINE_P2_VALIDATION.md)：目标机证据采集、产物自检和 canary 前置条件；
 - [P0 Adapt 验收](P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
 
 中文项目入口位于仓库根目录 [README](../README.md)，英文项目介绍见 [README.en.md](README.en.md)。

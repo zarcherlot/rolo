@@ -18,6 +18,10 @@ class NaturalLanguageOperation(str, Enum):
     BOOTSTRAP_APPROVE = "target.bootstrap-approve"
     BOOTSTRAP_EXECUTE = "target.bootstrap-execute"
     JOB_RECOVER = "job.recover"
+    DIAGNOSE_PLAN = "diagnose.plan"
+    VERIFY_PLAN = "verify.plan"
+    DIAGNOSE_RUN = "diagnose.run"
+    VERIFY_RUN = "verify.run"
 
 
 class NaturalLanguageIntent(BaseModel):
@@ -35,6 +39,8 @@ class NaturalLanguageIntent(BaseModel):
     verification_key_file: str | None = None
     known_hosts_file: str | None = None
     execute: bool = False
+    confirmed: bool = False
+    authorization_ref: str | None = None
     job_id: str | None = None
     actor: str | None = None
     source_text: str = Field(min_length=1, max_length=2000)
@@ -190,11 +196,61 @@ def parse_natural_language(text: str) -> NaturalLanguageIntent:
             job_id=match.group(1),
             source_text=source,
         )
+    match = re.search(
+        rf"(?:执行|run)\s*(?:诊断|diagnose)\s*{_TARGET}", source, re.IGNORECASE
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.DIAGNOSE_RUN,
+            target=match.group(1),
+            robot_id=_robot_id(source),
+            source_text=source,
+        )
+    match = re.search(
+        rf"(?:诊断|diagnose)\s*(?:计划|plan)?\s*{_TARGET}", source, re.IGNORECASE
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.DIAGNOSE_PLAN,
+            target=match.group(1),
+            robot_id=_robot_id(source),
+            source_text=source,
+        )
+    match = re.search(
+        rf"(?:执行|run)\s*(?:验证|verify)\s*{_TARGET}", source, re.IGNORECASE
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.VERIFY_RUN,
+            target=match.group(1),
+            robot_id=_robot_id(source),
+            source_text=source,
+        )
+    match = re.search(
+        rf"(?:验证|verify)\s*(?:计划|plan)?\s*{_TARGET}", source, re.IGNORECASE
+    )
+    if match:
+        return NaturalLanguageIntent(
+            operation=NaturalLanguageOperation.VERIFY_PLAN,
+            target=match.group(1),
+            robot_id=_robot_id(source),
+            source_text=source,
+        )
     raise ValueError("unsupported or ambiguous natural-language request")
 
 
 def _actor(source: str) -> str | None:
     match = re.search(r"(?:由|by|as)\s*([A-Za-z0-9_.:-]+)", source, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def _robot_id(source: str) -> str | None:
+    match = re.search(
+        r"(?:机器人(?:叫|是)?|--robot(?:-id)?|(?<![A-Za-z0-9_.-])robot(?:-id)?(?![A-Za-z0-9_.-]))"
+        r"\s*[:：=]?\s*([A-Za-z0-9_.:-]+)",
+        source,
+        re.IGNORECASE,
+    )
     return match.group(1) if match else None
 
 
@@ -266,4 +322,26 @@ def intent_to_argv(intent: NaturalLanguageIntent) -> list[str]:
         return argv
     if intent.operation == NaturalLanguageOperation.JOB_RECOVER:
         return ["job", "recover", intent.job_id or ""]
+    if intent.operation == NaturalLanguageOperation.DIAGNOSE_PLAN:
+        if not intent.target or not intent.robot_id:
+            raise ValueError("diagnose plan intent requires target and robot_id")
+        return ["diagnose", "plan", "--robot", intent.robot_id]
+    if intent.operation == NaturalLanguageOperation.VERIFY_PLAN:
+        if not intent.target or not intent.robot_id:
+            raise ValueError("verify plan intent requires target and robot_id")
+        return ["verify", "plan", "--robot", intent.robot_id]
+    if intent.operation == NaturalLanguageOperation.DIAGNOSE_RUN:
+        if not intent.target or not intent.robot_id:
+            raise ValueError("diagnose run intent requires target and robot_id")
+        argv = ["diagnose", "run", "--robot", intent.robot_id]
+        if intent.authorization_ref:
+            argv.extend(["--authorization-ref", intent.authorization_ref])
+        return argv
+    if intent.operation == NaturalLanguageOperation.VERIFY_RUN:
+        if not intent.target or not intent.robot_id:
+            raise ValueError("verify run intent requires target and robot_id")
+        argv = ["verify", "run", "--robot", intent.robot_id]
+        if intent.authorization_ref:
+            argv.extend(["--authorization-ref", intent.authorization_ref])
+        return argv
     raise ValueError(f"unsupported intent operation: {intent.operation}")

@@ -24,6 +24,7 @@ from rolo.stages.adapt.service import (
     AdaptRunService,
     coding_agent_config,
 )
+from rolo.stages.adapt.shadow_observation import build_capability_shadow_stability_report
 from rolo.stages.adapt.slice_observability import build_slice_stability_report
 from rolo.stages.adapt.target_evidence import (
     CollectorDescriptor,
@@ -33,7 +34,11 @@ from rolo.stages.adapt.target_evidence import (
     load_deployment,
 )
 from rolo.stages.contracts import StageName
+from rolo.stages.diagnose.service import build_diagnosis_task
+from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline, assess_stage
+from rolo.stages.verify.acceptance import VerificationPlan
+from rolo.stages.verify.service import build_verification_task, publish_verification_plan
 
 adapt_stage_app = typer.Typer(
     help="Stage 1: discover, adapt, conform, and publish the canonical control surface."
@@ -222,12 +227,6 @@ def adapt_stage_start(
     ] = 45.0,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
-    if sys.stdin.isatty() and not typer.confirm(
-        "Adapt may install/use the configured Agent and write evidence artifacts. Continue?",
-        default=False,
-    ):
-        emit({"status": "CANCELLED", "mutation_started": False})
-        return
     try:
         result = run_adapt_start(
             robot_id=robot_id,
@@ -338,6 +337,24 @@ def adapt_slice_observability(
     emit(report)
 
 
+@adapt_stage_app.command("capability-observability")
+def adapt_capability_observability(
+    robot: Annotated[str, typer.Option("--robot")],
+    max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
+) -> None:
+    """Read capability-resolution shadow stability without changing release authority."""
+    settings = get_settings()
+    try:
+        report = build_capability_shadow_stability_report(
+            settings.rolo_artifact_dir,
+            robot,
+            max_runs=max_runs,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(report)
+
+
 @adapt_stage_app.command("acceptance-pack")
 def adapt_acceptance_pack(
     robot: Annotated[str, typer.Option("--robot")],
@@ -375,10 +392,140 @@ def diagnose_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> Non
     emit_stage_status(StageName.DIAGNOSE, robot)
 
 
+@diagnose_stage_app.command("plan")
+def diagnose_stage_plan(
+    robot: Annotated[str, typer.Option("--robot")],
+    provider: Annotated[str | None, typer.Option("--provider")] = None,
+    executor: Annotated[str | None, typer.Option("--executor")] = None,
+    model: Annotated[str | None, typer.Option("--model")] = None,
+) -> None:
+    """Build a provider-neutral Diagnose Agent task without executing it."""
+    settings = get_settings()
+    try:
+        task = build_diagnosis_task(
+            settings.rolo_artifact_dir,
+            robot,
+            provider=provider or settings.coding_agent_provider,
+            executor=executor or settings.coding_agent_executor,
+            model=model if model is not None else settings.coding_agent_model,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(task)
+
+
+@diagnose_stage_app.command("run")
+def diagnose_stage_run(
+    robot: Annotated[str, typer.Option("--robot")],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Explicitly authorize this Agent execution")
+    ] = False,
+    authorization_ref: Annotated[
+        str | None,
+        typer.Option("--authorization-ref", help="Resume a pending artifact authorization request"),
+    ] = None,
+) -> None:
+    """Execute a provider-neutral Diagnose Agent and validate its handoff."""
+    if sys.stdin.isatty() and not confirm:
+        confirm = typer.confirm(
+            "Diagnose may invoke the configured Agent and write frozen artifacts. Continue?",
+            default=False,
+        )
+    try:
+        run = DownstreamStageService(get_settings(), "diagnose").run(
+            robot,
+            confirmed=confirm,
+            authorization_ref=authorization_ref,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(run)
+    if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
+        raise typer.Exit(code=2)
+
+
 @verify_stage_app.command("status")
 def verify_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show optional autonomous verification readiness."""
     emit_stage_status(StageName.VERIFY, robot)
+
+
+@verify_stage_app.command("plan")
+def verify_stage_plan(
+    robot: Annotated[str, typer.Option("--robot")],
+    provider: Annotated[str | None, typer.Option("--provider")] = None,
+    executor: Annotated[str | None, typer.Option("--executor")] = None,
+    model: Annotated[str | None, typer.Option("--model")] = None,
+) -> None:
+    """Build a provider-neutral Verify Agent task without executing it."""
+    settings = get_settings()
+    try:
+        task = build_verification_task(
+            settings.rolo_artifact_dir,
+            robot,
+            provider=provider or settings.coding_agent_provider,
+            executor=executor or settings.coding_agent_executor,
+            model=model if model is not None else settings.coding_agent_model,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(task)
+
+
+@verify_stage_app.command("acceptance-plan")
+def verify_acceptance_plan(
+    robot: Annotated[str, typer.Option("--robot")],
+    plan_file: Annotated[Path, typer.Option("--plan-file", exists=True, readable=True)],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Explicitly publish this acceptance plan")
+    ] = False,
+) -> None:
+    """Validate and publish a bounded, read-only Verify acceptance plan."""
+    if sys.stdin.isatty() and not confirm:
+        confirm = typer.confirm(
+            "Publish this acceptance plan for Verify?",
+            default=False,
+        )
+    if not confirm:
+        emit({"status": "CANCELLED", "mutation_started": False})
+        return
+    settings = get_settings()
+    try:
+        plan = VerificationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+        reference = publish_verification_plan(settings.rolo_artifact_dir, robot, plan)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "PUBLISHED", "robot_id": robot, "plan_ref": reference})
+
+
+@verify_stage_app.command("run")
+def verify_stage_run(
+    robot: Annotated[str, typer.Option("--robot")],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Explicitly authorize this Agent execution")
+    ] = False,
+    authorization_ref: Annotated[
+        str | None,
+        typer.Option("--authorization-ref", help="Resume a pending artifact authorization request"),
+    ] = None,
+) -> None:
+    """Execute a provider-neutral Verify Agent and validate its handoff."""
+    if sys.stdin.isatty() and not confirm:
+        confirm = typer.confirm(
+            "Verify may run declared regression checks and write evidence. Continue?",
+            default=False,
+        )
+    try:
+        run = DownstreamStageService(get_settings(), "verify").run(
+            robot,
+            confirmed=confirm,
+            authorization_ref=authorization_ref,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(run)
+    if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
+        raise typer.Exit(code=2)
 
 
 @enroll_app.command("show")

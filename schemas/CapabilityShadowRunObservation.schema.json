@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "description": "One immutable capability-resolution shadow artifact summarized for review.",
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "artifact_ref": {
+      "title": "Artifact Ref",
+      "type": "string"
+    },
+    "profile_id": {
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "resolution_count": {
+      "minimum": 0,
+      "title": "Resolution Count",
+      "type": "integer"
+    },
+    "resolved_count": {
+      "minimum": 0,
+      "title": "Resolved Count",
+      "type": "integer"
+    },
+    "unavailable_count": {
+      "minimum": 0,
+      "title": "Unavailable Count",
+      "type": "integer"
+    },
+    "ambiguous_count": {
+      "minimum": 0,
+      "title": "Ambiguous Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "artifact_ref",
+    "profile_id",
+    "resolution_count",
+    "resolved_count",
+    "unavailable_count",
+    "ambiguous_count"
+  ],
+  "title": "CapabilityShadowRunObservation",
+  "type": "object"
+}

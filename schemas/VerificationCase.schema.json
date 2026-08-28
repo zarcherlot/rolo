@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "OracleKind": {
+      "enum": [
+        "FIELD_EQUALS",
+        "FIELD_EXISTS",
+        "NUMERIC_BETWEEN",
+        "STATUS_IN"
+      ],
+      "title": "OracleKind",
+      "type": "string"
+    },
+    "VerificationOracle": {
+      "additionalProperties": false,
+      "description": "A deterministic assertion over one bounded tool result.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-verification-oracle/v1",
+          "default": "rolo-verification-oracle/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OracleKind"
+        },
+        "path": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "VerificationOracle",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One read-only operation invocation and its Oracle.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-case/v1",
+      "default": "rolo-verification-case/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "case_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "operation": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Payload",
+      "type": "object"
+    },
+    "oracle": {
+      "$ref": "#/$defs/VerificationOracle"
+    },
+    "timeout_s": {
+      "default": 30.0,
+      "exclusiveMinimum": 0.0,
+      "maximum": 600.0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "case_id",
+    "operation",
+    "oracle"
+  ],
+  "title": "VerificationCase",
+  "type": "object"
+}

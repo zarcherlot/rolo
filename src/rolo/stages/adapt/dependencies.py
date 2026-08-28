@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.stages.adapt.models import (
@@ -119,10 +120,11 @@ class AdapterAgentDependencyManager:
         self,
         artifacts: ArtifactStore,
         *,
-        adapter: CodexDependencyAdapter | None = None,
+        adapter: Any | None = None,
+        use_default_adapter: bool = True,
     ) -> None:
         self.artifacts = artifacts
-        self.adapter = adapter or CodexDependencyAdapter()
+        self.adapter = adapter or (CodexDependencyAdapter() if use_default_adapter else None)
 
     def prepare(
         self,
@@ -141,6 +143,16 @@ class AdapterAgentDependencyManager:
         resolved_codex_home = (codex_home or home / ".codex").expanduser().resolve()
         install_attempted = False
         messages: list[str] = []
+
+        if self.adapter is None:
+            report = self._report(
+                config=config,
+                status=AdapterAgentDependencyStatus.UNSUPPORTED,
+                system=system,
+                architecture=architecture,
+                messages=[f"No dependency adapter is registered for executor {config.executor}"],
+            )
+            return report, self._write(report)
 
         if install_timeout_s < 1:
             report = self._report(

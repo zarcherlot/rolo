@@ -7,11 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from rolo.commands.lifecycle import run_adapt_start
+from rolo.core.config import get_settings
 from rolo.job_service import JobService
 from rolo.jobs import run_bootstrap_job
 from rolo.natural_language import NaturalLanguageIntent, NaturalLanguageOperation
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
+from rolo.stages.diagnose.service import build_diagnosis_task
+from rolo.stages.downstream import DownstreamStageService
+from rolo.stages.verify.service import build_verification_task
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
     BootstrapApprovalDecision,
@@ -35,9 +39,14 @@ class NaturalLanguageService:
         *,
         known_hosts: Path | None = None,
         timeout_s: float = 10.0,
+        confirmed: bool = False,
         on_output: Callable[[str, str], None] | None = None,
     ) -> Any:
         if intent.operation == NaturalLanguageOperation.ADAPT_START:
+            if not confirmed:
+                raise ValueError(
+                    "Adapt execution requires explicit current-user confirmation"
+                )
             if not intent.target or not intent.robot_id:
                 raise ValueError("Adapt request requires target and robot id")
             target = parse_target_ref(intent.target)
@@ -80,6 +89,45 @@ class NaturalLanguageService:
                 Path(intent.plan_file).read_text(encoding="utf-8")
             )
             return request_bootstrap_approval(plan, requested_by=intent.actor)
+        if intent.operation in {
+            NaturalLanguageOperation.DIAGNOSE_PLAN,
+            NaturalLanguageOperation.VERIFY_PLAN,
+        }:
+            if not intent.robot_id:
+                raise ValueError("stage plan requires an explicit robot id")
+            settings = get_settings()
+            if intent.operation == NaturalLanguageOperation.DIAGNOSE_PLAN:
+                return build_diagnosis_task(
+                    settings.rolo_artifact_dir,
+                    intent.robot_id,
+                    provider=settings.coding_agent_provider,
+                    executor=settings.coding_agent_executor,
+                    model=settings.coding_agent_model,
+                )
+            return build_verification_task(
+                settings.rolo_artifact_dir,
+                intent.robot_id,
+                provider=settings.coding_agent_provider,
+                executor=settings.coding_agent_executor,
+                model=settings.coding_agent_model,
+            )
+        if intent.operation in {
+            NaturalLanguageOperation.DIAGNOSE_RUN,
+            NaturalLanguageOperation.VERIFY_RUN,
+        }:
+            if not intent.robot_id:
+                raise ValueError("stage run requires an explicit robot id")
+            stage = (
+                "diagnose"
+                if intent.operation == NaturalLanguageOperation.DIAGNOSE_RUN
+                else "verify"
+            )
+            return DownstreamStageService(get_settings(), stage).run(
+                intent.robot_id,
+                confirmed=confirmed,
+                authorization_ref=intent.authorization_ref,
+                on_output=on_output,
+            )
         if intent.operation == NaturalLanguageOperation.BOOTSTRAP_APPROVE:
             if not intent.plan_file or not intent.request_file or not intent.actor:
                 raise ValueError("bootstrap approval requires plan, request and actor")
@@ -91,6 +139,10 @@ class NaturalLanguageService:
             )
             return approve_bootstrap(plan, request, approved_by=intent.actor)
         if intent.operation == NaturalLanguageOperation.BOOTSTRAP_EXECUTE:
+            if intent.execute and not confirmed:
+                raise ValueError(
+                    "bootstrap execution requires explicit current-user confirmation"
+                )
             required = (
                 intent.plan_file,
                 intent.request_file,

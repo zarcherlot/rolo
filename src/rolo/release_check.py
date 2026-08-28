@@ -35,6 +35,7 @@ def run_release_check(
         "rolo.natural_service",
         "rolo.query_adapter",
         "rolo.tui",
+        "rolo.vis",
     ):
         try:
             importlib.import_module(module)
@@ -55,7 +56,7 @@ def run_release_check(
     if path.is_file():
         try:
             scripts = tomllib.loads(path.read_text(encoding="utf-8"))["project"]["scripts"]
-            for name in ("rolo", "robotctl"):
+            for name in ("rolo", "robotctl", "rolo-mcp", "rolo-vis"):
                 if name not in scripts:
                     failures.append(f"missing console script: {name}")
                 else:

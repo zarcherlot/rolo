@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "OracleKind": {
+      "enum": [
+        "FIELD_EQUALS",
+        "FIELD_EXISTS",
+        "NUMERIC_BETWEEN",
+        "STATUS_IN"
+      ],
+      "title": "OracleKind",
+      "type": "string"
+    },
+    "VerificationCase": {
+      "additionalProperties": false,
+      "description": "One read-only operation invocation and its Oracle.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-verification-case/v1",
+          "default": "rolo-verification-case/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Payload",
+          "type": "object"
+        },
+        "oracle": {
+          "$ref": "#/$defs/VerificationOracle"
+        },
+        "timeout_s": {
+          "default": 30.0,
+          "exclusiveMinimum": 0.0,
+          "maximum": 600.0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "case_id",
+        "operation",
+        "oracle"
+      ],
+      "title": "VerificationCase",
+      "type": "object"
+    },
+    "VerificationOracle": {
+      "additionalProperties": false,
+      "description": "A deterministic assertion over one bounded tool result.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-verification-oracle/v1",
+          "default": "rolo-verification-oracle/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OracleKind"
+        },
+        "path": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "VerificationOracle",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Bounded, immutable set of acceptance cases.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-plan/v1",
+      "default": "rolo-verification-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/VerificationCase"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "max_elapsed_s": {
+      "default": 3600.0,
+      "exclusiveMinimum": 0.0,
+      "maximum": 86400.0,
+      "title": "Max Elapsed S",
+      "type": "number"
+    },
+    "source_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Ref"
+    },
+    "source_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Sha256"
+    }
+  },
+  "required": [
+    "robot_id",
+    "cases"
+  ],
+  "title": "VerificationPlan",
+  "type": "object"
+}

@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "OracleKind": {
+      "enum": [
+        "FIELD_EQUALS",
+        "FIELD_EXISTS",
+        "NUMERIC_BETWEEN",
+        "STATUS_IN"
+      ],
+      "title": "OracleKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A deterministic assertion over one bounded tool result.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-oracle/v1",
+      "default": "rolo-verification-oracle/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/OracleKind"
+    },
+    "path": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "expected": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "minimum": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Minimum"
+    },
+    "maximum": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Maximum"
+    }
+  },
+  "required": [
+    "kind",
+    "path"
+  ],
+  "title": "VerificationOracle",
+  "type": "object"
+}

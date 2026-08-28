@@ -21,6 +21,7 @@ dependencies = [
 rolo = "rolo.product_cli:app"
 robotctl = "rolo.cli:app"
 rolo-mcp = "rolo.mcp_server:main"
+rolo-vis = "rolo.vis:main"
 
 [dependency-groups]
 dev = [

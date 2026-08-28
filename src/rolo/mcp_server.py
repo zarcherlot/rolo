@@ -16,8 +16,13 @@ from rolo.commands.lifecycle import run_adapt_start
 from rolo.core.config import get_settings
 from rolo.job_service import JobService
 from rolo.natural_service import NaturalLanguageService
+from rolo.stage_agent_read_models import stage_agent_event_page, stage_agent_run_detail
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
+from rolo.stages.agent_runner import list_stage_authorization_requests
+from rolo.stages.diagnose.service import build_diagnosis_task
+from rolo.stages.downstream import DownstreamStageService
+from rolo.stages.verify.service import build_verification_task
 from rolo.target_ref import LocalTargetRef, parse_target_ref
 
 TOOLS = [
@@ -54,6 +59,89 @@ TOOLS = [
             "required": ["target", "robot_id"],
         },
     },
+    {
+        "name": "rolo_diagnose_plan",
+        "description": "Prepare a provider-neutral Diagnose Agent task without execution.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"robot_id": {"type": "string"}},
+            "required": ["robot_id"],
+        },
+    },
+    {
+        "name": "rolo_verify_plan",
+        "description": "Prepare a provider-neutral Verify Agent task without execution.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"robot_id": {"type": "string"}},
+            "required": ["robot_id"],
+        },
+    },
+    {
+        "name": "rolo_stage_auth_requests",
+        "description": "List pending downstream Stage Agent authorization requests for rolo-vis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stage": {"type": "string", "enum": ["diagnose", "verify"]},
+                "robot_id": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "rolo_stage_run",
+        "description": "Read one exact downstream Stage Agent run envelope.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stage": {"type": "string", "enum": ["diagnose", "verify"]},
+                "robot_id": {"type": "string"},
+                "run_id": {"type": "string"},
+            },
+            "required": ["stage", "robot_id", "run_id"],
+        },
+    },
+    {
+        "name": "rolo_stage_events",
+        "description": "Read persisted stdout/stderr events for one exact Stage Agent run.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stage": {"type": "string", "enum": ["diagnose", "verify"]},
+                "robot_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                "offset": {"type": "integer", "minimum": 0},
+            },
+            "required": ["stage", "robot_id", "run_id"],
+        },
+    },
+    {
+        "name": "rolo_diagnose_run",
+        "description": "Run a configured Diagnose Agent after explicit confirmation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "robot_id": {"type": "string"},
+                "confirmed": {"type": "boolean", "description": "Explicit current-user approval."},
+                "authorization_ref": {"type": "string"},
+            },
+            "required": ["robot_id"],
+        },
+    },
+    {
+        "name": "rolo_verify_run",
+        "description": "Run a configured Verify Agent after explicit confirmation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "robot_id": {"type": "string"},
+                "confirmed": {"type": "boolean", "description": "Explicit current-user approval."},
+                "authorization_ref": {"type": "string"},
+            },
+            "required": ["robot_id"],
+        },
+    },
 ]
 
 
@@ -77,6 +165,73 @@ def _jsonable(value: Any) -> Any:
 
 
 def _call(name: str, args: dict[str, Any]) -> Any:
+    if name in {"rolo_stage_run", "rolo_stage_events"}:
+        stage = str(args.get("stage", "")).strip().lower()
+        if stage not in {"diagnose", "verify"}:
+            raise ValueError("stage must be diagnose or verify")
+        robot_id = str(args.get("robot_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        if not robot_id or not run_id:
+            raise ValueError("robot_id and run_id are required")
+        root = get_settings().rolo_artifact_dir
+        if name == "rolo_stage_run":
+            return _jsonable(stage_agent_run_detail(root, stage, robot_id, run_id))
+        return _jsonable(
+            stage_agent_event_page(
+                root,
+                stage,
+                robot_id,
+                run_id,
+                limit=int(args.get("limit", 100)),
+                offset=int(args.get("offset", 0)),
+            )
+        )
+    if name in {"rolo_diagnose_run", "rolo_verify_run"}:
+        robot_id = str(args.get("robot_id", "")).strip()
+        if not robot_id:
+            raise ValueError("robot_id is required")
+        stage = "diagnose" if name == "rolo_diagnose_run" else "verify"
+        return _jsonable(
+            DownstreamStageService(get_settings(), stage).run(
+                robot_id,
+                confirmed=bool(args.get("confirmed", False)),
+                authorization_ref=(
+                    str(args["authorization_ref"])
+                    if args.get("authorization_ref")
+                    else None
+                ),
+            )
+        )
+    if name == "rolo_stage_auth_requests":
+        stage = str(args.get("stage", "")).strip().lower()
+        if stage and stage not in {"diagnose", "verify"}:
+            raise ValueError("stage must be diagnose or verify")
+        robot_id = str(args.get("robot_id", "")).strip()
+        settings = get_settings()
+        return {
+            "requests": list_stage_authorization_requests(
+                settings.rolo_artifact_dir,
+                stage=stage or None,
+                robot_id=robot_id or None,
+            )
+        }
+    if name in {"rolo_diagnose_plan", "rolo_verify_plan"}:
+        robot_id = str(args.get("robot_id", "")).strip()
+        if not robot_id:
+            raise ValueError("robot_id is required")
+        settings = get_settings()
+        builder = (
+            build_diagnosis_task if name == "rolo_diagnose_plan" else build_verification_task
+        )
+        return _jsonable(
+            builder(
+                settings.rolo_artifact_dir,
+                robot_id,
+                provider=settings.coding_agent_provider,
+                executor=settings.coding_agent_executor,
+                model=settings.coding_agent_model,
+            )
+        )
     if name in {"rolo_target_inspect", "rolo_bootstrap_plan"}:
         settings = get_settings()
         service = NaturalLanguageService(JobService(settings.rolo_config_dir / "jobs"))
