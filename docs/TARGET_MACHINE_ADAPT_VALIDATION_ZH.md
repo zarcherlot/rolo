@@ -27,7 +27,7 @@ git pull --ff-only origin codex/adapt-full-hardening
 git rev-parse HEAD
 ```
 
-预期提交为 `52c9669` 或其后续提交。若本地没有该分支：
+预期提交为 `a3f2890` 或其后续提交。若本地没有该分支：
 
 ```bash
 git switch --track -c codex/adapt-full-hardening origin/codex/adapt-full-hardening
@@ -203,7 +203,121 @@ uv run robotctl tool invoke OPERATION \
 2. 使用 schema 规定的选择字段重试；adapter 应选择对应 route；
 3. 不要用任意字段名绕过选择检查，也不要把运动 operation 当作验证手段。
 
-## 8. 本轮重点观察清单
+## 8. 三批次专项验证步骤与预期结果
+
+### 8.1 第一批：多 route selector 精确绑定
+
+先查看 State Graph 和 operation schema，确认目标机确实存在多 route operation：
+
+```bash
+uv run robotctl state graph snapshot --robot "$ROBOT_ID" \
+  > "$VALIDATION_DIR/state-graph.json"
+uv run robotctl tool schema OPERATION --robot "$ROBOT_ID" \
+  > "$VALIDATION_DIR/operation-schema.json"
+```
+
+对一个明确为只读、且有两个或更多 route 的 `OPERATION` 执行：
+
+```bash
+uv run robotctl tool invoke OPERATION \
+  --robot "$ROBOT_ID" \
+  --input '{}' \
+  2>&1 | tee "$VALIDATION_DIR/selector-missing.txt"
+```
+
+预期：命令失败，错误包含：
+
+```text
+explicit route selector is required
+```
+
+然后使用 schema 规定的 selector 重试，例如：
+
+```bash
+uv run robotctl tool invoke OPERATION \
+  --robot "$ROBOT_ID" \
+  --input '{"resource_id":"<真实资源 ID>"}' \
+  2>&1 | tee "$VALIDATION_DIR/selector-valid.txt"
+```
+
+预期：selector 唯一匹配时才进入 adapter；如果值不存在或匹配多个 route，必须失败，并包含
+`operation route selector does not match a gated route` 或 `operation route selector is ambiguous`。
+失败请求不得启动目标 CLI、ROS 或硬件进程。
+
+### 8.2 第二批：binding 隔离和 CLI help 预检
+
+重新执行完整 Adapt 或 promotion 后，检查输出中的 promotion 检查项：
+
+```bash
+rg -n "validate-binding|target CLI|help|promotion|gate" \
+  "$VALIDATION_DIR/adapt-start.txt"
+```
+
+预期：
+
+- promotion 执行 `describe`、`validate-binding` 和只读 CLI `--help`；
+- 不执行 adapter `invoke`；
+- `validate-binding` 只使用 `ROLO_TARGET_ROUTE_BINDINGS_JSON` 和
+  `ROLO_VALIDATE_BINDING_ONLY=1`；
+- 不因缺少目标 PATH 而报 `TARGET_EXECUTABLE_NOT_FOUND`；
+- CLI 的 shebang interpreter 在最终 sandbox 内可见；
+- help 非零退出、超时或输出超限时，gate 为失败而不是继续发布。
+
+如果出现以下错误，应保留完整 stderr，不要通过设置 controller 主机 PATH 绕过：
+
+```text
+target CLI is not resolvable inside the adapter sandbox
+target CLI interpreter is not resolvable inside the adapter sandbox
+target CLI help probe failed
+```
+
+### 8.3 第三批：启发式冲突和 battery/telemetry
+
+检查候选摘要中是否保留 mapping score、候选列表和歧义状态：
+
+```bash
+uv run robotctl adapt operations summary --robot "$ROBOT_ID" \
+  | tee "$VALIDATION_DIR/heuristic-summary.txt"
+uv run robotctl adapt operations list --robot "$ROBOT_ID" --applicability OBSERVED \
+  | tee "$VALIDATION_DIR/heuristic-observed.txt"
+```
+
+对发现到的泛化 telemetry topic（例如包含 voltage、current、battery、power 的 topic），检查：
+
+```bash
+uv run robotctl adapt candidates inspect hw.power.battery.status --robot "$ROBOT_ID" \
+  | tee "$VALIDATION_DIR/battery-candidate.txt"
+```
+
+预期：
+
+- `/battery/voltage`、`/power_voltage`、`/pack/current` 等真实 topic 可以形成
+  `hw.power.battery.status` candidate；
+- candidate 必须带有 topic/interface/provider/schema/runtime evidence；
+- 缺少运行时证据时保持 `DISCOVERED_UNVERIFIED` 或 deferred；
+- `/telemetry` 同时接近多个 application telemetry operation 时，候选应标记
+  `HEURISTIC_MAPPING_AMBIGUOUS`，不能自动成为 `VERIFIED`；
+- 不出现 Wheeltec 专有判断、静态 topic 白名单或 controller 路径。
+
+### 8.4 重复运行稳定性
+
+在目标进程和 ROS graph 未改变时，再运行一次只读 Discovery：
+
+```bash
+uv run robotctl adapt discover run \
+  --robot "$ROBOT_ID" \
+  --source-root "$PROJECT_ROOT" \
+  --active-probe runtime-readonly \
+  --full | tee "$VALIDATION_DIR/discover-repeat.txt"
+uv run robotctl adapt acceptance-pack --robot "$ROBOT_ID" \
+  --output "$VALIDATION_DIR/rolo-adapt-acceptance-repeat.json"
+```
+
+预期：状态仍为 `COMPLETE`（或同样可解释的 `PARTIAL`），等价证据不会导致无故换 route、
+降级或生成新的不一致 release。若 target executable、ROS setup、RMW、ROS domain 或 provider
+digest 发生变化，则旧 release 应被标记 stale 并要求重新门禁。
+
+## 9. 本轮重点观察清单
 
 | 优先级 | 观察项 | 通过标准 | 异常时保存 |
 |---|---|---|---|
@@ -215,7 +329,7 @@ uv run robotctl tool invoke OPERATION \
 | P1 | 跨平台路径 | 不出现 controller 路径、Wheeltec 私有绝对路径或硬编码 ROS topic | bundle 文件名、gate 错误、target evidence |
 | P2 | 重复发现稳定性 | 等价证据再次运行后仍为 `COMPLETE`，release 不无故变化 | 两次 acceptance pack、discovery ID |
 
-## 9. 异常记录格式
+## 10. 异常记录格式
 
 每个异常单独记录以下信息：
 
@@ -235,7 +349,7 @@ Adapt run / discovery / release ID：
 请优先上传 `rolo-adapt-acceptance.json`、摘要日志、错误 stderr 和 State Graph；不要上传 SSH
 私钥、token、完整私有源码、原始 secret 或包含凭据的环境导出。
 
-## 10. 验证结束回传
+## 11. 验证结束回传
 
 在目标机执行：
 
@@ -251,4 +365,3 @@ tar --exclude='*.key' --exclude='*.pem' --exclude='*secret*' \
 2. `adapt-start.txt`、`adapt-status.txt`、`state-graph.json`；
 3. 只读 invoke 的输入、输出和错误（如执行过）；
 4. 上表中任一异常的完整记录。
-
