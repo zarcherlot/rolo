@@ -17,8 +17,9 @@ uv sync --frozen
 
 `HEAD` 必须记录在验证报告中，并与本次验证使用的远端提交一致。
 
-本轮至少应为 `c93a35c` 或其后续提交；该提交开始支持产品 CLI 复用 approved
-remote evidence deployment 的 SSH Adapt 路径。
+本轮至少应为 `1a36258` 或其后续提交；`c93a35c` 开始支持产品 CLI 复用 approved
+remote evidence deployment 的 SSH Adapt 路径，`1a36258` 进一步把资源/ROS/Agent
+运行 profile 写入 shadow artifact。
 
 ## 2. P0.1 SSH Adapt 产品入口
 
@@ -96,7 +97,20 @@ WSL USB 映射或 `lsusb` 缺失追加开发。若命令被执行，只能作为
 export ADAPT_NATIVE_TOOL_MODE=shadow
 export ADAPT_NATIVE_TOOL_ROBOT_IDS=<robot-id>
 export PYTHONPATH=src
+```
 
+先使用默认资源预算执行一次并记录结果：
+
+```bash
+echo "ROLO_ADAPTER_MAX_PROCESSES=${ROLO_ADAPTER_MAX_PROCESSES:-128}"
+uv run robotctl adapt run --robot "$ADAPT_NATIVE_TOOL_ROBOT_IDS"
+```
+
+如果 WSL/ROS 工作负载因 `bwrap: Resource temporarily unavailable` 失败，只允许在
+目标机验证环境中显式提高预算后重跑，并在报告中记录前后差异；不要修改仓库默认值：
+
+```bash
+export ROLO_ADAPTER_MAX_PROCESSES=512
 uv run robotctl adapt run --robot "$ADAPT_NATIVE_TOOL_ROBOT_IDS"
 ```
 
