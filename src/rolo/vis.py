@@ -49,6 +49,10 @@ _VIS_HTML = r"""<!doctype html>
     <div class="row"><label>Robot <select id="robot"></select></label><label>Stage <select id="stage"><option value="">全部</option><option value="diagnose">diagnose</option><option value="verify">verify</option></select></label></div>
     <div id="requests" class="muted">加载中…</div>
   </section>
+  <section class="card"><h2>Bootstrap plan（只读）</h2>
+    <div class="row"><input id="target" size="48" placeholder="ssh://user@host/remote/workspace"><button id="plan">生成 plan</button></div>
+    <pre id="plan-result" class="muted">不会执行主机变更。</pre>
+  </section>
   <section class="card"><h2>最近 run</h2><div id="runs" class="muted">选择一个授权请求后会显示 run。</div></section>
   <script>
     const $ = (id) => document.getElementById(id);
@@ -108,6 +112,13 @@ _VIS_HTML = r"""<!doctype html>
     }
     $('refresh').addEventListener('click', async () => { try { await loadSession(); await loadRobots(); await loadRequests(); } catch (error) { $('requests').textContent = error.message; } });
     $('robot').addEventListener('change', loadRequests); $('stage').addEventListener('change', loadRequests);
+    $('plan').addEventListener('click', async () => {
+      const target = $('target').value.trim(); if (!target) return;
+      try {
+        const body = await api('/v1/targets/bootstrap-plan', {method:'POST', headers: jsonHeaders(), body: JSON.stringify({target})});
+        $('plan-result').textContent = JSON.stringify(body, null, 2);
+      } catch (error) { $('plan-result').textContent = error.message; }
+    });
     loadSession().then(loadRobots).then(loadRequests).catch(error => $('requests').textContent = error.message);
   </script>
 </body>

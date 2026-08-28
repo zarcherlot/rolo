@@ -211,6 +211,18 @@ def test_stage_authorization_requires_a_valid_local_session_ticket(
     assert tampered.status_code == 403
 
 
+def test_bootstrap_plan_endpoint_is_read_only(tmp_path: Path) -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/targets/bootstrap-plan",
+            json={"target": str(tmp_path)},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "rolo-target-bootstrap-plan/v1"
+    assert response.json()["target"]["kind"] == "local"
+
+
 def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
     settings = get_settings()
     layout = ArtifactLayout(settings.rolo_artifact_dir)

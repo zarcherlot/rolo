@@ -119,9 +119,10 @@ from rolo.stages.verify.readiness import (
     RealVerifyReadinessReportV2,
     validate_readiness_report,
 )
-from rolo.target_ref import SshTargetRef
+from rolo.target_ref import SshTargetRef, parse_target_ref
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
+from rolo.targets.executor import create_target_executor
 from rolo.targets.models import TargetBootstrapPlan
 from rolo.targets.security import validate_bootstrap_security
 from rolo.topology_history_read_models import (
@@ -319,6 +320,14 @@ class BootstrapExecutePayload(BaseModel):
     timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
 
 
+class BootstrapPlanPayload(BaseModel):
+    """Read-only target bootstrap planning request for rolo-vis."""
+
+    target: str = Field(min_length=1, max_length=1024)
+    known_hosts: Path | None = None
+    timeout_s: float = Field(default=10.0, ge=1.0, le=300.0)
+
+
 class StageAuthorizationRequestCollection(BaseModel):
     """Read-only approval queue consumed by rolo-vis or another UI."""
 
@@ -426,6 +435,21 @@ def execute_target_bootstrap(payload: BootstrapExecutePayload) -> dict[str, obje
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"status": "BOOTSTRAP_EXECUTED", "job_id": job.job_id, "result": result}
+
+
+@app.post("/v1/targets/bootstrap-plan", response_model=TargetBootstrapPlan)
+def plan_target_bootstrap(payload: BootstrapPlanPayload) -> TargetBootstrapPlan:
+    """Build a read-only, typed bootstrap plan for GUI or API clients."""
+
+    try:
+        target = parse_target_ref(payload.target)
+        return create_target_executor(
+            target,
+            known_hosts=payload.known_hosts,
+            timeout_s=payload.timeout_s,
+        ).plan_bootstrap()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/v1/jobs", response_model=JobPage)
