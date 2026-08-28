@@ -66,7 +66,10 @@ frozen snapshot. For every promoted operation, Rolo also runs the side-effect-fr
 `validate-binding --operation ... --entrypoint ...` command with the operation-scoped State Graph
 route document in `ROLO_TARGET_ROUTE_BINDINGS_JSON`. This command may parse and validate only; it
 must not invoke a target executable, contact hardware, or cross the runtime authorization boundary.
-Workspace file paths are not trusted as the handoff authority.
+For observed CLI routes, the independent gate additionally checks that the endpoint and its shebang
+interpreter are visible in the final target runtime environment, then runs a bounded `--help` probe;
+this verifies target installation without invoking the operation itself. Workspace file paths are
+not trusted as the handoff authority.
 
 ## Acceptance paths
 

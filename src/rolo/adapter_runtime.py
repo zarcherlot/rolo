@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import time
@@ -84,6 +85,7 @@ def operation_route_binding_document(
         bindings.append(
             {
                 "operation": operation,
+                "route_id": route_id,
                 "resource_id": route.get("resource_id"),
                 "kind": route.get("route_kind"),
                 "endpoint": route.get("endpoint"),
@@ -112,16 +114,67 @@ def operation_route_binding_document(
     }
 
 
-def require_route_selector(document: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
-    """Fail closed when an operation has multiple routes and no selector input."""
+_ROUTE_SELECTOR_KEYS = ("resource_id", "route_id", "endpoint", "topic", "id", "camera")
+_ROUTE_IDENTITY_FIELDS = ("route_id", "resource_id", "endpoint")
+
+
+def _selector_tokens(value: object) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def resolve_route_binding(
+    document: Mapping[str, Any], payload: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Resolve a multi-route request to exactly one gated route, or fail closed."""
     bindings = document.get("bindings")
     if not isinstance(bindings, list) or len(bindings) <= 1:
-        return
-    selector_keys = ("resource_id", "route_id", "endpoint", "topic", "id", "camera")
-    if not any(isinstance(payload.get(key), str) and payload[key].strip() for key in selector_keys):
+        if len(bindings) == 1 and isinstance(bindings[0], Mapping):
+            return dict(bindings[0])
+        return None
+    candidates = [dict(binding) for binding in bindings if isinstance(binding, Mapping)]
+    selectors = [
+        (key, str(payload[key]).strip())
+        for key in _ROUTE_SELECTOR_KEYS
+        if isinstance(payload.get(key), str) and str(payload[key]).strip()
+    ]
+    if not selectors:
         raise ValueError(
             "operation has multiple target routes; an explicit route selector is required"
         )
+    for _key, value in selectors:
+        exact = [
+            binding
+            for binding in candidates
+            if any(value == str(binding.get(field, "")).strip() for field in _ROUTE_IDENTITY_FIELDS)
+        ]
+        if len(exact) == 1:
+            return exact[0]
+        if len(exact) > 1:
+            raise ValueError("operation route selector is ambiguous")
+    for _key, value in selectors:
+        value_tokens = _selector_tokens(value)
+        if not value_tokens:
+            continue
+        token_matches = [
+            binding
+            for binding in candidates
+            if value_tokens
+            <= set().union(
+                *(_selector_tokens(binding.get(field, "")) for field in _ROUTE_IDENTITY_FIELDS)
+            )
+        ]
+        if len(token_matches) == 1:
+            return token_matches[0]
+        if len(token_matches) > 1:
+            raise ValueError("operation route selector is ambiguous")
+    raise ValueError("operation route selector does not match a gated route")
+
+
+def require_route_selector(
+    document: Mapping[str, Any], payload: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Fail closed unless a multi-route operation resolves to exactly one route."""
+    return resolve_route_binding(document, payload)
 
 
 def _load_release_manifest(path: Path) -> AdapterReleaseManifest:
@@ -446,7 +499,9 @@ def invoke_adapter(
             operation,
             semantic_bindings=descriptor.semantic_bindings,
         )
-        require_route_selector(route_document, payload)
+        selected_route = require_route_selector(route_document, payload)
+        if selected_route is not None:
+            route_document["selected_route_id"] = selected_route.get("route_id")
         runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
             route_document,
             ensure_ascii=False,
@@ -698,6 +753,35 @@ print(json.dumps({item: inspect(item) for item in items}, sort_keys=True))
         )
 
 
+def _probe_cli_help(
+    package_path: Path,
+    endpoints: list[str],
+    *,
+    timeout_s: float,
+    runner: AdapterRunner,
+    runtime_environment: Mapping[str, str] | None,
+) -> None:
+    """Run each observed CLI's bounded help command in the final sandbox."""
+    for endpoint in endpoints:
+        completed = runner.run(
+            [endpoint, "--help"],
+            cwd=package_path.parent,
+            timeout_s=timeout_s,
+            max_stdout_bytes=200_000,
+            max_stderr_bytes=200_000,
+            runtime_environment=runtime_environment,
+        )
+        if completed.timed_out:
+            raise ValueError(f"target CLI help probe timed out: {endpoint}")
+        if completed.output_limited:
+            raise ValueError(f"target CLI help probe exceeded its output limit: {endpoint}")
+        if completed.returncode != 0:
+            raise ValueError(
+                f"target CLI help probe failed with code {completed.returncode}: "
+                f"{endpoint}: {_structured_adapter_error(completed.stdout, completed.stderr)}"
+            )
+
+
 def probe_adapter_package(
     package_path: Path,
     manifest: AdapterBundleManifest,
@@ -793,6 +877,23 @@ def probe_adapter_package(
         package_path,
         manifest,
         state_graph,
+        timeout_s=timeout_s,
+        runner=effective_runner,
+        runtime_environment=runtime_environment,
+    )
+    endpoints = sorted(
+        {
+            str(binding.get("endpoint", "")).strip()
+            for entry in manifest.operations
+            for binding in operation_route_binding_document(state_graph, entry.operation).get(
+                "bindings", []
+            )
+            if binding.get("kind") == "cli" and str(binding.get("endpoint", "")).strip()
+        }
+    )
+    _probe_cli_help(
+        package_path,
+        endpoints,
         timeout_s=timeout_s,
         runner=effective_runner,
         runtime_environment=runtime_environment,

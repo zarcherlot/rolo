@@ -372,6 +372,33 @@ def test_topic_heuristic_does_not_treat_parameter_events_as_current_value_route(
     )
 
 
+def test_topic_heuristic_preserves_ambiguous_registry_matches() -> None:
+    bindings = _semantic_bindings(
+        {
+            "ros": ProbeResult(
+                layer="ros",
+                status="SUCCEEDED",
+                data={"topics": ["/telemetry [custom/msg/Telemetry]"]},
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status="SUCCEEDED",
+                data={"projects": []},
+            ),
+        }
+    )
+
+    telemetry = [value for value in bindings.values() if value.get("binding") == "/telemetry"]
+    assert len(telemetry) == 3
+    assert all(value.get("mapping_ambiguous") is True for value in telemetry)
+    assert all(len(value.get("mapping_candidates", [])) == 3 for value in telemetry)
+    candidates = _build_operation_candidates(
+        {key: value for key, value in bindings.items() if value in telemetry}
+    )
+    assert candidates
+    assert all("ambiguous" in " ".join(item.limitations).casefold() for item in candidates)
+
+
 def test_operation_candidates_reject_multiple_write_operations_on_one_route() -> None:
     with pytest.raises(ValueError, match="multiple write Operations"):
         _build_operation_candidates(
@@ -793,8 +820,7 @@ def test_product_registry_exposes_a_complete_authored_contract_vocabulary() -> N
         "{input_json}",
     ]
     assert all(
-        item.contract_lifecycle.value in {"GATEABLE", "RELEASED"}
-        for item in operations.values()
+        item.contract_lifecycle.value in {"GATEABLE", "RELEASED"} for item in operations.values()
     )
 
 

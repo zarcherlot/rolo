@@ -1551,7 +1551,13 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         # remain unverified and cannot bypass the normal gate.
         if not any(rule.operations for rule in matched_rules):
             interface_type = _ros_entity_type(raw_topic)
-            for match in infer_topic_operations(topic, interface_type=interface_type):
+            topic_matches = infer_topic_operations(
+                topic,
+                interface_type=interface_type,
+                max_matches=3,
+            )
+            mapping_ambiguous = len(topic_matches) > 1
+            for match in topic_matches:
                 semantic_uri = match.semantic_uri
                 if semantic_uri in bindings:
                     continue
@@ -1567,6 +1573,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "mapping_score": match.score,
                     "mapping_rationale": match.rationale,
                     "mapping_evidence": list(match.evidence),
+                    "mapping_ambiguous": mapping_ambiguous,
+                    "mapping_candidates": [item.operation for item in topic_matches],
                     "operations": [match.operation],
                     "route_kind": "ros_topic",
                     "resource_id": f"ros_topic:{topic}",
@@ -1983,6 +1991,10 @@ def _build_operation_candidates(
                 "CLI self-description does not prove Operation result semantics",
                 "Generated Adapter must pass independent contract conformance",
             ]
+        if binding.get("mapping_ambiguous"):
+            limitations.append(
+                "Heuristic mapping is ambiguous; explicit operation evidence is required"
+            )
         observed = bool(binding.get("observed", False))
         return RouteEvidence(
             resource_id=str(binding.get("resource_id", f"{kind}:{endpoint}")),
@@ -1998,9 +2010,7 @@ def _build_operation_candidates(
             limitations=limitations,
         )
 
-    definitions = {
-        item.operation: item for item in canonical_operation_registry().operations
-    }
+    definitions = {item.operation: item for item in canonical_operation_registry().operations}
     write_routes: dict[tuple[str, str], set[str]] = {}
     operation_bindings: dict[str, list[str]] = {}
     for semantic_uri, binding in bindings.items():
@@ -2012,13 +2022,10 @@ def _build_operation_candidates(
         write_operations = {
             operation
             for operation in operations
-            if definitions.get(operation) is not None
-            and definitions[operation].access == "write"
+            if definitions.get(operation) is not None and definitions[operation].access == "write"
         }
         if write_operations:
-            write_routes.setdefault((route_kind, route_endpoint), set()).update(
-                write_operations
-            )
+            write_routes.setdefault((route_kind, route_endpoint), set()).update(write_operations)
         for operation in operations:
             operation_bindings.setdefault(operation, []).append(semantic_uri)
     conflicts = [
@@ -2038,17 +2045,27 @@ def _build_operation_candidates(
     candidates: list[OperationCandidate] = []
     for operation, semantic_uris in sorted(operation_bindings.items()):
         semantic_uris = sorted(semantic_uris)
+        route_evidence = [route(semantic_uri) for semantic_uri in semantic_uris]
+        limitations = [
+            "Heuristic CLI/help applicability requires target-runtime interface, provider, "
+            "and semantic validation",
+            "Requires adapter generation and independent conformance",
+        ]
+        if any(
+            "Heuristic mapping is ambiguous" in limitation
+            for item in route_evidence
+            for limitation in item.limitations
+        ):
+            limitations.append(
+                "Heuristic mapping is ambiguous; explicit operation evidence is required"
+            )
         candidates.append(
             OperationCandidate(
                 operation=operation,
                 semantic_bindings=semantic_uris,
                 evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
-                route_evidence=[route(semantic_uri) for semantic_uri in semantic_uris],
-                limitations=[
-                    "Heuristic CLI/help applicability requires target-runtime interface, provider, "
-                    "and semantic validation",
-                    "Requires adapter generation and independent conformance",
-                ],
+                route_evidence=route_evidence,
+                limitations=limitations,
             )
         )
     validate_candidate_operations(candidates)

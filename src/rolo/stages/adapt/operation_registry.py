@@ -534,6 +534,10 @@ def adapter_operation_eligibility(
             deferred[candidate.operation] = "PRODUCT_CONTRACT_NOT_GATEABLE"
         elif not candidate.route_evidence:
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_DECLARED"
+        elif any(
+            "Heuristic mapping is ambiguous" in limitation for limitation in candidate.limitations
+        ):
+            deferred[candidate.operation] = "HEURISTIC_MAPPING_AMBIGUOUS"
         elif not candidate_routes_fully_observed(candidate, report.probes):
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_OBSERVED"
         elif not candidate_runtime_evidence_complete(candidate, report.probes):

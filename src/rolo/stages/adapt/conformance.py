@@ -568,7 +568,7 @@ class AdapterPromotionService:
                 state_graph=graph,
             )
             checks.append(
-                "adapter package describe, route-binding ABI, and target CLI sandbox visibility"
+                "adapter package describe, route-binding ABI, target CLI visibility, and help"
             )
             actual = {item.operation: item for item in conformance.operations}
             if (

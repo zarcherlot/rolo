@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from rolo.adapter_runner import AdapterProcessResult
 from rolo.adapter_runtime import (
+    _probe_cli_help,
     activate_release,
     adapter_command,
     invoke_adapter,
@@ -197,6 +198,10 @@ def test_package_probe_rejects_cli_with_missing_shebang_interpreter(
                     stderr="",
                 )
             if "validate-binding" in command:
+                validation_environment = kwargs.get("runtime_environment")
+                assert isinstance(validation_environment, dict)
+                assert validation_environment.get("ROLO_VALIDATE_BINDING_ONLY") == "1"
+                assert "PATH" not in validation_environment
                 return AdapterProcessResult(
                     returncode=0,
                     stdout=json.dumps(
@@ -242,6 +247,29 @@ def test_python_zipapp_uses_the_runtime_interpreter_after_handoff() -> None:
     package = Path("adapter.pyz")
 
     assert adapter_command(package) == [sys.executable, str(package)]
+
+
+def test_cli_help_probe_fails_closed_on_nonzero_exit(tmp_path: Path) -> None:
+    class FailingHelpRunner:
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del kwargs
+            assert command == ["target-cli", "--help"]
+            return AdapterProcessResult(
+                returncode=2,
+                stdout=json.dumps(
+                    {"error": {"code": "HELP_FAILED", "message": "missing dependency"}}
+                ),
+                stderr="",
+            )
+
+    with pytest.raises(ValueError, match="target CLI help probe failed.*HELP_FAILED"):
+        _probe_cli_help(
+            tmp_path / "adapter.py",
+            ["target-cli"],
+            timeout_s=5,
+            runner=FailingHelpRunner(),
+            runtime_environment={"PATH": "/target/bin"},
+        )
 
 
 def test_operation_route_binding_document_preserves_gated_route_identity() -> None:
@@ -293,6 +321,7 @@ def test_operation_route_binding_document_preserves_gated_route_identity() -> No
     assert document["bindings"] == [
         {
             "operation": "app.camera.list",
+            "route_id": "route:camera",
             "resource_id": "cli:lerobot-find-cameras",
             "kind": "cli",
             "endpoint": "lerobot-find-cameras",
@@ -318,12 +347,21 @@ def test_operation_route_binding_document_preserves_gated_route_identity() -> No
         **derived,
         "bindings": [
             *derived["bindings"],
-            {**derived["bindings"][0], "resource_id": "cli:other"},
+            {
+                **derived["bindings"][0],
+                "route_id": "route:front-camera",
+                "resource_id": "cli:front-camera",
+                "endpoint": "front-camera",
+            },
         ],
     }
     with pytest.raises(ValueError, match="explicit route selector"):
         require_route_selector(multi, {})
-    require_route_selector(multi, {"camera": "front"})
+    selected = require_route_selector(multi, {"camera": "front"})
+    assert selected is not None
+    assert selected["route_id"] == "route:front-camera"
+    with pytest.raises(ValueError, match="does not match"):
+        require_route_selector(multi, {"camera": "rear"})
 
 
 @pytest.fixture(autouse=True)
