@@ -51,7 +51,10 @@ _INHERITED_ENVIRONMENT = {
 }
 _SANDBOX_TARGET_PATH = "_ROLO_ADAPTER_TARGET_PATH"
 
-_ADAPTER_CONTROL_ENVIRONMENT = {"ROLO_TARGET_ROUTE_BINDINGS_JSON"}
+_ADAPTER_CONTROL_ENVIRONMENT = {
+    "ROLO_TARGET_ROUTE_BINDINGS_JSON",
+    "ROLO_VALIDATE_BINDING_ONLY",
+}
 
 
 def _admitted_adapter_control_environment(
@@ -124,9 +127,7 @@ def sanitized_adapter_environment(
         environment[_SANDBOX_TARGET_PATH] = target_path
         inherited_path = environment.get("PATH")
         environment["PATH"] = (
-            os.pathsep.join([target_path, inherited_path])
-            if inherited_path
-            else target_path
+            os.pathsep.join([target_path, inherited_path]) if inherited_path else target_path
         )
     environment.update(admitted)
     return environment
@@ -161,9 +162,7 @@ class BoundedAdapterRunner:
             else settings.rolo_adapter_max_address_space_bytes
         )
         self.max_processes = (
-            max_processes
-            if max_processes is not None
-            else settings.rolo_adapter_max_processes
+            max_processes if max_processes is not None else settings.rolo_adapter_max_processes
         )
         if self.max_address_space_bytes < 512 * 1024 * 1024:
             raise ValueError("adapter address-space limit must be at least 512 MiB")
@@ -199,9 +198,7 @@ class BoundedAdapterRunner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=root,
-                env=sanitized_adapter_environment(
-                    Path(temporary_home), runtime_environment
-                ),
+                env=sanitized_adapter_environment(Path(temporary_home), runtime_environment),
                 **self._platform_process_options(timeout_s),
             )
             assert process.stdin is not None

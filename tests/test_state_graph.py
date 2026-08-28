@@ -109,3 +109,13 @@ def test_state_graph_prefers_observed_complete_route_over_static_duplicate() -> 
     assert route["interface_type"] == "sensor_msgs/msg/Image"
     assert route["provider_id"] == "ros_node:camera"
     assert len(route_edges) == 1
+
+
+def test_state_graph_rejects_route_endpoint_mutation() -> None:
+    report, bundle = _inputs()
+    graph = build_state_graph_baseline(report, bundle)
+    route = next(node for node in graph.nodes if node["kind"] == "route")
+    route["endpoint"] = "/different-target"
+
+    with pytest.raises(ValueError, match="route binding mismatch"):
+        validate_state_graph_baseline(graph, report, bundle)

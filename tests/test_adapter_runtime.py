@@ -15,6 +15,7 @@ from rolo.adapter_runtime import (
     operation_route_binding_document,
     probe_adapter_package,
     publish_release,
+    require_route_selector,
 )
 from rolo.cli import app
 from rolo.core.config import get_settings
@@ -112,9 +113,7 @@ def test_package_probe_runs_describe_without_crossing_invoke_boundary(
             if command[-1] == "describe":
                 return AdapterProcessResult(
                     returncode=0,
-                    stdout=json.dumps(
-                        {"operations": {definition.operation: "camera_list"}}
-                    ),
+                    stdout=json.dumps({"operations": {definition.operation: "camera_list"}}),
                     stderr="",
                 )
             raise AssertionError("promotion must not execute adapter invoke")
@@ -154,10 +153,10 @@ def test_operation_route_binding_document_preserves_gated_route_identity() -> No
                 "interface_type": "application/cli",
                 "interface_schema_sha256": "a" * 64,
                 "provider_id": "target-exe-camera",
-            "runtime_revision": "b" * 64,
-            "evidence_origin": "OBSERVED_RUNTIME",
-            "semantic_bindings": ["semantic://cli/app/camera/list"],
-            "evidence_refs": ["target-evidence:fixture"],
+                "runtime_revision": "b" * 64,
+                "evidence_origin": "OBSERVED_RUNTIME",
+                "semantic_bindings": ["semantic://cli/app/camera/list"],
+                "evidence_refs": ["target-evidence:fixture"],
             },
         ],
         edges=[
@@ -193,6 +192,26 @@ def test_operation_route_binding_document_preserves_gated_route_identity() -> No
         }
     ]
 
+    derived = operation_route_binding_document(graph, "app.camera.list")
+    assert derived["semantic_bindings"] == ["semantic://cli/app/camera/list"]
+    with pytest.raises(ValueError, match="semantic binding mismatch"):
+        operation_route_binding_document(
+            graph,
+            "app.camera.list",
+            semantic_bindings=["semantic://cli/app/camera/other"],
+        )
+
+    multi = {
+        **derived,
+        "bindings": [
+            *derived["bindings"],
+            {**derived["bindings"][0], "resource_id": "cli:other"},
+        ],
+    }
+    with pytest.raises(ValueError, match="explicit route selector"):
+        require_route_selector(multi, {})
+    require_route_selector(multi, {"camera": "front"})
+
 
 @pytest.fixture(autouse=True)
 def _latest_target_report(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -217,8 +236,7 @@ def _publish_demo_release(
     source.mkdir()
     helper = source / "demo_support.py"
     helper.write_text(
-        "def result(payload):\n"
-        "    return {'status': 'SUCCEEDED', 'camera': payload['camera']}\n",
+        "def result(payload):\n    return {'status': 'SUCCEEDED', 'camera': payload['camera']}\n",
         encoding="utf-8",
     )
     package = source / "demo_adapter.py"
@@ -369,9 +387,7 @@ def _publish_demo_release(
     return output
 
 
-def _sensitive_access(
-    tmp_path: Path, *, allowed_user: str | None = None
-) -> tuple[Path, Path]:
+def _sensitive_access(tmp_path: Path, *, allowed_user: str | None = None) -> tuple[Path, Path]:
     policy = tmp_path / "invocation-policy.yaml"
     policy.write_text(
         "schema_version: rolo-invocation-policy/v1\n"
@@ -518,9 +534,7 @@ def test_activation_rejects_tampered_candidate_and_preserves_current(
 ) -> None:
     output = _publish_demo_release(tmp_path, release_id="release-1")
     _publish_demo_release(tmp_path, release_id="release-2", activate=False)
-    candidate_support = (
-        output / "robots/demo/releases/release-2/adapter/demo_support.py"
-    )
+    candidate_support = output / "robots/demo/releases/release-2/adapter/demo_support.py"
     candidate_support.write_text("tampered", encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash mismatch"):
@@ -595,20 +609,21 @@ def test_runtime_keeps_release_for_equivalent_rediscovery(
     report = _target_report()
     output = _publish_demo_release(tmp_path, target_report=report)
     equivalent = report.model_copy(update={"discovery_id": "disc-2"})
-    monkeypatch.setattr(
-        "rolo.stages.adapt.discovery.load_latest_report", lambda *_: equivalent
-    )
+    monkeypatch.setattr("rolo.stages.adapt.discovery.load_latest_report", lambda *_: equivalent)
     policy, audit = _sensitive_access(tmp_path)
 
-    assert invoke_adapter(
-        output,
-        "demo",
-        "app.camera.snapshot",
-        {"camera": "front"},
-        policy_path=policy,
-        audit_path=audit,
-        artifact_root=tmp_path,
-    )["status"] == "SUCCEEDED"
+    assert (
+        invoke_adapter(
+            output,
+            "demo",
+            "app.camera.snapshot",
+            {"camera": "front"},
+            policy_path=policy,
+            audit_path=audit,
+            artifact_root=tmp_path,
+        )["status"]
+        == "SUCCEEDED"
+    )
 
 
 def test_runtime_rejects_operation_missing_from_active_catalog(tmp_path: Path) -> None:
@@ -686,9 +701,7 @@ def test_state_graph_cli_reads_only_the_active_gated_release(
     get_settings.cache_clear()
 
     snapshot = CliRunner().invoke(app, ["state", "graph", "snapshot", "--robot", "demo"])
-    query = CliRunner().invoke(
-        app, ["state", "graph", "query", "camera", "--robot", "demo"]
-    )
+    query = CliRunner().invoke(app, ["state", "graph", "query", "camera", "--robot", "demo"])
 
     get_settings.cache_clear()
     assert snapshot.exit_code == 0, snapshot.output

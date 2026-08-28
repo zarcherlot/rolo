@@ -189,13 +189,15 @@ def test_runner_passes_only_the_bounded_rolo_binding_control(tmp_path: Path) -> 
             "-c",
             (
                 "import json,os; print(json.dumps({key: os.getenv(key) for key in "
-                "['ROLO_TARGET_ROUTE_BINDINGS_JSON','ROLO_UNTRUSTED_CONTROL']}))"
+                "['ROLO_TARGET_ROUTE_BINDINGS_JSON','ROLO_VALIDATE_BINDING_ONLY',"
+                "'ROLO_UNTRUSTED_CONTROL']}))"
             ),
         ],
         cwd=tmp_path,
         timeout_s=5,
         runtime_environment={
             "ROLO_TARGET_ROUTE_BINDINGS_JSON": binding_document,
+            "ROLO_VALIDATE_BINDING_ONLY": "1",
             "ROLO_UNTRUSTED_CONTROL": "must-not-be-admitted",
         },
     )
@@ -203,6 +205,7 @@ def test_runner_passes_only_the_bounded_rolo_binding_control(tmp_path: Path) -> 
     assert result.returncode == 0
     assert json.loads(result.stdout) == {
         "ROLO_TARGET_ROUTE_BINDINGS_JSON": binding_document,
+        "ROLO_VALIDATE_BINDING_ONLY": "1",
         "ROLO_UNTRUSTED_CONTROL": None,
     }
 

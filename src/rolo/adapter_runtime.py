@@ -97,13 +97,31 @@ def operation_route_binding_document(
         )
     if not bindings:
         raise ValueError(f"State Graph operation has no route bindings: {operation}")
+    graph_semantic_bindings = sorted(
+        {str(value) for binding in bindings for value in binding["semantic_bindings"] if value}
+    )
+    supplied_semantic_bindings = sorted(set(semantic_bindings or graph_semantic_bindings))
+    if supplied_semantic_bindings != graph_semantic_bindings:
+        raise ValueError(f"State Graph semantic binding mismatch: {operation}")
     return {
         "schema_version": "rolo-target-route-bindings/v1",
         "robot_id": graph.robot_id,
         "operation": operation,
-        "semantic_bindings": list(semantic_bindings or []),
+        "semantic_bindings": supplied_semantic_bindings,
         "bindings": bindings,
     }
+
+
+def require_route_selector(document: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
+    """Fail closed when an operation has multiple routes and no selector input."""
+    bindings = document.get("bindings")
+    if not isinstance(bindings, list) or len(bindings) <= 1:
+        return
+    selector_keys = ("resource_id", "route_id", "endpoint", "topic", "id", "camera")
+    if not any(isinstance(payload.get(key), str) and payload[key].strip() for key in selector_keys):
+        raise ValueError(
+            "operation has multiple target routes; an explicit route selector is required"
+        )
 
 
 def _load_release_manifest(path: Path) -> AdapterReleaseManifest:
@@ -215,8 +233,7 @@ def _load_verified_release(
     if bundle.package_sha256 != release.adapter_package_sha256:
         raise ValueError("adapter bundle and release package hashes differ")
     published_files = {
-        Path(item.path).relative_to("adapter").as_posix(): item
-        for item in release.adapter_files
+        Path(item.path).relative_to("adapter").as_posix(): item for item in release.adapter_files
     }
     if published_files:
         declared_files = {item.path: item for item in bundle.declared_files()}
@@ -246,8 +263,7 @@ def _load_verified_release(
     unexpected_verified = sorted(
         descriptor.operation
         for descriptor in catalog.tools
-        if descriptor.availability == "VERIFIED"
-        and descriptor.operation not in bundled_operations
+        if descriptor.availability == "VERIFIED" and descriptor.operation not in bundled_operations
     )
     if unexpected_verified:
         raise ValueError(
@@ -425,12 +441,14 @@ def invoke_adapter(
         state_graph = StateGraphBaseline.model_validate_json(
             _relative_file(release_root, release.state_graph).read_text(encoding="utf-8")
         )
+        route_document = operation_route_binding_document(
+            state_graph,
+            operation,
+            semantic_bindings=descriptor.semantic_bindings,
+        )
+        require_route_selector(route_document, payload)
         runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
-            operation_route_binding_document(
-                state_graph,
-                operation,
-                semantic_bindings=descriptor.semantic_bindings,
-            ),
+            route_document,
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -587,7 +605,10 @@ def probe_adapter_package(
     if state_graph is None:
         return
     for entry in manifest.operations:
-        environment = dict(runtime_environment or {})
+        # Binding validation is intentionally denied target runtime context.  It
+        # receives only the immutable route document and a marker; invocation is
+        # the first phase allowed to see target PATH/runtime variables.
+        environment = {"ROLO_VALIDATE_BINDING_ONLY": "1"}
         environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
             operation_route_binding_document(state_graph, entry.operation),
             ensure_ascii=False,
@@ -631,9 +652,7 @@ def probe_adapter_package(
             "entrypoint": entry.entrypoint,
             "status": "VALID",
         }:
-            raise ValueError(
-                f"adapter binding validation result is invalid: {entry.operation}"
-            )
+            raise ValueError(f"adapter binding validation result is invalid: {entry.operation}")
 
 
 def publish_release(
@@ -744,9 +763,7 @@ def activate_release(
         if expected_current_release_id is not None:
             if not current.is_file():
                 raise ValueError("active adapter release changed before activation")
-            observed = AdapterReleaseIndex.model_validate_json(
-                current.read_text(encoding="utf-8")
-            )
+            observed = AdapterReleaseIndex.model_validate_json(current.read_text(encoding="utf-8"))
             if observed.release_id != expected_current_release_id:
                 raise ValueError("active adapter release changed before activation")
         release_root, release, bundle, catalog = _load_verified_release(
