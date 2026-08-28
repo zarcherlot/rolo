@@ -36,6 +36,8 @@ def test_user_yaml_is_loaded_below_environment_precedence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.delenv("RMW_IMPLEMENTATION", raising=False)
+    monkeypatch.delenv("ROS_RMW_IMPLEMENTATION", raising=False)
     settings_file = tmp_path / "config.yaml"
     settings_file.write_text(
         """schema_version: rolo-config/v1
@@ -74,11 +76,41 @@ agent_native:
     assert settings.ros_auto_source is False
     assert settings.ros_setup_files == [Path("/opt/ros/humble/setup.bash")]
     assert settings.ros_domain_id == "7"
+    assert settings.ros_rmw_implementation == "rmw_cyclonedds_cpp"
     assert settings.rolo_adapter_max_address_space_bytes == 2 * 1024 * 1024 * 1024
     assert settings.rolo_adapter_max_processes == 64
     assert settings.adapt_native_tool_mode == "canary"
     assert settings.adapt_native_tool_robot_ids == "robot-a"
     assert settings.adapt_native_tool_max_calls == 12
+
+
+def test_standard_ros_rmw_environment_is_mapped_with_explicit_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "config.yaml"
+    settings_file.write_text(
+        """schema_version: rolo-config/v1
+ros:
+  rmw_implementation: rmw_cyclonedds_cpp
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ROLO_SETTINGS_FILE", str(settings_file))
+    monkeypatch.setenv("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
+    monkeypatch.delenv("ROS_RMW_IMPLEMENTATION", raising=False)
+
+    standard_ros = Settings(_env_file=None)
+    monkeypatch.setenv("ROS_RMW_IMPLEMENTATION", "rmw_zenoh_cpp")
+    rolo_environment = Settings(_env_file=None)
+    rolo_override = Settings(
+        _env_file=None,
+        ros_rmw_implementation="rmw_connextdds",
+    )
+
+    assert standard_ros.ros_rmw_implementation == "rmw_fastrtps_cpp"
+    assert rolo_environment.ros_rmw_implementation == "rmw_zenoh_cpp"
+    assert rolo_override.ros_rmw_implementation == "rmw_connextdds"
 
 
 def test_base_runtime_does_not_require_optional_robot_use_backend() -> None:
