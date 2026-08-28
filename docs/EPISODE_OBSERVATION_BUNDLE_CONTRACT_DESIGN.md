@@ -1,3 +1,5 @@
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+
 # Episode Observation Bundle public contract design
 
 Status: E22A approved; E22B producer and safe-projection review candidate

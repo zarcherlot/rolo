@@ -1,3 +1,5 @@
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+
 # Episode read-model contract design
 
 Status: E2 implementation review  

@@ -1,3 +1,5 @@
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+
 # Episode revision history contract
 
 Status: E7 contract candidate

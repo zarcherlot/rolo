@@ -5,16 +5,16 @@
 用于实现路由和策略校验。
 
 Registry Operation、契约生命周期、升级/降级规则、R0-R3、数据分级和调用方法见
-[REGISTRY_OPERATION_GUIDE.md](REGISTRY_OPERATION_GUIDE.md)。
+[REGISTRY_OPERATION_GUIDE.md](operations/REGISTRY_OPERATION_GUIDE.md)。
 
 清单表示稳定的产品词汇；当前 294 项均具有明确契约，其中 62 项为 `RELEASED`、232 项为
 `GATEABLE`、0 项为 `DRAFT`。目标机器仍必须提供匹配 candidate、adapter 和 probe 证据，
 operation 才能通过 Adapt 门禁成为 `VERIFIED`。正式契约见
 [OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)，可通过 `robotctl tool contract validate`
 编译校验。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
-[OPERATION_CONTRACT_STANDARDIZATION.md](OPERATION_CONTRACT_STANDARDIZATION.md)。
+[OPERATION_CONTRACT_STANDARDIZATION.md](operations/OPERATION_CONTRACT_STANDARDIZATION.md)。
 已发现的实现重复、近义 operation 边界和待决策项见
-[OPERATION_TAXONOMY_AUDIT.md](OPERATION_TAXONOMY_AUDIT.md)。
+[archive/operations/OPERATION_TAXONOMY_AUDIT.md](archive/operations/OPERATION_TAXONOMY_AUDIT.md)。
 
 这是一份产品能力词汇表，不表示每台机器人都已激活全部操作。陌生主机只能提供候选绑定
 和证据；只有通过 Adapt conformance 门禁后，operation 才能在该机器人的 Active Tool

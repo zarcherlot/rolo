@@ -1,3 +1,5 @@
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+
 # Episode cohort read-model contract
 
 Status: E8 implementation review candidate

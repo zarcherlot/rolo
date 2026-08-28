@@ -1,3 +1,5 @@
+<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+
 <p align="center">
   <img src="../rolo-logo.svg" width="720" alt="rolo Loop Exit — robot only loop once">
 </p>
@@ -52,14 +54,14 @@ Catalog is created only after the Adapt gate passes.
 All 294 operations now have explicit product contracts: 62 are `RELEASED`, 232 are `GATEABLE`,
 and none remain `DRAFT`. `GATEABLE` still means that a target needs discovery evidence, an adapter,
 and conformance before the operation can become `VERIFIED` in that target's Tool Catalog.
-See the [Registry Operation guide](REGISTRY_OPERATION_GUIDE.md) for contract lifecycle,
+See the [Registry Operation guide](operations/REGISTRY_OPERATION_GUIDE.md) for contract lifecycle,
 promotion/demotion, R0-R3 risk, data classification, and invocation rules.
 
 ROS is not an Adapt prerequisite. For non-ROS projects such as LeRobot, Rolo combines Python
 console-script declarations with signed, explicitly allowlisted target CLI self-description to
 derive generic Application Routes. Source declarations remain unverified until an exact target
 route is observed and the independent Adapt gate passes. See
-[`NON_ROS_ADAPTATION.md`](NON_ROS_ADAPTATION.md).
+[`NON_ROS_ADAPTATION.md`](adapt/NON_ROS_ADAPTATION.md).
 
 ### Active discovery
 
@@ -123,7 +125,7 @@ conventional build/install/document/launch evidence, performs read-only runtime 
 generates the editable Wiki, and—when target-observed routes exist—continues through the Adapter
 Agent, independent gate, State Graph, Tool Catalog, handoff, and release. Use `--discover-only` when
 only the Wiki and discovery evidence are needed. See
-[`ADAPT_SHORT_JOURNEY.md`](ADAPT_SHORT_JOURNEY.md) for boundaries and fallback commands.
+[`ADAPT_SHORT_JOURNEY.md`](getting-started/ADAPT_SHORT_JOURNEY.md) for boundaries and fallback commands.
 
 Rolo uses user-scoped XDG defaults for configuration, artifacts, and releases, so deployment does
 not require explicit storage environment variables. On a ROS-relevant target, before signed target
@@ -133,7 +135,7 @@ ordered in `~/.config/rolo/config.yaml`. A non-ROS target requires no ROS setup 
 its observed host, Application/CLI, protocol, process, and device-interface evidence. Inspect or
 create the editable configuration with
 `robotctl config show`, `robotctl config init`, and `robotctl config validate`; see
-[`CONFIGURATION.md`](CONFIGURATION.md).
+[`CONFIGURATION.md`](setup/CONFIGURATION.md).
 
 ### Access the management API
 
@@ -229,9 +231,9 @@ for unrelated missing routes; deferred candidates remain `UNAVAILABLE` with a re
 verifies the multi-file adapter, Rolo-owned State Graph, operation-scoped target fingerprint, and
 allowlisted ROS runtime context. Adapt does not
 execute write operations to judge behavior; that work starts in Diagnose. See
-[`ADAPT_DEVICE_HANDS_ON.md`](ADAPT_DEVICE_HANDS_ON.md) for the real-device procedure.
+[`TARGET_DEVICE_OPERATION_MANUAL_ZH.md`](target/TARGET_DEVICE_OPERATION_MANUAL_ZH.md) for the real-device procedure.
 Choose target-local Rolo or the pinned remote read-only collector during installation as described
-in [`TARGET_EVIDENCE_DEPLOYMENT.md`](TARGET_EVIDENCE_DEPLOYMENT.md).
+in [`TARGET_EVIDENCE_DEPLOYMENT.md`](target/TARGET_EVIDENCE_DEPLOYMENT.md).
 
 ```text
 robot_wiki.md
@@ -268,8 +270,8 @@ around the observed host and Application/CLI software stack. ROS-specific facts 
 shown only when a target probe, project declaration, executable interface, or operation route makes
 ROS relevant.
 
-See [`AUTODISCOVERY.md`](AUTODISCOVERY.md) for the host introspection CLI,
-[`SOFTWARE_DISCOVERY.md`](SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
+See [`AUTODISCOVERY.md`](adapt/AUTODISCOVERY.md) for the host introspection CLI,
+[`SOFTWARE_DISCOVERY.md`](adapt/SOFTWARE_DISCOVERY.md) for the software discovery and evidence contract,
 and [`.env.example`](../.env.example) for Adapter Agent configuration.
 
 #### Stage 2: diagnosis

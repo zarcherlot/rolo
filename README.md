@@ -44,7 +44,7 @@ ROS 不是 Adapt 的前置条件。对于 LeRobot 等非 ROS 工程，Rolo 从 P
 目标机固定的 CLI 自描述证据建立通用 Application Route；源码声明不能冒充运行时观测，只有
 source/target 路由精确相交并通过 Adapter 独立门禁后才能进入 `VERIFIED` Tool Catalog。设计、
 安全边界和 LeRobot 首次采集命令见
-[`docs/NON_ROS_ADAPTATION.md`](docs/NON_ROS_ADAPTATION.md)。
+[`docs/adapt/NON_ROS_ADAPTATION.md`](docs/adapt/NON_ROS_ADAPTATION.md)。
 
 ### 主动发现
 
@@ -77,8 +77,8 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 
 ## 快速开始
 
-开发和评审首先遵循 [ROLO 最高开发准则](docs/DEVELOPMENT_PRINCIPLES.md)。新环境的第一条
-验收路径是 [10 分钟安装与 Demo](docs/QUICKSTART_10_MIN.md)：它使用离线 mock 夹具验证
+开发和评审首先遵循 [ROLO 最高开发准则](docs/architecture/DEVELOPMENT_PRINCIPLES.md)。新环境的第一条
+验收路径是 [10 分钟安装与 Demo](docs/getting-started/QUICKSTART_10_MIN.md)：它使用离线 mock 夹具验证
 安装、Discovery、Wiki、阶段状态和完整 Adapt 测试链路，不冒充真实机器人验收。
 
 ### 安装与配置
@@ -208,12 +208,12 @@ uv run robotctl config validate
 ```
 
 完整目标机部署、两种证据采集模式、验收与故障处理见
-[`Rolo 目标机部署与 Adapt 操作手册`](docs/TARGET_DEVICE_OPERATION_MANUAL_ZH.md)；配置字段说明见
-[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。
+[`Rolo 目标机部署与 Adapt 操作手册`](docs/target/TARGET_DEVICE_OPERATION_MANUAL_ZH.md)；配置字段说明见
+[`docs/setup/CONFIGURATION.md`](docs/setup/CONFIGURATION.md)。
 
 上述一条命令适用于 Rolo 与机器人工程运行在同一目标机的模式。控制器与目标机分离时，
 descriptor、secret 和 SSH host-key 必须独立置备，按
-[`TARGET_EVIDENCE_DEPLOYMENT.md`](docs/TARGET_EVIDENCE_DEPLOYMENT.md) 使用签名证据流程，不能为
+[`TARGET_EVIDENCE_DEPLOYMENT.md`](docs/target/TARGET_EVIDENCE_DEPLOYMENT.md) 使用签名证据流程，不能为
 追求“一条命令”而取消信任绑定。远程 pin 完成后，同样由
 `robotctl adapt start --evidence-mode remote` 在一次 Journey 中采集、验签并完成 Adapt。
 远程部署可固定 `--ssh-port`、`--ssh-identity-file` 和目标虚拟环境中的
@@ -293,7 +293,7 @@ uv run robotctl adapt run --robot "$ROBOT_ID"
 ```
 
 细粒度命令是调试接口，不是产品用户的必经启动步骤。完整边界见
-[`ADAPT_SHORT_JOURNEY.md`](docs/ADAPT_SHORT_JOURNEY.md)。
+[`ADAPT_SHORT_JOURNEY.md`](docs/getting-started/ADAPT_SHORT_JOURNEY.md)。
 
 生成 Adapter 的 `describe` 和 `invoke` 默认失败关闭。Linux 源码部署在安装 `bubblewrap` 后会
 自动使用仓库自带的受保护目标侧启动器；Rolo 按
@@ -358,7 +358,7 @@ Wiki 不把 ROS 作为默认目标环境。没有 ROS 证据时，它以目标�
 为主线；只有目标 probe、工程声明、程序接口或 operation route 表明 ROS 相关时，才展示
 ROS 专项信息和相应的待确认项。
 
-主机透视 CLI 见 [`docs/AUTODISCOVERY.md`](docs/AUTODISCOVERY.md)，Adapter Agent 配置见 [`.env.example`](.env.example)。
+主机透视 CLI 见 [`docs/adapt/AUTODISCOVERY.md`](docs/adapt/AUTODISCOVERY.md)，Adapter Agent 配置见 [`.env.example`](.env.example)。
 
 #### 第二阶段：诊断
 
