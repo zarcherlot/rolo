@@ -22,7 +22,7 @@ from rolo.query_adapter import ServiceJobQueryAdapter
 from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.service import coding_agent_config
-from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
+from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode, load_deployment
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
     BootstrapApprovalDecision,
@@ -607,6 +607,13 @@ def adapt(
         Path | None,
         typer.Option("--urdf", help="Optional explicit local URDF; never guessed"),
     ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            help="Local source/workspace root used with an ssh:// target",
+        ),
+    ] = None,
     active_probe: Annotated[
         ActiveProbeMode,
         typer.Option("--active-probe", help="none, help, or runtime-readonly"),
@@ -668,20 +675,46 @@ def adapt(
             raise typer.Exit(code=2)
     try:
         target_ref = parse_target_ref(target)
-        if not isinstance(target_ref, LocalTargetRef):
-            raise ValueError(
-                "SSH target bootstrap is not available yet; use the expert "
-                "'robotctl adapt start --evidence-mode remote' flow"
+        if isinstance(target_ref, LocalTargetRef):
+            if project_root is not None:
+                raise ValueError("--project-root is only valid with an ssh:// target")
+            adapt_project_root = target_ref.workspace
+            evidence_mode = EvidenceDeploymentMode.LOCAL
+        else:
+            if project_root is None:
+                raise ValueError(
+                    "SSH Adapt requires --project-root for the local source workspace"
+                )
+            deployment_path = (
+                get_settings().rolo_config_dir / "target-evidence" / f"{robot_id}.json"
             )
+            if not deployment_path.is_file():
+                raise ValueError(
+                    "SSH Adapt requires an approved target evidence deployment; "
+                    "run target-evidence configure first"
+                )
+            deployment = load_deployment(deployment_path)
+            if deployment.mode != EvidenceDeploymentMode.REMOTE:
+                raise ValueError("approved target evidence deployment is not remote")
+            expected_target = (
+                f"{target_ref.user}@{target_ref.host}" if target_ref.user else target_ref.host
+            )
+            if deployment.ssh_target != expected_target:
+                raise ValueError("SSH target does not match the approved evidence deployment")
+            expected_port = target_ref.port or 22
+            if deployment.ssh_port != expected_port:
+                raise ValueError("SSH target port does not match the approved evidence deployment")
+            adapt_project_root = project_root.expanduser().resolve()
+            evidence_mode = EvidenceDeploymentMode.REMOTE
         result = run_adapt_start(
             robot_id=robot_id,
-            project_root=target_ref.workspace,
+            project_root=adapt_project_root,
             urdf=urdf,
             active_probe=active_probe,
             run_agent=run_agent,
             scratch_root=scratch_root,
             timeout=timeout,
-            evidence_mode=EvidenceDeploymentMode.LOCAL,
+            evidence_mode=evidence_mode,
             allow_executable=allow_executable,
             collector_descriptor=None,
             verification_secret=None,
