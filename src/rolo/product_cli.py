@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from rolo.agent_provider import available_agent_executors
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.console import run_console
@@ -20,6 +21,7 @@ from rolo.natural_service import NaturalLanguageService
 from rolo.query_adapter import ServiceJobQueryAdapter
 from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
+from rolo.stages.adapt.service import coding_agent_config
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
@@ -641,3 +643,16 @@ def adapt(
     emit(result)
     if result.status in {"BLOCKED", "WAITING_FOR_AUTH"}:
         raise typer.Exit(code=2)
+
+
+@app.command("agent-providers")
+def agent_providers() -> None:
+    """List registered Agent executors and the active secret-free selection."""
+    settings = get_settings()
+    emit(
+        {
+            "executors": list(available_agent_executors()),
+            "selection": coding_agent_config(settings).model_dump(mode="json"),
+            "entry_point_group": "rolo.agent_executors",
+        }
+    )

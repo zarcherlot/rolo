@@ -105,6 +105,9 @@ Rolo 将模型 transport 与执行权分离：Codex harness/依赖管理层负�
 # Codex 风格自然交互（仅在需要时询问当前用户）
 uv run rolo
 
+# 查看已注册的 Agent executor 及当前非秘密配置
+uv run rolo agent-providers
+
 # 供 Codex/Claude Code 配置为 MCP server
 uv run rolo-mcp
 ```
