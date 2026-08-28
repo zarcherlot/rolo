@@ -316,6 +316,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     captured: dict[str, object] = {}
 
     monkeypatch.setattr("rolo.stages.adapt.executor.shutil.which", lambda _: "codex")
+    monkeypatch.setenv("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
@@ -390,6 +391,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert run.native_tool_gate_ref.endswith("/native-tool-gate.json")
     assert context_metrics["shadow_influences_release"] is False
     assert context_metrics["adapter_max_processes"] == 128
+    assert context_metrics["ros_rmw_implementation"] == "rmw_fastrtps_cpp"
     assert context_metrics["coding_agent_provider"] == "codex"
     assert context_metrics["coding_agent_executor"] == "codex"
     assert context_metrics["slice_activation_affects_agent_context"] is False

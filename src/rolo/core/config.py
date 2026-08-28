@@ -142,6 +142,26 @@ class _YamlSettingsSource(PydanticBaseSettingsSource):
         return _read_yaml_settings()
 
 
+class _RosEnvironmentSettingsSource(PydanticBaseSettingsSource):
+    """Map standard ROS environment names into Rolo's settings model."""
+
+    def get_field_value(
+        self,
+        field: FieldInfo,
+        field_name: str,
+    ) -> tuple[Any, str, bool]:
+        if field_name != "ros_rmw_implementation":
+            return None, field_name, False
+        value = os.environ.get("RMW_IMPLEMENTATION")
+        return value, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        value = os.environ.get("RMW_IMPLEMENTATION")
+        if not value:
+            return {}
+        return {"ros_rmw_implementation": value}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -231,6 +251,7 @@ class Settings(BaseSettings):
         return (
             init_settings,
             env_settings,
+            _RosEnvironmentSettingsSource(settings_cls),
             _YamlSettingsSource(settings_cls),
             dotenv_settings,
             file_secret_settings,
