@@ -1,6 +1,7 @@
 # 目标机 / WSL P2 验证步骤
 
-本文档用于 `codex/registry-redesign-r5` 后续 P2 shadow/canary 验证。
+本文档用于 `codex/registry-redesign-r5` 的 P0.1 SSH Adapt 产品路径和 P2
+shadow/canary 验证。
 目标机只负责采集真实 Linux、ROS 和产品范围内 HW 证据；代码开发、离线测试和
 artifact 分析在本地完成。
 
@@ -16,7 +17,37 @@ uv sync --frozen
 
 `HEAD` 必须记录在验证报告中，并与本次验证使用的远端提交一致。
 
-## 2. 准备 ROS 运行环境
+本轮至少应为 `c93a35c` 或其后续提交；该提交开始支持产品 CLI 复用 approved
+remote evidence deployment 的 SSH Adapt 路径。
+
+## 2. P0.1 SSH Adapt 产品入口
+
+SSH Adapt 命令在控制端（开发机或 WSL controller）执行，目标机只提供已批准的
+SSH collector 和真实运行环境。目标机应先确认 collector 服务、SSH host key、端口
+和 target workspace 可用，然后在控制端执行：
+
+```bash
+uv run rolo adapt "ssh://<user>@<host>:<port>/<remote-workspace>" \
+  --robot <robot-id> \
+  --project-root <local-source-root> \
+  --active-probe runtime-readonly \
+  --discover-only
+```
+
+其中 `<local-source-root>` 是控制端可读的机器人源码/工作区；远端 workspace 只由
+approved deployment 和 collector 绑定，不从 URI 临时推断权限。
+
+### P0.1 通过条件
+
+- deployment 文件存在，模式为 `remote`；
+- URI 中的 user/host 与 deployment 的 `ssh_target` 一致；
+- URI 端口与 deployment 的 pinned SSH port 一致；
+- target collector 能返回签名、目标机 fingerprint 和有效 nonce 的 evidence bundle；
+- Adapt 返回 `DISCOVERY_COMPLETE` 或 `COMPLETE`，并生成 target evidence artifact；
+- 没有 approved deployment、host/port 不匹配、workspace 不可读或 host key 不可信时，
+  必须在 Agent 启动前返回 `BLOCKED`/参数错误，且不得写 target 或启动 Agent。
+
+## 3. 准备 ROS 运行环境
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -46,7 +77,7 @@ fixture 只证明 `/tf` 采集链路可执行，不得作为真实机器人行�
 如果目标环境需要 Clash 或其他代理才能访问外部网络，记录实际使用的代理变量和
 middleware 结果。不要把代理变量写入仓库配置或 artifact 内容。
 
-## 3. 采集产品范围内的 Linux/HW 证据
+## 4. 采集产品范围内的 Linux/HW 证据
 
 ```bash
 uname -a
@@ -59,7 +90,7 @@ udevadm info --export-db
 HW USB (`lsusb`) 当前不属于产品范围，不作为 P2 通过/阻断条件；无需为 USB/IP、
 WSL USB 映射或 `lsusb` 缺失追加开发。若命令被执行，只能作为附加环境信息记录。
 
-## 4. 执行 Adapt + Agent-native shadow
+## 5. 执行 Adapt + Agent-native shadow
 
 ```bash
 export ADAPT_NATIVE_TOOL_MODE=shadow
@@ -89,7 +120,7 @@ native-tool-execution-parity.json
 即使 Adapter Agent 不主动调用 native 工具，也能生成至少一个 `calls/*.json` 和对应的
 execution parity 证据；Agent 后续调用仍使用同一受预算约束的 session。
 
-## 5. 目标机产物自检
+## 6. 目标机产物自检
 
 ```bash
 sha256sum -c SHA256SUMS
@@ -108,7 +139,7 @@ sha256sum -c SHA256SUMS
 建议连续采集 3～5 个 shadow 窗口。单次运行通过只代表环境可执行，不代表可以进入
 active 或删除旧 wrapper。
 
-## 6. Canary 前置条件
+## 7. Canary 前置条件
 
 只有同时满足以下条件，才允许选择低风险 Linux/ROS 只读 capability 进入 canary：
 
