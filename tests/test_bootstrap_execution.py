@@ -24,9 +24,16 @@ from rolo.targets.signing import sign_companion_manifest
 
 
 class FakeTransport:
-    def __init__(self, target: SshTargetRef, *, fail_action: str | None = None) -> None:
+    def __init__(
+        self,
+        target: SshTargetRef,
+        *,
+        fail_action: str | None = None,
+        health_output: str | None = None,
+    ) -> None:
         self.target = target
         self.fail_action = fail_action
+        self.health_output = health_output
         self.uploads: list[tuple[Path, str]] = []
         self.commands: list[tuple[str, ...]] = []
 
@@ -52,6 +59,7 @@ class FakeTransport:
         return CommandResult(
             command,
             1 if self.fail_action == action else 0,
+            stdout=(self.health_output or "rolo-target 1.0.0") if action == "health" else "",
             stderr=f"{action} denied",
         )
 
@@ -178,6 +186,29 @@ def test_bootstrap_health_failure_restores_previous_companion_when_backup_exists
 
     assert result.status == "FAILED"
     assert any("restored the previous companion" in item for item in result.diagnostics)
+    assert any(command[:3] == ("sudo", "-n", "mv") for command in transport.commands)
+
+
+def test_bootstrap_health_version_mismatch_restores_previous_companion(
+    tmp_path: Path,
+) -> None:
+    manifest, package = _package(tmp_path)
+    plan, request, decision = _authority()
+    transport = FakeTransport(_target(), health_output="rolo-target 0.9.0")
+
+    result = execute_bootstrap(
+        plan,
+        request,
+        decision,
+        manifest_path=manifest,
+        package_path=package,
+        verification_key=b"verification-key",
+        transport=transport,
+        rollback_on_failure=True,
+    )
+
+    assert result.status == "FAILED"
+    assert any("version mismatch" in item for item in result.diagnostics)
     assert any(command[:3] == ("sudo", "-n", "mv") for command in transport.commands)
 
 

@@ -255,8 +255,17 @@ def execute_bootstrap(
             diagnostics=diagnostics,
         )
     health = transport.execute(["rolo-target", "--version"], timeout_s=timeout_s)
-    if health.returncode != 0:
-        diagnostics = [_transport_failure(health, "companion health check")]
+    expected_health = f"{manifest.package_id} {manifest.package_version}"
+    health_output = health.stdout.strip()
+    if health.returncode != 0 or health_output != expected_health:
+        diagnostics = (
+            [_transport_failure(health, "companion health check")]
+            if health.returncode != 0
+            else [
+                "companion health version mismatch: "
+                f"expected {expected_health!r}, observed {health_output!r}"
+            ]
+        )
         if rollback_available:
             rollback = transport.execute(
                 ["sudo", "-n", "mv", "-f", "--", rollback_path, "/usr/local/bin/rolo-target"],
