@@ -1,4 +1,6 @@
+import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -75,6 +77,77 @@ def test_descriptor_rejects_interpolation_and_unsafe_environment() -> None:
         _descriptor("-c", "print('ok')", allowed_env_keys=["PATH"])
 
 
+def test_runner_forwards_validated_ros_runtime_paths_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    python_root = tmp_path / "ros-python"
+    python_root.mkdir()
+    (python_root / "ros2cli_fixture.py").write_text(
+        "VALUE = 'available'\n", encoding="utf-8"
+    )
+    library_root = tmp_path / "ros-lib"
+    library_root.mkdir()
+    missing_root = tmp_path / "missing"
+    monkeypatch.setenv(
+        "PYTHONPATH", os.pathsep.join((str(python_root), str(missing_root)))
+    )
+    monkeypatch.setenv("LD_LIBRARY_PATH", str(library_root))
+    descriptor = _descriptor(
+        "-c",
+        "import ros2cli_fixture; print(ros2cli_fixture.VALUE)",
+        allowed_env_keys=["PYTHONPATH", "LD_LIBRARY_PATH"],
+    )
+
+    result = AgentNativeRunner([descriptor]).run("test.echo")
+
+    assert result.status == NativeToolStatus.SUCCEEDED
+    assert result.stdout.strip() == "available"
+
+
+def test_non_ros_family_does_not_inherit_ros_runtime_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_executor(command: list[str], **kwargs: object):
+        captured["env"] = kwargs["env"]
+        return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    python_root = tmp_path / "ros-python"
+    python_root.mkdir()
+    monkeypatch.setenv("PYTHONPATH", str(python_root))
+    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
+
+    runner.run("native.linux.host.inspect", {"mode": "status"})
+
+    captured_env = captured["env"]
+    assert isinstance(captured_env, dict)
+    assert "PYTHONPATH" not in captured_env
+
+
+def test_ros_runner_uses_an_ephemeral_log_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_log_dir: Path | None = None
+
+    def fake_executor(command: list[str], **kwargs: object):
+        nonlocal captured_log_dir
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        captured_log_dir = Path(environment["ROS_LOG_DIR"])
+        assert captured_log_dir.is_dir()
+        return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
+
+    runner.run("native.ros.graph.inspect", {"mode": "nodes"})
+
+    assert captured_log_dir is not None
+    assert not captured_log_dir.exists()
+
+
 def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
     catalog = reduced_agent_native_catalog()
 
@@ -82,8 +155,10 @@ def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
     assert len({item.tool_id for item in catalog}) == len(catalog)
     assert "native.linux.host.status" not in {item.tool_id for item in catalog}
     host = next(item for item in catalog if item.tool_id == "native.linux.host.inspect")
+    ros = next(item for item in catalog if item.tool_id == "native.ros.graph.inspect")
     assert set(host.variants) == {"inventory", "status", "time", "uptime"}
     assert host.variants["status"].argv_template == ["uname", "-a"]
+    assert {"PYTHONPATH", "LD_LIBRARY_PATH"}.issubset(ros.allowed_env_keys)
 
 
 def test_family_runner_resolves_only_allowlisted_arguments(

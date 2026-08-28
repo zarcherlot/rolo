@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -12,6 +13,8 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from rolo.runtime_context import AdapterRuntimeContext, admitted_runtime_environment
 
 
 class NativeToolStatus(str, Enum):
@@ -28,12 +31,9 @@ _SECRET = re.compile(
     r"(\s*[=:]\s*|\s+)([^\s,;]+)"
 )
 _SAFE_ENV_KEYS = {
-    "AMENT_PREFIX_PATH",
-    "COLCON_PREFIX_PATH",
-    "ROS_DISTRO",
-    "ROS_DOMAIN_ID",
-    "ROS_LOCALHOST_ONLY",
-    "RMW_IMPLEMENTATION",
+    field.alias
+    for field in AdapterRuntimeContext.model_fields.values()
+    if field.alias and field.alias != "PATH"
 }
 _PROCESS_ENV_KEYS = {"COMSPEC", "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR"}
 
@@ -284,9 +284,25 @@ class AgentNativeRunner:
             )
         env = {
             key: os.environ[key]
-            for key in _PROCESS_ENV_KEYS | set(descriptor.allowed_env_keys)
+            for key in _PROCESS_ENV_KEYS
             if key in os.environ
         }
+        env.update(
+            admitted_runtime_environment(
+                {
+                    key: os.environ[key]
+                    for key in descriptor.allowed_env_keys
+                    if key in os.environ
+                }
+            )
+        )
+        ros_log_dir = (
+            tempfile.TemporaryDirectory(prefix="rolo-native-ros-log-")
+            if invocation.executable == "ros2"
+            else None
+        )
+        if ros_log_dir is not None:
+            env["ROS_LOG_DIR"] = ros_log_dir.name
         started = time.monotonic()
         try:
             completed = self._executor(
@@ -324,6 +340,9 @@ class AgentNativeRunner:
                 ["tool execution failed"],
                 arguments=requested_arguments,
             )
+        finally:
+            if ros_log_dir is not None:
+                ros_log_dir.cleanup()
         status = (
             NativeToolStatus.SUCCEEDED if completed.returncode == 0 else NativeToolStatus.FAILED
         )
