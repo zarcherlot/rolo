@@ -45,7 +45,7 @@ git log -1 --format='%H %cI %s'
 要求工作树干净，报告中的 revision 与部署到目标机的 revision 完全一致。
 
 当前可供真机验证的已推送基线为 `origin/codex/post-r5-integration` @
-`918fea1a2fffd49e1977cf7b0a913268cc0a7c7b`。部署前必须重新执行
+`e947c7cba66d3ad5636da90a6b40cfd04e82f74f`。部署前必须重新执行
 `git fetch origin`、`git rev-parse origin/codex/post-r5-integration`，并把输出写入
 `revision.txt`；若远端 revision 变化，则停止本轮部署并重新生成整包证据。
 
