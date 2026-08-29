@@ -153,6 +153,19 @@ class StageAgentRun(BaseModel):
     heartbeat_at: datetime | None = None
 
 
+class StageMaintenanceReport(BaseModel):
+    """Auditable result of bounded, non-replaying Stage runtime maintenance."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-stage-maintenance-report/v1"] = (
+        "rolo-stage-maintenance-report/v1"
+    )
+    recovered_run_ids: list[str] = Field(default_factory=list)
+    expired_authorization_refs: list[str] = Field(default_factory=list)
+    removed_stale_marker_paths: list[str] = Field(default_factory=list)
+
+
 class StageAgentExecutor(Protocol):
     """Plugin boundary for a Diagnose or Verify Agent product."""
 
@@ -261,6 +274,156 @@ def recover_stale_stage_runs(
             )
             recovered.append(failed)
     return recovered
+
+
+def recover_all_stale_stage_runs(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+) -> list[StageAgentRun]:
+    """Recover stale runs across all selected Stage/robot roots.
+
+    This is a restart-safe wrapper around :func:`recover_stale_stage_runs`.
+    Recovery only transitions persisted ``RUNNING`` records to terminal ``FAILED``;
+    it never resumes an executor or replays a target operation.  The existing
+    stage/robot-specific function remains the compatibility API for callers that
+    already have an exact identity.
+    """
+
+    if stale_after_s <= 0:
+        raise ValueError("stale_after_s must be positive")
+    root = artifact_root.resolve()
+    selected_stages: tuple[StageName, ...] = (stage,) if stage else ("diagnose", "verify")
+    recovered: list[StageAgentRun] = []
+    for selected_stage in selected_stages:
+        stage_root = root / selected_stage
+        if not stage_root.is_dir():
+            continue
+        if robot_id is not None:
+            candidates = (stage_root / robot_id,)
+        else:
+            candidates = tuple(path for path in stage_root.iterdir() if path.is_dir())
+        for robot_root in candidates:
+            if not robot_root.is_dir():
+                continue
+            recovered.extend(
+                recover_stale_stage_runs(
+                    root,
+                    selected_stage,
+                    robot_root.name,
+                    stale_after_s=stale_after_s,
+                )
+            )
+    return recovered
+
+
+def remove_stale_stage_markers(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+) -> list[str]:
+    """Remove orphaned ``active-run.json`` markers after bounded recovery.
+
+    A marker is retained while its referenced run is still ``RUNNING``.  Once the
+    run is terminal or missing and the marker's claimed timestamp exceeds the
+    threshold, it is removed under the same inter-process lock used by writers.
+    Malformed or future-dated markers are preserved for manual inspection.
+    """
+
+    if stale_after_s <= 0:
+        raise ValueError("stale_after_s must be positive")
+    root = artifact_root.resolve()
+    now = datetime.now(timezone.utc)
+    selected_stages: tuple[StageName, ...] = (stage,) if stage else ("diagnose", "verify")
+    removed: list[str] = []
+    for selected_stage in selected_stages:
+        stage_root = root / selected_stage
+        if not stage_root.is_dir():
+            continue
+        candidates = (
+            (stage_root / robot_id,)
+            if robot_id is not None
+            else tuple(path for path in stage_root.iterdir() if path.is_dir())
+        )
+        for robot_root in candidates:
+            marker = robot_root / "active-run.json"
+            if not marker.is_file():
+                continue
+            try:
+                payload = json_load(marker)
+                claimed_at = _parse_iso_datetime(str(payload["claimed_at"]))
+                marker_run_id = str(payload["run_id"])
+            except (KeyError, OSError, TypeError, ValueError):
+                continue
+            if claimed_at.tzinfo is None:
+                claimed_at = claimed_at.replace(tzinfo=timezone.utc)
+            if (now - claimed_at.astimezone(timezone.utc)).total_seconds() < stale_after_s:
+                continue
+            run_path = robot_root / "runs" / marker_run_id / "run.json"
+            if run_path.is_file():
+                try:
+                    referenced = StageAgentRun.model_validate_json(
+                        run_path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    continue
+                if referenced.status == "RUNNING":
+                    continue
+            try:
+                with interprocess_lock(marker):
+                    if not marker.is_file():
+                        continue
+                    current = json_load(marker)
+                    if str(current.get("run_id")) != marker_run_id:
+                        continue
+                    marker.unlink()
+                removed.append(str(marker))
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+    return sorted(removed)
+
+
+def maintain_stage_runtime(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+    now: datetime | None = None,
+) -> StageMaintenanceReport:
+    """Run restart housekeeping without replaying or elevating any handoff.
+
+    ``now`` is accepted for deterministic callers and is used for authorization
+    expiry; stale run/marker age continues to use wall-clock time in the lower-level
+    APIs so existing behavior remains unchanged.
+    """
+
+    recovered = recover_all_stale_stage_runs(
+        artifact_root,
+        stage=stage,
+        robot_id=robot_id,
+        stale_after_s=stale_after_s,
+    )
+    expired = archive_expired_authorization_requests(artifact_root, now=now)
+    removed = remove_stale_stage_markers(
+        artifact_root,
+        stage=stage,
+        robot_id=robot_id,
+        stale_after_s=stale_after_s,
+    )
+    return StageMaintenanceReport(
+        recovered_run_ids=sorted(run.run_id for run in recovered),
+        expired_authorization_refs=[
+            str(item["request_id"])
+            for item in expired
+            if isinstance(item.get("request_id"), str)
+        ],
+        removed_stale_marker_paths=removed,
+    )
 
 
 def archive_expired_authorization_requests(
