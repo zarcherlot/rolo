@@ -14,6 +14,7 @@ from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.console import run_console
 from rolo.core.config import get_settings
+from rolo.episode_capture import capture_target_inspection_episode
 from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore, run_bootstrap_job
 from rolo.natural_language import intent_to_argv, parse_natural_language
@@ -274,6 +275,45 @@ def target_inspect(
     )
     if assessment.state != TargetConnectionState.READY:
         raise typer.Exit(code=2)
+
+
+@target_app.command("episode-capture")
+def target_episode_capture(
+    target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
+    robot_id: Annotated[str, typer.Option("--robot", "--robot-id")],
+    episode_id: Annotated[str, typer.Option("--episode-id")],
+    known_hosts: Annotated[
+        Path | None,
+        typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
+    ] = None,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
+    ] = 10.0,
+) -> None:
+    """Capture a metadata-only immutable Episode from a read-only target inspection."""
+
+    try:
+        assessment = _target_executor(target, known_hosts, timeout).inspect()
+        record, episode_ref = capture_target_inspection_episode(
+            get_settings().rolo_artifact_dir,
+            assessment,
+            robot_id=robot_id,
+            episode_id=episode_id,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "EPISODE_CAPTURED",
+            "episode_ref": episode_ref,
+            "episode_id": record.episode_id,
+            "revision": record.revision,
+            "verification": record.verification,
+            "coverage": record.coverage,
+            "immutable": record.immutable,
+        }
+    )
 
 
 @target_app.command("bootstrap-plan")
