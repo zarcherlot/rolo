@@ -43,7 +43,8 @@ verify (optional): diagnosis handoff → acceptance plan → regression/evidence
 
 `src/rolo/stages/agent_runner.py` 是 Diagnose/Verify 共用的执行边界，负责任务摘要、授权、
 幂等、运行状态、日志流、取消、租约恢复和 handoff validator 回调。它本身不授予 release
-或 acceptance authority。
+或 acceptance authority。`src/rolo/user_identity.py` 为授权请求提供当前 OS 用户 principal
+和 artifact-root 内持久的本地 session fingerprint；跨用户或跨 session 的恢复必须拒绝。
 
 ## 3. Adapt 实现分层
 
@@ -73,6 +74,8 @@ Adapt 的核心不变量是“Agent 提案 ≠ Rolo 权威”：Agent 不能写 
 - 只读工具会话：`stages/downstream_tools.py`；
 - Episode 发布与验证：`stages/diagnose/episode.py`、`episode_projection.py`；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，只允许绑定 profile 的只读命令。
+- 授权身份：`user_identity.py` 生成当前用户和持久 session fingerprint；`agent_provider.py`
+  拒绝声明了不同 stage 的插件，避免 provider/executor 越界。
 
 Diagnose 可以生成冻结配置和严格的 diagnosis report，但不能单凭 Agent 输出改变 release
 authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判断。

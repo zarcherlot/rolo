@@ -208,7 +208,7 @@ def test_stage_runner_rejects_cross_session_authorization(
     pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
     monkeypatch.setattr(
         "rolo.stages.agent_runner._current_actor_identity",
-        lambda: {
+        lambda *_args: {
             "os_user": "other",
             "os_uid": 2000,
             "session_id": "f" * 64,
