@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from rolo.core.config import get_settings
@@ -90,13 +91,11 @@ def test_rolo_adapt_requires_local_project_root_for_ssh() -> None:
             "remote_robot",
             "--discover-only",
         ],
-        # Rich reads COLUMNS directly and truncates UsageError text in narrow CI logs.
-        # Keep this assertion about the complete actionable message deterministic.
-        env={"COLUMNS": "120"},
     )
 
     assert result.exit_code == 2
-    assert "SSH Adapt requires --project-root" in result.output
+    rendered_output = " ".join(unstyle(result.output).replace("│", " ").split())
+    assert "SSH Adapt requires --project-root" in rendered_output
 
 
 def test_rolo_adapt_uses_an_approved_ssh_deployment(
