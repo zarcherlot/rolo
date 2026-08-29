@@ -12,6 +12,7 @@ from rolo.core.config import get_settings
 from rolo.product_cli import app
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
+from rolo.targets.profiles import CredentialReference, TargetProfileStore
 
 
 def test_target_ref_normalizes_a_relative_local_workspace(tmp_path: Path) -> None:
@@ -43,6 +44,108 @@ def test_target_ref_parses_a_credential_free_ssh_uri() -> None:
 def test_target_ref_rejects_unsafe_or_incomplete_ssh_uris(value: str, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         parse_target_ref(value)
+
+
+def test_target_verify_health_uses_canonical_ssh_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Report:
+        status = "PASS"
+
+        def model_dump(self, *, mode: str) -> dict[str, str]:
+            del mode
+            return {"status": self.status, "run_id": "verify-1"}
+
+    class Provider:
+        def __init__(self, target, **kwargs):
+            captured["target"] = target
+            captured.update(kwargs)
+
+        def run(self, artifact_root: Path, *, robot_id: str) -> Report:
+            captured["artifact_root"] = artifact_root
+            captured["robot_id"] = robot_id
+            return Report()
+
+    monkeypatch.setattr("rolo.product_cli.SshTargetHealthProvider", Provider)
+    config_root = tmp_path / "config"
+    artifact_root = tmp_path / "artifacts"
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("robot.example ssh-ed25519 AAAA\n", encoding="utf-8")
+    env = {
+        "ROLO_CONFIG_DIR": str(config_root),
+        "ROLO_ARTIFACT_DIR": str(artifact_root),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+    }
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "target",
+            "verify-health",
+            "ssh://robot@robot.example/home/robot/rolo",
+            "--robot",
+            "staging_robot",
+            "--package-id",
+            "rolo-target",
+            "--package-version",
+            "0.1.0",
+            "--known-hosts",
+            str(known_hosts),
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload == {"status": "PASS", "run_id": "verify-1"}
+    assert captured["robot_id"] == "staging_robot"
+    assert captured["artifact_root"] == artifact_root.resolve()
+    assert captured["known_hosts"] == known_hosts
+    assert captured["profile_sha256"]
+    assert captured["target"].host == "robot.example"
+
+
+def test_target_verify_health_rejects_unapproved_profile_host_key(
+    tmp_path: Path,
+) -> None:
+    config_root = tmp_path / "config"
+    TargetProfileStore(config_root).create(
+        robot_id="staging_robot",
+        target=parse_target_ref("ssh://robot@robot.example/home/robot/rolo"),
+        credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+    )
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("robot.example ssh-ed25519 AAAA\n", encoding="utf-8")
+    env = {
+        "ROLO_CONFIG_DIR": str(config_root),
+        "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+    }
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "target",
+            "verify-health",
+            "ssh://robot@robot.example/home/robot/rolo",
+            "--robot",
+            "staging_robot",
+            "--package-id",
+            "rolo-target",
+            "--package-version",
+            "0.1.0",
+            "--known-hosts",
+            str(known_hosts),
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 2
+    assert "approved SSH host key" in result.output
 
 
 def test_rolo_adapt_runs_the_existing_local_journey(tmp_path: Path) -> None:

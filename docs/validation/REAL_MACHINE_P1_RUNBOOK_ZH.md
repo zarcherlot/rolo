@@ -161,7 +161,28 @@ uv run robotctl verify run --robot "$ROBOT_ID" \
 hash 有效；report/evidence case identity 一致；safe-stop/rollback 为 `NOT_REQUIRED` 或
 `VERIFIED`；release authority 始终为 `none`。
 
-## 6. 取消、重启和负面注入
+## 6. 固定 SSH target health 切片
+
+在完成上面的 Verify plan 审核后，可单独运行 canonical SSH provider 的固定只读健康检查：
+
+```bash
+uv run rolo target verify-health \
+  "ssh://<user>@<host>/<absolute-workspace>" \
+  --robot "$ROBOT_ID" \
+  --package-id rolo-target \
+  --package-version <approved-package-version> \
+  --known-hosts "$KNOWN_HOSTS" \
+  | tee "$DEBUG_DIR/target-verify-health.json"
+```
+
+该命令只允许 `uname -s`、workspace directory check 和 `rolo-target --version` 三个
+固定 operation；不接受 shell 字符串、不执行目标机写操作。若 `$ROLO_CONFIG_DIR/target-profiles/`
+中存在同名 robot profile，目标 URI 必须与 profile 完全一致，profile digest 会绑定到
+provenance，且 profile 的 SSH host key 必须已经人工批准；没有 profile 时仅使用规范化
+target URI digest。`PASS` 才允许继续，`FAIL`、
+`TIMEOUT`、`CANCELLED` 或 transport error 均必须保留 evidence 并停止后续合入。
+
+## 7. 取消、重启和负面注入
 
 ```bash
 uv run robotctl verify cancel --robot "$ROBOT_ID" --run-id <run-id>
@@ -171,7 +192,7 @@ uv run robotctl diagnose cancel --robot "$ROBOT_ID" --run-id <run-id>
 取消应为 `CANCELLED` 并保留原始 run/evidence。对任一 provenance、binding、plan 或
 evidence 摘要做篡改时，恢复/手合入必须 fail-closed；不得手工删除 latest handoff。
 
-## 7. 证据包与回传
+## 8. 证据包与回传
 
 ```bash
 git rev-parse HEAD > "$DEBUG_DIR/revision.txt"
@@ -195,7 +216,7 @@ validation-report.md
 状态、环境限制、取消/篡改负面样本、回退结果和最终 `GO/HOLD/NO-GO`。禁止打包私钥、
 token、完整未脱敏环境变量或无关原始日志。
 
-## 8. 判定
+## 9. 判定
 
 - `GO`：3～5 个 shadow 窗口稳定通过，真实 Episode 和 Verify v2 evidence 完整，所有
   hash/identity 绑定有效，取消/回退演练通过。
