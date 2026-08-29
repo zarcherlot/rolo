@@ -102,6 +102,6 @@ def test_schema_exports_are_explicitly_versioned() -> None:
     assert "rolo-real-verify-readiness/v2" in RealVerifyReadinessReportV2.model_json_schema()[
         "properties"
     ]["schema_version"]["const"]
-    assert "rolo-verification-provider-manifest/v2" in VerificationProviderManifestV2.model_json_schema()[
-        "properties"
-    ]["schema_version"]["const"]
+    assert "rolo-verification-provider-manifest/v2" in (
+        VerificationProviderManifestV2.model_json_schema()["properties"]["schema_version"]["const"]
+    )

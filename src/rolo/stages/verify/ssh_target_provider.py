@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import threading
 import time
-import json
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -181,7 +181,10 @@ class SshTargetHealthProvider:
             try:
                 outcome = self.transport.execute(commands[case.operation], timeout_s=case.timeout_s)
                 if case.operation == self.platform_operation:
-                    observation = {"returncode": outcome.returncode, "platform": outcome.stdout.strip()}
+                    observation = {
+                        "returncode": outcome.returncode,
+                        "platform": outcome.stdout.strip(),
+                    }
                 elif case.operation == self.workspace_operation:
                     observation = {
                         "returncode": outcome.returncode,
@@ -195,13 +198,28 @@ class SshTargetHealthProvider:
                         "expected": self.expected_health,
                     }
                 passed = outcome.returncode == 0 and (
-                    (case.operation == self.platform_operation and observation["platform"] == "Linux")
-                    or (case.operation == self.workspace_operation and observation["accessible"] is True)
-                    or (case.operation == self.companion_operation and observation["health"] == self.expected_health)
+                    (
+                        case.operation == self.platform_operation
+                        and observation["platform"] == "Linux"
+                    )
+                    or (
+                        case.operation == self.workspace_operation
+                        and observation["accessible"] is True
+                    )
+                    or (
+                        case.operation == self.companion_operation
+                        and observation["health"] == self.expected_health
+                    )
                 )
                 observation_path = artifacts.write_json(
                     f"verify/{robot_id}/runs/{selected_run}/{case.case_id}_observation.json",
-                    {"schema_version": "rolo-target-read-only-observation/v1", "case_id": case.case_id, "operation": case.operation, "stderr_excerpt": outcome.stderr.strip()[:1_000] or None, **observation},
+                    {
+                        "schema_version": "rolo-target-read-only-observation/v1",
+                        "case_id": case.case_id,
+                        "operation": case.operation,
+                        "stderr_excerpt": outcome.stderr.strip()[:1_000] or None,
+                        **observation,
+                    },
                 )
                 status: Literal["PASS", "FAIL", "ERROR"] = (
                     "ERROR" if outcome.returncode != 0 else "PASS" if passed else "FAIL"
@@ -211,7 +229,11 @@ class SshTargetHealthProvider:
                         case_id=case.case_id,
                         operation=case.operation,
                         status=status,
-                        message="target read-only case passed" if passed else "target read-only case failed",
+                        message=(
+                            "target read-only case passed"
+                            if passed
+                            else "target read-only case failed"
+                        ),
                         audit_ref=ArtifactLayout(artifact_root).ref(observation_path),
                         provenance_ref=provenance_ref,
                     )
@@ -245,7 +267,14 @@ class SshTargetHealthProvider:
         )
         replay_path = artifacts.write_json(
             f"verify/{robot_id}/runs/{selected_run}/target-replay.json",
-            {"schema_version": "rolo-ssh-target-replay-capture/v1", "robot_id": robot_id, "run_id": selected_run, "read_only": True, "provenance_ref": provenance_ref, "results": [item.model_dump(mode="json") for item in results]},
+            {
+                "schema_version": "rolo-ssh-target-replay-capture/v1",
+                "robot_id": robot_id,
+                "run_id": selected_run,
+                "read_only": True,
+                "provenance_ref": provenance_ref,
+                "results": [item.model_dump(mode="json") for item in results],
+            },
         )
         replay_ref = ArtifactLayout(artifact_root).ref(replay_path)
         legacy_payload = {
@@ -256,7 +285,11 @@ class SshTargetHealthProvider:
             "plan": plan.model_dump(mode="json"),
             "plan_sha256": canonical_json_sha256(plan.model_dump(mode="json")),
             "case_results": [item.model_dump(mode="json") for item in results],
-            "target_provenance": {"transport": "ssh", "host": self.target.host, "workspace": str(self.target.workspace)},
+            "target_provenance": {
+                "transport": "ssh",
+                "host": self.target.host,
+                "workspace": str(self.target.workspace),
+            },
             "started_at": started.isoformat(),
             "completed_at": now().astimezone(timezone.utc).isoformat(),
         }

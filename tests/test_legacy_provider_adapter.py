@@ -62,7 +62,7 @@ def _canonical_provenance(root: Path) -> tuple[str, str]:
     path = root / "targets" / "robot-1" / "provenance" / "verify-target-1.json"
     path.parent.mkdir(parents=True)
     path.write_text(provenance.model_dump_json() + "\n", encoding="utf-8")
-    return f"artifact://targets/robot-1/provenance/verify-target-1.json", sha256_file(path)
+    return "artifact://targets/robot-1/provenance/verify-target-1.json", sha256_file(path)
 
 
 def test_legacy_provider_evidence_adapts_only_with_canonical_v2_provenance(

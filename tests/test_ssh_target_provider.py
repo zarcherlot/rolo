@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rolo.core.artifacts import ArtifactStore
-from rolo.target_ref import SshTargetRef
 from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
+from rolo.target_ref import SshTargetRef
 
 
 class _Result:
@@ -64,7 +63,10 @@ def test_ssh_provider_materializes_main_v2_evidence(tmp_path: Path) -> None:
     assert report.evidence_ref.endswith("adapted-evidence-v2.json")
     evidence = tmp_path / report.evidence_ref.removeprefix("artifact://")
     assert evidence.is_file()
-    assert '"schema_version": "rolo-verification-evidence/v2"' in evidence.read_text(encoding="utf-8")
+    assert (
+        '"schema_version": "rolo-verification-evidence/v2"'
+        in evidence.read_text(encoding="utf-8")
+    )
     assert (tmp_path / "verify/robot-1/runs/run-1/legacy-provider-evidence.json").is_file()
 
 

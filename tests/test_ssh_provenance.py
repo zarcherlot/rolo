@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.target_ref import SshTargetRef
 from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
+from rolo.target_ref import SshTargetRef
 
 
 class _Result:
