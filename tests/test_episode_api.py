@@ -10,6 +10,13 @@ from fastapi.testclient import TestClient
 from rolo.api import app
 from rolo.core.config import get_settings
 from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.stages.diagnose.episode import (
+    DiagnosisEpisode,
+    EpisodeObservation,
+    EpisodePhase,
+    TargetProvenance,
+    publish_episode,
+)
 
 FIXTURE = Path("tests/fixtures/episodes/demo_diff/published/ep-nav-001.json")
 
@@ -140,6 +147,76 @@ def test_episode_api_rejects_unknown_robot_invalid_window_and_unknown_episode(
     assert window.status_code == 422
     assert timezone_missing.status_code == 422
     assert episode.status_code == 404
+
+
+def test_episode_api_adapts_legacy_diagnose_publication_for_vis(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    started_at = datetime(2026, 8, 22, 3, tzinfo=timezone.utc)
+    observations = [
+        EpisodeObservation(
+            sequence=index,
+            phase=phase,
+            observed_at=started_at + timedelta(seconds=index),
+            payload={"internal": "omitted from public projection"},
+            provenance=TargetProvenance(
+                target_id="demo_diff",
+                source="fixture",
+                collector_version="1",
+                collected_at=started_at + timedelta(seconds=index),
+                clock_offset_ms=0,
+            ),
+        )
+        for index, phase in enumerate(EpisodePhase, start=1)
+    ]
+    episode = DiagnosisEpisode(
+        episode_id="legacy-episode",
+        robot_id="demo_diff",
+        started_at=started_at,
+        ended_at=started_at + timedelta(seconds=10),
+        observations=observations,
+    )
+    artifact_root = tmp_path / "artifacts"
+    publish_episode(artifact_root, episode)
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(artifact_root))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/episodes")
+        detail = client.get("/v1/robots/demo_diff/episodes/legacy-episode")
+        revisions = client.get("/v1/robots/demo_diff/episodes/legacy-episode/revisions")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 1
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["verification"] == "NOT_AVAILABLE"
+    assert body["evidence_ids"] == []
+    assert "internal" not in detail.text
+    assert body["event_count"] == len(EpisodePhase)
+    assert revisions.status_code == 200, revisions.text
+    assert revisions.json()["current_revision"] == 1
+
+
+def test_verify_readiness_endpoint_returns_explicit_blocked_when_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "output"))
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        response = client.get("/v1/robots/demo_diff/verify/readiness")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["schema_version"] == "rolo-real-verify-readiness/v2"
+    assert body["status"] == "BLOCKED"
+    assert body["release_authority"] == "none"
+    assert body["blockers"]
 
 
 def test_episode_cohort_api_is_feature_negotiated_and_revision_pinned(
