@@ -95,6 +95,9 @@ Provider 边界。整合 DEV-01 时至少对照：
 每次只移植一个 producer/consumer 闭环。先写兼容/拒绝测试，再移植实现，最后重新导出
 Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence package。
 
+字段级归属和 P1 Verify provider 的暂缓合入结论记录在
+[R5 canonical ownership 审计](../review/POST_R5_CANONICAL_OWNERSHIP_AUDIT.md)。
+
 ## 4. 开发—验证循环
 
 每个 DEV 切片均执行以下顺序：
