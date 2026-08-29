@@ -273,8 +273,12 @@ def _valid_session_ticket(request: Request, settings, *, expected_session: str) 
         return False
     if any(character not in "0123456789abcdef" for character in supplied_signature.casefold()):
         return False
+    try:
+        encoded_bytes = encoded.encode("ascii")
+    except UnicodeEncodeError:
+        return False
     expected_signature = hmac.new(
-        _session_ticket_key(settings, expected_session), encoded.encode("ascii"), "sha256"
+        _session_ticket_key(settings, expected_session), encoded_bytes, "sha256"
     ).hexdigest()
     if not hmac.compare_digest(supplied_signature, expected_signature):
         return False
