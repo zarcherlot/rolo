@@ -11,6 +11,7 @@ import getpass
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -68,7 +69,17 @@ def _machine_id_sha256() -> str:
             value = candidate.read_bytes().strip()
             if value:
                 return hashlib.sha256(value).hexdigest()
-    return hashlib.sha256(os.uname().nodename.encode("utf-8")).hexdigest()
+    # ``os.uname`` is unavailable on Windows development hosts.  The target
+    # provider itself remains Linux/ROS-only, but its identity snapshot should
+    # still be constructible in cross-platform contract tests.
+    return hashlib.sha256(platform.node().encode("utf-8")).hexdigest()
+
+
+def _os_uid() -> int:
+    """Return the POSIX uid, with a deterministic development-host fallback."""
+
+    getuid = getattr(os, "getuid", None)
+    return int(getuid()) if getuid is not None else 0
 
 
 class TargetBinding(BaseModel):
@@ -110,7 +121,7 @@ class TargetBinding(BaseModel):
             workspace_ctime_ns=stat.st_ctime_ns,
             machine_id_sha256=_machine_id_sha256(),
             os_user=getpass.getuser(),
-            os_uid=os.getuid(),
+            os_uid=_os_uid(),
             ros_domain_id=os.environ.get("ROS_DOMAIN_ID") or settings.ros_domain_id,
             rmw_implementation=os.environ.get("RMW_IMPLEMENTATION")
             or settings.ros_rmw_implementation,
@@ -128,7 +139,7 @@ class TargetBinding(BaseModel):
             stat.st_ctime_ns,
             _machine_id_sha256(),
             getpass.getuser(),
-            os.getuid(),
+            _os_uid(),
         )
         expected = (
             self.workspace_device,
