@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from rolo.cli import app
@@ -91,6 +92,17 @@ def test_project_evidence_detects_primary_roots_without_guessing_urdf(tmp_path: 
     assert evidence.launch_roots == [(project / "src/navigation/launch").resolve()]
     assert not hasattr(evidence, "urdf")
     assert evidence.truncated is False
+
+
+def test_adapt_start_exposes_semantic_mapping_controls() -> None:
+    root = get_command(app)
+    start = root.commands["adapt"].commands["start"]
+    options = {option for parameter in start.params for option in parameter.opts}
+
+    assert "--heuristic-agent-mode" in options
+    assert "--heuristic-agent-timeout" in options
+    assert "--heuristic-agent-batch-operations" in options
+    assert "--heuristic-agent-parallelism" in options
 
 
 def test_adapt_start_collapses_enrollment_discovery_and_wiki_into_one_command(

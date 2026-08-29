@@ -77,6 +77,50 @@ def test_state_graph_rejects_contract_binding_mutation() -> None:
         validate_state_graph_baseline(graph, report, bundle)
 
 
+def test_state_graph_prefers_observed_complete_route_over_static_duplicate() -> None:
+    report, bundle = _inputs()
+    candidate = report.operation_candidates[0]
+    observed = candidate.route_evidence[0].model_copy(
+        update={
+            "interface_type": "sensor_msgs/msg/Image",
+            "interface_schema_sha256": "a" * 64,
+            "provider_id": "ros_node:camera",
+            "runtime_revision": "humble",
+            "observed_at": "2026-08-28T00:00:00Z",
+            "evidence_origin": "OBSERVED_RUNTIME",
+            "source": "runtime_probe:ros",
+        }
+    )
+    report = report.model_copy(
+        update={
+            "operation_candidates": [
+                candidate.model_copy(
+                    update={"route_evidence": [candidate.route_evidence[0], observed]}
+                )
+            ]
+        }
+    )
+
+    graph = build_state_graph_baseline(report, bundle)
+    route = next(node for node in graph.nodes if node["kind"] == "route")
+    route_edges = [edge for edge in graph.edges if edge["relation"] == "routes_to"]
+
+    assert route["evidence_origin"] == "OBSERVED_RUNTIME"
+    assert route["interface_type"] == "sensor_msgs/msg/Image"
+    assert route["provider_id"] == "ros_node:camera"
+    assert len(route_edges) == 1
+
+
+def test_state_graph_rejects_route_endpoint_mutation() -> None:
+    report, bundle = _inputs()
+    graph = build_state_graph_baseline(report, bundle)
+    route = next(node for node in graph.nodes if node["kind"] == "route")
+    route["endpoint"] = "/different-target"
+
+    with pytest.raises(ValueError, match="route binding mismatch"):
+        validate_state_graph_baseline(graph, report, bundle)
+
+
 def test_state_graph_ignores_deferred_candidate_semantics_on_shared_route() -> None:
     report, bundle = _inputs()
     bundled = report.operation_candidates[0]
