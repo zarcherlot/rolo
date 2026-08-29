@@ -116,6 +116,12 @@ Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence
 它只生成 `METADATA_ONLY`、`UNVERIFIED`、不可变 Episode，不改变 release authority；后续
 Verify provider/materializer 仍需与本分支 canonical producer 做字段级对照后再接入。
 
+DEV-03 的首个身份边界切片已在独立分支实现：`user_identity.py` 持久化当前本地 session，
+Stage Agent 授权恢复继续要求完全匹配当前用户、session、stage、provider、executor、plan
+和输入摘要；声明了错误 stage 的插件在创建时拒绝。该切片不改变 canonical real-target 或
+evidence v2 authority，合入前须通过成功、跨用户、跨 session、provider 越界和伪造 session
+测试。
+
 当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
 P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
 

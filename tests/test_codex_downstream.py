@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rolo.agent_provider import create_stage_agent_executor
+import pytest
+
+from rolo.agent_provider import create_stage_agent_executor, register_agent_executor
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings
 from rolo.harness import CodexHarness, available_harnesses, configured_harness, register_harness
@@ -174,6 +176,25 @@ def test_provider_factory_exposes_builtin_codex_stage_executor(tmp_path: Path) -
         "codex", artifacts=ArtifactStore(tmp_path), settings=settings, stage="diagnose"
     )
     assert isinstance(executor, CodexStageAgentExecutor)
+
+
+def test_stage_executor_rejects_plugin_bound_to_different_stage() -> None:
+    class WrongStageExecutor:
+        stage = "verify"
+
+        def execute_stage(self, task, *, workspace, on_output=None):
+            del task, workspace, on_output
+            return {}
+
+    name = "wrong-stage-plugin-dev03"
+    register_agent_executor(name, lambda **_kwargs: WrongStageExecutor())
+    with pytest.raises(ValueError, match="bound to stage"):
+        create_stage_agent_executor(
+            name,
+            artifacts=object(),
+            settings=object(),
+            stage="diagnose",
+        )
 
 
 def test_codex_harness_creates_policy_without_overwriting_user_file(tmp_path: Path) -> None:

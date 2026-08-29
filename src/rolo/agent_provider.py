@@ -86,6 +86,12 @@ def create_stage_agent_executor(name: str, **kwargs: Any) -> Any:
         raise ValueError(
             f"agent executor {name!r} does not implement the downstream Stage Agent SPI"
         )
+    declared_stage = getattr(executor, "stage", None)
+    if declared_stage is not None and declared_stage != kwargs["stage"]:
+        raise ValueError(
+            f"agent executor {name!r} is bound to stage {declared_stage!r}, "
+            f"not {kwargs['stage']!r}"
+        )
     return executor
 
 

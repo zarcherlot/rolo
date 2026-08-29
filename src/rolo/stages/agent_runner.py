@@ -8,7 +8,6 @@ each stage after execution.
 
 from __future__ import annotations
 
-import getpass
 import hashlib
 import inspect
 import json
@@ -28,6 +27,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import canonical_json_sha256, sha256_file
 from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
+from rolo.user_identity import current_user_principal, current_user_session_fingerprint
 
 StageName = Literal["diagnose", "verify"]
 OutputCallback = Callable[[str, str], None]
@@ -38,19 +38,26 @@ _SECRET_ASSIGNMENT = re.compile(
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 
 
-def _current_actor_identity() -> dict[str, object]:
-    session_source = next(
-        (
-            os.environ[name]
-            for name in ("ROLO_SESSION_ID", "XDG_SESSION_ID", "WT_SESSION", "TERM_SESSION_ID")
-            if os.environ.get(name)
-        ),
-        f"local-user-{os.getuid()}",
-    )
+def _current_actor_identity(state_root: Path | None = None) -> dict[str, object]:
+    """Capture the current user and durable local session for authorization binding."""
+
+    uid = getattr(os, "getuid", lambda: 0)()
+    if state_root is None:
+        session_source = next(
+            (
+                os.environ[name]
+                for name in ("ROLO_SESSION_ID", "XDG_SESSION_ID", "WT_SESSION", "TERM_SESSION_ID")
+                if os.environ.get(name)
+            ),
+            f"local-user-{uid}",
+        )
+        session_id = hashlib.sha256(session_source.encode("utf-8")).hexdigest()
+    else:
+        session_id = current_user_session_fingerprint(state_root)
     return {
-        "os_user": getpass.getuser(),
-        "os_uid": os.getuid(),
-        "session_id": hashlib.sha256(session_source.encode("utf-8")).hexdigest(),
+        "os_user": current_user_principal(),
+        "os_uid": uid,
+        "session_id": session_id,
     }
 
 
@@ -659,7 +666,7 @@ class StageAgentRunner:
                     )
                 request["status"] = "APPROVED"
                 request["approved_at"] = datetime.now(timezone.utc).isoformat()
-                request["approved_by"] = _current_actor_identity()
+                request["approved_by"] = _current_actor_identity(self.artifacts.root)
                 atomic_write_text(
                     request_path,
                     json.dumps(request, ensure_ascii=False, indent=2, default=str) + "\n",
@@ -691,7 +698,7 @@ class StageAgentRunner:
                 "task_sha256": canonical_json_sha256(task_payload),
                 "plan_sha256": task.plan_sha256,
                 "input_sha256": dict(task.input_sha256),
-                "actor": _current_actor_identity(),
+                "actor": _current_actor_identity(self.artifacts.root),
                 "idempotency_key": selected_idempotency_key,
                 "created_at": started.isoformat(),
                 "expires_at": (started + timedelta(minutes=15)).isoformat(),
@@ -905,7 +912,7 @@ class StageAgentRunner:
                 raise ValueError("authorization request task digest does not match the task")
             if request.get("input_sha256") != task.input_sha256:
                 raise ValueError("authorization request input digests do not match the task")
-            if request.get("actor") != _current_actor_identity():
+            if request.get("actor") != _current_actor_identity(self.artifacts.root):
                 raise ValueError("authorization request actor or session does not match")
         expires_at = request.get("expires_at")
         if not isinstance(expires_at, str):
