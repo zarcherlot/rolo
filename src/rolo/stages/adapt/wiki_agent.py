@@ -496,6 +496,13 @@ class CodexWikiInsightProvider:
             for key, value in os.environ.items()
             if key.upper() in allowed
         }
+        for proxy_key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+            explicit = os.environ.get(proxy_key)
+            fallback = os.environ.get(proxy_key.lower())
+            if explicit is not None:
+                environment[proxy_key] = explicit
+            elif fallback is not None:
+                environment[proxy_key] = fallback
         if "HOME" not in environment and environment.get("USERPROFILE"):
             environment["HOME"] = environment["USERPROFILE"]
         if "CODEX_HOME" not in environment and environment.get("HOME"):

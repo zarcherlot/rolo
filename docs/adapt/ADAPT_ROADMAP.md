@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-29 -->
 
 # Adapt 路线图
 
@@ -32,6 +32,10 @@
 - v1/v2 Registry 的身份、digest、兼容窗口和回退路径可重复验证；
 - Provider-neutral Conformance Kit 能覆盖新增 Provider，不扩大 Agent 权限；
 - canary 期间所有失败都能保持 fail-closed，并保留可审计 artifact。
+
+后续开发的切片顺序、并行分支整合边界、WSL rehearsal、物理真机 E4、canary 决策和回退
+统一按 [后续开发整合与真机验证 RUNBOOK](../target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)
+执行。当前固定 WSL/Linux/ROS 软件目标证据为 `E3`；完成真实物理目标闭环前不得记为 `E4`。
 
 ## 历史计划
 

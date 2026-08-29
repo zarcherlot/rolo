@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "VerificationCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-verification-case-result/v1",
+          "default": "rolo-verification-case-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "TIMEOUT",
+            "CANCELLED",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "audit_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audit Ref"
+        },
+        "provenance_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance Ref"
+        },
+        "rollback_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PERFORMED",
+                "NOT_REQUIRED",
+                "NOT_PERFORMED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Status"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "operation",
+        "status",
+        "message"
+      ],
+      "title": "VerificationCaseResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Independent evidence envelope required by a real Verify provider.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-evidence/v2",
+      "default": "rolo-verification-evidence/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "target_provenance_ref": {
+      "pattern": "^artifact://",
+      "title": "Target Provenance Ref",
+      "type": "string"
+    },
+    "target_provenance_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Provenance Sha256",
+      "type": "string"
+    },
+    "target_provenance_schema_version": {
+      "default": "rolo-target-provenance/v1",
+      "enum": [
+        "rolo-target-provenance/v1",
+        "rolo-target-provenance/v2"
+      ],
+      "title": "Target Provenance Schema Version",
+      "type": "string"
+    },
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/VerificationCaseResult"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Case Results",
+      "type": "array"
+    },
+    "safe_stop": {
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Safe Stop",
+      "type": "string"
+    },
+    "rollback": {
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Rollback",
+      "type": "string"
+    },
+    "replay_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replay Ref"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "target_provenance_ref",
+    "target_provenance_sha256",
+    "case_results",
+    "safe_stop",
+    "rollback"
+  ],
+  "title": "VerificationEvidencePackage",
+  "type": "object"
+}

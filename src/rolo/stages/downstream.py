@@ -55,15 +55,42 @@ class DownstreamStageService:
         self.stage = stage
         self.artifacts = ArtifactStore(settings.rolo_artifact_dir)
 
-    def build_task(self, robot_id: str) -> StageAgentTask:
+    def build_task(
+        self,
+        robot_id: str,
+        *,
+        provider: str | None = None,
+        executor: str | None = None,
+        model: str | None = None,
+    ) -> StageAgentTask:
+        selected_provider = provider or self.settings.coding_agent_provider
+        selected_executor = executor or self.settings.coding_agent_executor
+        selected_model = model if model is not None else self.settings.coding_agent_model
         kwargs = {
-            "provider": self.settings.coding_agent_provider,
-            "executor": self.settings.coding_agent_executor,
-            "model": self.settings.coding_agent_model,
+            "provider": selected_provider,
+            "executor": selected_executor,
+            "model": selected_model,
         }
+        additional_input_refs: dict[str, str] = {}
+        if selected_executor.strip().lower() == "local-target":
+            from rolo.stages.real_target import publish_target_binding
+
+            additional_input_refs["target_binding"] = publish_target_binding(
+                self.artifacts, self.settings, robot_id
+            )
         if self.stage == "diagnose":
-            return build_diagnosis_task(self.artifacts.root, robot_id, **kwargs)
-        return build_verification_task(self.artifacts.root, robot_id, **kwargs)
+            return build_diagnosis_task(
+                self.artifacts.root,
+                robot_id,
+                additional_input_refs=additional_input_refs,
+                **kwargs,
+            )
+        return build_verification_task(
+            self.artifacts.root,
+            robot_id,
+            additional_input_refs=additional_input_refs,
+            **kwargs,
+        )
 
     def run(
         self,

@@ -11,13 +11,15 @@ import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.core.hashing import sha256_file
+from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.downstream_tools import DownstreamToolConsumer, DownstreamToolOutcome
 
 
@@ -110,6 +112,48 @@ class VerificationPlan(BaseModel):
         return self
 
 
+class VerificationReplayCase(BaseModel):
+    """One deterministic invocation captured for offline Verify replay."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{0,127}$")
+    operation: str = Field(min_length=1, max_length=256)
+    status: Literal["SUCCEEDED", "TIMEOUT", "CANCELLED", "ERROR"] = "SUCCEEDED"
+    result: dict[str, JsonValue] = Field(default_factory=dict)
+    message: str = Field(default="replayed invocation", min_length=1, max_length=2_000)
+    audit_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+
+class VerificationReplayFixture(BaseModel):
+    """Replay input independent of a target machine or live Tool Gateway."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-replay/v1"] = "rolo-verification-replay/v1"
+    fixture_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{0,127}$")
+    robot_id: str = Field(min_length=1, max_length=128)
+    target_provenance_ref: str = Field(pattern=r"^artifact://")
+    target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1"
+    cases: list[VerificationReplayCase] = Field(min_length=1, max_length=256)
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
+    replay_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+    @field_validator("cases")
+    @classmethod
+    def validate_unique_case_ids(
+        cls, value: list[VerificationReplayCase]
+    ) -> list[VerificationReplayCase]:
+        ids = [item.case_id for item in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("verification replay case IDs must be unique")
+        return value
+
+
 class VerificationCaseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,6 +165,8 @@ class VerificationCaseResult(BaseModel):
     status: Literal["PASS", "FAIL", "TIMEOUT", "CANCELLED", "ERROR"]
     message: str = Field(min_length=1, max_length=2_000)
     audit_ref: str | None = None
+    provenance_ref: str | None = None
+    rollback_status: Literal["PERFORMED", "NOT_REQUIRED", "NOT_PERFORMED"] | None = None
     observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -135,6 +181,93 @@ class VerificationRunReport(BaseModel):
     evidence_ref: str
     started_at: datetime
     completed_at: datetime
+
+
+class VerificationRegressionReport(BaseModel):
+    """Rolo-owned result summary paired one-to-one with a v2 evidence package."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-regression-report/v1"] = (
+        "rolo-verification-regression-report/v1"
+    )
+    robot_id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=256)
+    status: Literal["PASS", "FAIL", "CANCELLED", "INCONCLUSIVE"]
+    case_results: list[VerificationCaseResult] = Field(min_length=1, max_length=256)
+    release_authority: Literal["none"] = "none"
+
+
+class VerificationEvidencePackage(BaseModel):
+    """Independent evidence envelope required by a real Verify provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-evidence/v2"] = "rolo-verification-evidence/v2"
+    robot_id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=256)
+    target_provenance_ref: str = Field(pattern=r"^artifact://")
+    target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1"
+    case_results: list[VerificationCaseResult] = Field(min_length=1, max_length=256)
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
+    replay_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+    @field_validator("case_results")
+    @classmethod
+    def validate_unique_case_ids(
+        cls, value: list[VerificationCaseResult]
+    ) -> list[VerificationCaseResult]:
+        ids = [item.case_id for item in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("verification evidence case IDs must be unique")
+        return value
+
+
+def validate_structured_verification_evidence(
+    payload: Mapping[str, object],
+    *,
+    robot_id: str | None = None,
+    artifact_root: Path | None = None,
+) -> VerificationEvidencePackage:
+    """Validate the provider-owned evidence section without trusting Agent prose."""
+
+    evidence = VerificationEvidencePackage.model_validate(payload)
+    if robot_id is not None and evidence.robot_id != robot_id:
+        raise ValueError("verification evidence robot identity mismatch")
+    if artifact_root is not None:
+        provenance_path = resolve_artifact_ref(artifact_root, evidence.target_provenance_ref)
+        if (
+            not provenance_path.is_file()
+            or sha256_file(provenance_path) != evidence.target_provenance_sha256
+        ):
+            raise ValueError("verification target provenance hash mismatch")
+        if evidence.target_provenance_schema_version == "rolo-target-provenance/v2":
+            from rolo.stages.diagnose.episode import TargetProvenance
+
+            provenance = TargetProvenance.model_validate_json(
+                provenance_path.read_text(encoding="utf-8")
+            )
+            if provenance.schema_version != "rolo-target-provenance/v2":
+                raise ValueError("verification target provenance schema mismatch")
+            if provenance.target_id != evidence.robot_id:
+                raise ValueError("verification target provenance identity mismatch")
+            binding_path = resolve_artifact_ref(
+                artifact_root, provenance.target_binding_ref or ""
+            )
+            if (
+                not binding_path.is_file()
+                or sha256_file(binding_path) != provenance.target_binding_sha256
+            ):
+                raise ValueError("verification target binding hash mismatch")
+        if evidence.replay_ref is not None and not resolve_artifact_ref(
+            artifact_root, evidence.replay_ref
+        ).is_file():
+            raise ValueError("verification replay artifact is missing")
+    return evidence
 
 
 def _lookup(payload: Mapping[str, Any], path: str) -> tuple[bool, Any]:
@@ -172,6 +305,122 @@ def evaluate_oracle(
     return True, "numeric value is within bounds"
 
 
+def run_verification_replay(
+    plan: VerificationPlan,
+    fixture: VerificationReplayFixture,
+    *,
+    artifacts: ArtifactStore,
+    cancel_event: threading.Event | None = None,
+    clock: Callable[[], datetime] | None = None,
+    run_id: str | None = None,
+) -> VerificationRunReport:
+    """Run a deterministic Verify provider against captured invocation results."""
+
+    if fixture.robot_id != plan.robot_id:
+        raise ValueError("verification replay fixture robot identity mismatch")
+    provenance_path = resolve_artifact_ref(artifacts.root, fixture.target_provenance_ref)
+    if (
+        not provenance_path.is_file()
+        or sha256_file(provenance_path) != fixture.target_provenance_sha256
+    ):
+        raise ValueError("verification replay target provenance hash mismatch")
+    if fixture.replay_ref is not None and not resolve_artifact_ref(
+        artifacts.root, fixture.replay_ref
+    ).is_file():
+        raise ValueError("verification replay source artifact is missing")
+    now = clock or (lambda: datetime.now(timezone.utc))
+    started = now().astimezone(timezone.utc)
+    selected_run = run_id or f"verify-replay-{uuid4().hex}"
+    captured = {item.case_id: item for item in fixture.cases}
+    results: list[VerificationCaseResult] = []
+    for case in plan.cases:
+        if cancel_event is not None and cancel_event.is_set():
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="CANCELLED",
+                    message="verification replay cancellation requested",
+                )
+            )
+            break
+        if (now().astimezone(timezone.utc) - started).total_seconds() >= plan.max_elapsed_s:
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="TIMEOUT",
+                    message="verification replay elapsed-time budget exhausted",
+                )
+            )
+            break
+        replay = captured.get(case.case_id)
+        if replay is None or replay.operation != case.operation:
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="ERROR",
+                    message="verification replay case is missing or operation mismatched",
+                    provenance_ref=fixture.target_provenance_ref,
+                )
+            )
+            continue
+        if replay.status != "SUCCEEDED":
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status=replay.status if replay.status in {"TIMEOUT", "CANCELLED"} else "ERROR",
+                    message=replay.message,
+                    audit_ref=replay.audit_ref,
+                    provenance_ref=fixture.target_provenance_ref,
+                )
+            )
+            continue
+        passed, message = evaluate_oracle(case.oracle, replay.result)
+        results.append(
+            VerificationCaseResult(
+                case_id=case.case_id,
+                operation=case.operation,
+                status="PASS" if passed else "FAIL",
+                message=message,
+                audit_ref=replay.audit_ref,
+                provenance_ref=fixture.target_provenance_ref,
+            )
+        )
+    completed = now().astimezone(timezone.utc)
+    status: Literal["PASS", "FAIL", "CANCELLED"] = "PASS"
+    if any(item.status == "CANCELLED" for item in results):
+        status = "CANCELLED"
+    elif any(item.status != "PASS" for item in results):
+        status = "FAIL"
+    evidence = VerificationEvidencePackage(
+        robot_id=plan.robot_id,
+        run_id=selected_run,
+        target_provenance_ref=fixture.target_provenance_ref,
+        target_provenance_sha256=fixture.target_provenance_sha256,
+        target_provenance_schema_version=fixture.target_provenance_schema_version,
+        case_results=results,
+        safe_stop=fixture.safe_stop,
+        rollback=fixture.rollback,
+        replay_ref=fixture.replay_ref,
+    )
+    evidence_path = artifacts.write_json(
+        f"verify/{plan.robot_id}/runs/{selected_run}/verification_evidence.json",
+        evidence.model_dump(mode="json"),
+    )
+    return VerificationRunReport(
+        run_id=selected_run,
+        robot_id=plan.robot_id,
+        status=status,
+        case_results=results,
+        evidence_ref=ArtifactLayout(artifacts.root).ref(evidence_path),
+        started_at=started,
+        completed_at=completed,
+    )
+
+
 def run_verification_plan(
     plan: VerificationPlan,
     *,
@@ -180,6 +429,13 @@ def run_verification_plan(
     cancel_event: threading.Event | None = None,
     clock: Callable[[], datetime] | None = None,
     run_id: str | None = None,
+    target_provenance_ref: str,
+    target_provenance_sha256: str,
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1",
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED",
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED",
 ) -> VerificationRunReport:
     """Execute bounded read-only cases and persist one tamper-evident evidence artifact."""
 
@@ -235,6 +491,7 @@ def run_verification_plan(
                         operation=case.operation,
                         status=status,
                         message=outcome.message,
+                        provenance_ref=target_provenance_ref,
                     )
                 )
                 continue
@@ -246,6 +503,10 @@ def run_verification_plan(
                     status="PASS" if passed else "FAIL",
                     message=message,
                     audit_ref=outcome.invocation.audit_ref,
+                    provenance_ref=target_provenance_ref,
+                    rollback_status=(
+                        "NOT_REQUIRED" if rollback == "NOT_REQUIRED" else None
+                    ),
                 )
             )
         closed = consumer.close()
@@ -264,14 +525,31 @@ def run_verification_plan(
         status = "CANCELLED"
     elif any(item.status != "PASS" for item in results):
         status = "FAIL"
+    replay_path = artifacts.write_json(
+        f"verify/{plan.robot_id}/runs/{selected_run}/live-replay.json",
+        {
+            "schema_version": "rolo-verification-live-replay/v1",
+            "robot_id": plan.robot_id,
+            "run_id": selected_run,
+            "read_only": True,
+            "case_results": [item.model_dump(mode="json") for item in results],
+        },
+    )
+    evidence = VerificationEvidencePackage(
+        robot_id=plan.robot_id,
+        run_id=selected_run,
+        target_provenance_ref=target_provenance_ref,
+        target_provenance_sha256=target_provenance_sha256,
+        target_provenance_schema_version=target_provenance_schema_version,
+        case_results=results,
+        safe_stop=safe_stop,
+        rollback=rollback,
+        replay_ref=ArtifactLayout(artifacts.root).ref(replay_path),
+    )
     relative = f"verify/{plan.robot_id}/runs/{selected_run}/verification_evidence.json"
     evidence_path = artifacts.write_json(
         relative,
-        {
-            "schema_version": "rolo-verification-evidence/v1",
-            "plan": plan.model_dump(mode="json"),
-            "results": [item.model_dump(mode="json") for item in results],
-        },
+        evidence.model_dump(mode="json"),
     )
     return VerificationRunReport(
         run_id=selected_run,

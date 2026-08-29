@@ -1,6 +1,7 @@
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -12,15 +13,79 @@ from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.conformance import (
     AdapterPromotionService,
+    _validate_native_tool_bindings,
     validate_adapter_handoff,
 )
 from rolo.stages.adapt.discovery import DiscoveryService, load_report
-from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun
+from rolo.stages.adapt.models import AdapterAgentResult, AdapterAgentRun, AdaptGateReport
 from rolo.stages.adapt.operation_registry import (
     canonical_operation_registry,
     required_adapter_agent_conformance_operations,
 )
 from rolo.stages.adapt.routes import candidate_route_observed
+
+
+def _native_handoff(**updates: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "native_tool_rollout_ref": None,
+        "native_tool_rollout_sha256": None,
+        "native_tool_summary_ref": None,
+        "native_tool_summary_sha256": None,
+        "native_tool_gate_ref": None,
+        "native_tool_gate_sha256": None,
+        "native_tool_execution_parity_ref": None,
+        "native_tool_execution_parity_sha256": None,
+        "native_tool_session_id": None,
+        "robot_id": "robot-1",
+        "source_agent_run_id": "run-1",
+    }
+    values.update(updates)
+    return SimpleNamespace(**values)
+
+
+def test_native_execution_parity_reference_and_digest_are_atomic(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="execution parity reference and hash"):
+        _validate_native_tool_bindings(
+            tmp_path,
+            _native_handoff(native_tool_execution_parity_ref="artifact://parity.json"),
+        )
+
+    with pytest.raises(ValueError, match="execution parity reference and hash"):
+        _validate_native_tool_bindings(
+            tmp_path,
+            _native_handoff(native_tool_execution_parity_sha256="a" * 64),
+        )
+
+
+def test_native_execution_parity_cannot_float_without_rollout_and_summary(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="execution parity requires rollout and summary refs"):
+        _validate_native_tool_bindings(
+            tmp_path,
+            _native_handoff(
+                native_tool_execution_parity_ref="artifact://parity.json",
+                native_tool_execution_parity_sha256="a" * 64,
+            ),
+        )
+
+
+def test_adapt_gate_report_reads_legacy_validation_scope() -> None:
+    report = AdaptGateReport.model_validate(
+        {
+            "schema_version": "robot-adapt-gate/v1",
+            "run_id": "run-legacy",
+            "robot_id": "robot-1",
+            "discovery_id": "disc-1",
+            "status": "PASSED",
+            "checks": [],
+            "error": None,
+            "validation_scope": "TARGET_RUNTIME_READONLY",
+        }
+    )
+
+    assert report.status == "PASSED"
+    assert "validation_scope" not in report.model_dump(mode="json")
 
 
 def _prepare_promotion(

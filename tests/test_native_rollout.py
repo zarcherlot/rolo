@@ -136,3 +136,31 @@ def test_canary_gate_allows_environment_limited_timeout_but_blocks_real_timeout(
     gate = evaluate_native_tool_canary_gate(blocked)
     assert gate.status == "FAIL"
     assert "timed out" in gate.blocking_reasons[0]
+
+
+def test_selected_native_gate_blocks_zero_calls_and_execution_parity_diff() -> None:
+    decision = decide_native_tool_rollout(
+        robot_id="robot-a",
+        run_id="run-1",
+        mode="shadow",
+        catalog=reduced_agent_native_catalog(),
+    )
+    empty = summarize_native_tool_run(decision, [])
+    empty_gate = evaluate_native_tool_canary_gate(empty)
+    assert empty_gate.status == "FAIL"
+    assert "no calls" in empty_gate.blocking_reasons[0]
+
+    result = _result(NativeToolStatus.SUCCEEDED).model_copy(
+        update={"argv": ["uname", "-a"], "stdout": "native\n"}
+    )
+    summary = summarize_native_tool_run(decision, [result])
+    parity = compare_native_to_direct(
+        result,
+        direct_argv=["uname", "-a"],
+        direct_stdout="direct\n",
+        direct_stderr="",
+        direct_return_code=0,
+    )
+    gate = evaluate_native_tool_canary_gate(summary, [parity])
+    assert gate.status == "FAIL"
+    assert "parity" in gate.blocking_reasons[0]

@@ -103,6 +103,7 @@ from rolo.stages.adapt.slice_observability import SliceStabilityReport
 from rolo.stages.adapt.workset import TargetOperationSlice
 from rolo.stages.agent_runner import (
     StageAgentRun,
+    cancel_stage_run,
     list_stage_authorization_requests,
 )
 from rolo.stages.contracts import PipelineAssessment, StageName
@@ -726,6 +727,27 @@ async def run_robot_verify(
     robot_id: str, payload: StageRunPayload, request: Request
 ) -> StageAgentRun:
     return await _run_downstream_stage(robot_id, "verify", payload, request)
+
+
+@app.post("/v1/robots/{robot_id}/{stage}/runs/{run_id}/cancel", response_model=StageAgentRun)
+async def cancel_robot_stage(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    run_id: str,
+    request: Request,
+) -> StageAgentRun:
+    """Persist cancellation for one exact downstream run."""
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return cancel_stage_run(runtime.settings.rolo_artifact_dir, stage, robot_id, run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get(

@@ -337,6 +337,10 @@ class AdapterHandoff(BaseModel):
     native_tool_summary_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     native_tool_gate_ref: str | None = None
     native_tool_gate_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    native_tool_execution_parity_ref: str | None = None
+    native_tool_execution_parity_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     native_tool_session_id: str | None = Field(default=None, min_length=1, max_length=128)
     release_ref: str
     release_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -391,6 +395,16 @@ class AdaptGateReport(BaseModel):
     error: str | None = None
     checked_at: datetime = Field(default_factory=utc_now)
 
+    @model_validator(mode="before")
+    @classmethod
+    def discard_legacy_validation_scope(cls, value: Any) -> Any:
+        """Read v1 gate artifacts written before validation scope moved to conformance."""
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        migrated.pop("validation_scope", None)
+        return migrated
+
 
 class AdaptRunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -437,6 +451,7 @@ class AdapterAgentRun(BaseModel):
     native_tool_rollout_ref: str | None = None
     native_tool_summary_ref: str | None = None
     native_tool_gate_ref: str | None = None
+    native_tool_execution_parity_ref: str | None = None
     native_tool_session_id: str | None = None
     thread_id: str | None = None
     event_count: int = 0

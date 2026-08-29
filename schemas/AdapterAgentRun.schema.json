@@ -129,6 +129,18 @@
       "default": null,
       "title": "Native Tool Gate Ref"
     },
+    "native_tool_execution_parity_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Tool Execution Parity Ref"
+    },
     "native_tool_session_id": {
       "anyOf": [
         {

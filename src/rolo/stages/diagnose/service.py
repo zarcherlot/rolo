@@ -19,6 +19,31 @@ from rolo.stages.downstream_tools import (
 from rolo.stages.handoffs import validate_diagnosis_handoff
 
 
+def diagnosis_outcome_status(
+    artifact_root: Path, robot_id: str, report: dict[str, object]
+) -> tuple[StageStatus, str | None]:
+    """Require a real, complete target Episode before Diagnose can COMPLETE."""
+
+    structured = validate_structured_diagnosis_report(report, robot_id=robot_id)
+    if structured.decision != "COMMIT":
+        return StageStatus.DEGRADED, f"Diagnosis decision is {structured.decision}"
+    if len(structured.episode_refs) != 1:
+        return StageStatus.DEGRADED, "Diagnosis must bind exactly one immutable target Episode"
+    reference = structured.episode_refs[0]
+    try:
+        from rolo.stages.diagnose.episode import validate_published_episode
+
+        episode = validate_published_episode(artifact_root, reference, robot_id=robot_id)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        return StageStatus.DEGRADED, f"Diagnosis Episode is not real and complete: {exc}"
+    if episode.status != "COMPLETE" or any(
+        observation.provenance.schema_version != "rolo-target-provenance/v2"
+        for observation in episode.observations
+    ):
+        return StageStatus.DEGRADED, "Diagnosis Episode lacks complete v2 target provenance"
+    return StageStatus.COMPLETE, None
+
+
 def create_diagnosis_tool_consumer(
     *,
     artifact_root: Path,
@@ -44,6 +69,7 @@ def build_diagnosis_task(
     provider: str,
     executor: str,
     model: str | None = None,
+    additional_input_refs: dict[str, str] | None = None,
 ) -> StageAgentTask:
     """Build a digest-bound Diagnose task without invoking an Agent."""
     layout = ArtifactLayout(artifact_root)
@@ -56,6 +82,11 @@ def build_diagnosis_task(
         "diagnosis_inputs": layout.ref(inputs),
         "adapter_latest": layout.ref(layout.stage_latest_index("adapt", robot_id)),
     }
+    for name, reference in (additional_input_refs or {}).items():
+        if name in input_refs:
+            raise ValueError(f"duplicate diagnosis task input name: {name}")
+        resolve_artifact_ref(artifact_root, reference)
+        input_refs[name] = reference
     input_sha256 = {
         name: sha256_file(resolve_artifact_ref(artifact_root, reference))
         for name, reference in input_refs.items()
@@ -107,6 +138,7 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
         )
     handoff_valid = False
     handoff_error: str | None = None
+    handoff_status = StageStatus.NOT_STARTED
     if diagnosis_handoff.is_file():
         try:
             handoff = validate_diagnosis_handoff(artifact_root, robot_id)
@@ -120,16 +152,20 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
                 report = json.loads(report_path.read_text(encoding="utf-8"))
                 if not isinstance(report, dict):
                     raise ValueError("diagnosis report must be a JSON object")
-                validate_structured_diagnosis_report(report, robot_id=robot_id)
                 handoff_valid = True
+                handoff_status, handoff_error = diagnosis_outcome_status(
+                    artifact_root, robot_id, report
+                )
         except (OSError, ValueError) as exc:
             handoff_error = str(exc)
     return StageAssessment(
         stage=StageName.DIAGNOSE,
         robot_id=robot_id,
-        status=StageStatus.COMPLETE if handoff_valid else StageStatus.NOT_STARTED,
+        status=handoff_status if handoff_valid else StageStatus.NOT_STARTED,
         summary=(
-            "A frozen diagnosis configuration is available"
+            "A real target Episode and frozen diagnosis configuration are available"
+            if handoff_valid and handoff_status == StageStatus.COMPLETE
+            else "Diagnosis artifacts exist but the target outcome is not conclusive"
             if handoff_valid
             else "User constraints, closed-loop diagnosis, and tuning have not completed"
         ),
@@ -138,6 +174,10 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
             **({"agent_inputs": str(agent_inputs)} if agent_inputs.is_file() else {}),
             **({"handoff": str(diagnosis_handoff)} if diagnosis_handoff.is_file() else {}),
         },
-        blockers=[] if handoff_valid else [handoff_error or "Missing diagnosis handoff"],
+        blockers=(
+            []
+            if handoff_valid and handoff_status == StageStatus.COMPLETE
+            else [handoff_error or "Diagnosis did not produce a real conclusive target Episode"]
+        ),
         agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
     )

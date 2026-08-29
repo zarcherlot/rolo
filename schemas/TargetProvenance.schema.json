@@ -1,0 +1,118 @@
+{
+  "additionalProperties": false,
+  "description": "Evidence that an observation was collected from the requested target.",
+  "properties": {
+    "schema_version": {
+      "default": "rolo-target-provenance/v1",
+      "enum": [
+        "rolo-target-provenance/v1",
+        "rolo-target-provenance/v2"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "source": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "collector_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Collector Version",
+      "type": "string"
+    },
+    "collected_at": {
+      "format": "date-time",
+      "title": "Collected At",
+      "type": "string"
+    },
+    "clock_offset_ms": {
+      "title": "Clock Offset Ms",
+      "type": "number"
+    },
+    "target_binding_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Binding Ref"
+    },
+    "target_binding_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Binding Sha256"
+    },
+    "collector_session_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Collector Session Id"
+    },
+    "clock_source": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Clock Source"
+    },
+    "monotonic_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Monotonic Ns"
+    }
+  },
+  "required": [
+    "target_id",
+    "source",
+    "collector_version",
+    "collected_at",
+    "clock_offset_ms"
+  ],
+  "title": "TargetProvenance",
+  "type": "object"
+}

@@ -1,0 +1,103 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable identity snapshot reviewed by the Stage authorization request.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-local-target-binding/v1",
+      "default": "rolo-local-target-binding/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Profile Sha256",
+      "type": "string"
+    },
+    "workspace": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Workspace",
+      "type": "string"
+    },
+    "workspace_device": {
+      "minimum": 0,
+      "title": "Workspace Device",
+      "type": "integer"
+    },
+    "workspace_inode": {
+      "minimum": 0,
+      "title": "Workspace Inode",
+      "type": "integer"
+    },
+    "workspace_ctime_ns": {
+      "minimum": 0,
+      "title": "Workspace Ctime Ns",
+      "type": "integer"
+    },
+    "machine_id_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Machine Id Sha256",
+      "type": "string"
+    },
+    "os_user": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Os User",
+      "type": "string"
+    },
+    "os_uid": {
+      "minimum": 0,
+      "title": "Os Uid",
+      "type": "integer"
+    },
+    "ros_domain_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ros Domain Id"
+    },
+    "rmw_implementation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rmw Implementation"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "profile_sha256",
+    "workspace",
+    "workspace_device",
+    "workspace_inode",
+    "workspace_ctime_ns",
+    "machine_id_sha256",
+    "os_user",
+    "os_uid",
+    "captured_at"
+  ],
+  "title": "TargetBinding",
+  "type": "object"
+}

@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "description": "One deterministic invocation captured for offline Verify replay.",
+  "properties": {
+    "case_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "operation": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "status": {
+      "default": "SUCCEEDED",
+      "enum": [
+        "SUCCEEDED",
+        "TIMEOUT",
+        "CANCELLED",
+        "ERROR"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "result": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Result",
+      "type": "object"
+    },
+    "message": {
+      "default": "replayed invocation",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "audit_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audit Ref"
+    }
+  },
+  "required": [
+    "case_id",
+    "operation"
+  ],
+  "title": "VerificationReplayCase",
+  "type": "object"
+}

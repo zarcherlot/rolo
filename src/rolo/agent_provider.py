@@ -10,7 +10,6 @@ provider/product does not change lifecycle, evidence, approval, or release code.
 from __future__ import annotations
 
 from collections.abc import Callable
-from importlib.metadata import entry_points
 from typing import Any, Protocol
 
 
@@ -58,10 +57,23 @@ def create_agent_executor(name: str, **kwargs: Any) -> AgentExecutor:
 
 def create_stage_agent_executor(name: str, **kwargs: Any) -> Any:
     """Create an executor implementing the Diagnose/Verify stage SPI."""
-    if name.strip().lower() == "codex" and {"artifacts", "settings", "stage"} <= set(kwargs):
+    key = name.strip().lower()
+    if key == "codex" and {"artifacts", "settings", "stage"} <= set(kwargs):
         from rolo.stages.codex_downstream import CodexStageAgentExecutor
 
         return CodexStageAgentExecutor(
+            artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
+        )
+    if key == "fake" and {"artifacts", "settings", "stage"} <= set(kwargs):
+        from rolo.stages.fake_downstream import FakeStageAgentExecutor
+
+        return FakeStageAgentExecutor(
+            artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
+        )
+    if key == "local-target" and {"artifacts", "settings", "stage"} <= set(kwargs):
+        from rolo.stages.real_target import LocalTargetStageExecutor
+
+        return LocalTargetStageExecutor(
             artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
         )
     try:
@@ -92,11 +104,11 @@ def _ensure_builtins() -> None:
         _DEPENDENCY_ADAPTERS["codex"] = CodexDependencyAdapter()
     # Open-source installations can add providers without changing Rolo.  A
     # broken optional plugin is ignored here and reported only when selected.
-    try:
-        discovered = entry_points(group="rolo.agent_executors")
-    except TypeError:  # pragma: no cover - Python 3.10 compatibility
-        discovered = entry_points().select(group="rolo.agent_executors")
-    for item in discovered:
+    from rolo.stages.plugin_manifest import discover_entrypoint_plugins
+
+    for manifest, item in discover_entrypoint_plugins():
+        if not manifest.executor_entrypoint:
+            continue
         key = item.name.strip().lower()
         if key and key not in _EXECUTORS:
             try:

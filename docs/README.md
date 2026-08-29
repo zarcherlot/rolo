@@ -22,8 +22,11 @@
 - [Agent-native Tool 运行边界](adapt/AGENT_NATIVE_TOOLS.md)：受控 Linux/ROS/HW 观测、Native Session 和 v2 Registry 使用方式；
 - [R5 WSL 验证](validation/R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
 - [目标机 / WSL P2 验证](target/TARGET_MACHINE_P2_VALIDATION.md)：目标机证据采集、产物自检和 canary 前置条件；
+- [后续开发与真机验证 RUNBOOK](target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)：分支整合、开发切片、WSL/真机闭环、canary 与回退的统一执行顺序；
+- [目标机 Diagnose/Verify 调试](target/TARGET_MACHINE_DIAGNOSE_VERIFY_DEBUG.md)：RMW、Adapt shadow、Stage handoff 和真实阶段验收步骤；
 - [P0 Adapt 验收](validation/P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
 - [本地 Diagnose/Verify fake 流程](validation/LOCAL_DIAGNOSE_VERIFY_FAKE.md)：不依赖目标机的 contract、授权和 handoff 开发回归。
+- [Stage Agent Plugin Kit](adapt/STAGE_AGENT_PLUGIN_KIT.md)：外部 executor/harness 的 manifest、版本兼容和 conformance 边界。
 
 中文项目入口位于仓库根目录 [README](../README.md)，英文项目介绍见 [README.en.md](README.en.md)。
 面向用户的本地 Adapt 首选入口是 `rolo adapt <本地工作区> --robot <机器人 ID>`；需要

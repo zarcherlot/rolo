@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "VerificationReplayCase": {
+      "additionalProperties": false,
+      "description": "One deterministic invocation captured for offline Verify replay.",
+      "properties": {
+        "case_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "status": {
+          "default": "SUCCEEDED",
+          "enum": [
+            "SUCCEEDED",
+            "TIMEOUT",
+            "CANCELLED",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "result": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Result",
+          "type": "object"
+        },
+        "message": {
+          "default": "replayed invocation",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "audit_ref": {
+          "anyOf": [
+            {
+              "pattern": "^artifact://",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audit Ref"
+        }
+      },
+      "required": [
+        "case_id",
+        "operation"
+      ],
+      "title": "VerificationReplayCase",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Replay input independent of a target machine or live Tool Gateway.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-replay/v1",
+      "default": "rolo-verification-replay/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "fixture_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "title": "Fixture Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "target_provenance_ref": {
+      "pattern": "^artifact://",
+      "title": "Target Provenance Ref",
+      "type": "string"
+    },
+    "target_provenance_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Provenance Sha256",
+      "type": "string"
+    },
+    "target_provenance_schema_version": {
+      "default": "rolo-target-provenance/v1",
+      "enum": [
+        "rolo-target-provenance/v1",
+        "rolo-target-provenance/v2"
+      ],
+      "title": "Target Provenance Schema Version",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/VerificationReplayCase"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "safe_stop": {
+      "default": "NOT_REQUIRED",
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Safe Stop",
+      "type": "string"
+    },
+    "rollback": {
+      "default": "NOT_REQUIRED",
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Rollback",
+      "type": "string"
+    },
+    "replay_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replay Ref"
+    }
+  },
+  "required": [
+    "fixture_id",
+    "robot_id",
+    "target_provenance_ref",
+    "target_provenance_sha256",
+    "cases"
+  ],
+  "title": "VerificationReplayFixture",
+  "type": "object"
+}

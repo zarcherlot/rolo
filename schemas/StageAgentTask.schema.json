@@ -77,6 +77,20 @@
       "pattern": "^[0-9a-f]{64}$",
       "title": "Plan Sha256",
       "type": "string"
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Idempotency Key"
     }
   },
   "required": [

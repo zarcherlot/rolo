@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "VerificationCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "rolo-verification-case-result/v1",
+          "default": "rolo-verification-case-result/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "TIMEOUT",
+            "CANCELLED",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "audit_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audit Ref"
+        },
+        "provenance_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance Ref"
+        },
+        "rollback_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PERFORMED",
+                "NOT_REQUIRED",
+                "NOT_PERFORMED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Status"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "operation",
+        "status",
+        "message"
+      ],
+      "title": "VerificationCaseResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Rolo-owned result summary paired one-to-one with a v2 evidence package.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-regression-report/v1",
+      "default": "rolo-verification-regression-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "CANCELLED",
+        "INCONCLUSIVE"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/VerificationCaseResult"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Case Results",
+      "type": "array"
+    },
+    "release_authority": {
+      "const": "none",
+      "default": "none",
+      "title": "Release Authority",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "run_id",
+    "status",
+    "case_results"
+  ],
+  "title": "VerificationRegressionReport",
+  "type": "object"
+}

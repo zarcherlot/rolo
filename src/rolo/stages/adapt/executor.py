@@ -19,10 +19,12 @@ from uuid import uuid4
 
 from rolo.agent_tools import (
     AgentNativeRunner,
+    AgentNativeToolResult,
     NativeToolBroker,
     NativeToolSession,
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
+    compare_native_to_direct,
     decide_native_tool_rollout,
     evaluate_native_tool_canary_gate,
     native_catalog_sha256,
@@ -31,6 +33,7 @@ from rolo.agent_tools import (
     summarize_native_tool_run,
 )
 from rolo.core.artifacts import ArtifactStore
+from rolo.core.config import get_settings
 from rolo.core.hashing import sha256_file
 from rolo.core.models import utc_now
 from rolo.stages.adapt.discovery import load_report
@@ -84,6 +87,48 @@ def _decode_process_output(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _direct_execution_parity(result: AgentNativeToolResult):
+    """Re-run one deterministic baseline outside the broker for parity evidence."""
+    resolved = shutil.which(result.argv[0])
+    if resolved is None:
+        return compare_native_to_direct(
+            result,
+            direct_argv=result.argv,
+            direct_stdout="",
+            direct_stderr="executable not found",
+            direct_status="UNAVAILABLE",
+        )
+    environment = {
+        key: os.environ[key]
+        for key in ("COMSPEC", "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR")
+        if key in os.environ
+    }
+    process = subprocess.Popen(
+        [resolved, *result.argv[1:]],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=environment,
+        shell=False,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=15)
+        direct_status = "SUCCEEDED" if process.returncode == 0 else "FAILED"
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stdout, stderr = process.communicate()
+        direct_status = "TIMEOUT"
+    return compare_native_to_direct(
+        result,
+        direct_argv=result.argv,
+        direct_stdout=stdout,
+        direct_stderr=stderr,
+        direct_status=direct_status,
+    )
 
 
 def _codex_user_home(environment: dict[str, str], executable: str) -> Path | None:
@@ -359,6 +404,7 @@ class CodexAdaptExecutor:
         boot_context_bytes = len(
             json.dumps(boot_context, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         )
+        runtime_settings = get_settings()
         context_metrics_path = self.artifacts.write_json(
             f"{relative_run_root}/context_metrics.json",
             {
@@ -407,6 +453,17 @@ class CodexAdaptExecutor:
                 "slice_activation_affects_agent_context": (activation.affects_agent_context),
                 "slice_activation_alert_count": len(activation.alerts),
                 "slice_activation_fallback_reason": activation.fallback_reason,
+                # Keep the effective non-secret runtime profile beside the shadow
+                # artifacts so target-specific overrides (for example WSL's
+                # process budget) are auditable rather than inferred from logs.
+                "adapter_max_processes": runtime_settings.rolo_adapter_max_processes,
+                "adapter_max_address_space_bytes": (
+                    runtime_settings.rolo_adapter_max_address_space_bytes
+                ),
+                "ros_domain_id": runtime_settings.ros_domain_id,
+                "ros_rmw_implementation": runtime_settings.ros_rmw_implementation,
+                "coding_agent_provider": runtime_settings.coding_agent_provider,
+                "coding_agent_executor": runtime_settings.coding_agent_executor,
             },
         )
         schema_path.write_text(
@@ -432,12 +489,16 @@ class CodexAdaptExecutor:
         )
         native_rollout_relative = f"{relative_run_root}/native-tool-rollout.json"
         native_summary_relative = f"{relative_run_root}/native-tool-summary.json"
+        native_execution_parity_relative = (
+            f"{relative_run_root}/native-tool-execution-parity.json"
+        )
         self.artifacts.write_json(
             native_rollout_relative,
             native_rollout.model_dump(mode="json"),
         )
         native_broker: NativeToolBroker | None = None
         native_session: NativeToolSession | None = None
+        native_execution_parity = None
         if native_rollout.selected:
             native_session_descriptor = NativeToolSessionDescriptor(
                 session_id=f"native-{run_id}",
@@ -459,6 +520,14 @@ class CodexAdaptExecutor:
                 descriptor=native_session_descriptor,
                 runner=AgentNativeRunner(native_catalog),
                 artifacts=self.artifacts,
+            )
+            baseline_result = native_session.invoke(
+                "native.linux.host.inspect", {"mode": "status"}
+            )
+            native_execution_parity = _direct_execution_parity(baseline_result)
+            self.artifacts.write_json(
+                native_execution_parity_relative,
+                native_execution_parity.model_dump(mode="json"),
             )
             native_broker = NativeToolBroker(native_session)
             native_broker.start()
@@ -531,26 +600,37 @@ class CodexAdaptExecutor:
             session_id=native_session_id,
         )
         self.artifacts.write_json(native_summary_relative, native_summary.model_dump(mode="json"))
-        native_gate = evaluate_native_tool_canary_gate(native_summary)
+        native_gate = evaluate_native_tool_canary_gate(
+            native_summary,
+            (native_execution_parity,) if native_execution_parity is not None else (),
+        )
         native_gate_relative = f"{relative_run_root}/native-tool-gate.json"
         self.artifacts.write_json(native_gate_relative, native_gate.model_dump(mode="json"))
 
         query_metrics_path = workspace / "rolo-agent-query-metrics.json"
-        if query_metrics_path.is_file():
-            try:
+        try:
+            context_metrics = json.loads(context_metrics_path.read_text(encoding="utf-8"))
+            context_metrics.update(
+                native_baseline_call_count=1 if native_execution_parity is not None else 0,
+                native_execution_parity_status=(
+                    native_execution_parity.status
+                    if native_execution_parity is not None
+                    else "NOT_EVALUATED"
+                ),
+            )
+            if query_metrics_path.is_file():
                 query_metrics = json.loads(query_metrics_path.read_text(encoding="utf-8"))
-                context_metrics = json.loads(context_metrics_path.read_text(encoding="utf-8"))
                 context_metrics.update(
                     agent_query_count=int(query_metrics.get("query_count", 0)),
                     agent_inspect_count=int(query_metrics.get("inspect_count", 0)),
                     agent_query_response_bytes=int(query_metrics.get("response_bytes", 0)),
                 )
-                context_metrics_path.write_text(
-                    json.dumps(context_metrics, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-            except (OSError, ValueError, TypeError):
-                pass
+            context_metrics_path.write_text(
+                json.dumps(context_metrics, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, ValueError, TypeError):
+            pass
 
         schema_path.unlink(missing_ok=True)
         event_log_path.write_text(stdout, encoding="utf-8")
@@ -580,6 +660,11 @@ class CodexAdaptExecutor:
             native_tool_rollout_ref=f"artifact://{native_rollout_relative}",
             native_tool_summary_ref=f"artifact://{native_summary_relative}",
             native_tool_gate_ref=f"artifact://{native_gate_relative}",
+            native_tool_execution_parity_ref=(
+                f"artifact://{native_execution_parity_relative}"
+                if native_execution_parity is not None
+                else None
+            ),
             native_tool_session_id=native_session_id,
             thread_id=thread_id,
             event_count=event_count,

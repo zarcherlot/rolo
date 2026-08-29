@@ -49,15 +49,15 @@ _AUTHORITY_KEYS = {
     "release_decision",
     "release_approved",
 }
-_AUTHORITY_VALUES = {"RELEASED", "VERIFIED", "APPROVED", "PUBLISHED"}
+_NO_AUTHORITY_VALUES = {"", "NONE", "NO", "FALSE", "DENIED", "NOT_GRANTED", "UNAUTHORIZED"}
 
 
 def _contains_release_claim(value: object, *, key: str = "") -> bool:
     normalized_key = key.strip().lower()
     if normalized_key in _AUTHORITY_KEYS:
+        if isinstance(value, str):
+            return value.strip().upper() not in _NO_AUTHORITY_VALUES
         return bool(value)
-    if isinstance(value, str) and value.strip().upper() in _AUTHORITY_VALUES:
-        return True
     if isinstance(value, Mapping):
         return any(
             _contains_release_claim(item, key=str(child_key))
@@ -100,7 +100,16 @@ def validate_verification_result(
     # Agent response from becoming a COMPLETE Verify handoff while allowing domain-specific
     # names (checks, cases, artifacts, observations, ...).
     report_markers = {"passed", "failed", "status", "checks", "cases", "results", "outcome"}
-    evidence_markers = {"artifacts", "checks", "evidence", "observations", "logs", "episodes"}
+    evidence_markers = {
+        "artifacts",
+        "checks",
+        "evidence",
+        "observations",
+        "logs",
+        "episodes",
+        "case_results",
+        "target_provenance_ref",
+    }
     if not any(key in regression_report for key in report_markers):
         raise ValueError("regression_report must contain a measurable result marker")
     if not any(key in evidence_package for key in evidence_markers):
@@ -117,6 +126,10 @@ def validate_verification_result(
                 raise ValueError("each case result requires case_id")
             if item.get("status") not in allowed:
                 raise ValueError("each case result has an invalid status")
+    if regression_report.get("schema_version") == "rolo-verification-regression-report/v1":
+        from rolo.stages.verify.acceptance import VerificationRegressionReport
+
+        VerificationRegressionReport.model_validate(regression_report)
 
 
 def _verify_refs(root: Path, pairs: tuple[tuple[str, str], ...]) -> None:
@@ -290,6 +303,28 @@ def validate_diagnosis_handoff(
                 episode_path = resolve_artifact_ref(root, reference)
                 if not episode_path.is_file():
                     raise ValueError(f"diagnosis episode artifact is missing: {reference}")
+                try:
+                    episode_payload = json.loads(episode_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise ValueError(
+                        f"diagnosis episode artifact is not valid JSON: {reference}"
+                    ) from exc
+                if not isinstance(episode_payload, Mapping):
+                    raise ValueError(f"diagnosis episode artifact must be an object: {reference}")
+                if episode_payload.get("schema_version") == "rolo-episode-publication/v1":
+                    from rolo.stages.diagnose.episode import validate_published_episode
+
+                    validate_published_episode(root, reference, robot_id=robot_id)
+                elif episode_payload.get("schema_version") == "rolo-diagnosis-episode/v1":
+                    from rolo.stages.diagnose.episode import DiagnosisEpisode
+
+                    episode = DiagnosisEpisode.model_validate(episode_payload)
+                    if episode.robot_id != robot_id:
+                        raise ValueError("diagnosis episode robot identity mismatch")
+                elif episode_payload.get("authority") != "UNVERIFIED_AGENT_OBSERVATION":
+                    raise ValueError(
+                        "diagnosis episode has no target provenance or unverified marker"
+                    )
     return handoff
 
 
@@ -316,4 +351,23 @@ def validate_verification_handoff(
     report = _load_mapping_ref(root, handoff.regression_report_ref, label="regression_report")
     evidence = _load_mapping_ref(root, handoff.evidence_package_ref, label="evidence_package")
     validate_verification_result(report, evidence)
+    if evidence.get("schema_version") == "rolo-verification-evidence/v2":
+        from rolo.stages.verify.acceptance import validate_structured_verification_evidence
+
+        structured = validate_structured_verification_evidence(
+            evidence, robot_id=robot_id, artifact_root=root
+        )
+        report_results = report.get("case_results")
+        if not isinstance(report_results, list) or not report_results:
+            raise ValueError("v2 verification handoff requires non-empty report case_results")
+        report_identity = [
+            (item.get("case_id"), item.get("status"))
+            for item in report_results
+            if isinstance(item, Mapping)
+        ]
+        evidence_identity = [
+            (item.case_id, item.status) for item in structured.case_results
+        ]
+        if report_identity != evidence_identity:
+            raise ValueError("verification report and evidence case results do not match")
     return handoff

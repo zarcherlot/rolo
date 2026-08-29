@@ -31,7 +31,8 @@
             "WAITING_FOR_AUTH",
             "RUNNING",
             "SUCCEEDED",
-            "FAILED"
+            "FAILED",
+            "CANCELLED"
           ],
           "title": "Status",
           "type": "string"
@@ -132,6 +133,36 @@
           ],
           "default": null,
           "title": "Completed At"
+        },
+        "idempotency_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Idempotency Key"
+        },
+        "cancel_requested": {
+          "default": false,
+          "title": "Cancel Requested",
+          "type": "boolean"
+        },
+        "heartbeat_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heartbeat At"
         }
       },
       "required": [

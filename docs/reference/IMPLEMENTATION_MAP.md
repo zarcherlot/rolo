@@ -71,7 +71,8 @@ Adapt 的核心不变量是“Agent 提案 ≠ Rolo 权威”：Agent 不能写 
 - 执行边界：`stages/agent_runner.py` + `stages/downstream.py`；
 - 报告校验：`stages/diagnose_contract.py`、`stages/handoffs.py`；
 - 只读工具会话：`stages/downstream_tools.py`；
-- Episode 发布与验证：`diagnosis_episode.py`、`episode_projection.py`。
+- Episode 发布与验证：`stages/diagnose/episode.py`、`episode_projection.py`；
+- 固定 Linux/ROS 目标实现：`stages/real_target.py`，只允许绑定 profile 的只读命令。
 
 Diagnose 可以生成冻结配置和严格的 diagnosis report，但不能单凭 Agent 输出改变 release
 authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判断。
@@ -82,10 +83,12 @@ authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判�
 - 上游校验：结构化 Diagnose handoff；
 - 执行边界：共用 `stages/agent_runner.py`；
 - 证据校验：`stages/handoffs.py`、`stages/verify/acceptance.py`；
-- 离线回放：`stages/verify/acceptance.py` 中的 replay/oracle 路径。
+- 离线回放：`stages/verify/acceptance.py` 中的 replay/oracle 路径；
+- 固定 Linux/ROS 目标实现：`stages/real_target.py`，生成 provenance 绑定的 evidence package。
 
-Verify 的报告和 evidence package 是可审计输入，不自动等同于真实目标机 acceptance。真实
-机器人验收和产品化 oracle 仍需单独的目标环境与扩展实现。
+Verify 的报告和 evidence package 是可审计输入，不自动等同于真实目标机 acceptance。
+`local-target` 已覆盖固定 WSL/Linux/ROS 软件目标上的有界只读切片，但真实机器人验收和
+通用产品化 oracle 仍需单独的物理目标环境与扩展实现。
 
 本地无目标机的开发路径见 [LOCAL_DIAGNOSE_VERIFY_FAKE.md](../validation/LOCAL_DIAGNOSE_VERIFY_FAKE.md)。
 
@@ -140,7 +143,8 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 | Registry v1/v2、角色和迁移 | `test_registry.py`、`test_registry_v2.py`、`test_registry_migration.py` |
 | Native Tool session/broker/rollout | `test_agent_native_tools.py`、`test_native_tool_session.py`、`test_native_rollout.py` |
 | Stage Agent 授权、幂等、取消、日志 | `test_stage_agent_runner.py`、`test_stage_agent_read_models.py` |
-| Diagnose/Verify contract 与 fake | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_fake_downstream.py` |
+| Diagnose/Verify contract、fake 与 handoff | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
+| 固定 Linux/ROS 目标与 Stage 插件 | `test_real_target_contracts.py`、`test_plugin_manifest.py` |
 | Episode projection/read model/API | `test_episode_read_models.py`、`test_episode_projection.py`、`test_episode_api.py` |
 | HTTP/MCP/Web 入口 | `test_api.py`、`test_mcp_server.py`、`test_vis.py` |
 | Schema 与 Contract 完整性 | `test_schemas.py`、`test_contract_catalog.py` |
@@ -152,7 +156,8 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 
 已实现的主线包括：离线/目标证据登记、Bounded Discovery、Adapter Agent 临时工作区、
 独立 Conformance Gate、不可变 Adapt release、Diagnose/Verify Stage Agent envelope、授权
-与恢复、Episode 只读 read model，以及 Native Tool 的受控观测通道。
+与恢复、Episode 只读 read model、固定 Linux/ROS 目标上的只读 Diagnose/Verify provider、
+Stage 插件 manifest，以及 Native Tool 的受控观测通道。
 
 以下能力不要从现有代码或 contract 推断为已完成：
 

@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Event
 
 import pytest
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.stages.agent_runner import (
+    StageAgentRun,
     StageAgentRunner,
     StageAgentTask,
+    archive_expired_authorization_requests,
+    cancel_stage_run,
+    gc_stage_workspaces,
+    heartbeat_stage_run,
     list_stage_authorization_requests,
+    paginate_stage_stream,
+    prune_stage_streams,
+    recover_stale_stage_runs,
 )
 
 
@@ -50,6 +61,20 @@ class _SecretExecutor:
         if on_output:
             on_output("stderr", "token=super-secret Bearer abc.def")
         return {"handoff": "artifact://diagnose/robot-1/latest/missing.json"}
+
+
+class _SelfCancellingExecutor:
+    def __init__(self, artifact_root: Path) -> None:
+        self.artifact_root = artifact_root
+
+    def execute_stage(
+        self, task: StageAgentTask, *, workspace: Path, on_output=None, run_id: str
+    ):
+        del workspace, on_output
+        output = self.artifact_root / "result.json"
+        output.write_text("{}\n", encoding="utf-8")
+        cancel_stage_run(self.artifact_root, task.stage, task.robot_id, run_id)
+        return {"handoff": "artifact://result.json"}
 
 
 def test_stage_runner_requires_confirmation_and_persists_request(tmp_path: Path) -> None:
@@ -122,6 +147,19 @@ def test_stage_runner_applies_rolo_owned_handoff_validator(tmp_path: Path) -> No
     assert run.error == "invalid diagnose handoff"
 
 
+def test_stage_runner_succeeds_after_handoff_validator_accepts(tmp_path: Path) -> None:
+    validated: list[str] = []
+
+    run = StageAgentRunner(
+        ArtifactStore(tmp_path),
+        _FakeExecutor(),
+        handoff_validator=lambda task: validated.append(task.stage),
+    ).run(_task(), workspace=tmp_path / "workspace", confirmed=True)
+
+    assert run.status == "SUCCEEDED"
+    assert validated == ["diagnose"]
+
+
 def test_stage_runner_redacts_secret_like_streams(tmp_path: Path) -> None:
     output: list[str] = []
     run = StageAgentRunner(ArtifactStore(tmp_path), _SecretExecutor()).run(
@@ -163,6 +201,28 @@ def test_stage_runner_requires_confirmation_to_resume_authorization(tmp_path: Pa
         )
 
 
+def test_stage_runner_rejects_cross_session_authorization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    monkeypatch.setattr(
+        "rolo.stages.agent_runner._current_actor_identity",
+        lambda: {
+            "os_user": "other",
+            "os_uid": 2000,
+            "session_id": "f" * 64,
+        },
+    )
+    with pytest.raises(ValueError, match="actor or session"):
+        runner.run(
+            _task(),
+            workspace=tmp_path / "workspace",
+            confirmed=True,
+            authorization_ref=pending.request_ref,
+        )
+
+
 def test_stage_runner_rejects_changed_hashed_input(tmp_path: Path) -> None:
     input_file = tmp_path / "input.json"
     input_file.write_text('{"version":1}\n', encoding="utf-8")
@@ -176,3 +236,159 @@ def test_stage_runner_rejects_changed_hashed_input(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="input artifact hash mismatch"):
         runner.run(task, workspace=tmp_path / "workspace", confirmed=False)
+
+
+def test_stage_runner_recovers_an_interrupted_running_run(tmp_path: Path) -> None:
+    run_root = tmp_path / "diagnose" / "robot-1" / "runs" / "abandoned"
+    run_root.mkdir(parents=True)
+    started = datetime.now(timezone.utc) - timedelta(hours=2)
+    run = {
+        "schema_version": "rolo-stage-agent-run/v1",
+        "stage": "diagnose",
+        "robot_id": "robot-1",
+        "run_id": "abandoned",
+        "status": "RUNNING",
+        "provider": "fake",
+        "executor": "fake",
+        "task_ref": "artifact://diagnose/robot-1/runs/abandoned/task.json",
+        "started_at": started.isoformat(),
+    }
+    (run_root / "run.json").write_text(json.dumps(run), encoding="utf-8")
+
+    recovered = recover_stale_stage_runs(tmp_path, "diagnose", "robot-1", stale_after_s=60)
+
+    assert len(recovered) == 1
+    assert recovered[0].status == "FAILED"
+    assert "lease expired" in (recovered[0].error or "")
+    persisted = json.loads((run_root / "run.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "FAILED"
+
+
+def test_stage_runner_rejects_concurrent_execution_for_one_robot_stage(tmp_path: Path) -> None:
+    lock_target = tmp_path / "diagnose" / "robot-1" / ".stage-execution.lock"
+    lock_target.parent.mkdir(parents=True)
+    from rolo.core.persistence import interprocess_lock
+
+    with interprocess_lock(lock_target):
+        run = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor()).run(
+            _task(), workspace=tmp_path / "workspace", confirmed=True
+        )
+
+    assert run.status == "FAILED"
+    assert "artifact lock" in (run.error or "")
+
+
+def test_stage_runner_idempotency_returns_existing_run(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    first = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=True, idempotency_key="same"
+    )
+    second = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=True, idempotency_key="same"
+    )
+    assert first.status == "SUCCEEDED"
+    assert second.run_id == first.run_id
+
+
+def test_stage_runner_preserves_idempotency_key_when_authorization_resumes(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=False, idempotency_key="resume-me"
+    )
+    resumed = runner.run(
+        _task(),
+        workspace=tmp_path / "workspace",
+        confirmed=True,
+        authorization_ref=pending.request_ref,
+    )
+    assert resumed.idempotency_key == "resume-me"
+
+
+def test_cancel_stage_run_is_persistent_and_idempotent(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    cancelled = cancel_stage_run(tmp_path, "diagnose", "robot-1", pending.run_id)
+    assert cancelled.status == "CANCELLED"
+    assert cancelled.cancel_requested is True
+    assert cancel_stage_run(tmp_path, "diagnose", "robot-1", pending.run_id).status == "CANCELLED"
+
+
+def test_persistent_cancellation_cannot_be_overwritten_by_executor_completion(
+    tmp_path: Path,
+) -> None:
+    run = StageAgentRunner(
+        ArtifactStore(tmp_path), _SelfCancellingExecutor(tmp_path)
+    ).run(_task(), workspace=tmp_path / "workspace", confirmed=True)
+    assert run.status == "CANCELLED"
+    persisted = StageAgentRun.model_validate_json(
+        (tmp_path / "diagnose/robot-1/runs" / run.run_id / "run.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert persisted.status == "CANCELLED"
+
+
+def test_stage_run_heartbeat_prevents_premature_recovery(tmp_path: Path) -> None:
+    run_root = tmp_path / "diagnose" / "robot-1" / "runs" / "running"
+    run_root.mkdir(parents=True)
+    started = datetime.now(timezone.utc) - timedelta(hours=2)
+    run = {
+        "schema_version": "rolo-stage-agent-run/v1",
+        "stage": "diagnose",
+        "robot_id": "robot-1",
+        "run_id": "running",
+        "status": "RUNNING",
+        "provider": "fake",
+        "executor": "fake",
+        "task_ref": "artifact://diagnose/robot-1/runs/running/task.json",
+        "started_at": started.isoformat(),
+        "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (run_root / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    assert recover_stale_stage_runs(tmp_path, "diagnose", "robot-1", stale_after_s=60) == []
+    refreshed = heartbeat_stage_run(tmp_path, "diagnose", "robot-1", "running")
+    assert refreshed.heartbeat_at is not None
+
+
+def test_stage_workspace_gc_removes_only_old_rolo_workspaces(tmp_path: Path) -> None:
+    old = tmp_path / "rolo-diagnose-old"
+    fresh = tmp_path / "rolo-verify-fresh"
+    unrelated = tmp_path / "keep-me"
+    old.mkdir()
+    fresh.mkdir()
+    unrelated.mkdir()
+    old_time = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
+    import os
+
+    os.utime(old, (old_time, old_time))
+    assert gc_stage_workspaces(tmp_path, older_than_s=60) == 1
+    assert not old.exists()
+    assert fresh.exists() and unrelated.exists()
+
+
+def test_stage_runner_cancels_before_executor_and_expired_auth_is_archived(tmp_path: Path) -> None:
+    event = Event()
+    event.set()
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    run = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=True, cancel_event=event)
+    assert run.status == "CANCELLED"
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    request_path = tmp_path / pending.request_ref.removeprefix("artifact://")
+    payload = json.loads(request_path.read_text(encoding="utf-8"))
+    payload["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    request_path.write_text(json.dumps(payload), encoding="utf-8")
+    archived = archive_expired_authorization_requests(tmp_path)
+    assert len(archived) == 1
+    assert json.loads(request_path.read_text(encoding="utf-8"))["status"] == "EXPIRED"
+
+
+def test_stage_stream_pagination_and_retention_keep_newest_records(tmp_path: Path) -> None:
+    stream = tmp_path / "diagnose" / "robot-1" / "runs" / "run-1" / "stdout.jsonl"
+    stream.parent.mkdir(parents=True)
+    stream.write_text(
+        "".join(json.dumps({"line": str(i)}) + "\n" for i in range(10)), encoding="utf-8"
+    )
+    assert paginate_stage_stream(stream, offset=2, limit=2) == [{"line": "2"}, {"line": "3"}]
+    assert prune_stage_streams(tmp_path, max_bytes=40) == 1
+    retained = stream.read_text(encoding="utf-8")
+    assert '"line": "9"' in retained

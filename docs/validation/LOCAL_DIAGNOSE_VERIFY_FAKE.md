@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29 -->
 
 # 本地 Diagnose/Verify contract 与 fake provider 开发
 
@@ -21,7 +21,7 @@ $env:CODING_AGENT_EXECUTOR = "fake"
 启用前，artifact tree 仍需有一个通过 Adapt gate 的最新 handoff，并准备好：
 
 ```text
-adapt/<robot>/latest/index.json       # 指向并绑定 Adapt handoff
+adapt/<robot>/latest.json             # 指向并绑定 Adapt handoff
 diagnose/<robot>/latest/inputs.json
 verify/<robot>/latest/inputs.json
 ```
@@ -31,22 +31,22 @@ verify/<robot>/latest/inputs.json
 先只构建任务，确认 provider、executor、输入引用和 `plan_sha256`：
 
 ```powershell
-uv run rolo diagnose plan --robot <robot>
-uv run rolo verify plan --robot <robot>
+uv run robotctl diagnose plan --robot <robot>
+uv run robotctl verify plan --robot <robot>
 ```
 
 首次运行不确认时只创建 `WAITING_FOR_AUTH` 和短期授权请求，不执行 fake executor：
 
 ```powershell
-uv run rolo diagnose run --robot <robot>
+uv run robotctl diagnose run --robot <robot>
 # 或通过 rolo-vis 的 GET /v1/robots/<robot>/stage-auth-requests 查看 request_ref
 ```
 
 确认后执行（也可用返回的 `authorization_ref` 恢复同一个 run）：
 
 ```powershell
-uv run rolo diagnose run --robot <robot> --confirm
-uv run rolo verify run --robot <robot> --confirm
+uv run robotctl diagnose run --robot <robot> --confirm
+uv run robotctl verify run --robot <robot> --confirm
 ```
 
 预期结果：
@@ -59,12 +59,43 @@ uv run rolo verify run --robot <robot> --confirm
   acceptance 通过。
 - `runs/<run_id>/run.json`、stdout/stderr、handoff 和所有摘要均由现有
   `StageAgentRunner` 与 handoff validator 校验并持久化。
+- 同一个 robot/stage 同时只有一个 downstream executor；竞争调用会快速失败，避免
+  交叉写入 evidence 或 handoff。
+- 超过 lease 的 `RUNNING` run 可由 `recover_stale_stage_runs()` 标记为 `FAILED`，
+  不会被恢复成成功。
+- `idempotency_key` 会返回同一 run；取消请求会得到 `CANCELLED`，不会提升 handoff；
+  授权过期可由 `archive_expired_authorization_requests()` 标记为 `EXPIRED`。
+- 日志可通过 `paginate_stage_stream()` 分页读取，并用 `prune_stage_streams()` 保留最新
+  的完整 JSONL 记录。
+
+真实 Diagnose Episode contract：
+
+- `DiagnosisEpisode` 要求 baseline、observe、hypothesis、change、smoke、decision 六个
+  阶段、递增序号和 target provenance；
+- `publish_episode()` 生成不可变 record 与 publication hash，handoff 消费时会重新校验；
+- 缺少真实 Episode 时仍只允许 `UNVERIFIED_AGENT_OBSERVATION` 或 `INCONCLUSIVE`。
+
+真实 Verify evidence contract：
+
+- `VerificationEvidencePackage` 要求 target provenance 引用及 SHA256、唯一 case results、
+  safe-stop/rollback 结论和可选 replay 引用；
+- `validate_structured_verification_evidence()` 会验证目标身份、provenance hash 和 replay
+  artifact 存在性；
+- evidence contract 失败只能使当前 Verify run 失败，不产生 release authority。
+
+离线 Verify replay：
+
+- `VerificationReplayFixture` 将目标 provenance、回放引用、bounded case 结果和安全结论
+  固定为输入；
+- `run_verification_replay()` 只执行 oracle，不调用目标机或 Tool Gateway；
+- 回放结果仍生成独立 `VerificationEvidencePackage v2`，可用于 handoff/hash/tamper 回归，
+  但不会产生真实 acceptance authority。
 
 查看阶段状态和产物：
 
 ```powershell
-uv run rolo diagnose status --robot <robot>
-uv run rolo verify status --robot <robot>
+uv run robotctl diagnose status --robot <robot>
+uv run robotctl verify status --robot <robot>
 ```
 
 ## 本地回归
@@ -77,3 +108,8 @@ uv run pytest -q tests/test_fake_downstream.py tests/test_codex_downstream.py te
 fake executor 不接入 Adapt 的通用 executor 列表，也不改变 Codex 默认值；后续接入
 真实 Diagnose Episode 或 Verify provider 时，只需替换 stage executor，并继续复用同一
 contract、授权、artifact hash 和 handoff validator。
+
+插件接入约束：第三方 executor 通过 `rolo.agent_executors` entry point 注册，并实现
+`execute(**kwargs)` 以及 Diagnose/Verify 所需的 `execute_stage(...)`；插件失败只能使
+当前 run 失败，不能绕过授权、handoff 校验或 release gate。插件 manifest 与 conformance
+要求见 [Stage Agent Plugin Kit](../adapt/STAGE_AGENT_PLUGIN_KIT.md)。

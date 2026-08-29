@@ -1,0 +1,212 @@
+{
+  "$defs": {
+    "StageActorIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "os_user": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Os User",
+          "type": "string"
+        },
+        "os_uid": {
+          "minimum": 0,
+          "title": "Os Uid",
+          "type": "integer"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os_user",
+        "os_uid",
+        "session_id"
+      ],
+      "title": "StageActorIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Same-user, same-session approval bound to the exact Stage task and inputs.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-authorization-request/v2",
+      "default": "rolo-authorization-request/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "status": {
+      "default": "PENDING",
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "EXPIRED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "scope": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Scope",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "diagnose",
+        "verify"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "executor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Executor",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "task_ref": {
+      "pattern": "^artifact://",
+      "title": "Task Ref",
+      "type": "string"
+    },
+    "task_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Task Sha256",
+      "type": "string"
+    },
+    "plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Plan Sha256",
+      "type": "string"
+    },
+    "input_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Sha256",
+      "type": "object"
+    },
+    "actor": {
+      "$ref": "#/$defs/StageActorIdentity"
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Idempotency Key"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "approved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved At"
+    },
+    "approved_by": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StageActorIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "expired_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expired At"
+    }
+  },
+  "required": [
+    "request_id",
+    "run_id",
+    "scope",
+    "stage",
+    "robot_id",
+    "executor",
+    "provider",
+    "task_ref",
+    "task_sha256",
+    "plan_sha256",
+    "actor",
+    "created_at",
+    "expires_at"
+  ],
+  "title": "StageAuthorizationRequest",
+  "type": "object"
+}

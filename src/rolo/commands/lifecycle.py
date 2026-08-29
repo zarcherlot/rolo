@@ -33,12 +33,12 @@ from rolo.stages.adapt.target_evidence import (
     ensure_local_deployment,
     load_deployment,
 )
+from rolo.stages.agent_runner import cancel_stage_run
 from rolo.stages.contracts import StageName
-from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 from rolo.stages.verify.acceptance import VerificationPlan
-from rolo.stages.verify.service import build_verification_task, publish_verification_plan
+from rolo.stages.verify.service import publish_verification_plan
 
 adapt_stage_app = typer.Typer(
     help="Stage 1: discover, adapt, conform, and publish the canonical control surface."
@@ -458,12 +458,11 @@ def diagnose_stage_plan(
     """Build a provider-neutral Diagnose Agent task without executing it."""
     settings = get_settings()
     try:
-        task = build_diagnosis_task(
-            settings.rolo_artifact_dir,
+        task = DownstreamStageService(settings, "diagnose").build_task(
             robot,
-            provider=provider or settings.coding_agent_provider,
-            executor=executor or settings.coding_agent_executor,
-            model=model if model is not None else settings.coding_agent_model,
+            provider=provider,
+            executor=executor,
+            model=model,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -500,6 +499,23 @@ def diagnose_stage_run(
         raise typer.Exit(code=2)
 
 
+@diagnose_stage_app.command("cancel")
+def diagnose_stage_cancel(
+    robot: Annotated[str, typer.Option("--robot")],
+    run_id: Annotated[str, typer.Option("--run-id")],
+    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
+) -> None:
+    """Persist cancellation for one exact Diagnose run."""
+    try:
+        emit(
+            cancel_stage_run(
+                get_settings().rolo_artifact_dir, "diagnose", robot, run_id, reason=reason
+            )
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 @verify_stage_app.command("status")
 def verify_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show optional autonomous verification readiness."""
@@ -516,12 +532,11 @@ def verify_stage_plan(
     """Build a provider-neutral Verify Agent task without executing it."""
     settings = get_settings()
     try:
-        task = build_verification_task(
-            settings.rolo_artifact_dir,
+        task = DownstreamStageService(settings, "verify").build_task(
             robot,
-            provider=provider or settings.coding_agent_provider,
-            executor=executor or settings.coding_agent_executor,
-            model=model if model is not None else settings.coding_agent_model,
+            provider=provider,
+            executor=executor,
+            model=model,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -582,6 +597,23 @@ def verify_stage_run(
     emit(run)
     if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
         raise typer.Exit(code=2)
+
+
+@verify_stage_app.command("cancel")
+def verify_stage_cancel(
+    robot: Annotated[str, typer.Option("--robot")],
+    run_id: Annotated[str, typer.Option("--run-id")],
+    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
+) -> None:
+    """Persist cancellation for one exact Verify run."""
+    try:
+        emit(
+            cancel_stage_run(
+                get_settings().rolo_artifact_dir, "verify", robot, run_id, reason=reason
+            )
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @enroll_app.command("show")

@@ -2,6 +2,7 @@ import base64
 import hashlib
 import io
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -308,6 +309,7 @@ def test_robot_wiki_is_retrievable_but_not_embedded_in_agent_context(tmp_path: P
 def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("ROLO_ADAPTER_MAX_PROCESSES", raising=False)
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -315,6 +317,7 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     captured: dict[str, object] = {}
 
     monkeypatch.setattr("rolo.stages.adapt.executor.shutil.which", lambda _: "codex")
+    monkeypatch.setenv("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
@@ -388,6 +391,10 @@ def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     assert run.native_tool_gate_ref is not None
     assert run.native_tool_gate_ref.endswith("/native-tool-gate.json")
     assert context_metrics["shadow_influences_release"] is False
+    assert context_metrics["adapter_max_processes"] == 128
+    assert context_metrics["ros_rmw_implementation"] == "rmw_fastrtps_cpp"
+    assert context_metrics["coding_agent_provider"] == "codex"
+    assert context_metrics["coding_agent_executor"] == "codex"
     assert context_metrics["slice_activation_affects_agent_context"] is False
     assert set(context_metrics["capability_resolution_counts"]) == {
         "RESOLVED",
@@ -746,6 +753,77 @@ def test_native_tool_rollout_is_explicitly_gated() -> None:
     assert shadow._native_tools_enabled("robot-a", "run-1") is True
     assert canary._native_tools_enabled("robot-a", "run-1") is True
     assert canary._native_tools_enabled("robot-b", "run-1") is False
+
+
+def test_shadow_executor_records_deterministic_native_baseline_and_parity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = prepare_plan(artifact_root, workspace)
+    captured: dict[str, object] = {}
+    real_run = subprocess.run
+    real_which = shutil.which
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.executor.shutil.which",
+        lambda name: "codex" if name == "codex" else real_which(name),
+    )
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if Path(command[0]).name == "uname":
+            return real_run(command, **kwargs)
+        captured["command"] = command
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(
+            AdapterAgentResult(
+                schema_version="robot-adapter-agent-result/v1",
+                summary="Native baseline test",
+                completed_tasks=["canonical-adapters"],
+                changed_files=["adapter.py"],
+                validation=["baseline passed"],
+                blockers=[],
+                handoff_ready=False,
+                outputs=None,
+                files=[],
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("rolo.stages.adapt.executor.subprocess.run", fake_run)
+    run, run_path = CodexAdaptExecutor(
+        ArtifactStore(artifact_root), native_tool_mode="shadow"
+    ).execute(robot_id="demo_diff", workspace=workspace, timeout_s=30, plan=plan)
+
+    summary = json.loads(
+        (run_path.parent / "native-tool-summary.json").read_text(encoding="utf-8")
+    )
+    parity = json.loads(
+        (run_path.parent / "native-tool-execution-parity.json").read_text(encoding="utf-8")
+    )
+    context_metrics = json.loads(
+        (run_path.parent / "context_metrics.json").read_text(encoding="utf-8")
+    )
+    call_files = list(
+        (
+            artifact_root
+            / "native/demo_diff/sessions"
+            / str(summary["session_id"])
+            / "calls"
+        ).glob("*.json")
+    )
+
+    assert captured["command"]
+    assert run.status == "SUCCEEDED"
+    assert run.native_tool_execution_parity_ref is not None
+    assert summary["call_count"] == 1
+    assert len(call_files) == 1
+    assert parity["tool_id"] == "native.linux.host.inspect"
+    assert parity["status"] == "PASS"
+    assert context_metrics["native_baseline_call_count"] == 1
+    assert context_metrics["native_execution_parity_status"] == "PASS"
 
 
 def test_codex_executor_restores_windows_home_from_codex_install(

@@ -16,6 +16,7 @@ from rolo.adapter_runtime import (
 )
 from rolo.agent_tools.rollout import (
     NativeToolCanaryGateReport,
+    NativeToolExecutionParity,
     NativeToolRolloutDecision,
     NativeToolRunSummary,
 )
@@ -179,9 +180,15 @@ def _validate_native_tool_bindings(
         (handoff.native_tool_rollout_ref, handoff.native_tool_rollout_sha256, "rollout"),
         (handoff.native_tool_summary_ref, handoff.native_tool_summary_sha256, "summary"),
         (handoff.native_tool_gate_ref, handoff.native_tool_gate_sha256, "gate"),
+        (
+            handoff.native_tool_execution_parity_ref,
+            handoff.native_tool_execution_parity_sha256,
+            "execution parity",
+        ),
     )
     rollout_summary = refs[:2]
     gate_ref, gate_digest, _ = refs[2]
+    parity_ref, parity_digest, _ = refs[3]
     supplied = [reference is not None or digest is not None for reference, digest, _ in refs]
     rollout_summary_supplied = any(
         reference is not None or digest is not None
@@ -196,17 +203,23 @@ def _validate_native_tool_bindings(
         raise ValueError("native tool gate reference and hash must be provided together")
     if gate_ref is not None and not rollout_summary_supplied:
         raise ValueError("native tool gate requires rollout and summary refs")
+    if (parity_ref is None) != (parity_digest is None):
+        raise ValueError(
+            "native tool execution parity reference and hash must be provided together"
+        )
+    if parity_ref is not None and not rollout_summary_supplied:
+        raise ValueError("native tool execution parity requires rollout and summary refs")
     if not any(supplied):
         if handoff.native_tool_session_id is not None:
             raise ValueError("native tool session id requires rollout and summary refs")
         return
 
     resolved: dict[str, Path] = {}
-    refs_to_validate = (
-        rollout_summary + ((gate_ref, gate_digest, "gate"),)
-        if gate_ref
-        else rollout_summary
-    )
+    refs_to_validate = rollout_summary
+    if gate_ref:
+        refs_to_validate += ((gate_ref, gate_digest, "gate"),)
+    if parity_ref:
+        refs_to_validate += ((parity_ref, parity_digest, "execution parity"),)
     for reference, digest, name in refs_to_validate:
         assert reference is not None and digest is not None
         path = resolve_artifact_ref(artifact_root, reference)
@@ -242,6 +255,10 @@ def _validate_native_tool_bindings(
             raise ValueError("native tool gate identity mismatch")
         if gate.mode != summary.mode or gate.selected != summary.selected:
             raise ValueError("native tool gate does not match the run summary")
+    if "execution parity" in resolved:
+        NativeToolExecutionParity.model_validate_json(
+            resolved["execution parity"].read_text(encoding="utf-8")
+        )
 
     # The source AdapterAgentRun is the authority for the provenance fields.
     # Comparing the persisted run prevents a handoff from attaching an
@@ -257,6 +274,11 @@ def _validate_native_tool_bindings(
         raise ValueError("native tool summary ref is not bound to the AdapterAgentRun")
     if run.native_tool_gate_ref != handoff.native_tool_gate_ref:
         raise ValueError("native tool gate ref is not bound to the AdapterAgentRun")
+    if (
+        run.native_tool_execution_parity_ref
+        != handoff.native_tool_execution_parity_ref
+    ):
+        raise ValueError("native tool execution parity ref is not bound to the AdapterAgentRun")
     if run.native_tool_session_id != handoff.native_tool_session_id:
         raise ValueError("native tool session id is not bound to the AdapterAgentRun")
 
@@ -800,6 +822,19 @@ class AdapterPromotionService:
                         resolve_artifact_ref(self.artifacts.root, run.native_tool_gate_ref)
                     )
                     if run.native_tool_gate_ref
+                    else None
+                ),
+                native_tool_execution_parity_ref=(
+                    run.native_tool_execution_parity_ref
+                ),
+                native_tool_execution_parity_sha256=(
+                    sha256_file(
+                        resolve_artifact_ref(
+                            self.artifacts.root,
+                            run.native_tool_execution_parity_ref,
+                        )
+                    )
+                    if run.native_tool_execution_parity_ref
                     else None
                 ),
                 native_tool_session_id=run.native_tool_session_id,

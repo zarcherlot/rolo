@@ -46,6 +46,35 @@
           "default": null,
           "title": "Audit Ref"
         },
+        "provenance_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance Ref"
+        },
+        "rollback_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PERFORMED",
+                "NOT_REQUIRED",
+                "NOT_PERFORMED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Status"
+        },
         "observed_at": {
           "format": "date-time",
           "title": "Observed At",

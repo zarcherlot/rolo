@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from rolo.core.config import get_settings
 from rolo.product_cli import app
+from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 
 
@@ -78,7 +81,7 @@ def test_rolo_adapt_runs_the_existing_local_journey(tmp_path: Path) -> None:
     assert payload["evidence"]["project_root"] == str(project.resolve())
 
 
-def test_rolo_adapt_fails_closed_for_ssh_until_bootstrap_is_implemented() -> None:
+def test_rolo_adapt_requires_local_project_root_for_ssh() -> None:
     result = CliRunner().invoke(
         app,
         [
@@ -91,7 +94,141 @@ def test_rolo_adapt_fails_closed_for_ssh_until_bootstrap_is_implemented() -> Non
     )
 
     assert result.exit_code == 2
-    assert "SSH target bootstrap is not available yet" in result.output
+    rendered_output = " ".join(unstyle(result.output).replace("│", " ").split())
+    assert "SSH Adapt requires --project-root" in rendered_output
+
+
+def test_rolo_adapt_uses_an_approved_ssh_deployment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_root = tmp_path / "config"
+    deployment_path = config_root / "target-evidence" / "remote_robot.json"
+    deployment_path.parent.mkdir(parents=True)
+    deployment_path.write_text("{}", encoding="utf-8")
+    project = tmp_path / "robot-project"
+    project.mkdir()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rolo.product_cli.load_deployment",
+        lambda path: SimpleNamespace(
+            mode=EvidenceDeploymentMode.REMOTE,
+            ssh_target="robot@example.test",
+            ssh_port=2222,
+        ),
+    )
+
+    class Result:
+        status = "DISCOVERY_COMPLETE"
+
+        def model_dump(self, *, mode: str) -> dict[str, str]:
+            del mode
+            return {"status": self.status, "robot_id": "remote_robot"}
+
+    def fake_run_adapt_start(**kwargs: object) -> Result:
+        captured.update(kwargs)
+        return Result()
+
+    monkeypatch.setattr("rolo.product_cli.run_adapt_start", fake_run_adapt_start)
+    env = {
+        "ROLO_CONFIG_DIR": str(config_root),
+        "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+    }
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "adapt",
+            "ssh://robot@example.test:2222/home/robot/workspace",
+            "--robot",
+            "remote_robot",
+            "--project-root",
+            str(project),
+            "--discover-only",
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 0, result.output
+    assert captured["evidence_mode"] == EvidenceDeploymentMode.REMOTE
+    assert captured["project_root"] == project.resolve()
+    assert captured["robot_id"] == "remote_robot"
+
+
+@pytest.mark.parametrize(
+    ("target", "deployment_target", "deployment_port", "message"),
+    [
+        (
+            "ssh://robot@other.example.test:2222/home/robot/workspace",
+            "robot@example.test",
+            2222,
+            "SSH target does not match",
+        ),
+        (
+            "ssh://robot@example.test:2200/home/robot/workspace",
+            "robot@example.test",
+            2222,
+            "SSH target port does not match",
+        ),
+    ],
+)
+def test_rolo_adapt_rejects_ssh_deployment_pin_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    deployment_target: str,
+    deployment_port: int,
+    message: str,
+) -> None:
+    config_root = tmp_path / "config"
+    deployment_path = config_root / "target-evidence" / "remote_robot.json"
+    deployment_path.parent.mkdir(parents=True)
+    deployment_path.write_text("{}", encoding="utf-8")
+    project = tmp_path / "robot-project"
+    project.mkdir()
+    called = False
+
+    monkeypatch.setattr(
+        "rolo.product_cli.load_deployment",
+        lambda path: SimpleNamespace(
+            mode=EvidenceDeploymentMode.REMOTE,
+            ssh_target=deployment_target,
+            ssh_port=deployment_port,
+        ),
+    )
+
+    def fail_if_called(**kwargs: object) -> None:
+        del kwargs
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("rolo.product_cli.run_adapt_start", fail_if_called)
+    env = {
+        "ROLO_CONFIG_DIR": str(config_root),
+        "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+    }
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "adapt",
+            target,
+            "--robot",
+            "remote_robot",
+            "--project-root",
+            str(project),
+            "--discover-only",
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 2
+    assert message in result.output
+    assert called is False
 
 
 def test_rolo_run_exposes_explicit_console_launcher() -> None:

@@ -13,9 +13,7 @@ from rolo.jobs import run_bootstrap_job
 from rolo.natural_language import NaturalLanguageIntent, NaturalLanguageOperation
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
-from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
-from rolo.stages.verify.service import build_verification_task
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
     BootstrapApprovalDecision,
@@ -97,20 +95,10 @@ class NaturalLanguageService:
                 raise ValueError("stage plan requires an explicit robot id")
             settings = get_settings()
             if intent.operation == NaturalLanguageOperation.DIAGNOSE_PLAN:
-                return build_diagnosis_task(
-                    settings.rolo_artifact_dir,
-                    intent.robot_id,
-                    provider=settings.coding_agent_provider,
-                    executor=settings.coding_agent_executor,
-                    model=settings.coding_agent_model,
+                return DownstreamStageService(settings, "diagnose").build_task(
+                    intent.robot_id
                 )
-            return build_verification_task(
-                settings.rolo_artifact_dir,
-                intent.robot_id,
-                provider=settings.coding_agent_provider,
-                executor=settings.coding_agent_executor,
-                model=settings.coding_agent_model,
-            )
+            return DownstreamStageService(settings, "verify").build_task(intent.robot_id)
         if intent.operation in {
             NaturalLanguageOperation.DIAGNOSE_RUN,
             NaturalLanguageOperation.VERIFY_RUN,
