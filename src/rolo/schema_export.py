@@ -132,6 +132,8 @@ from rolo.stages.verify.acceptance import (
     VerificationEvidencePackage,
     VerificationOracle,
     VerificationPlan,
+    VerificationReplayCase,
+    VerificationReplayFixture,
     VerificationRunReport,
 )
 
@@ -201,6 +203,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     VerificationCaseResult,
     VerificationRunReport,
     VerificationEvidencePackage,
+    VerificationReplayCase,
+    VerificationReplayFixture,
     DiagnosisReport,
     TargetProvenance,
     EpisodeObservation,

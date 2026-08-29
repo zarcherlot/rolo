@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -80,6 +81,7 @@ class StageAgentRun(BaseModel):
     completed_at: datetime | None = None
     idempotency_key: str | None = None
     cancel_requested: bool = False
+    heartbeat_at: datetime | None = None
 
 
 class StageAgentExecutor(Protocol):
@@ -165,7 +167,8 @@ def recover_stale_stage_runs(
             continue
         if run.status != "RUNNING":
             continue
-        age_s = (now - run.started_at).total_seconds()
+        lease_time = run.heartbeat_at or run.started_at
+        age_s = (now - lease_time).total_seconds()
         if age_s <= stale_after_s:
             continue
         with interprocess_lock(run_path):
@@ -230,6 +233,88 @@ def archive_expired_authorization_requests(
                 )
                 archived.append(current)
     return archived
+
+
+def cancel_stage_run(
+    artifact_root: Path,
+    stage: StageName,
+    robot_id: str,
+    run_id: str,
+    *,
+    reason: str = "stage Agent cancellation requested by user",
+) -> StageAgentRun:
+    """Persist a cancellation request for one exact run, safely across processes."""
+
+    run_path = ArtifactLayout(artifact_root).stage_run(stage, robot_id, run_id) / "run.json"
+    with interprocess_lock(run_path):
+        try:
+            current = StageAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"stage Agent run is unavailable: {run_id}") from exc
+        if current.stage != stage or current.robot_id != robot_id or current.run_id != run_id:
+            raise ValueError("stage Agent run identity does not match the requested resource")
+        if current.status in {"SUCCEEDED", "FAILED", "CANCELLED"}:
+            return current
+        cancelled = current.model_copy(
+            update={
+                "status": "CANCELLED",
+                "cancel_requested": True,
+                "error": reason[:2_000],
+                "completed_at": datetime.now(timezone.utc),
+            }
+        )
+        atomic_write_text(
+            run_path,
+            json.dumps(cancelled.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
+            acquire_lock=False,
+        )
+        return cancelled
+
+
+def heartbeat_stage_run(
+    artifact_root: Path, stage: StageName, robot_id: str, run_id: str
+) -> StageAgentRun:
+    """Refresh the lease for a running run without changing its execution state."""
+
+    run_path = ArtifactLayout(artifact_root).stage_run(stage, robot_id, run_id) / "run.json"
+    with interprocess_lock(run_path):
+        try:
+            current = StageAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"stage Agent run is unavailable: {run_id}") from exc
+        if current.stage != stage or current.robot_id != robot_id or current.run_id != run_id:
+            raise ValueError("stage Agent run identity does not match the requested resource")
+        if current.status != "RUNNING":
+            return current
+        updated = current.model_copy(update={"heartbeat_at": datetime.now(timezone.utc)})
+        atomic_write_text(
+            run_path,
+            json.dumps(updated.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
+            acquire_lock=False,
+        )
+        return updated
+
+
+def gc_stage_workspaces(parent: Path, *, older_than_s: float = 86_400.0) -> int:
+    """Remove abandoned Rolo stage workspaces older than a bounded retention period."""
+
+    if older_than_s <= 0:
+        raise ValueError("older_than_s must be positive")
+    if not parent.is_dir():
+        return 0
+    cutoff = datetime.now(timezone.utc).timestamp() - older_than_s
+    removed = 0
+    for workspace in parent.glob("rolo-diagnose-*"):
+        if not workspace.is_dir() or workspace.stat().st_mtime > cutoff:
+            continue
+        shutil.rmtree(workspace)
+        removed += 1
+    for workspace in parent.glob("rolo-verify-*"):
+        if not workspace.is_dir() or workspace.stat().st_mtime > cutoff:
+            continue
+        shutil.rmtree(workspace)
+        removed += 1
+    return removed
 
 
 def paginate_stage_stream(
@@ -416,6 +501,7 @@ class StageAgentRunner:
             request_ref=request_ref,
             started_at=started,
             idempotency_key=selected_idempotency_key,
+            heartbeat_at=started,
         )
         self.artifacts.write_json(
             f"{task.stage}/{task.robot_id}/runs/{run_id}/run.json",

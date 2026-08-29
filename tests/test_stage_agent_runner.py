@@ -12,6 +12,9 @@ from rolo.stages.agent_runner import (
     StageAgentRunner,
     StageAgentTask,
     archive_expired_authorization_requests,
+    cancel_stage_run,
+    gc_stage_workspaces,
+    heartbeat_stage_run,
     list_stage_authorization_requests,
     paginate_stage_stream,
     prune_stage_streams,
@@ -249,6 +252,53 @@ def test_stage_runner_preserves_idempotency_key_when_authorization_resumes(tmp_p
         authorization_ref=pending.request_ref,
     )
     assert resumed.idempotency_key == "resume-me"
+
+
+def test_cancel_stage_run_is_persistent_and_idempotent(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    cancelled = cancel_stage_run(tmp_path, "diagnose", "robot-1", pending.run_id)
+    assert cancelled.status == "CANCELLED"
+    assert cancelled.cancel_requested is True
+    assert cancel_stage_run(tmp_path, "diagnose", "robot-1", pending.run_id).status == "CANCELLED"
+
+
+def test_stage_run_heartbeat_prevents_premature_recovery(tmp_path: Path) -> None:
+    run_root = tmp_path / "diagnose" / "robot-1" / "runs" / "running"
+    run_root.mkdir(parents=True)
+    started = datetime.now(timezone.utc) - timedelta(hours=2)
+    run = {
+        "schema_version": "rolo-stage-agent-run/v1",
+        "stage": "diagnose",
+        "robot_id": "robot-1",
+        "run_id": "running",
+        "status": "RUNNING",
+        "provider": "fake",
+        "executor": "fake",
+        "task_ref": "artifact://diagnose/robot-1/runs/running/task.json",
+        "started_at": started.isoformat(),
+        "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (run_root / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    assert recover_stale_stage_runs(tmp_path, "diagnose", "robot-1", stale_after_s=60) == []
+    refreshed = heartbeat_stage_run(tmp_path, "diagnose", "robot-1", "running")
+    assert refreshed.heartbeat_at is not None
+
+
+def test_stage_workspace_gc_removes_only_old_rolo_workspaces(tmp_path: Path) -> None:
+    old = tmp_path / "rolo-diagnose-old"
+    fresh = tmp_path / "rolo-verify-fresh"
+    unrelated = tmp_path / "keep-me"
+    old.mkdir()
+    fresh.mkdir()
+    unrelated.mkdir()
+    old_time = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
+    import os
+
+    os.utime(old, (old_time, old_time))
+    assert gc_stage_workspaces(tmp_path, older_than_s=60) == 1
+    assert not old.exists()
+    assert fresh.exists() and unrelated.exists()
 
 
 def test_stage_runner_cancels_before_executor_and_expired_auth_is_archived(tmp_path: Path) -> None:

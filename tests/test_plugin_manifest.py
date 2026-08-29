@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from rolo.stages.plugin_manifest import (
     StageAgentPluginManifest,
+    discover_entrypoint_plugins,
     discover_plugins,
     install_plugin,
     load_plugin_manifest,
@@ -79,3 +81,21 @@ def test_plugin_discovery_skips_incompatible_or_mismatched_manifests(tmp_path: P
         plugin_manifest_json(_manifest()), encoding="utf-8"
     )
     assert discover_plugins(root, rolo_version="0.1.0") == ()
+
+
+def test_entrypoint_discovery_requires_packaged_compatible_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    manifest = _manifest()
+    (tmp_path / "plugin-manifest.json").write_text(plugin_manifest_json(manifest), encoding="utf-8")
+    distribution = SimpleNamespace(locate_file=lambda name: tmp_path / name)
+    entrypoint = SimpleNamespace(
+        name=manifest.plugin_id,
+        value=manifest.executor_entrypoint,
+        dist=distribution,
+    )
+    monkeypatch.setattr(
+        "rolo.stages.plugin_manifest.entry_points", lambda **_: [entrypoint]
+    )
+    discovered = discover_entrypoint_plugins(rolo_version="0.1.0")
+    assert discovered[0][0].plugin_id == manifest.plugin_id

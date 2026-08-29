@@ -10,7 +10,6 @@ provider/product does not change lifecycle, evidence, approval, or release code.
 from __future__ import annotations
 
 from collections.abc import Callable
-from importlib.metadata import entry_points
 from typing import Any, Protocol
 
 
@@ -99,11 +98,11 @@ def _ensure_builtins() -> None:
         _DEPENDENCY_ADAPTERS["codex"] = CodexDependencyAdapter()
     # Open-source installations can add providers without changing Rolo.  A
     # broken optional plugin is ignored here and reported only when selected.
-    try:
-        discovered = entry_points(group="rolo.agent_executors")
-    except TypeError:  # pragma: no cover - Python 3.10 compatibility
-        discovered = entry_points().select(group="rolo.agent_executors")
-    for item in discovered:
+    from rolo.stages.plugin_manifest import discover_entrypoint_plugins
+
+    for manifest, item in discover_entrypoint_plugins():
+        if not manifest.executor_entrypoint:
+            continue
         key = item.name.strip().lower()
         if key and key not in _EXECUTORS:
             try:

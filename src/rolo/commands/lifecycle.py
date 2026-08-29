@@ -33,6 +33,7 @@ from rolo.stages.adapt.target_evidence import (
     ensure_local_deployment,
     load_deployment,
 )
+from rolo.stages.agent_runner import cancel_stage_run
 from rolo.stages.contracts import StageName
 from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
@@ -500,6 +501,23 @@ def diagnose_stage_run(
         raise typer.Exit(code=2)
 
 
+@diagnose_stage_app.command("cancel")
+def diagnose_stage_cancel(
+    robot: Annotated[str, typer.Option("--robot")],
+    run_id: Annotated[str, typer.Option("--run-id")],
+    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
+) -> None:
+    """Persist cancellation for one exact Diagnose run."""
+    try:
+        emit(
+            cancel_stage_run(
+                get_settings().rolo_artifact_dir, "diagnose", robot, run_id, reason=reason
+            )
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 @verify_stage_app.command("status")
 def verify_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show optional autonomous verification readiness."""
@@ -582,6 +600,23 @@ def verify_stage_run(
     emit(run)
     if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
         raise typer.Exit(code=2)
+
+
+@verify_stage_app.command("cancel")
+def verify_stage_cancel(
+    robot: Annotated[str, typer.Option("--robot")],
+    run_id: Annotated[str, typer.Option("--run-id")],
+    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
+) -> None:
+    """Persist cancellation for one exact Verify run."""
+    try:
+        emit(
+            cancel_stage_run(
+                get_settings().rolo_artifact_dir, "verify", robot, run_id, reason=reason
+            )
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @enroll_app.command("show")

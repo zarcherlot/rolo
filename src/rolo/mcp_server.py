@@ -19,7 +19,7 @@ from rolo.natural_service import NaturalLanguageService
 from rolo.stage_agent_read_models import stage_agent_event_page, stage_agent_run_detail
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
-from rolo.stages.agent_runner import list_stage_authorization_requests
+from rolo.stages.agent_runner import cancel_stage_run, list_stage_authorization_requests
 from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.verify.service import build_verification_task
@@ -142,6 +142,19 @@ TOOLS = [
             "required": ["robot_id"],
         },
     },
+    {
+        "name": "rolo_stage_cancel",
+        "description": "Persist cancellation for one exact downstream Stage Agent run.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stage": {"type": "string", "enum": ["diagnose", "verify"]},
+                "robot_id": {"type": "string"},
+                "run_id": {"type": "string"},
+            },
+            "required": ["stage", "robot_id", "run_id"],
+        },
+    },
 ]
 
 
@@ -165,6 +178,17 @@ def _jsonable(value: Any) -> Any:
 
 
 def _call(name: str, args: dict[str, Any]) -> Any:
+    if name == "rolo_stage_cancel":
+        stage = str(args.get("stage", "")).strip().lower()
+        if stage not in {"diagnose", "verify"}:
+            raise ValueError("stage must be diagnose or verify")
+        robot_id = str(args.get("robot_id", "")).strip()
+        run_id = str(args.get("run_id", "")).strip()
+        if not robot_id or not run_id:
+            raise ValueError("robot_id and run_id are required")
+        return _jsonable(
+            cancel_stage_run(get_settings().rolo_artifact_dir, stage, robot_id, run_id)
+        )
     if name in {"rolo_stage_run", "rolo_stage_events"}:
         stage = str(args.get("stage", "")).strip().lower()
         if stage not in {"diagnose", "verify"}:

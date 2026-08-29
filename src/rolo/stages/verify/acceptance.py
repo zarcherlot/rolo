@@ -112,6 +112,45 @@ class VerificationPlan(BaseModel):
         return self
 
 
+class VerificationReplayCase(BaseModel):
+    """One deterministic invocation captured for offline Verify replay."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{0,127}$")
+    operation: str = Field(min_length=1, max_length=256)
+    status: Literal["SUCCEEDED", "TIMEOUT", "CANCELLED", "ERROR"] = "SUCCEEDED"
+    result: dict[str, JsonValue] = Field(default_factory=dict)
+    message: str = Field(default="replayed invocation", min_length=1, max_length=2_000)
+    audit_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+
+class VerificationReplayFixture(BaseModel):
+    """Replay input independent of a target machine or live Tool Gateway."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-replay/v1"] = "rolo-verification-replay/v1"
+    fixture_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{0,127}$")
+    robot_id: str = Field(min_length=1, max_length=128)
+    target_provenance_ref: str = Field(pattern=r"^artifact://")
+    target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cases: list[VerificationReplayCase] = Field(min_length=1, max_length=256)
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
+    replay_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+    @field_validator("cases")
+    @classmethod
+    def validate_unique_case_ids(
+        cls, value: list[VerificationReplayCase]
+    ) -> list[VerificationReplayCase]:
+        ids = [item.case_id for item in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("verification replay case IDs must be unique")
+        return value
+
+
 class VerificationCaseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -225,6 +264,121 @@ def evaluate_oracle(
     if oracle.maximum is not None and value > oracle.maximum:
         return False, f"numeric value is above maximum: {oracle.path}"
     return True, "numeric value is within bounds"
+
+
+def run_verification_replay(
+    plan: VerificationPlan,
+    fixture: VerificationReplayFixture,
+    *,
+    artifacts: ArtifactStore,
+    cancel_event: threading.Event | None = None,
+    clock: Callable[[], datetime] | None = None,
+    run_id: str | None = None,
+) -> VerificationRunReport:
+    """Run a deterministic Verify provider against captured invocation results."""
+
+    if fixture.robot_id != plan.robot_id:
+        raise ValueError("verification replay fixture robot identity mismatch")
+    provenance_path = resolve_artifact_ref(artifacts.root, fixture.target_provenance_ref)
+    if (
+        not provenance_path.is_file()
+        or sha256_file(provenance_path) != fixture.target_provenance_sha256
+    ):
+        raise ValueError("verification replay target provenance hash mismatch")
+    if fixture.replay_ref is not None and not resolve_artifact_ref(
+        artifacts.root, fixture.replay_ref
+    ).is_file():
+        raise ValueError("verification replay source artifact is missing")
+    now = clock or (lambda: datetime.now(timezone.utc))
+    started = now().astimezone(timezone.utc)
+    selected_run = run_id or f"verify-replay-{uuid4().hex}"
+    captured = {item.case_id: item for item in fixture.cases}
+    results: list[VerificationCaseResult] = []
+    for case in plan.cases:
+        if cancel_event is not None and cancel_event.is_set():
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="CANCELLED",
+                    message="verification replay cancellation requested",
+                )
+            )
+            break
+        if (now().astimezone(timezone.utc) - started).total_seconds() >= plan.max_elapsed_s:
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="TIMEOUT",
+                    message="verification replay elapsed-time budget exhausted",
+                )
+            )
+            break
+        replay = captured.get(case.case_id)
+        if replay is None or replay.operation != case.operation:
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status="ERROR",
+                    message="verification replay case is missing or operation mismatched",
+                    provenance_ref=fixture.target_provenance_ref,
+                )
+            )
+            continue
+        if replay.status != "SUCCEEDED":
+            results.append(
+                VerificationCaseResult(
+                    case_id=case.case_id,
+                    operation=case.operation,
+                    status=replay.status if replay.status in {"TIMEOUT", "CANCELLED"} else "ERROR",
+                    message=replay.message,
+                    audit_ref=replay.audit_ref,
+                    provenance_ref=fixture.target_provenance_ref,
+                )
+            )
+            continue
+        passed, message = evaluate_oracle(case.oracle, replay.result)
+        results.append(
+            VerificationCaseResult(
+                case_id=case.case_id,
+                operation=case.operation,
+                status="PASS" if passed else "FAIL",
+                message=message,
+                audit_ref=replay.audit_ref,
+                provenance_ref=fixture.target_provenance_ref,
+            )
+        )
+    completed = now().astimezone(timezone.utc)
+    status: Literal["PASS", "FAIL", "CANCELLED"] = "PASS"
+    if any(item.status == "CANCELLED" for item in results):
+        status = "CANCELLED"
+    elif any(item.status != "PASS" for item in results):
+        status = "FAIL"
+    evidence = VerificationEvidencePackage(
+        robot_id=plan.robot_id,
+        run_id=selected_run,
+        target_provenance_ref=fixture.target_provenance_ref,
+        target_provenance_sha256=fixture.target_provenance_sha256,
+        case_results=results,
+        safe_stop=fixture.safe_stop,
+        rollback=fixture.rollback,
+        replay_ref=fixture.replay_ref,
+    )
+    evidence_path = artifacts.write_json(
+        f"verify/{plan.robot_id}/runs/{selected_run}/verification_evidence.json",
+        evidence.model_dump(mode="json"),
+    )
+    return VerificationRunReport(
+        run_id=selected_run,
+        robot_id=plan.robot_id,
+        status=status,
+        case_results=results,
+        evidence_ref=ArtifactLayout(artifacts.root).ref(evidence_path),
+        started_at=started,
+        completed_at=completed,
+    )
 
 
 def run_verification_plan(

@@ -122,7 +122,25 @@ uv run robotctl verify run --robot <robot-id> \
 
 当前无真实 Verify provider 时，预期为 `NOT_STARTED` 或带明确 `FAKE_UNEXECUTED` 标记的 `DEGRADED`；不得产生 `VERIFIED/PASSED` 或 release 影响。真实 provider 必须证明 bounded cases、oracle、timeout/cancel、safe-stop、rollback 和 evidence 引用均可复现。
 
-## 6. 产物与完整性回收
+## 6. Run 管理与取消
+
+如需停止一个已创建但仍在运行或等待授权的 run，使用持久化取消接口：
+
+```bash
+uv run robotctl diagnose cancel --robot <robot-id> --run-id <run-id>
+uv run robotctl verify cancel --robot <robot-id> --run-id <run-id>
+```
+
+HTTP/MCP 等价入口分别为：
+
+```text
+POST /v1/robots/<robot-id>/<stage>/runs/<run-id>/cancel
+MCP rolo_stage_cancel(stage, robot_id, run_id)
+```
+
+预期返回 `status=CANCELLED`、`cancel_requested=true`；已完成 run 不会被改写。目标机重启后，Rolo 应依据 run 的 lease/heartbeat 将过期 `RUNNING` 标记为 `FAILED`，而不是伪造成功。
+
+## 7. 产物与完整性回收
 
 ```bash
 find "$ROLO_ARTIFACT_DIR" -type f -print0 | sort -z | xargs -0 sha256sum \
@@ -145,7 +163,7 @@ target-debug/*
 
 不要回传凭据、私有源码、未脱敏环境变量、USB 原始日志或不必要的完整进程参数。
 
-## 7. 故障判定
+## 8. 故障判定
 
 | 现象 | 处理 | 是否阻断 |
 |---|---|---|
@@ -157,6 +175,6 @@ target-debug/*
 | handoff 引用或 SHA256 不匹配 | 停止消费下游阶段并修复 | 阻断 |
 | identity、签名、SSH pin 不匹配 | fail-closed，禁止继续 | 阻断 |
 
-## 8. 通过条件
+## 9. 通过条件
 
 本轮只允许在 Adapt shadow/native 证据完整且 `influences_release=false` 的前提下继续开发。开启 canary 或 release 影响前，还必须分别取得真实 Diagnose Episode、真实 Verify provider 的可复现实例和连续稳定窗口；fake provider、单次成功 shadow 或缺少目标机 provenance 均不满足条件。

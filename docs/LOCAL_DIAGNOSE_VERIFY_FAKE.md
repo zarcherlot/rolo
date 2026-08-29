@@ -81,6 +81,14 @@ uv run robotctl verify run --robot <robot> --confirm
   artifact 存在性；
 - evidence contract 失败只能使当前 Verify run 失败，不产生 release authority。
 
+离线 Verify replay：
+
+- `VerificationReplayFixture` 将目标 provenance、回放引用、bounded case 结果和安全结论
+  固定为输入；
+- `run_verification_replay()` 只执行 oracle，不调用目标机或 Tool Gateway；
+- 回放结果仍生成独立 `VerificationEvidencePackage v2`，可用于 handoff/hash/tamper 回归，
+  但不会产生真实 acceptance authority。
+
 查看阶段状态和产物：
 
 ```powershell

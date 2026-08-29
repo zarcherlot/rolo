@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from datetime import datetime, timezone
+from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 from typing import Literal
 
@@ -150,6 +151,33 @@ def discover_plugins(
         if manifest.plugin_id != manifest_path.parent.name:
             continue
         discovered.append(manifest)
+    return tuple(discovered)
+
+
+def discover_entrypoint_plugins(
+    *,
+    rolo_version: str = __version__,
+    group: str = "rolo.agent_executors",
+) -> tuple[tuple[StageAgentPluginManifest, EntryPoint], ...]:
+    """Discover distribution plugins and validate their packaged manifest first."""
+
+    try:
+        candidates = entry_points(group=group)
+    except TypeError:  # pragma: no cover - Python 3.10 compatibility
+        candidates = entry_points().select(group=group)
+    discovered: list[tuple[StageAgentPluginManifest, EntryPoint]] = []
+    for item in candidates:
+        distribution = item.dist
+        if distribution is None:
+            continue
+        try:
+            manifest_path = Path(distribution.locate_file("plugin-manifest.json"))
+            manifest = load_plugin_manifest(manifest_path, rolo_version=rolo_version)
+        except (OSError, ValueError):
+            continue
+        if item.name != manifest.plugin_id and item.value != manifest.executor_entrypoint:
+            continue
+        discovered.append((manifest, item))
     return tuple(discovered)
 
 
