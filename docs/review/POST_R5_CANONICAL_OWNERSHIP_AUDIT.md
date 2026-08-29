@@ -83,3 +83,6 @@ P1 provider 仍需下一轮接入该 collector 后才能产出可适配的 v2 ev
 当前 provider 已提供 `materialize_handoff()`：先重新验证 v2 evidence，再将 canonical
 regression report 和 evidence package 交给 `commit_verification_handoff`；缺少上游
 Diagnose handoff 时仍由既有 validator 拒绝。
+
+可靠性回归门禁位于 `tests/test_ssh_provider_recovery.py`，覆盖 timeout、运行中 cancel、
+并发锁拒绝和 stale-lock 恢复；这些测试仍是 fake transport 证据，不替代固定 SSH 目标验证。

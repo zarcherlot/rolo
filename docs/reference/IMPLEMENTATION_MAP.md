@@ -148,7 +148,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 | Registry v1/v2、角色和迁移 | `test_registry.py`、`test_registry_v2.py`、`test_registry_migration.py` |
 | Native Tool session/broker/rollout | `test_agent_native_tools.py`、`test_native_tool_session.py`、`test_native_rollout.py` |
 | Stage Agent 授权、幂等、取消、日志 | `test_stage_agent_runner.py`、`test_stage_agent_read_models.py` |
-| Diagnose/Verify contract、fake、handoff、P1 adapter 与 SSH provider | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_legacy_provider_adapter.py`、`test_post_r5_provider_boundary.py`、`test_ssh_provenance.py`、`test_ssh_target_provider.py`、`test_ssh_provider_handoff.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
+| Diagnose/Verify contract、fake、handoff、P1 adapter 与 SSH provider | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_legacy_provider_adapter.py`、`test_post_r5_provider_boundary.py`、`test_ssh_provenance.py`、`test_ssh_target_provider.py`、`test_ssh_provider_handoff.py`、`test_ssh_provider_recovery.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
 | 固定 Linux/ROS 目标与 Stage 插件 | `test_real_target_contracts.py`、`test_plugin_manifest.py` |
 | Episode projection/read model/API | `test_episode_read_models.py`、`test_episode_projection.py`、`test_episode_api.py` |
 | HTTP/MCP/Web 入口 | `test_api.py`、`test_mcp_server.py`、`test_vis.py` |

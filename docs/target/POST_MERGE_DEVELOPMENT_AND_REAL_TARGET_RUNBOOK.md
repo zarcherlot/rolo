@@ -135,6 +135,10 @@ Verify handoff 接入已完成：`materialize_handoff()` 会重新验证 v2 evid
 `commit_verification_handoff` 绑定 Diagnose handoff；没有上游 Diagnose handoff 时必须
 保持拒绝，不得单独制造 Verify latest handoff。
 
+Provider 可靠性回归已补齐：`tests/test_ssh_provider_recovery.py` 注入 timeout、运行中
+cancel、并发锁和 stale-lock 恢复。下一阶段须在 pinned SSH 目标复现同样故障，并记录
+进程中断/重启后的 artifact、handoff 和回退结果。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
