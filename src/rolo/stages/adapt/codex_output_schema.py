@@ -62,6 +62,14 @@ def codex_output_schema(
 
     def visit(value: Any) -> None:
         if isinstance(value, dict):
+            # OpenAI structured outputs rejects sibling annotations on a
+            # reference. Pydantic emits ``{"$ref": ..., "default": ...}``
+            # for optional/defaulted enum models such as AgentDisposition.
+            # The default is only a local construction hint; all object fields
+            # are made required below and canonical Pydantic validation still
+            # runs after generation, so dropping it does not weaken validation.
+            if "$ref" in value:
+                value.pop("default", None)
             for key in _UNSUPPORTED_OBJECT_BOUNDS:
                 value.pop(key, None)
             properties = value.get("properties")

@@ -84,3 +84,19 @@ def test_codex_output_schema_can_pin_array_items_to_caller_values() -> None:
     assert finding["properties"]["basis"]["items"]["enum"] == refs
     assert finding["properties"]["counter_evidence_refs"]["items"]["enum"] == refs
     assert assessment["properties"]["basis"]["items"]["enum"] == refs
+
+
+def test_codex_output_schema_removes_defaults_next_to_references() -> None:
+    canonical = OperationProposalBundle.model_json_schema()
+    compatible = codex_output_schema(OperationProposalBundle)
+
+    canonical_disposition = canonical["$defs"]["AgentOperationProposal"]["properties"][
+        "disposition"
+    ]
+    compatible_disposition = compatible["$defs"]["AgentOperationProposal"]["properties"][
+        "disposition"
+    ]
+
+    assert canonical_disposition["$ref"] == "#/$defs/AgentDisposition"
+    assert canonical_disposition["default"] == "ACCEPT"
+    assert compatible_disposition == {"$ref": "#/$defs/AgentDisposition"}
