@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shlex
 import subprocess
 import threading
 import time
@@ -27,8 +28,10 @@ class _Runner:
 
     def run(self, argv: list[str], *, timeout_s: float) -> _Result:
         del timeout_s
+        marker = argv.index("--")
+        remote_argv = tuple(shlex.split(" ".join(argv[marker + 2 :])))
         for key, result in self.mapping.items():
-            if tuple(argv[-len(key) :]) == key:
+            if remote_argv == key:
                 return result
         return _Result(1, stderr="unexpected command")
 
@@ -66,7 +69,9 @@ def test_provider_timeout_is_materialized_as_failed_evidence(tmp_path: Path) -> 
 
     class _TimeoutRunner(_Runner):
         def run(self, argv: list[str], *, timeout_s: float) -> _Result:
-            if tuple(argv[-2:]) == ("rolo-target", "--version"):
+            marker = argv.index("--")
+            remote_argv = tuple(shlex.split(" ".join(argv[marker + 2 :])))
+            if remote_argv == ("rolo-target", "--version"):
                 raise subprocess.TimeoutExpired(argv, timeout_s)
             return super().run(argv, timeout_s=timeout_s)
 
@@ -84,7 +89,9 @@ def test_provider_cancel_between_cases_is_materialized(tmp_path: Path) -> None:
     class _CancelRunner(_Runner):
         def run(self, argv: list[str], *, timeout_s: float) -> _Result:
             result = super().run(argv, timeout_s=timeout_s)
-            if tuple(argv[-2:]) == ("uname", "-s"):
+            marker = argv.index("--")
+            remote_argv = tuple(shlex.split(" ".join(argv[marker + 2 :])))
+            if remote_argv == ("uname", "-s"):
                 cancel.set()
             return result
 

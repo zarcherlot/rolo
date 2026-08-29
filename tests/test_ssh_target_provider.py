@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
@@ -21,9 +22,13 @@ class _Runner:
     def run(self, argv: list[str], *, timeout_s: float) -> _Result:
         del timeout_s
         self.calls.append(tuple(argv))
-        # SubprocessBootstrapTransport appends remote argv after the destination.
+        # OpenSSH joins the post-destination arguments into a remote shell
+        # command. Decode that transport boundary before matching the logical
+        # argv used by the provider.
+        marker = argv.index("--")
+        remote_argv = tuple(shlex.split(" ".join(argv[marker + 2 :])))
         for key, result in self.mapping.items():
-            if tuple(argv[-len(key) :]) == key:
+            if remote_argv == key:
                 return result
         return _Result(1, stderr="unexpected command")
 

@@ -749,12 +749,15 @@ def _project_legacy_publication(
         "Observation payloads are intentionally omitted; no evidence authority is inferred.",
     ]
     events: list[EpisodeTimelineEvent] = []
+    previous_offset_ms = 0
     for index, observation in enumerate(episode.observations):
         phase = observation.phase.value
         offset_ms = max(
+            previous_offset_ms,
             0,
             int((observation.observed_at - episode.started_at).total_seconds() * 1000),
         )
+        previous_offset_ms = offset_ms
         events.append(
             EpisodeTimelineEvent(
                 robot_id=episode.robot_id,
