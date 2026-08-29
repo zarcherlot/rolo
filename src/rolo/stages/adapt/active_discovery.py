@@ -7,6 +7,7 @@ import os
 import platform
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -419,15 +420,49 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
         process.kill()
 
 
-def run_bounded_help(path: Path, output_path: Path) -> HelpProbeResult:
+def run_bounded_help(
+    path: Path,
+    output_path: Path,
+    *,
+    require_isolation: bool = False,
+) -> HelpProbeResult:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [str(path), "--help"]
+    working_directory = path.parent
+    if require_isolation:
+        bubblewrap = shutil.which("bwrap") if platform.system() == "Linux" else None
+        if bubblewrap is None:
+            return HelpProbeResult(
+                status=HelpProbeStatus.FAILED,
+                error="help probe isolation is unavailable",
+            )
+        command = [
+            bubblewrap,
+            "--die-with-parent",
+            "--new-session",
+            "--unshare-net",
+            "--ro-bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpfs",
+            "/tmp",
+            "--chdir",
+            str(path.parent),
+            str(path),
+            "--help",
+        ]
+        working_directory = Path("/")
     try:
         process = subprocess.Popen(
-            [str(path), "--help"],
+            command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            cwd=path.parent,
+            cwd=working_directory,
             env=_safe_environment(),
             start_new_session=os.name == "posix",
             shell=False,

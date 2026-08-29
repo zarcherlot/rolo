@@ -381,7 +381,7 @@ def collect(
         requested_help_ids = (
             executable_help_id
             if executable_help_id is not None
-            else [item.executable_id for item in deployment.collector.help_executables]
+            else []
         )
         request = new_request(robot_id, executable_help_ids=requested_help_ids)
         if deployment.mode == EvidenceDeploymentMode.LOCAL:

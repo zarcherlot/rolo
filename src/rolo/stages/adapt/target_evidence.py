@@ -982,7 +982,7 @@ def _collect_executable_help(
             with tempfile.TemporaryDirectory(prefix="rolo-target-help-") as temporary:
                 output_path = Path(temporary) / "help.txt"
                 try:
-                    result = run_bounded_help(path, output_path)
+                    result = run_bounded_help(path, output_path, require_isolation=True)
                 except OSError as exc:
                     result = HelpProbeResult(status=HelpProbeStatus.FAILED, error=str(exc))
                 output = output_path.read_bytes() if output_path.is_file() else b""

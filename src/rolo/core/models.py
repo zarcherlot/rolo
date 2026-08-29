@@ -248,6 +248,26 @@ class OperationCandidate(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     status: Literal["DISCOVERED_UNVERIFIED"] = "DISCOVERED_UNVERIFIED"
     origin: Literal["DETERMINISTIC", "HEURISTIC_AGENT"] = "DETERMINISTIC"
+    semantic_review_required: bool = False
+    semantic_review_disposition: Literal[
+        "NOT_REVIEWED", "ACCEPT", "DEFER", "REJECT"
+    ] = "NOT_REVIEWED"
+    route_review_dispositions: dict[str, Literal["ACCEPT", "DEFER", "REJECT"]] = Field(
+        default_factory=dict
+    )
+    semantic_review_artifact_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+    @property
+    def requires_semantic_review(self) -> bool:
+        """Fail closed for pre-v2 CLI candidates that lack the explicit flag."""
+
+        return self.semantic_review_required or (
+            any(route.kind == "cli" for route in self.route_evidence)
+            and any(uri.startswith("semantic://cli/") for uri in self.semantic_bindings)
+        )
 
 
 class DiscoveryReport(BaseModel):

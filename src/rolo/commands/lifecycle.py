@@ -67,6 +67,7 @@ def run_adapt_start(
     prepare_runtime_directories(settings)
     evidence = detect_project_evidence(project_root or Path.cwd())
     evidence_deployment = None
+    approved_executable_help_ids: list[str] = []
     remote_options = (
         collector_descriptor,
         verification_secret,
@@ -90,6 +91,14 @@ def run_adapt_start(
                 help_executables=allow_executable or (),
                 ros_setup_files=ros_setup_files,
             )
+            explicitly_allowed = {
+                str(path.expanduser().resolve()) for path in (allow_executable or [])
+            }
+            approved_executable_help_ids = [
+                item.executable_id
+                for item in evidence_deployment.collector.help_executables
+                if str(Path(item.path).expanduser().resolve()) in explicitly_allowed
+            ]
         else:
             if allow_executable:
                 raise ValueError(
@@ -141,6 +150,7 @@ def run_adapt_start(
         scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
         timeout_s=timeout or settings.coding_agent_timeout_s,
         evidence_deployment=evidence_deployment,
+        approved_executable_help_ids=approved_executable_help_ids,
         evidence_timeout_s=evidence_timeout,
         on_output=on_output,
     )

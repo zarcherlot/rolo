@@ -2066,6 +2066,12 @@ def _build_operation_candidates(
                 evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
                 route_evidence=route_evidence,
                 limitations=limitations,
+                semantic_review_required=any(
+                    str(bindings[semantic_uri].get("semantic_rule_id", "")).startswith(
+                        "heuristic:"
+                    )
+                    for semantic_uri in semantic_uris
+                ),
             )
         )
     validate_candidate_operations(candidates)
@@ -2336,7 +2342,10 @@ class _DeterministicR0ProbeDispatcher(WhitelistedR0ProbeDispatcher):
             technical_status=active.technical_status,
             created_at=datetime.now(timezone.utc),
         )
-        dependency_report = DirectDependencyResolver(self.software_policy).resolve(
+        dependency_report = DirectDependencyResolver(
+            self.software_policy,
+            environment=updated_report.probes["ros"].data.get("runtime_environment", {}),
+        ).resolve(
             discovery_id=active.discovery_id,
             projects=scan.probe.data.get("projects", []),
             active_report=updated_active,
@@ -2566,7 +2575,10 @@ class DiscoveryService:
             active_report,
             probes["hw"],
         )
-        dependency_report = DirectDependencyResolver(self.software_policy).resolve(
+        dependency_report = DirectDependencyResolver(
+            self.software_policy,
+            environment=probes["ros"].data.get("runtime_environment", {}),
+        ).resolve(
             discovery_id=discovery_id,
             projects=probes["application"].data.get("projects", []),
             active_report=active_report,

@@ -34,6 +34,59 @@ class ProposalConfidence(str, Enum):
     MEDIUM = "MEDIUM"
 
 
+class AgentDisposition(str, Enum):
+    """Agent judgment over one deterministic semantic binding.
+
+    This is advisory until Rolo validates the referenced frozen evidence and
+    any evidence-tool receipts.
+    """
+
+    ACCEPT = "ACCEPT"
+    DEFER = "DEFER"
+    REJECT = "REJECT"
+
+
+class AgentEvidenceCondition(str, Enum):
+    """Read-only facts that the mapping evidence tool can reproduce."""
+
+    BINDING_MATCH = "BINDING_MATCH"
+    ROUTE_OBSERVED = "ROUTE_OBSERVED"
+    INTERFACE_SCHEMA_KNOWN = "INTERFACE_SCHEMA_KNOWN"
+    PROVIDER_IDENTIFIED = "PROVIDER_IDENTIFIED"
+    RUNTIME_REVISION_KNOWN = "RUNTIME_REVISION_KNOWN"
+
+
+class AgentEvidenceToolReceipt(BaseModel):
+    """Agent-returned receipt that Rolo independently recomputes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    receipt_id: Sha256Digest
+    operation: CanonicalOperationId
+    route_resource_id: str = Field(min_length=1, max_length=256)
+    condition: AgentEvidenceCondition
+    satisfied: bool
+    result_sha256: Sha256Digest
+
+
+class AgentRouteDisposition(BaseModel):
+    """Agent decision for exactly one route in a deterministic binding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    route_resource_id: str = Field(min_length=1, max_length=256)
+    disposition: AgentDisposition
+    rationale: str = Field(min_length=8, max_length=1_000)
+    tool_receipt_ids: list[Sha256Digest] = Field(default_factory=list, max_length=16)
+
+    @field_validator("tool_receipt_ids")
+    @classmethod
+    def require_unique_receipts(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("route disposition tool receipts must be unique")
+        return value
+
+
 class VerificationRequestKind(str, Enum):
     ROUTE_OBSERVATION = "ROUTE_OBSERVATION"
     EXECUTABLE_INSPECTION = "EXECUTABLE_INSPECTION"
@@ -118,7 +171,10 @@ class AgentOperationProposal(BaseModel):
         max_length=MAX_PROPOSAL_RESOURCE_REFS,
     )
     confidence: ProposalConfidence
+    disposition: AgentDisposition = AgentDisposition.ACCEPT
     rationale: str = Field(min_length=8, max_length=2_000)
+    route_dispositions: list[AgentRouteDisposition] = Field(default_factory=list, max_length=32)
+    tool_receipts: list[AgentEvidenceToolReceipt] = Field(default_factory=list, max_length=128)
     counter_evidence_refs: list[str] = Field(default_factory=list, max_length=16)
     requested_verification: list[VerificationRequest] = Field(
         default_factory=list,
@@ -147,6 +203,12 @@ class AgentOperationProposal(BaseModel):
         overlap = set(self.evidence_refs) & set(self.counter_evidence_refs)
         if overlap:
             raise ValueError("supporting and counter evidence references must be disjoint")
+        route_ids = [item.route_resource_id for item in self.route_dispositions]
+        if len(route_ids) != len(set(route_ids)):
+            raise ValueError("route dispositions must be unique")
+        receipt_ids = [item.receipt_id for item in self.tool_receipts]
+        if len(receipt_ids) != len(set(receipt_ids)):
+            raise ValueError("evidence tool receipts must be unique")
         return self
 
 
@@ -155,9 +217,10 @@ class OperationProposalBundle(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["rolo-operation-proposal-bundle/v1"] = (
-        "rolo-operation-proposal-bundle/v1"
-    )
+    schema_version: Literal[
+        "rolo-operation-proposal-bundle/v1",
+        "rolo-operation-proposal-bundle/v2",
+    ] = "rolo-operation-proposal-bundle/v2"
     robot_id: str = Field(min_length=1, max_length=128)
     discovery_id: str = Field(min_length=1, max_length=128)
     target_fingerprint_sha256: str = Field(pattern=_SHA256_PATTERN)

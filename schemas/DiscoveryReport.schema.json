@@ -74,6 +74,47 @@
           ],
           "title": "Origin",
           "type": "string"
+        },
+        "semantic_review_required": {
+          "default": false,
+          "title": "Semantic Review Required",
+          "type": "boolean"
+        },
+        "semantic_review_disposition": {
+          "default": "NOT_REVIEWED",
+          "enum": [
+            "NOT_REVIEWED",
+            "ACCEPT",
+            "DEFER",
+            "REJECT"
+          ],
+          "title": "Semantic Review Disposition",
+          "type": "string"
+        },
+        "route_review_dispositions": {
+          "additionalProperties": {
+            "enum": [
+              "ACCEPT",
+              "DEFER",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "title": "Route Review Dispositions",
+          "type": "object"
+        },
+        "semantic_review_artifact_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Review Artifact Sha256"
         }
       },
       "required": [

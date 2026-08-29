@@ -263,7 +263,15 @@ def test_verified_help_derives_exact_name_and_path_routes() -> None:
     assert len({item.interface_schema_sha256 for item in routes}) == 1
 
 
-def test_generic_camera_inventory_cli_becomes_a_gateable_candidate(tmp_path: Path) -> None:
+def test_zero_exit_without_help_structure_does_not_observe_a_cli_route() -> None:
+    record = _help_record("/opt/acme/bin/acme-teleoperate").model_copy(
+        update={"usage": [], "parameters": [], "subcommands": []}
+    )
+
+    assert probe_routes(_bound_linux(record)) == []
+
+
+def test_generic_camera_inventory_cli_requires_agent_semantic_review(tmp_path: Path) -> None:
     application = _application_probe(tmp_path, "acme-find-cameras")
     linux = _bound_linux(_help_record("/opt/acme/bin/acme-find-cameras"))
     probes = {
@@ -290,8 +298,9 @@ def test_generic_camera_inventory_cli_becomes_a_gateable_candidate(tmp_path: Pat
     assert candidate.route_evidence[0].kind == "cli"
     assert candidate_route_observed(candidate, probes)
     eligible, deferred = adapter_operation_eligibility(report)
-    assert "app.camera.list" in eligible
-    assert "app.camera.list" not in deferred
+    assert candidate.semantic_review_required is True
+    assert "app.camera.list" not in eligible
+    assert deferred["app.camera.list"] == "AGENT_SEMANTIC_REVIEW_REQUIRED"
 
 
 def test_cli_mapping_requires_both_source_declaration_and_successful_target_help(
@@ -346,10 +355,39 @@ def test_cli_operation_inference_uses_help_semantics_not_only_name() -> None:
 def test_cli_operation_inference_does_not_treat_package_info_as_robot_health() -> None:
     matches = infer_application_cli_operations(
         "lerobot-info",
-        help_text="Use this script to get a quick summary of your system config and package versions.",
+        help_text=(
+            "Use this script to get a quick summary of your system config and package versions."
+        ),
     )
 
     assert matches == []
+
+
+def test_cli_operation_inference_rejects_side_effecting_false_mappings() -> None:
+    cases = [
+        (
+            "lerobot-find-joint-limits",
+            "Find motor joint limits and stop after collecting samples.",
+            "app.safety.emergency_stop",
+        ),
+        (
+            "lerobot-setup-motors",
+            "Setup and configure actuator motors.",
+            "hw.actuator.list",
+        ),
+        (
+            "lerobot-teleoperate",
+            "Teleoperate the robot while streaming a camera.",
+            "app.camera.list",
+        ),
+    ]
+
+    for endpoint, help_text, forbidden_operation in cases:
+        operations = {
+            item.operation
+            for item in infer_application_cli_operations(endpoint, help_text=help_text)
+        }
+        assert forbidden_operation not in operations
 
 
 def test_static_application_route_is_available_to_agent_but_not_runtime_gate(

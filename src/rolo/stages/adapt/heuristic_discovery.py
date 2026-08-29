@@ -33,6 +33,7 @@ from rolo.stages.adapt.proposal_orchestration import (
     DiscoverySkillRunner,
     ProposalValidationArtifact,
     RegistrySnapshot,
+    apply_validated_semantic_dispositions,
     build_discovery_skill_request,
     persist_proposal_artifacts,
 )
@@ -1226,12 +1227,10 @@ class HeuristicDiscoveryOrchestrator:
         applied: list[str] = []
         candidates = list(report.operation_candidates)
         if self.mode == HeuristicAdaptMode.ENABLED and validation is not None:
-            existing = {candidate.operation for candidate in candidates}
-            for candidate in validation.operation_candidates:
-                if candidate.operation not in existing:
-                    candidates.append(candidate)
-                    applied.append(candidate.operation)
-                    existing.add(candidate.operation)
+            candidates, applied = apply_validated_semantic_dispositions(
+                candidates,
+                validation,
+            )
         summary = HeuristicDiscoverySummary(
             robot_id=report.robot_id,
             discovery_id=report.discovery_id,

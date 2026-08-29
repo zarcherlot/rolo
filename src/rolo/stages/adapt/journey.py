@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -200,6 +200,7 @@ class AdaptJourneyService:
         scratch_root: Path | None,
         timeout_s: int | None,
         evidence_deployment: EvidenceDeploymentConfig | None = None,
+        approved_executable_help_ids: Sequence[str] = (),
         evidence_timeout_s: float = 45.0,
         on_output: Callable[[str, str], None] | None = None,
     ) -> AdaptJourneyResult:
@@ -235,10 +236,9 @@ class AdaptJourneyService:
                 )
             request = new_request(
                 robot_id,
-                executable_help_ids=[
-                    item.executable_id
-                    for item in evidence_deployment.collector.help_executables
-                ],
+                # Pinned means eligible, while this list records the entrypoints
+                # explicitly approved by the current operator invocation.
+                executable_help_ids=approved_executable_help_ids,
             )
             try:
                 if evidence_deployment.mode == EvidenceDeploymentMode.LOCAL:

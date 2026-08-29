@@ -186,6 +186,18 @@ _GENERIC_TOOL_TOKENS = {
     "viz",
     "visualize",
 }
+_SIDE_EFFECTING_ENDPOINT_TOKENS = {
+    "calibrate",
+    "control",
+    "edit",
+    "record",
+    "replay",
+    "rollout",
+    "setup",
+    "teleop",
+    "teleoperate",
+    "train",
+}
 
 
 def _semantic_tokens(value: str) -> set[str]:
@@ -269,6 +281,20 @@ def infer_application_cli_operations(
         # ``config`` and make every package-info command look like a parameter
         # API.
         operation_tokens = set(_TOKEN_RE.findall(definition.operation.casefold())) - _STOP_TOKENS
+        # A command's entrypoint is stronger evidence than prose in ``--help``.
+        # Read-only inventory/status Operations must not be inferred from
+        # entrypoints whose primary verb is mutating or motion-producing.
+        if definition.access == "read" and (
+            endpoint_tokens & _SIDE_EFFECTING_ENDPOINT_TOKENS
+        ):
+            continue
+        # Emergency stop is intentionally not part of the generic lexical
+        # ``stop`` class: mapping it requires the explicit emergency-stop
+        # intent in the endpoint or an exposed subcommand.
+        if definition.operation == "app.safety.emergency_stop":
+            explicit_tokens = endpoint_tokens | _semantic_tokens(" ".join(subcommands))
+            if not {"emergency", "stop"} <= explicit_tokens:
+                continue
         domain_terms = {
             token
             for token in operation_tokens
@@ -416,6 +442,10 @@ class ApplicationCliRouteProvider:
         for record in records:
             status = getattr(getattr(record, "help_probe", None), "status", None)
             if getattr(status, "value", status) != "SUCCEEDED":
+                continue
+            if not (record.usage or record.parameters or record.subcommands):
+                # Exit code zero alone is not a self-description contract
+                # (some entrypoints ignore --help and execute normal startup).
                 continue
             interface = {
                 "usage": sorted(set(record.usage)),
