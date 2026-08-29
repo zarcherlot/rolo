@@ -112,6 +112,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 - `src/rolo/episode_read_models.py`：模型、枚举、边界和分页/窗口类型；
 - `src/rolo/episode_projection.py`：从内部 record 构造对外只读 projection；
 - `src/rolo/episode_observation_bundles.py`：观察 bundle 的 producer/校验；
+- `src/rolo/episode_capture.py`：从只读 target inspection 生成 metadata-only immutable Episode；
 - `src/rolo/api.py`：episodes、revision history、cohort、observation bundle 端点。
 
 四类接口均以 revision pin 和 bounded read 为原则；它们不隐式提供实时采集、写操作、回放

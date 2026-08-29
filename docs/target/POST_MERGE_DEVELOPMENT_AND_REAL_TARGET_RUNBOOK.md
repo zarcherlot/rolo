@@ -109,6 +109,10 @@ Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence
 
 任何阶段失败，只修复当前切片并从本地门禁重新开始，不沿用失败提交生成的 artifact。
 
+当前 DEV-01 已落地首个窄切片 `target inspection Episode capture`（提交 `4ae7e42`）：
+它只生成 `METADATA_ONLY`、`UNVERIFIED`、不可变 Episode，不改变 release authority；后续
+Verify provider/materializer 仍需与本分支 canonical producer 做字段级对照后再接入。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
