@@ -180,11 +180,13 @@ def test_authorization_listing_filters_exact_robot_and_stage(tmp_path: Path) -> 
     verify_task = _task().model_copy(update={"stage": "verify", "robot_id": "robot-2"})
     runner.run(verify_task, workspace=tmp_path / "workspace", confirmed=False)
 
-    assert len(
-        list_stage_authorization_requests(
-            tmp_path, stage="diagnose", robot_id="robot-1"
-        )
-    ) == 1
+    requests = list_stage_authorization_requests(
+        tmp_path, stage="diagnose", robot_id="robot-1"
+    )
+    assert len(requests) == 1
+    assert requests[0]["request_ref"].startswith(
+        "artifact://diagnose/robot-1/authorization/requests/"
+    )
     assert list_stage_authorization_requests(tmp_path, stage="verify", robot_id="robot-1") == []
 
 

@@ -222,7 +222,12 @@ def list_stage_authorization_requests(
                     continue
                 if robot_id and payload.get("robot_id") != robot_id:
                     continue
-                requests.append(payload)
+                requests.append(
+                    {
+                        **payload,
+                        "request_ref": layout.ref(request_path),
+                    }
+                )
     requests.sort(key=lambda item: str(item.get("created_at", "")))
     return requests
 
