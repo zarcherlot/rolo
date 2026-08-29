@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "ReadinessCheck": {
+      "additionalProperties": false,
+      "description": "One named, deterministic readiness assertion.",
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "detail"
+      ],
+      "title": "ReadinessCheck",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Machine-readable gate for beginning a physical target Verify run.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-real-verify-readiness/v2",
+      "default": "rolo-real-verify-readiness/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "READY",
+        "BLOCKED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "checks": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ReadinessCheck"
+      },
+      "maxProperties": 128,
+      "minProperties": 1,
+      "title": "Checks",
+      "type": "object"
+    },
+    "provider_run_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Run Id"
+    },
+    "plan_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plan Sha256"
+    },
+    "provider_manifest_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Manifest Ref"
+    },
+    "provider_manifest_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Manifest Sha256"
+    },
+    "target_provenance_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Provenance Ref"
+    },
+    "target_provenance_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Provenance Sha256"
+    },
+    "evidence_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Ref"
+    },
+    "evidence_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Sha256"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "release_authority": {
+      "const": "none",
+      "default": "none",
+      "title": "Release Authority",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robot_id",
+    "status",
+    "checks"
+  ],
+  "title": "RealVerifyReadinessReportV2",
+  "type": "object"
+}

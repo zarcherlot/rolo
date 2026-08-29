@@ -878,9 +878,8 @@ class StageAgentRunner:
         )
         return run
 
-    @staticmethod
     def _validate_authorization_request(
-        request: dict[str, object], task: StageAgentTask
+        self, request: dict[str, object], task: StageAgentTask
     ) -> None:
         schema_version = request.get("schema_version")
         if schema_version not in {
