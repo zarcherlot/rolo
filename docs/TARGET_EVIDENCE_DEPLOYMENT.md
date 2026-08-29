@@ -134,6 +134,29 @@ subcommands. Discovery merges that evidence into the Active report and never run
 on the controller. Because third-party programs can implement `--help` with side effects, operators
 must allowlist only reviewed executables and may omit this optional evidence entirely.
 
+### Refreshing an existing local collector
+
+An existing local deployment keeps its pinned allowlist by design. If it was enrolled with only
+one executable, run the explicit refresh command before Adapt; it discovers the project entrypoints,
+stages a new collector/secret, and records a transition without overwriting the previous state:
+
+```bash
+ROLO_CONFIG_ROOT="${ROLO_CONFIG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/rolo/config}"
+DEPLOYMENT="$ROLO_CONFIG_ROOT/target-evidence/wheeltec.json"
+CURRENT_COLLECTOR_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["collector"]["collector_id"])' "$DEPLOYMENT")"
+robotctl target-evidence collector-refresh \
+  --robot wheeltec \
+  --project-root /path/to/robot-workspace \
+  --config-root "$ROLO_CONFIG_ROOT" \
+  --expected-collector-id "$CURRENT_COLLECTOR_ID"
+```
+
+The command must return `COLLECTOR_REFRESHED`, list the newly pinned help executables, and emit a
+transition path. It does not run `--help`; the next read-only collection performs the bounded probes.
+Use `--allow-executable` repeatedly only when an explicitly reviewed subset is required. A stale
+expected collector ID is a safety failure and must not be bypassed by deleting or editing the
+deployment files.
+
 ## Collector rotation and target replacement
 
 Rotation is intentionally a two-step handoff. The target first creates a parallel collector and

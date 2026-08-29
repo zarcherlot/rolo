@@ -35,6 +35,7 @@ from rolo.stages.adapt.target_evidence import (
     load_deployment,
     new_request,
     reenroll_deployment,
+    refresh_local_deployment,
     stage_collector_rotation,
     verify_evidence_bundle,
 )
@@ -61,6 +62,21 @@ def test_project_entrypoint_discovery_covers_all_application_clis(tmp_path: Path
         "lerobot-info",
         "lerobot-teleoperate",
     ]
+
+
+def test_project_entrypoint_discovery_uses_semantic_tokens_not_platform_names(
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("vendor_robot_node", "vendor_camera_driver", "vendor_unrelated_tool"):
+        (bin_dir / name).write_text("#!/bin/sh\n", encoding="utf-8")
+
+    discovered = discover_help_executables(tmp_path)
+
+    assert [item.name for item in discovered] == ["vendor_camera_driver", "vendor_robot_node"]
+
+
 def _collector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64
@@ -651,6 +667,49 @@ def test_local_journey_reuses_reenrolled_collector_state(
 
     assert ensured.collector.collector_id == replacement.collector_id
     assert ensured_state == replacement_state.resolve()
+
+
+def test_refresh_local_deployment_expands_pinned_help_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64
+    )
+    project_root = tmp_path / "project"
+    bin_dir = project_root / ".venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    (project_root / "pyproject.toml").write_text(
+        "[project.scripts]\ndemo-camera = 'demo:camera'\ndemo-teleoperate = 'demo:teleoperate'\n",
+        encoding="utf-8",
+    )
+    first = bin_dir / "demo-camera"
+    second = bin_dir / "demo-teleoperate"
+    first.write_text("#!/bin/sh\n", encoding="utf-8")
+    second.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    original, state_path = ensure_local_deployment(
+        robot_id="refresh-demo",
+        config_root=tmp_path,
+        help_executables=[first],
+    )
+    deployment, transition, transition_path, refreshed_state = refresh_local_deployment(
+        robot_id="refresh-demo",
+        config_root=tmp_path,
+        project_root=project_root,
+        expected_collector_id=original.collector.collector_id,
+    )
+
+    assert deployment.collector.collector_id != original.collector.collector_id
+    assert {Path(item.path).name for item in deployment.collector.help_executables} == {
+        "demo-camera",
+        "demo-teleoperate",
+    }
+    assert transition.previous_collector_id == original.collector.collector_id
+    assert transition.new_collector_id == deployment.collector.collector_id
+    assert transition_path.is_file()
+    assert refreshed_state == Path(deployment.local_collector_state_path or "")
+    assert refreshed_state.is_file()
+    assert state_path.read_text(encoding="utf-8")
 
 
 def test_reenroll_rejects_stale_expected_pin_without_changing_deployment(

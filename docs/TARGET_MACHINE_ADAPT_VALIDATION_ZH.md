@@ -27,7 +27,7 @@ git pull --ff-only origin codex/adapt-full-hardening
 git rev-parse HEAD
 ```
 
-预期提交为 `a3f2890` 或其后续提交。若本地没有该分支：
+预期提交为 `8b24a2b` 或其后续提交。若本地没有该分支：
 
 ```bash
 git switch --track -c codex/adapt-full-hardening origin/codex/adapt-full-hardening
@@ -78,17 +78,71 @@ mkdir -p "$VALIDATION_DIR"
 ROS 目标需要确认 setup 文件、ROS domain、RMW 和 overlay 是目标机实际配置；不要在 adapter
 源码中写死 topic 或 executable 的绝对路径。非 ROS 工程不需要人为设置 ROS 环境。
 
-## 4. 先做只读 Discovery
+## 4. 刷新目标 CLI help allowlist（本轮新增）
+
+目标机若已有旧的 target-evidence collector，普通 `adapt start` 会保留其 pinned
+allowlist，不会静默扩展。先显式刷新一次，流程会自动扫描项目声明入口和常规 `.venv/bin`、
+`install/*/bin` 目录，只固定实际存在的常规入口文件，并创建不可变 transition 记录。
+该步骤只读取文件、计算 SHA-256，不执行目标 CLI。
+
+```bash
+export ROLO_CONFIG_ROOT="${ROLO_CONFIG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/rolo/config}"
+export DEPLOYMENT_CONFIG="$ROLO_CONFIG_ROOT/target-evidence/$ROBOT_ID.json"
+test -f "$DEPLOYMENT_CONFIG"
+export CURRENT_COLLECTOR_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["collector"]["collector_id"])' "$DEPLOYMENT_CONFIG")"
+test -n "$CURRENT_COLLECTOR_ID"
+
+uv run robotctl target-evidence collector-refresh \
+  --robot "$ROBOT_ID" \
+  --project-root "$PROJECT_ROOT" \
+  --config-root "$ROLO_CONFIG_ROOT" \
+  --expected-collector-id "$CURRENT_COLLECTOR_ID" \
+  2>&1 | tee "$VALIDATION_DIR/collector-refresh.txt"
+```
+
+预期结果：
+
+- 输出 `status=COLLECTOR_REFRESHED`；
+- `help_executables` 至少包含目标项目中实际存在的安全入口，最多 20 个；
+- 输出新的 `collector_state`、`transition_path` 和新的 collector ID；
+- 旧 deployment/collector 文件仍可读取，transition 中同时记录旧、新 collector ID；
+- 此步骤不启动入口，不访问摄像头、ROS、CAN 或其他硬件。
+
+如果目标机尚未 enrollment，则首次初始化时直接省略 `--allow-executable`，让 collector 自动
+发现入口：
+
+```bash
+uv run robotctl target-evidence collector-init \
+  --robot "$ROBOT_ID" \
+  --project-root "$PROJECT_ROOT" \
+  --descriptor-out "$VALIDATION_DIR/collector-descriptor.json" \
+  2>&1 | tee "$VALIDATION_DIR/collector-init.txt"
+```
+
+若出现 `expected refresh pin` 或 `already pinned`，不要删除配置或覆盖 secret；重新读取当前
+collector ID，确认没有其他任务并发轮换后再重试。
+
+## 5. 先做只读 Discovery
 
 如果需要单独确认发现结果，先执行：
 
 ```bash
+uv run robotctl target-evidence collect \
+  --robot "$ROBOT_ID" \
+  --output "$VALIDATION_DIR/target-evidence.json" \
+  2>&1 | tee "$VALIDATION_DIR/target-evidence-collect.txt"
+
 uv run robotctl adapt discover run \
   --robot "$ROBOT_ID" \
   --source-root "$PROJECT_ROOT" \
   --active-probe runtime-readonly \
+  --target-evidence-bundle "$VALIDATION_DIR/target-evidence.json" \
   --full | tee "$VALIDATION_DIR/discover.txt"
 ```
+
+预期 `target-evidence collect` 输出 `status=VERIFIED`，并为每个 pinned help executable
+记录 `SUCCEEDED`、`FAILED` 或 `TIMEOUT`；单个入口失败不能抹掉其他入口的证据。Discovery
+不得再出现 `--active-probe runtime-readonly requires --target-evidence-bundle`。
 
 根据工程布局补充 `--build-root`、`--install-root`、`--doc-root`、`--launch-root` 或
 `--executable`；不要把不存在的路径写进命令。然后查看摘要：
@@ -107,11 +161,13 @@ Discovery 记录中重点确认：
 - 状态为 `SUCCEEDED` 或可解释的 `PARTIAL`；
 - 目标 fingerprint、evidence digest、collector identity 非空；
 - 目标实际存在的 topic/service/action/device/CLI 出现在 route evidence 中；
+- 项目已声明的入口与目标 help 探测结果分开显示：`SOURCE_DECLARED` 仅是静态线索，
+  `OBSERVED_RUNTIME` 才能形成可绑定 route；未探测入口必须保留 `NOT_PROBED`，不能静默丢失；
 - ROS 失败时保留 `ros.json`，查看 `command_diagnostics`，区分 setup 失败、命令失败和空图；
 - route 的 `resource_id` 稳定，不依赖本次运行的临时路径；
 - 没有把 Wheeltec 专有名称误当成跨平台 canonical operation。
 
-## 5. 执行完整 Adapt journey
+## 6. 执行完整 Adapt journey
 
 推荐先运行 dry-run，确认目标候选和预计范围：
 
@@ -150,8 +206,10 @@ uv run robotctl adapt start \
 - handoff、release、target evidence digest 和 fingerprint 均非空；
 - Adapter Agent 阶段只生成结构化 bundle，不直接写入产品源代码；
 - promotion 阶段执行 `describe` 和 `validate-binding`，不执行 `invoke`。
+- 高风险入口即使 help 成功，也只能形成只读证据；不得因 `--help` 成功而自动执行
+  `setup-motors`、`teleoperate`、`record`、`replay` 或其他写/运动命令。
 
-## 6. 发布后的只读检查
+## 7. 发布后的只读检查
 
 ```bash
 uv run robotctl adapt status --robot "$ROBOT_ID" \
@@ -178,7 +236,7 @@ State Graph 应满足：
 - route evidence refs 和 semantic bindings 非空或有合理解释；
 - 不存在只在当前 Catalog 中出现、但没有 State Graph route 的 `VERIFIED` operation。
 
-## 7. 只读运行时验证
+## 8. 只读运行时验证
 
 先从 Catalog 和 schema 中确认某个 operation 是 `VERIFIED` 且确实为只读：
 
@@ -203,9 +261,9 @@ uv run robotctl tool invoke OPERATION \
 2. 使用 schema 规定的选择字段重试；adapter 应选择对应 route；
 3. 不要用任意字段名绕过选择检查，也不要把运动 operation 当作验证手段。
 
-## 8. 三批次专项验证步骤与预期结果
+## 9. 三批次专项验证步骤与预期结果
 
-### 8.1 第一批：多 route selector 精确绑定
+### 9.1 第一批：多 route selector 精确绑定
 
 先查看 State Graph 和 operation schema，确认目标机确实存在多 route operation：
 
@@ -244,7 +302,7 @@ uv run robotctl tool invoke OPERATION \
 `operation route selector does not match a gated route` 或 `operation route selector is ambiguous`。
 失败请求不得启动目标 CLI、ROS 或硬件进程。
 
-### 8.2 第二批：binding 隔离和 CLI help 预检
+### 9.2 第二批：binding 隔离和 CLI help 预检
 
 重新执行完整 Adapt 或 promotion 后，检查输出中的 promotion 检查项：
 
@@ -271,7 +329,7 @@ target CLI interpreter is not resolvable inside the adapter sandbox
 target CLI help probe failed
 ```
 
-### 8.3 第三批：启发式冲突和 battery/telemetry
+### 9.3 第三批：启发式冲突和 battery/telemetry
 
 检查候选摘要中是否保留 mapping score、候选列表和歧义状态：
 
@@ -299,7 +357,7 @@ uv run robotctl adapt candidates inspect hw.power.battery.status --robot "$ROBOT
   `HEURISTIC_MAPPING_AMBIGUOUS`，不能自动成为 `VERIFIED`；
 - 不出现 Wheeltec 专有判断、静态 topic 白名单或 controller 路径。
 
-### 8.4 重复运行稳定性
+### 9.4 重复运行稳定性
 
 在目标进程和 ROS graph 未改变时，再运行一次只读 Discovery：
 
@@ -308,6 +366,7 @@ uv run robotctl adapt discover run \
   --robot "$ROBOT_ID" \
   --source-root "$PROJECT_ROOT" \
   --active-probe runtime-readonly \
+  --target-evidence-bundle "$VALIDATION_DIR/target-evidence.json" \
   --full | tee "$VALIDATION_DIR/discover-repeat.txt"
 uv run robotctl adapt acceptance-pack --robot "$ROBOT_ID" \
   --output "$VALIDATION_DIR/rolo-adapt-acceptance-repeat.json"
@@ -317,7 +376,7 @@ uv run robotctl adapt acceptance-pack --robot "$ROBOT_ID" \
 降级或生成新的不一致 release。若 target executable、ROS setup、RMW、ROS domain 或 provider
 digest 发生变化，则旧 release 应被标记 stale 并要求重新门禁。
 
-## 9. 本轮重点观察清单
+## 10. 本轮重点观察清单
 
 | 优先级 | 观察项 | 通过标准 | 异常时保存 |
 |---|---|---|---|
@@ -329,7 +388,7 @@ digest 发生变化，则旧 release 应被标记 stale 并要求重新门禁。
 | P1 | 跨平台路径 | 不出现 controller 路径、Wheeltec 私有绝对路径或硬编码 ROS topic | bundle 文件名、gate 错误、target evidence |
 | P2 | 重复发现稳定性 | 等价证据再次运行后仍为 `COMPLETE`，release 不无故变化 | 两次 acceptance pack、discovery ID |
 
-## 10. 异常记录格式
+## 11. 异常记录格式
 
 每个异常单独记录以下信息：
 
@@ -349,7 +408,7 @@ Adapt run / discovery / release ID：
 请优先上传 `rolo-adapt-acceptance.json`、摘要日志、错误 stderr 和 State Graph；不要上传 SSH
 私钥、token、完整私有源码、原始 secret 或包含凭据的环境导出。
 
-## 11. 验证结束回传
+## 12. 验证结束回传
 
 在目标机执行：
 
