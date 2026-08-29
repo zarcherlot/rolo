@@ -122,6 +122,11 @@ Stage Agent 授权恢复继续要求完全匹配当前用户、session、stage�
 evidence v2 authority，合入前须通过成功、跨用户、跨 session、provider 越界和伪造 session
 测试。
 
+HTTP 控制面现通过 `GET /v1/session` 签发短时 HttpOnly `rolo_session` ticket；rolo-vis
+启动或刷新时先取该 ticket。任何带 `authorization_ref` 的恢复请求必须通过当前用户和
+持久 session 的 HMAC 校验，不能再用可伪造的明文 session header；缺失、篡改或过期均应
+返回 403。真机验证需记录 `/v1/session` 的 session_id 与批准请求使用同一 artifact root。
+
 当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
 P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
 

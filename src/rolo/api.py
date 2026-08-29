@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
+import binascii
+import json
+import time
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -124,6 +128,7 @@ from rolo.topology_path_read_models import (
     TopologyPathExplanation,
     explain_topology_path,
 )
+from rolo.user_identity import current_user_principal, current_user_session_id
 from rolo.wiki_read_models import RobotWikiSnapshot, build_robot_wiki
 from rolo.workbench_read_models import (
     EvidenceAuthority,
@@ -234,6 +239,62 @@ def get_job_service() -> JobService:
     return JobService(get_settings().rolo_config_dir / "jobs")
 
 
+_SESSION_TICKET_TTL_SECONDS = 3600
+
+
+def _session_ticket_key(settings, session_id: str) -> bytes:
+    """Derive the local ticket signing key without exposing a credential."""
+
+    configured = settings.rolo_api_token
+    return (configured or f"rolo-local-session:{session_id}").encode("utf-8")
+
+
+def _issue_session_ticket(settings, *, principal: str, session_id: str) -> str:
+    payload = {
+        "principal": principal,
+        "session_id": session_id,
+        "expires_at": int(time.time()) + _SESSION_TICKET_TTL_SECONDS,
+    }
+    encoded = urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).decode("ascii")
+    signature = hmac.new(
+        _session_ticket_key(settings, session_id), encoded.encode("ascii"), "sha256"
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _valid_session_ticket(request: Request, settings, *, expected_session: str) -> bool:
+    """Validate a browser ticket against this process's user and durable session."""
+
+    ticket = request.cookies.get("rolo_session", "")
+    encoded, separator, supplied_signature = ticket.partition(".")
+    if not encoded or separator != "." or len(supplied_signature) != 64:
+        return False
+    if any(character not in "0123456789abcdef" for character in supplied_signature.casefold()):
+        return False
+    expected_signature = hmac.new(
+        _session_ticket_key(settings, expected_session), encoded.encode("ascii"), "sha256"
+    ).hexdigest()
+    if not hmac.compare_digest(supplied_signature, expected_signature):
+        return False
+    try:
+        payload = json.loads(urlsafe_b64decode(encoded + "===").decode("utf-8"))
+    except (binascii.Error, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    try:
+        principal = current_user_principal()
+    except ValueError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("principal") == principal
+        and payload.get("session_id") == expected_session
+        and isinstance(payload.get("expires_at"), int)
+        and payload["expires_at"] > int(time.time())
+    )
+
+
 class BootstrapExecutePayload(BaseModel):
     """File-backed bootstrap inputs; secrets never travel in the request body."""
 
@@ -264,6 +325,13 @@ class StageRunPayload(BaseModel):
     authorization_ref: str | None = Field(default=None, max_length=512)
 
 
+class LocalSessionResponse(BaseModel):
+    """Non-secret identity returned while issuing a local browser ticket."""
+
+    principal: str
+    session_id: str
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     runtime = get_runtime(request)
@@ -275,6 +343,25 @@ async def health(request: Request) -> HealthResponse:
         openai_key_configured=bool(runtime.settings.openai_api_key),
         api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES],
     )
+
+
+@app.get("/v1/session", response_model=LocalSessionResponse)
+def get_local_session(request: Request, response: Response) -> LocalSessionResponse:
+    """Issue a short-lived, HttpOnly ticket for same-user browser approvals."""
+
+    settings = get_settings()
+    principal = current_user_principal()
+    session_id = current_user_session_id(settings.rolo_artifact_dir)
+    response.set_cookie(
+        "rolo_session",
+        _issue_session_ticket(settings, principal=principal, session_id=session_id),
+        max_age=_SESSION_TICKET_TTL_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+    return LocalSessionResponse(principal=principal, session_id=session_id)
 
 
 @app.get("/v1/robots", response_model=list[RobotCapability])
@@ -702,6 +789,15 @@ async def _run_downstream_stage(
     runtime = get_runtime(request)
     try:
         runtime.registry.get(robot_id)
+        if payload.authorization_ref:
+            expected_session = current_user_session_id(runtime.settings.rolo_artifact_dir)
+            if not _valid_session_ticket(
+                request, runtime.settings, expected_session=expected_session
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="stage authorization requires an authenticated local Rolo session",
+                )
         return DownstreamStageService(runtime.settings, stage).run(
             robot_id,
             confirmed=payload.confirmed,
