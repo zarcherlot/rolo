@@ -1,17 +1,28 @@
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+
 # Canonical Operation Registry 完整清单
 
-当前产品 Registry 共定义 **294** 个 canonical operations。本文按照 README 的四层产品视图
-罗列；代码内部仍保留 `control`、`hw`、`linux`、`middleware`、`ros`、`app` 六个命名空间，
-用于实现路由和策略校验。
+当前产品同时维护两个 Registry 视图，不能把它们的数量或用途混为一谈：
+
+- **v1 完整产品词汇**：294 个 canonical operations，保留完整跨领域语义、契约和迁移审计；
+- **v2 运行时 Canonical 投影**：197 个 operation，只保留当前 Canonical Registry 角色，默认由
+  `robotctl tool registry`、`robotctl tool contract validate` 和 Adapt 运行时使用；
+- **Agent-native family catalog**：22 个受控观测工具，不属于 Canonical Registry，也不增加产品词汇。
+
+本文按四层产品视图罗列 v1 完整产品词汇；代码内部仍保留 `control`、`hw`、`linux`、
+`middleware`、`ros`、`app` 六个命名空间，用于实现路由和策略校验。需要查看运行时投影时显式
+传入 `--registry-version v2`；v1 仅用于完整审计和兼容检查。
 
 Registry Operation、契约生命周期、升级/降级规则、R0-R3、数据分级和调用方法见
 [REGISTRY_OPERATION_GUIDE.md](operations/REGISTRY_OPERATION_GUIDE.md)。
 
-清单表示稳定的产品词汇；当前 294 项均具有明确契约，其中 62 项为 `RELEASED`、232 项为
+清单表示稳定的 v1 产品词汇；当前 294 项均具有明确契约，其中 62 项为 `RELEASED`、232 项为
 `GATEABLE`、0 项为 `DRAFT`。目标机器仍必须提供匹配 candidate、adapter 和 probe 证据，
 operation 才能通过 Adapt 门禁成为 `VERIFIED`。正式契约见
-[OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)，可通过 `robotctl tool contract validate`
-编译校验。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
+[OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)。该文件是 294 项 authored contracts 的生成
+清单，不等同于 v2 的 197 项运行时投影；可分别通过
+`robotctl tool contract validate --registry-version v1` 和
+`robotctl tool contract validate --registry-version v2` 校验两种 Registry 视图。契约向开放互操作规范和行业标准演进的边界、阶段与治理规则见
 [OPERATION_CONTRACT_STANDARDIZATION.md](operations/OPERATION_CONTRACT_STANDARDIZATION.md)。
 已发现的实现重复、近义 operation 边界和待决策项见
 [archive/operations/OPERATION_TAXONOMY_AUDIT.md](archive/operations/OPERATION_TAXONOMY_AUDIT.md)。

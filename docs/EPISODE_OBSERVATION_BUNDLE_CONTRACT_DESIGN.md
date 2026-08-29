@@ -1,14 +1,18 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-29 -->
 
 # Episode Observation Bundle public contract design
 
-Status: E22A approved; E22B producer and safe-projection review candidate
+Status: E22A approved; E22B producer implemented and review-controlled; E22C consumer deferred
 
 Target consumer: rolo-vis Episode Studio
 
 Base contract: `workbench.episode-read-model/v1`
 
 Candidate feature: `workbench.episode-observation-bundle/v1`
+
+Implementation status: the control plane exposes the reviewed read-only producer/projection and
+advertises `workbench.episode-observation-bundle/v1`. E22B does not add capture, media delivery,
+recollection, replay, export or write authority; those surfaces remain deferred to later review.
 
 ## 1. Decision
 

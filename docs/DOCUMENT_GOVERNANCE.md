@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-29 -->
 
 # 文档治理规则
 
@@ -26,7 +26,8 @@ source_of_truth: optional/path
 3. 操作手册只描述步骤，安全约束和契约定义应链接到规范文档；
 4. `draft`、`plan` 和历史审计不能出现在当前规范的唯一入口中；
 5. 生成文档必须注明生成源，禁止直接编辑生成输出；
-6. 被归档文档保留 Git 历史，并在原路径保留至少一个版本的兼容跳转页。
+6. 被归档文档保留 Git 历史；兼容跳转页只在迁移窗口内保留。窗口结束后删除前，必须完成
+   迁移公告、全仓库及已知外部链接搜索、最终链接检查和文档治理检查。
 7. 根目录只保留导航、生成契约和被既有 API/测试固定引用的兼容契约；新增专题必须进入主题目录。
 
 ## 当前入口
