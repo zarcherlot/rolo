@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import binascii
 import hmac
 import ipaddress
-import binascii
 import json
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
