@@ -42,8 +42,9 @@ verify (optional): diagnosis handoff → acceptance plan → regression/evidence
 - Verify：`src/rolo/stages/verify/service.py`。
 
 `src/rolo/stages/agent_runner.py` 是 Diagnose/Verify 共用的执行边界，负责任务摘要、授权、
-幂等、运行状态、日志流、取消、租约恢复和 handoff validator 回调。它本身不授予 release
-或 acceptance authority。
+幂等、运行状态、日志流、取消、租约恢复和 handoff validator 回调。`maintain_stage_runtime`
+提供重启后的全局 stale-run/孤儿 active-marker 清理；该维护过程只把中断运行置为终态，
+不重放 executor，也不授予 release 或 acceptance authority。
 
 ## 3. Adapt 实现分层
 

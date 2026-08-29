@@ -139,6 +139,12 @@ Provider 可靠性回归已补齐：`tests/test_ssh_provider_recovery.py` 注入
 cancel、并发锁和 stale-lock 恢复。下一阶段须在 pinned SSH 目标复现同样故障，并记录
 进程中断/重启后的 artifact、handoff 和回退结果。
 
+DEV-07 的首个兼容切片已落地：`recover_all_stale_stage_runs` 与
+`maintain_stage_runtime` 扫描选定 Stage/robot 的运行记录，在重启后将超出租约的
+`RUNNING` 运行安全置为 `FAILED`，并清理指向终态/缺失运行的 stale `active-run.json`。
+该切片保留既有精确 stage/robot recovery API，维护过程不恢复 executor、不重放目标操作，
+测试覆盖跨 Stage 扫描、heartbeat 活跃保护、孤儿 marker、幂等重复运行。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
