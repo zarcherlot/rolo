@@ -74,3 +74,8 @@ provenance 不会被复制进 v2 package，safe-stop/rollback 也必须显式传
 workspace stat、machine-id、user/uid 和 ROS/RMW 环境，生成 main `TargetBinding` artifact。
 该 collector 不执行 shell、不写目标机，也不把 known-hosts 或凭据复制进 provenance；
 P1 provider 仍需下一轮接入该 collector 后才能产出可适配的 v2 evidence。
+
+当前切片已新增 `src/rolo/stages/verify/ssh_target_provider.py`：它复用 collector，执行
+固定的 platform/workspace/companion 三个只读 case，先保留 legacy v1 source artifact，
+再经 adapter 生成 main v2 evidence。该 provider 尚未接入 Stage handoff，也未宣称物理目标
+或 release readiness。

@@ -18,6 +18,7 @@ from rolo.stages.verify.ssh_provenance import (
     SshReadOnlyTransport,
     SshTargetProvenanceCollector,
 )
+from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
 from rolo.stages.verify.service import (
     assess_verify,
     build_verification_task,
@@ -42,4 +43,5 @@ __all__ = [
     "adapt_legacy_provider_evidence",
     "SshReadOnlyTransport",
     "SshTargetProvenanceCollector",
+    "SshTargetHealthProvider",
 ]

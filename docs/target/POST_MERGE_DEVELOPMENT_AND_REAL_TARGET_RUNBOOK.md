@@ -127,6 +127,10 @@ SSH provenance collector 已补齐（`src/rolo/stages/verify/ssh_provenance.py`�
 P1 provider；在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复后，才可进入
 provider execution 切片。
 
+SSH bounded provider execution 已在 `src/rolo/stages/verify/ssh_target_provider.py` 完成
+软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence。下一步仍
+需在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并接入 Verify handoff。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
