@@ -442,6 +442,11 @@ class AdapterPromotionService:
                 destination.write_bytes(source)
             else:
                 shutil.copy2(source, destination)
+            if item.role == "ENTRYPOINT":
+                # Agent v2 structured files carry content and digests, but no
+                # filesystem mode. Freeze entrypoints with a deterministic,
+                # owner-only executable mode before the independent probe.
+                destination.chmod(0o700)
             snapshot_files.append(
                 {
                     "path": self.layout.ref(destination),

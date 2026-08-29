@@ -25,6 +25,7 @@ from rolo.stages.verify.service import (
     build_verification_task,
     create_verification_tool_consumer,
     publish_verification_plan,
+    validate_verification_plan_operations,
 )
 from rolo.stages.verify.ssh_provenance import (
     SshReadOnlyTransport,
@@ -38,6 +39,7 @@ __all__ = [
     "commit_verification_handoff",
     "create_verification_tool_consumer",
     "publish_verification_plan",
+    "validate_verification_plan_operations",
     "VerificationCase",
     "VerificationCaseResult",
     "VerificationOracle",

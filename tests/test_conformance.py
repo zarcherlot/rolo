@@ -1,5 +1,6 @@
 import base64
 import json
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -498,7 +499,9 @@ def test_snapshot_reconstructs_structured_handoff_without_workspace_reads(
 
     assert snapshot.adapter_files
     package_ref = snapshot.adapter_package_ref.removeprefix("artifact://")
-    assert (artifact_root / package_ref).is_file()
+    package = artifact_root / package_ref
+    assert package.is_file()
+    assert package.stat().st_mode & stat.S_IXUSR
 
 
 def test_promotion_rejects_incomplete_conformance_coverage(tmp_path: Path) -> None:

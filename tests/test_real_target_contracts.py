@@ -37,7 +37,10 @@ from rolo.stages.verify.acceptance import (
     VerificationOracle,
     VerificationPlan,
 )
-from rolo.stages.verify.service import verification_outcome_status
+from rolo.stages.verify.service import (
+    publish_verification_plan,
+    verification_outcome_status,
+)
 from rolo.target_ref import parse_target_ref
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
 
@@ -184,6 +187,32 @@ def test_local_target_runner_rejects_unknown_or_mutating_operations() -> None:
     runner = LocalTargetCommandRunner()
     with pytest.raises(ValueError, match="not in the read-only allowlist"):
         runner.run("ros.topic.publish", {}, timeout_s=1)
+
+
+def test_local_target_plan_rejects_write_operation_before_publication(
+    tmp_path: Path,
+) -> None:
+    plan = VerificationPlan(
+        robot_id="robot-1",
+        cases=[
+            VerificationCase(
+                case_id="write-topic",
+                operation="ros.topic.publish",
+                oracle=VerificationOracle(
+                    kind="FIELD_EXISTS", path="output"
+                ),
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="non-allowlisted operations"):
+        publish_verification_plan(
+            tmp_path,
+            "robot-1",
+            plan,
+            allowed_operations=LocalTargetCommandRunner.READ_ONLY_OPERATIONS,
+        )
+    assert not (tmp_path / "verify/robot-1/acceptance-plan.json").exists()
 
 
 def test_local_target_runner_redacts_bounded_command_output(monkeypatch) -> None:

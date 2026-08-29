@@ -43,6 +43,7 @@ from rolo.stages.verify.acceptance import (
     VerificationReplayFixture,
     run_verification_replay,
 )
+from rolo.stages.verify.service import validate_verification_plan_operations
 from rolo.target_ref import LocalTargetRef
 from rolo.targets.profiles import TargetProfileStore
 
@@ -483,12 +484,9 @@ class LocalTargetStageExecutor:
         )
         if plan.robot_id != task.robot_id:
             raise ValueError("verification plan robot identity mismatch")
-        unknown = sorted(
-            {case.operation for case in plan.cases}
-            - LocalTargetCommandRunner.READ_ONLY_OPERATIONS
+        validate_verification_plan_operations(
+            plan, LocalTargetCommandRunner.READ_ONLY_OPERATIONS
         )
-        if unknown:
-            raise ValueError(f"verification plan contains non-allowlisted operations: {unknown}")
         _, provenance_ref, provenance_sha256 = self._provenance(
             task.robot_id, run_id, binding_ref
         )

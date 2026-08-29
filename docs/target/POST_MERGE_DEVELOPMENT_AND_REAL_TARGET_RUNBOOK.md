@@ -44,10 +44,12 @@ git log -1 --format='%H %cI %s'
 
 要求工作树干净，报告中的 revision 与部署到目标机的 revision 完全一致。
 
-当前可供真机验证的已推送基线为 `origin/codex/post-r5-integration` @
-`fc6dcb8ca12d327110fc89ee319ed47d291d93d3`。部署前必须重新执行
-`git fetch origin`、`git rev-parse origin/codex/post-r5-integration`，并把输出写入
-`revision.txt`；若远端 revision 变化，则停止本轮部署并重新生成整包证据。
+真机验证 revision 必须来自已推送并经人工批准的
+`origin/codex/post-r5-integration`。部署前把批准的 40 位提交写入
+`EXPECTED_REVISION`，执行 `git fetch origin --prune`，并验证
+`git rev-parse origin/codex/post-r5-integration` 与该值完全相同；将实际 HEAD 写入
+`revision.txt`。若远端 revision 变化，则停止本轮部署并重新生成整包证据，禁止在活动
+Runbook 中保留会过期的固定提交值。
 
 ### 2.2 合入门禁
 

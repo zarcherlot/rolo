@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import datetime
 from pathlib import Path
 
@@ -139,13 +139,31 @@ def build_verification_task(
     )
 
 
+def validate_verification_plan_operations(
+    plan: VerificationPlan, allowed_operations: Collection[str]
+) -> None:
+    """Reject operations outside the executor's immutable capability boundary."""
+
+    unknown = sorted({case.operation for case in plan.cases} - set(allowed_operations))
+    if unknown:
+        raise ValueError(
+            f"verification plan contains non-allowlisted operations: {unknown}"
+        )
+
+
 def publish_verification_plan(
-    artifact_root: Path, robot_id: str, plan: VerificationPlan
+    artifact_root: Path,
+    robot_id: str,
+    plan: VerificationPlan,
+    *,
+    allowed_operations: Collection[str] | None = None,
 ) -> str:
     """Persist a validated acceptance plan in the stage's mutable latest index."""
 
     if plan.robot_id != robot_id:
         raise ValueError("verification acceptance plan robot identity mismatch")
+    if allowed_operations is not None:
+        validate_verification_plan_operations(plan, allowed_operations)
     validate_diagnosis_handoff(artifact_root, robot_id)
     layout = ArtifactLayout(artifact_root)
     path = ArtifactStore(artifact_root).write_json(

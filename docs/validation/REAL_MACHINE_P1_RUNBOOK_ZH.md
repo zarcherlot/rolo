@@ -13,15 +13,17 @@
 ```bash
 export ROBOT_ID=<approved-robot-id>
 export PROJECT_ROOT=/path/to/rolo/workspace
+export EXPECTED_REVISION=<approved-40-character-commit-sha>
 export VALIDATION_ROOT="$HOME/rolo-p1-validation/$ROBOT_ID"
 export ROLO_ARTIFACT_DIR="$VALIDATION_ROOT/artifacts"
 export ROLO_OUTPUT_DIR="$VALIDATION_ROOT/output"
 export DEBUG_DIR="$VALIDATION_ROOT/debug"
 mkdir -p "$ROLO_ARTIFACT_DIR" "$ROLO_OUTPUT_DIR" "$DEBUG_DIR"
 
-git fetch origin codex/post-r5-integration
-git switch --detach 02ad4335f1ed212b36e8cbf29aeaf93d56624113
-test "$(git rev-parse HEAD)" = "02ad4335f1ed212b36e8cbf29aeaf93d56624113"
+git fetch origin --prune
+test "$(git rev-parse origin/codex/post-r5-integration)" = "$EXPECTED_REVISION"
+git switch --detach "$EXPECTED_REVISION"
+test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
 test -z "$(git status --short)"
 uv sync --frozen
 ```
@@ -33,8 +35,6 @@ source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=50
 export ROS_LOCALHOST_ONLY=1
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-export CODING_AGENT_PROVIDER=local-target
-export CODING_AGENT_EXECUTOR=local-target
 export ADAPT_NATIVE_TOOL_MODE=off
 unset ADAPT_NATIVE_TOOL_RUN_IDS ADAPT_NATIVE_TOOL_ROBOT_IDS
 
@@ -76,6 +76,9 @@ workspace、machine-id、用户、ROS/RMW 或 profile 与批准记录不一致�
 保持 native 工具关闭，在相同 revision/profile/工作负载下执行 3～5 个窗口：
 
 ```bash
+# Adapt 当前只注册 codex executor；local-target 仅用于 Diagnose/Verify。
+export CODING_AGENT_PROVIDER=codex
+export CODING_AGENT_EXECUTOR=codex
 export ROLO_ADAPTER_MAX_PROCESSES=512
 for window in 01 02 03 04 05; do
   uv run robotctl adapt run --robot "$ROBOT_ID" \
@@ -92,6 +95,8 @@ unknown provider、silent drop 或未解释环境失败都停止本轮。
 先确认未授权执行会停在 `WAITING_FOR_AUTH`：
 
 ```bash
+export CODING_AGENT_PROVIDER=local-target
+export CODING_AGENT_EXECUTOR=local-target
 uv run robotctl diagnose plan --robot "$ROBOT_ID" | tee "$DEBUG_DIR/diagnose-plan.txt"
 uv run robotctl diagnose run --robot "$ROBOT_ID" | tee "$DEBUG_DIR/diagnose-auth.txt"
 ```

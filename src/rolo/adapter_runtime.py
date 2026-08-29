@@ -476,7 +476,7 @@ def _validate_object_schema(value: dict[str, Any], schema: dict[str, Any], label
 
 def adapter_command(package_path: Path) -> list[str]:
     """Return an argv-only launcher for a standalone executable or Python adapter package."""
-    if package_path.suffix.lower() == ".py":
+    if package_path.suffix.lower() in {".py", ".pyz"}:
         return [sys.executable, str(package_path)]
     return [str(package_path)]
 
