@@ -33,6 +33,7 @@ source_of_truth: optional/path
 ## 当前入口
 
 - 当前文档导航：[README.md](README.md)
+- 工程状态台账：[reference/ENGINEERING_STATUS.md](reference/ENGINEERING_STATUS.md)
 - Adapt 计划：[ADAPT_ROADMAP.md](adapt/ADAPT_ROADMAP.md)
 - Registry 规范：[REGISTRY_OPERATION_GUIDE.md](operations/REGISTRY_OPERATION_GUIDE.md)
 - 生成契约：[OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)
@@ -43,6 +44,7 @@ source_of_truth: optional/path
 - 新内容应合并、链接还是归档？
 - 是否更新了替代关系、入口和反向链接？
 - 是否需要更新 Schema、代码、测试或生成命令？
+- 若变更了公开入口、阶段实现、Schema、artifact 或测试证据，是否同步更新工程状态台账？
 - 是否能通过 Markdown 链接和生成物一致性检查？
 
 本地可运行 `python scripts/check_docs.py` 执行与 CI 相同的目录、元信息和链接检查。
