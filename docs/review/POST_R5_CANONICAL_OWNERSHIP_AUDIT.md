@@ -69,3 +69,8 @@ SSH 专用 provenance 以及缺失 safe-stop/rollback 的 v2 package 都会被 m
 `tests/test_legacy_provider_adapter.py`。adapter 只接受带有匹配 plan digest 的 P1 v1
 payload，并强制调用方提供已发布且 hash 匹配的 main provenance artifact；inline SSH
 provenance 不会被复制进 v2 package，safe-stop/rollback 也必须显式传入。
+
+随后新增 `src/rolo/stages/verify/ssh_provenance.py`：通过 pinned SSH transport 读取
+workspace stat、machine-id、user/uid 和 ROS/RMW 环境，生成 main `TargetBinding` artifact。
+该 collector 不执行 shell、不写目标机，也不把 known-hosts 或凭据复制进 provenance；
+P1 provider 仍需下一轮接入该 collector 后才能产出可适配的 v2 evidence。

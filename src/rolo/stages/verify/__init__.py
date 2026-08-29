@@ -14,6 +14,10 @@ from rolo.stages.verify.legacy_adapter import (
     LegacyProviderEvidence,
     adapt_legacy_provider_evidence,
 )
+from rolo.stages.verify.ssh_provenance import (
+    SshReadOnlyTransport,
+    SshTargetProvenanceCollector,
+)
 from rolo.stages.verify.service import (
     assess_verify,
     build_verification_task,
@@ -36,4 +40,6 @@ __all__ = [
     "run_verification_plan",
     "LegacyProviderEvidence",
     "adapt_legacy_provider_evidence",
+    "SshReadOnlyTransport",
+    "SshTargetProvenanceCollector",
 ]

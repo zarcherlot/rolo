@@ -123,6 +123,10 @@ P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必�
 canonical target provenance artifact/hash 和显式安全结果均匹配时，才允许把 P1 v1
 payload 写成 main v2 evidence；它尚未接管 SSH provider 的实际执行。
 
+SSH provenance collector 已补齐（`src/rolo/stages/verify/ssh_provenance.py`），但尚未接入
+P1 provider；在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复后，才可进入
+provider execution 切片。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以

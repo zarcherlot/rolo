@@ -85,6 +85,7 @@ authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判�
 - 证据校验：`stages/handoffs.py`、`stages/verify/acceptance.py`；
 - 离线回放：`stages/verify/acceptance.py` 中的 replay/oracle 路径；
 - P1 v1 迁移边界：`stages/verify/legacy_adapter.py`，只接受匹配 plan digest 和 canonical provenance 的单向适配；
+- SSH canonical provenance：`stages/verify/ssh_provenance.py`，通过 pinned transport 采集只读目标身份并发布 binding artifact；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，生成 provenance 绑定的 evidence package。
 
 Verify 的报告和 evidence package 是可审计输入，不自动等同于真实目标机 acceptance。
