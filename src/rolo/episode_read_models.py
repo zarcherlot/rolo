@@ -713,6 +713,99 @@ def _publication_paths(artifact_root: Path, robot_id: str) -> list[Path]:
     return paths
 
 
+def _project_legacy_publication(
+    artifact_root: Path,
+    path: Path,
+    *,
+    robot_id: str,
+    episode_id: str,
+) -> PublishedEpisodeProjection:
+    """Adapt the pre-read-model publication envelope for read-only consumers.
+
+    Diagnose's original ``rolo-episode-publication/v1`` envelope binds a
+    ``DiagnosisEpisode`` record by digest, but predates the canonical public
+    projection. Validate that binding first, then expose only phase metadata;
+    free-form observation payloads are intentionally never copied. This adapter
+    does not create evidence or release authority.
+    """
+
+    from rolo.stages.diagnose.episode import validate_published_episode
+
+    reference = f"artifact://{path.resolve().relative_to(artifact_root.resolve()).as_posix()}"
+    episode = validate_published_episode(artifact_root, reference, robot_id=robot_id)
+    if episode.episode_id != episode_id:
+        raise ValueError("legacy Episode publication identity does not match its location")
+
+    lane_by_phase = {
+        "baseline": EpisodeTimelineLane.STATE.value,
+        "observe": EpisodeTimelineLane.OBSERVATION.value,
+        "hypothesis": EpisodeTimelineLane.AGENT.value,
+        "change": EpisodeTimelineLane.CONFIGURATION.value,
+        "smoke": EpisodeTimelineLane.OUTCOME.value,
+        "decision": EpisodeTimelineLane.GATE.value,
+    }
+    limitations = [
+        "Legacy rolo-episode-publication/v1 adapted for the canonical read model.",
+        "Observation payloads are intentionally omitted; no evidence authority is inferred.",
+    ]
+    events: list[EpisodeTimelineEvent] = []
+    previous_offset_ms = 0
+    for index, observation in enumerate(episode.observations):
+        phase = observation.phase.value
+        offset_ms = max(
+            previous_offset_ms,
+            0,
+            int((observation.observed_at - episode.started_at).total_seconds() * 1000),
+        )
+        previous_offset_ms = offset_ms
+        events.append(
+            EpisodeTimelineEvent(
+                robot_id=episode.robot_id,
+                episode_id=episode.episode_id,
+                revision=1,
+                event_id=f"legacy-{episode.episode_id}-{observation.sequence}",
+                sequence=index,
+                offset_ms=offset_ms,
+                occurred_at=observation.observed_at,
+                clock_domain="target-clock",
+                synchronization=EpisodeSynchronization.UNKNOWN.value,
+                lane=lane_by_phase.get(phase, EpisodeTimelineLane.OBSERVATION.value),
+                title=f"Diagnose {phase} observation",
+                summary="Legacy target observation retained for read-only visualization.",
+                severity=EpisodeSeverity.INFO.value,
+                authority=EpisodeAuthority.DECLARED.value,
+                limitations=list(limitations),
+            )
+        )
+
+    complete = episode.status == "COMPLETE"
+    detail = EpisodeDetail(
+        robot_id=episode.robot_id,
+        episode_id=episode.episode_id,
+        revision=1,
+        task_label="Diagnose episode (legacy publication)",
+        state=EpisodeState.COMPLETED.value if complete else EpisodeState.PARTIAL.value,
+        outcome=EpisodeOutcome.SUCCEEDED.value if complete else EpisodeOutcome.UNKNOWN.value,
+        verification=EpisodeVerification.NOT_AVAILABLE.value,
+        coverage=EpisodeCoverage.PARTIAL.value,
+        started_at=episode.started_at,
+        ended_at=episode.ended_at,
+        event_count=len(events),
+        asset_count=0,
+        finding_count=0,
+        evidence_ids=[],
+        limitations=limitations,
+        as_of=episode.ended_at,
+        immutable=True,
+        clock_domain="target-clock",
+        synchronization=EpisodeSynchronization.UNKNOWN.value,
+        available_lanes=list(dict.fromkeys(event.lane for event in events)),
+        assets=[],
+        findings=[],
+    )
+    return PublishedEpisodeProjection(detail=detail, timeline=events)
+
+
 def _load_projection(path: Path, robot_id: str, episode_id: str) -> PublishedEpisodeProjection:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -720,6 +813,13 @@ def _load_projection(path: Path, robot_id: str, episode_id: str) -> PublishedEpi
         raise ValueError("Episode publication is unreadable") from exc
     if not isinstance(raw, dict):
         raise ValueError("Episode publication must be an object")
+    if raw.get("schema_version") == "rolo-episode-publication/v1":
+        return _project_legacy_publication(
+            path.parents[3],
+            path,
+            robot_id=robot_id,
+            episode_id=episode_id,
+        )
     _reject_unsafe_public_content(raw)
     projection = PublishedEpisodeProjection.model_validate(raw)
     if projection.detail.robot_id != robot_id or projection.detail.episode_id != episode_id:
@@ -980,7 +1080,11 @@ def build_episode_revision_collection(
     _validate_publication_root(artifact_root, records_root)
     revisions: list[EpisodeRevisionSummary] = []
     limitations: list[str] = []
-    if not records_root.is_dir():
+    legacy_publication = any(
+        item.startswith("Legacy rolo-episode-publication/v1 adapted")
+        for item in current.detail.limitations
+    )
+    if legacy_publication or not records_root.is_dir():
         detail = current.detail
         revisions.append(
             EpisodeRevisionSummary(
@@ -1002,7 +1106,12 @@ def build_episode_revision_collection(
                 limitations=[
                     "Historical committed records are unavailable; only the current "
                     "published revision is readable."
-                ],
+                ]
+                + (
+                    ["Legacy publication has no canonical revision record."]
+                    if legacy_publication
+                    else []
+                ),
             )
         )
         limitations.append(

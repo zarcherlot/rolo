@@ -110,9 +110,15 @@ from rolo.stages.agent_runner import (
     cancel_stage_run,
     list_stage_authorization_requests,
 )
+from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline
+from rolo.stages.verify.readiness import (
+    ReadinessCheck,
+    RealVerifyReadinessReportV2,
+    validate_readiness_report,
+)
 from rolo.target_ref import SshTargetRef
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
@@ -747,6 +753,58 @@ async def get_robot_pipeline(robot_id: str, request: Request) -> PipelineAssessm
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id)
+
+
+@app.get(
+    "/v1/robots/{robot_id}/verify/readiness",
+    response_model=RealVerifyReadinessReportV2,
+)
+async def get_robot_verify_readiness(
+    robot_id: str, request: Request
+) -> RealVerifyReadinessReportV2:
+    """Read the optional canonical Verify readiness gate for rolo-vis.
+
+    Missing readiness is an explicit BLOCKED result, not a 404: the endpoint is
+    a feature-negotiated read model and never grants release authority.
+    """
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    path = ArtifactLayout(runtime.settings.rolo_artifact_dir).verify_readiness(robot_id)
+    if path.is_symlink():
+        raise HTTPException(
+            status_code=409,
+            detail="Verify readiness report failed integrity validation",
+        )
+    if not path.is_file():
+        return RealVerifyReadinessReportV2(
+            robot_id=robot_id,
+            status="BLOCKED",
+            checks={
+                "readiness_report": ReadinessCheck(
+                    status="FAIL", detail="Verify readiness report is not available"
+                )
+            },
+            blockers=["Verify readiness report is not available"],
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Verify readiness report must be a JSON object")
+        report = validate_readiness_report(
+            payload,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            robot_id=robot_id,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Verify readiness report failed integrity validation",
+        ) from exc
+    return report
 
 
 @app.get(
