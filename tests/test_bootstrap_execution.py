@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -269,6 +270,25 @@ def test_subprocess_bootstrap_transport_builds_bounded_scp_and_ssh_argv(tmp_path
     assert ssh[0] == "ssh"
     assert ssh.count("--") == 1
     assert ssh[-2:] == ("rolo-target", "--version")
+
+
+def test_subprocess_bootstrap_transport_quotes_remote_scp_path_and_argv(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    runner = RecordingRunner()
+    transport = SubprocessBootstrapTransport(_target(), known_hosts=known_hosts, runner=runner)
+    remote_path = "/tmp/space value/quote'glob*;$(touch NOPE).pkg"
+
+    transport.upload(tmp_path / "package.bin", remote_path, timeout_s=5)
+    transport.execute(["printf", "space value", "quote'glob*;$(touch NOPE)"], timeout_s=5)
+
+    scp, ssh = runner.calls
+    assert shlex.split(scp[-1].split(":", 1)[1]) == [remote_path]
+    assert shlex.split(" ".join(ssh[-3:])) == [
+        "printf",
+        "space value",
+        "quote'glob*;$(touch NOPE)",
+    ]
 
 
 def test_bootstrap_rejects_expired_approval_before_transport(tmp_path: Path) -> None:

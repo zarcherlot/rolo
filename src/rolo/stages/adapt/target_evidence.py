@@ -47,6 +47,7 @@ from rolo.stages.adapt.ros_environment import (
     verify_pinned_setup_files,
 )
 from rolo.stages.adapt.routes import persist_route_evidence, probe_routes
+from rolo.targets.executor import quote_remote_argv
 
 MAX_BUNDLE_BYTES = 8_000_000
 MAX_CLOCK_SKEW = timedelta(minutes=2)
@@ -1176,16 +1177,14 @@ def _ssh_transport_command(
                 str(Path(deployment.ssh_identity_file).expanduser().resolve()),
             ]
         )
-    command.extend(
-        [
-            deployment.ssh_target or "",
-            deployment.collector_executable,
-            "target-evidence",
-            "collector-run",
-            "--config",
-            deployment.collector_config,
-        ]
-    )
+    remote_argv = [
+        deployment.collector_executable,
+        "target-evidence",
+        "collector-run",
+        "--config",
+        deployment.collector_config,
+    ]
+    command.extend([deployment.ssh_target or "", *quote_remote_argv(remote_argv)])
     return command
 
 

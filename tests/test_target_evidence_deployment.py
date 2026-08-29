@@ -492,6 +492,39 @@ def test_remote_transport_pins_known_hosts_and_invokes_only_collector(
     assert received.request_nonce == request.nonce
 
 
+def test_remote_transport_quotes_collector_argv_at_ssh_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, state_path, secret_path = _collector(tmp_path, monkeypatch)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("target ssh-ed25519 AAAA\n", encoding="utf-8")
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.REMOTE,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        ssh_target="rolo@target",
+        known_hosts_path=known_hosts,
+        ssh_port=2222,
+        collector_executable="/opt/rolo/bin/collector",
+    )
+    deployment = deployment.model_copy(
+        update={"collector_config": "/opt/rolo/config/collector config.json"}
+    )
+    # Constructing the command directly isolates the SSH boundary from collector execution.
+    from rolo.stages.adapt.target_evidence import _ssh_transport_command
+
+    command = _ssh_transport_command(deployment, connect_timeout_s=10)
+    assert command[-5:] == [
+        "/opt/rolo/bin/collector",
+        "target-evidence",
+        "collector-run",
+        "--config",
+        "'/opt/rolo/config/collector config.json'",
+    ]
+
+
 def test_remote_transport_rejects_in_place_known_hosts_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
