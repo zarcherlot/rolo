@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +15,7 @@ from urllib.parse import urlparse
 from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
+from rolo.stages.adapt.agent_environment import codex_helper_environment
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
 from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 from rolo.stages.adapt.wiki_insights import (
@@ -469,49 +469,7 @@ class CodexWikiInsightProvider:
         return command
 
     def _environment(self) -> dict[str, str]:
-        allowed = {
-            "PATH",
-            "PATHEXT",
-            "SYSTEMROOT",
-            "WINDIR",
-            "COMSPEC",
-            "TMP",
-            "TEMP",
-            "HOME",
-            "USERPROFILE",
-            "HOMEDRIVE",
-            "HOMEPATH",
-            "APPDATA",
-            "LOCALAPPDATA",
-            "CODEX_HOME",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "NO_PROXY",
-        }
-        environment = {
-            key.upper(): value
-            for key, value in os.environ.items()
-            if key.upper() in allowed
-        }
-        for proxy_key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
-            explicit = os.environ.get(proxy_key)
-            fallback = os.environ.get(proxy_key.lower())
-            if explicit is not None:
-                environment[proxy_key] = explicit
-            elif fallback is not None:
-                environment[proxy_key] = fallback
-        if "HOME" not in environment and environment.get("USERPROFILE"):
-            environment["HOME"] = environment["USERPROFILE"]
-        if "CODEX_HOME" not in environment and environment.get("HOME"):
-            default_codex_home = Path(environment["HOME"]) / ".codex"
-            if default_codex_home.is_dir():
-                environment["CODEX_HOME"] = str(default_codex_home)
-        if self.api_key:
-            environment["CODEX_API_KEY"] = self.api_key
-        return environment
+        return codex_helper_environment(api_key=self.api_key)
 
     def _context_payload(
         self,
