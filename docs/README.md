@@ -12,6 +12,7 @@
 - [ROLO 白皮书](architecture/ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
 - [三阶段架构](architecture/ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
 - [实现地图](reference/IMPLEMENTATION_MAP.md)：代码入口、阶段服务、产物、Schema 与测试的对应关系；
+- [工程状态与可信度台账](reference/ENGINEERING_STATUS.md)：功能成熟度、证据等级、已知边界和合入同步规则；
 - [归档文档](archive/README.md)：已完成或被替代的计划、评审样本和一次性验证材料；
 - [Adapt 路线图](adapt/ADAPT_ROADMAP.md)：当前阶段、下一阶段门槛和历史计划索引；
 - [文档治理规则](DOCUMENT_GOVERNANCE.md)：状态、权威级别、去重和归档约定；

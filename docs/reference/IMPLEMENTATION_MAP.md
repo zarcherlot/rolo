@@ -5,7 +5,7 @@
 本文回答“当前代码在哪里实现、如何串起来、由什么测试保护”。它不重新定义业务概念。
 遇到冲突时，优先遵循 [最高开发准则](../architecture/DEVELOPMENT_PRINCIPLES.md)、版本化
 Schema、Operation Contract、运行时 Gate 及其测试；阶段契约以对应的 Episode/Diagnose/Verify
-文档为准。
+文档为准。功能成熟度和证据等级以 [工程状态与可信度台账](ENGINEERING_STATUS.md) 为准。
 
 ## 1. 运行入口
 

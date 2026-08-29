@@ -13,6 +13,7 @@ GENERATED = {
     DOCS / "OPERATION_CONTRACTS.md",
     DOCS / "CANONICAL_OPERATIONS.md",
 }
+ENGINEERING_STATUS = DOCS / "reference" / "ENGINEERING_STATUS.md"
 ROOT_ALLOWLIST = {
     "README.md",
     "README.en.md",
@@ -30,6 +31,8 @@ AUTHORITY_RE = re.compile(
 )
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 STUB_HEADING_RE = re.compile(r"^# 文档已(?:迁移|归并|归档)")
+FEATURE_MATURITY = {"STABLE", "PARTIAL", "EXPERIMENTAL", "DRAFT", "DEPRECATED", "BLOCKED"}
+EVIDENCE_LEVELS = {f"E{level}" for level in range(5)}
 
 
 def read(path: Path) -> str:
@@ -78,6 +81,78 @@ def check_links(path: Path, stubs: set[Path], errors: list[str]) -> None:
             )
 
 
+def _path_tokens(cell: str) -> list[str]:
+    """Extract explicit repository paths from a feature row cell."""
+
+    return re.findall(r"`([^`]+)`", cell)
+
+
+def _check_feature_paths(cell: str, *, label: str, errors: list[str]) -> None:
+    tokens = _path_tokens(cell)
+    if not tokens:
+        errors.append(f"{ENGINEERING_STATUS.relative_to(ROOT)}: {label} has no paths")
+        return
+    for token in tokens:
+        path_token = token.split("::", 1)[0]
+        path = ROOT / Path(path_token)
+        if not path.exists():
+            errors.append(
+                f"{ENGINEERING_STATUS.relative_to(ROOT)}: {label} path does not exist {token!r}"
+            )
+
+
+def check_engineering_status(errors: list[str]) -> None:
+    """Validate the machine-readable feature inventory in the status ledger."""
+
+    if not ENGINEERING_STATUS.is_file():
+        errors.append(f"{ENGINEERING_STATUS.relative_to(ROOT)}: status ledger is missing")
+        return
+
+    text = read(ENGINEERING_STATUS)
+    header = "\n".join(text.splitlines()[:20])
+    sync = re.search(r"\blast_synced_commit:\s*([0-9a-f]{40})\b", header, re.I)
+    if not sync:
+        errors.append(
+            f"{ENGINEERING_STATUS.relative_to(ROOT)}: missing 40-character last_synced_commit"
+        )
+
+    feature_ids: set[str] = set()
+    rows = 0
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.startswith("| FEAT-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 7:
+            errors.append(
+                f"{ENGINEERING_STATUS.relative_to(ROOT)}:{line_number}: "
+                "feature row must have 7 columns"
+            )
+            continue
+        feature_id, maturity, evidence = cells[:3]
+        rows += 1
+        if feature_id in feature_ids:
+            errors.append(
+                f"{ENGINEERING_STATUS.relative_to(ROOT)}:{line_number}: "
+                f"duplicate feature id {feature_id}"
+            )
+        feature_ids.add(feature_id)
+        if maturity not in FEATURE_MATURITY:
+            errors.append(
+                f"{ENGINEERING_STATUS.relative_to(ROOT)}:{line_number}: "
+                f"invalid maturity {maturity!r}"
+            )
+        if evidence not in EVIDENCE_LEVELS:
+            errors.append(
+                f"{ENGINEERING_STATUS.relative_to(ROOT)}:{line_number}: "
+                f"invalid evidence {evidence!r}"
+            )
+        _check_feature_paths(cells[4], label=f"{feature_id} code", errors=errors)
+        _check_feature_paths(cells[5], label=f"{feature_id} tests", errors=errors)
+
+    if rows == 0:
+        errors.append(f"{ENGINEERING_STATUS.relative_to(ROOT)}: no feature rows found")
+
+
 def main() -> int:
     errors: list[str] = []
     docs = sorted(DOCS.rglob("*.md"))
@@ -105,6 +180,8 @@ def main() -> int:
             errors.append(f"{rel}: substantive document must live in a topic directory")
 
         check_links(path, stubs, errors)
+
+    check_engineering_status(errors)
 
     if errors:
         print("Documentation checks failed:", file=sys.stderr)
