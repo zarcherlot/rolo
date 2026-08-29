@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from rolo.stages.agent_runner import StageAgentRun
-from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 
 Stage = Literal["diagnose", "verify"]
 
@@ -47,6 +47,35 @@ class StageAgentRunDetail(BaseModel):
     run: StageAgentRun
     event_count: int = Field(ge=0)
     available_streams: list[Literal["stdout", "stderr"]] = Field(default_factory=list)
+
+
+def stage_agent_run_evidence(
+    root: Path, stage: Stage, robot_id: str, run_id: str
+) -> dict[str, object]:
+    """Project only evidence/report artifacts explicitly emitted by one run.
+
+    The projection is read-only: it follows the persisted run's output refs and
+    never scans arbitrary paths or executes a provider.  This keeps rolo-vis
+    replay views bounded to artifacts already validated by ``StageAgentRunner``.
+    """
+
+    run = load_stage_agent_run(root, stage, robot_id, run_id)
+    artifacts: dict[str, object] = {}
+    for name, reference in run.output_refs.items():
+        if "evidence" not in name.casefold() and "report" not in name.casefold():
+            continue
+        path = resolve_artifact_ref(root, reference)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"stage Agent evidence artifact must be a JSON object: {reference}")
+        artifacts[name] = {"ref": reference, "payload": payload}
+    return {
+        "schema_version": "rolo-stage-agent-evidence/v1",
+        "stage": stage,
+        "robot_id": robot_id,
+        "run_id": run_id,
+        "artifacts": artifacts,
+    }
 
 
 def _run_path(root: Path, stage: Stage, robot_id: str, run_id: str) -> Path:

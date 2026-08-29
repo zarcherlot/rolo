@@ -245,13 +245,31 @@ def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
         "diagnose/demo_diff/runs/api-run-1/stdout.jsonl",
         {"observed_at": datetime.now(timezone.utc).isoformat(), "line": "streamed"},
     )
+    store.write_json(
+        "diagnose/demo_diff/runs/api-run-1/diagnosis_report.json",
+        {"schema_version": "rolo-diagnosis-report/v1", "status": "PASS"},
+    )
+    run = run.model_copy(
+        update={
+            "output_refs": {
+                "diagnosis_report": "artifact://diagnose/demo_diff/runs/api-run-1/diagnosis_report.json"
+            }
+        }
+    )
+    store.write_json(
+        "diagnose/demo_diff/runs/api-run-1/run.json", run.model_dump(mode="json")
+    )
     with TestClient(app) as client:
         detail = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1")
         events = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1/events")
+        evidence = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1/evidence")
     assert detail.status_code == 200
     assert detail.json()["run"]["run_id"] == "api-run-1"
     assert events.status_code == 200
     assert events.json()["items"][0]["line"] == "streamed"
+    assert evidence.status_code == 200
+    assert evidence.json()["schema_version"] == "rolo-stage-agent-evidence/v1"
+    assert evidence.json()["artifacts"]["diagnosis_report"]["payload"]["status"] == "PASS"
 
 
 def test_unknown_robot_is_404() -> None:

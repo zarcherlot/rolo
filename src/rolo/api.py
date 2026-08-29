@@ -95,6 +95,7 @@ from rolo.stage_agent_read_models import (
     StageAgentRunDetail,
     stage_agent_event_page,
     stage_agent_run_detail,
+    stage_agent_run_evidence,
 )
 from rolo.stages.adapt.operation_governance import (
     ExecutionClass,
@@ -952,6 +953,29 @@ async def get_stage_agent_run(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="stage Agent run is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/v1/robots/{robot_id}/{stage}/runs/{run_id}/evidence")
+async def get_stage_agent_evidence(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    run_id: str,
+    request: Request,
+) -> dict[str, object]:
+    """Expose only evidence/report artifacts explicitly referenced by a run."""
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return stage_agent_run_evidence(
+            runtime.settings.rolo_artifact_dir, stage, robot_id, run_id
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="stage Agent evidence is unavailable") from exc
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
