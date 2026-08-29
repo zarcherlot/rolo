@@ -184,7 +184,9 @@ class Settings(BaseSettings):
     adapt_operation_slice_max_operations: int = Field(default=20, gt=0, le=50)
     adapt_heuristic_agent_mode: Literal["disabled", "shadow", "enabled"] = "shadow"
     adapt_heuristic_agent_provider_enabled: bool = True
-    adapt_heuristic_agent_timeout_s: int = Field(default=120, gt=0, le=3_600)
+    adapt_heuristic_agent_timeout_s: int = Field(default=240, gt=0, le=3_600)
+    adapt_heuristic_agent_batch_operations: int = Field(default=4, gt=0, le=64)
+    adapt_heuristic_agent_parallelism: int = Field(default=2, gt=0, le=8)
     adapt_heuristic_agent_max_actions: int = Field(default=8, ge=0, le=32)
     adapt_heuristic_agent_max_operations: int = Field(default=20, gt=0, le=256)
     adapt_discovery_skill_path: Path = Path("skills/rolo-adapt-discovery/SKILL.md")

@@ -14,3 +14,9 @@ evidence and resource references against the frozen discovery and Target Operati
 
 Successful validation can create only `DISCOVERED_UNVERIFIED` candidates. It cannot create Registry
 entries, RouteEvidence, eligibility, conformance, Catalog membership or release status.
+
+For semantic-review bindings, `route_resource_ids` still contains the exact full deterministic
+binding while `route_dispositions` decides each route independently. `ACCEPT` route decisions must
+reference a satisfied staged `BINDING_MATCH` receipt. The deterministic caller derives the effective
+operation disposition using the binding's `ANY_OF` or `ALL_OF` mode and materializes only accepted
+routes; the provider's operation-level summary cannot override that derivation.

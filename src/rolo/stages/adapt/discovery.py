@@ -86,7 +86,7 @@ from rolo.stages.adapt.operation_registry import (
     validate_candidate_operations,
 )
 from rolo.stages.adapt.review import render_discovery_review_markdown
-from rolo.stages.adapt.routes import persist_route_evidence
+from rolo.stages.adapt.routes import canonicalize_route_evidence, persist_route_evidence
 from rolo.stages.adapt.semantic_mapping import (
     infer_topic_operations,
     matching_semantic_rules,
@@ -2045,10 +2045,19 @@ def _build_operation_candidates(
     candidates: list[OperationCandidate] = []
     for operation, semantic_uris in sorted(operation_bindings.items()):
         semantic_uris = sorted(semantic_uris)
-        route_evidence = [route(semantic_uri) for semantic_uri in semantic_uris]
-        limitations = [
+        route_evidence = canonicalize_route_evidence(
+            [route(semantic_uri) for semantic_uri in semantic_uris]
+        )
+        route_kinds = {item.kind for item in route_evidence}
+        applicability = (
             "Heuristic CLI/help applicability requires target-runtime interface, provider, "
-            "and semantic validation",
+            "and semantic validation"
+            if route_kinds == {"cli"}
+            else "Heuristic applicability requires target-runtime interface, provider, and "
+            "semantic validation"
+        )
+        limitations = [
+            applicability,
             "Requires adapter generation and independent conformance",
         ]
         if any(
@@ -2065,6 +2074,7 @@ def _build_operation_candidates(
                 semantic_bindings=semantic_uris,
                 evidence=[bindings[semantic_uri]["binding"] for semantic_uri in semantic_uris],
                 route_evidence=route_evidence,
+                route_binding_mode="ANY_OF",
                 limitations=limitations,
                 semantic_review_required=any(
                     str(bindings[semantic_uri].get("semantic_rule_id", "")).startswith(

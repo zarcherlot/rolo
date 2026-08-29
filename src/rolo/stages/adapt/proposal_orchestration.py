@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Collection, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
@@ -22,10 +23,12 @@ from rolo.core.environment import canonical_environment
 from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport, OperationCandidate, RouteEvidence
 from rolo.stages.adapt.agent_contracts import (
+    AgentBudgetUsage,
     AgentDisposition,
     AgentEvidenceCondition,
     AgentEvidenceToolReceipt,
     AgentOperationProposal,
+    AgentStopReason,
     OperationProposalBundle,
     OperationRegistryResolver,
     registry_identity_sha256,
@@ -37,11 +40,11 @@ from rolo.stages.adapt.operation_registry import (
     CanonicalOperationDefinition,
     CanonicalOperationRegistry,
 )
-from rolo.stages.adapt.routes import probe_routes
+from rolo.stages.adapt.routes import canonicalize_route_evidence, probe_routes
 
 MAX_MAPPING_CONTEXT_CHARS = 200_000
 MAPPING_SKILL_NAME = "rolo-operation-mapping"
-MAPPING_SKILL_VERSION = "1.0.0"
+MAPPING_SKILL_VERSION = "1.1.0"
 _SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
 _EVIDENCE_ALIAS_PREFIX = "ev:"
 _EVIDENCE_ALIAS_HEX_LENGTH = 24
@@ -114,6 +117,7 @@ class ProposalBindingSet(BaseModel):
     executable_ids: list[str] = Field(default_factory=list)
     hardware_resource_ids: list[str] = Field(default_factory=list)
     semantic_review_required: bool = False
+    route_binding_mode: Literal["ALL_OF", "ANY_OF"] = "ALL_OF"
 
 
 class FrozenDiscoveryEvidence(BaseModel):
@@ -293,6 +297,7 @@ def build_discovery_skill_request(
             executable_ids=sorted(set(candidate.executable_ids)),
             hardware_resource_ids=sorted(set(candidate.hardware_resource_ids)),
             semantic_review_required=candidate.requires_semantic_review,
+            route_binding_mode=candidate.route_binding_mode,
         )
 
     definitions = [registry.definition_for(operation) for operation in requested]
@@ -376,6 +381,40 @@ def _process_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
     return " | ".join(line[:600] for line in selected)[:1_800]
 
 
+def _codex_event_usage(stdout: str) -> tuple[int, int]:
+    """Extract cumulative token usage from Codex JSONL without trusting Agent output."""
+
+    best = (0, 0)
+
+    def visit(value: Any) -> None:
+        nonlocal best
+        if isinstance(value, dict):
+            input_tokens = value.get("input_tokens")
+            output_tokens = value.get("output_tokens")
+            if (
+                isinstance(input_tokens, int)
+                and not isinstance(input_tokens, bool)
+                and isinstance(output_tokens, int)
+                and not isinstance(output_tokens, bool)
+                and input_tokens >= 0
+                and output_tokens >= 0
+                and input_tokens + output_tokens > sum(best)
+            ):
+                best = (input_tokens, output_tokens)
+            for nested in value.values():
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    for line in stdout.splitlines():
+        try:
+            visit(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return best
+
+
 def _normalize_provider_bundle(payload: Any) -> Any:
     """Remove authority-neutral duplicate strings before canonical validation."""
     if not isinstance(payload, dict):
@@ -403,6 +442,17 @@ def _normalize_provider_bundle(payload: Any) -> Any:
             ):
                 if name in proposal:
                     proposal[name] = deduplicate(proposal[name])
+            supporting = proposal.get("evidence_refs")
+            counter = proposal.get("counter_evidence_refs")
+            if isinstance(supporting, list) and isinstance(counter, list):
+                # The provider schema exposes no counter-evidence IDs today, but a
+                # model can still echo a supporting ID into both arrays. Removing
+                # that impossible overlap cannot create semantic ACCEPT: exact
+                # bindings and a verified tool receipt remain mandatory.
+                supporting_ids = set(supporting)
+                proposal["counter_evidence_refs"] = [
+                    item for item in counter if item not in supporting_ids
+                ]
     return payload
 
 
@@ -552,9 +602,15 @@ class CodexOperationMappingProvider:
         base_url: str | None = None,
         api_key: str | None = None,
         timeout_s: int = 30,
+        batch_operations: int = 4,
+        parallelism: int = 2,
     ) -> None:
         if timeout_s < 1:
             raise ValueError("Operation mapping Agent timeout must be at least one second")
+        if batch_operations < 1 or batch_operations > 64:
+            raise ValueError("Operation mapping batch size must be between 1 and 64")
+        if parallelism < 1 or parallelism > 8:
+            raise ValueError("Operation mapping parallelism must be between 1 and 8")
         self.discovery_skill_path = discovery_skill_path.expanduser().resolve()
         self.mapping_skill_path = mapping_skill_path.expanduser().resolve()
         self.executable = executable
@@ -563,6 +619,8 @@ class CodexOperationMappingProvider:
         self.base_url = (base_url or "").strip() or None
         self.api_key = api_key
         self.timeout_s = timeout_s
+        self.batch_operations = batch_operations
+        self.parallelism = parallelism
 
     def _command(self, workspace: Path, schema: Path, output: Path) -> list[str]:
         command = [
@@ -637,7 +695,7 @@ class CodexOperationMappingProvider:
             environment["CODEX_API_KEY"] = self.api_key
         return environment
 
-    def propose(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+    def _propose_once(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
         for label, path in (
             ("discovery", self.discovery_skill_path),
             ("mapping", self.mapping_skill_path),
@@ -714,6 +772,18 @@ class CodexOperationMappingProvider:
                     aliases,
                 )
             )
+            input_tokens, output_tokens = _codex_event_usage(completed.stdout)
+            if input_tokens or output_tokens:
+                bundle = bundle.model_copy(
+                    update={
+                        "budget_usage": bundle.budget_usage.model_copy(
+                            update={
+                                "input_tokens": input_tokens,
+                                "output_tokens": output_tokens,
+                            }
+                        )
+                    }
+                )
             if self.model:
                 bundle = bundle.model_copy(
                     update={
@@ -721,6 +791,151 @@ class CodexOperationMappingProvider:
                     }
                 )
             return bundle
+
+    @staticmethod
+    def _batch_request(
+        request: DiscoverySkillRequest,
+        operations: Sequence[str],
+    ) -> DiscoverySkillRequest:
+        selected = set(operations)
+        contracts = [
+            item for item in request.target_contracts if item.operation in selected
+        ]
+        bindings = {
+            operation: binding
+            for operation, binding in request.discovery_evidence.deterministic_bindings.items()
+            if operation in selected
+        }
+        route_ids = {
+            route_id for binding in bindings.values() for route_id in binding.route_resource_ids
+        }
+        evidence_refs = {
+            reference for binding in bindings.values() for reference in binding.evidence_refs
+        }
+        executable_ids = {
+            executable_id
+            for binding in bindings.values()
+            for executable_id in binding.executable_ids
+        }
+        hardware_ids = {
+            hardware_id
+            for binding in bindings.values()
+            for hardware_id in binding.hardware_resource_ids
+        }
+        frozen = request.discovery_evidence.model_copy(
+            update={
+                "evidence_refs": sorted(evidence_refs),
+                "route_resources": {
+                    route_id: request.discovery_evidence.route_resources[route_id]
+                    for route_id in sorted(route_ids)
+                },
+                "executable_ids": sorted(executable_ids),
+                "hardware_resource_ids": sorted(hardware_ids),
+                "deterministic_bindings": dict(sorted(bindings.items())),
+            }
+        )
+        hashes = dict(request.input_artifact_sha256)
+        hashes["target_operation_slice"] = _digest(
+            [
+                {
+                    "operation": item.operation,
+                    "contract_sha256": item.contract_sha256,
+                }
+                for item in contracts
+            ]
+        )
+        return request.model_copy(
+            update={
+                "target_contracts": contracts,
+                "discovery_evidence": frozen,
+                "input_artifact_sha256": hashes,
+            }
+        )
+
+    @staticmethod
+    def _merge_bundles(
+        request: DiscoverySkillRequest,
+        bundles: Sequence[OperationProposalBundle],
+        *,
+        elapsed_ms: int,
+    ) -> OperationProposalBundle:
+        proposals = sorted(
+            (proposal for bundle in bundles for proposal in bundle.proposals),
+            key=lambda item: item.operation,
+        )
+        operations = [proposal.operation for proposal in proposals]
+        if len(operations) != len(set(operations)):
+            raise ValueError("Operation mapping batches returned duplicate Operations")
+        model_ids = {bundle.provenance.model_id for bundle in bundles}
+        if len(model_ids) != 1:
+            raise ValueError("Operation mapping batches used inconsistent models")
+        usages = [bundle.budget_usage for bundle in bundles]
+        stop_reason = next(
+            (
+                usage.stop_reason
+                for usage in usages
+                if usage.stop_reason != AgentStopReason.COMPLETED
+            ),
+            AgentStopReason.COMPLETED,
+        )
+        first = bundles[0]
+        return OperationProposalBundle(
+            robot_id=request.robot_id,
+            discovery_id=request.discovery_id,
+            target_fingerprint_sha256=request.target_fingerprint_sha256,
+            registry_version=request.registry_version,
+            registry_sha256=request.registry_sha256,
+            contract_catalog_sha256=request.contract_catalog_sha256,
+            registry_operation_count=request.registry_operation_count,
+            proposals=proposals,
+            unmapped_capabilities=sorted(
+                {item for bundle in bundles for item in bundle.unmapped_capabilities}
+            ),
+            unknowns=sorted({item for bundle in bundles for item in bundle.unknowns}),
+            budget_usage=AgentBudgetUsage(
+                rounds=min(256, sum(item.rounds for item in usages)),
+                input_tokens=sum(item.input_tokens for item in usages),
+                output_tokens=sum(item.output_tokens for item in usages),
+                elapsed_ms=elapsed_ms,
+                result_bytes=sum(item.result_bytes for item in usages),
+                stop_reason=stop_reason,
+            ),
+            provenance=first.provenance.model_copy(
+                update={"input_artifact_sha256": request.input_artifact_sha256}
+            ),
+        )
+
+    def propose(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+        for label, path in (
+            ("discovery", self.discovery_skill_path),
+            ("mapping", self.mapping_skill_path),
+        ):
+            if not path.is_file():
+                raise FileNotFoundError(f"{label} skill not found: {path}")
+        if shutil.which(self.executable) is None:
+            raise FileNotFoundError(f"Codex CLI executable not found: {self.executable}")
+        operations = sorted(
+            operation
+            for operation, binding in request.discovery_evidence.deterministic_bindings.items()
+            if operation in request.target_operations and binding.evidence_refs
+        )
+        if len(operations) <= self.batch_operations:
+            return self._propose_once(request)
+        batches = [
+            self._batch_request(request, operations[index : index + self.batch_operations])
+            for index in range(0, len(operations), self.batch_operations)
+        ]
+        started = time.monotonic()
+        with ThreadPoolExecutor(
+            max_workers=min(self.parallelism, len(batches)),
+            thread_name_prefix="rolo-operation-mapping",
+        ) as executor:
+            bundles = list(executor.map(self._propose_once, batches))
+        return self._merge_bundles(
+            request,
+            bundles,
+            elapsed_ms=max(0, int((time.monotonic() - started) * 1_000)),
+        )
 
 
 class ProposalIssueCode(str, Enum):
@@ -791,6 +1006,8 @@ class ValidatedSemanticDisposition(BaseModel):
 
     operation: str
     disposition: AgentDisposition
+    reported_disposition: AgentDisposition | None = None
+    route_binding_mode: Literal["ALL_OF", "ANY_OF"] = "ALL_OF"
     route_dispositions: dict[str, AgentDisposition] = Field(default_factory=dict)
     tool_receipt_ids: list[str] = Field(default_factory=list)
 
@@ -898,6 +1115,7 @@ class ProposalValidator:
         accepted: list[AgentOperationProposal] = []
         rejected: list[RejectedOperationProposal] = []
         dispositions: list[ValidatedSemanticDisposition] = []
+        effective_dispositions: dict[str, AgentDisposition] = {}
         for proposal in bundle.proposals:
             issues: set[ProposalIssueCode] = set()
             if proposal.operation not in request.target_operations:
@@ -926,10 +1144,14 @@ class ProposalValidator:
             else:
                 accepted.append(proposal)
                 if binding is not None and binding.semantic_review_required:
+                    effective = self._derived_disposition(proposal, binding)
+                    effective_dispositions[proposal.operation] = effective
                     dispositions.append(
                         ValidatedSemanticDisposition(
                             operation=proposal.operation,
-                            disposition=proposal.disposition,
+                            disposition=effective,
+                            reported_disposition=proposal.disposition,
+                            route_binding_mode=binding.route_binding_mode,
                             route_dispositions={
                                 item.route_resource_id: item.disposition
                                 for item in proposal.route_dispositions
@@ -941,9 +1163,14 @@ class ProposalValidator:
                     )
 
         candidates = [
-            self._candidate(proposal, evidence)
+            self._candidate(
+                proposal,
+                evidence,
+                evidence.deterministic_bindings.get(proposal.operation),
+            )
             for proposal in accepted
-            if proposal.disposition == AgentDisposition.ACCEPT
+            if effective_dispositions.get(proposal.operation, proposal.disposition)
+            == AgentDisposition.ACCEPT
         ]
         return ProposalValidationArtifact(
             robot_id=request.robot_id,
@@ -1005,17 +1232,6 @@ class ProposalValidator:
                 continue
             valid_receipts.add(receipt.receipt_id)
 
-        route_values = [item.disposition for item in proposal.route_dispositions]
-        expected_disposition = (
-            AgentDisposition.REJECT
-            if AgentDisposition.REJECT in route_values
-            else AgentDisposition.DEFER
-            if AgentDisposition.DEFER in route_values
-            else AgentDisposition.ACCEPT
-        )
-        if route_values and proposal.disposition != expected_disposition:
-            issues.add(ProposalIssueCode.DISPOSITION_INCONSISTENT)
-
         for route_id, decision in route_decisions.items():
             if not set(decision.tool_receipt_ids) <= valid_receipts:
                 issues.add(ProposalIssueCode.TOOL_RECEIPT_INVALID)
@@ -1033,9 +1249,30 @@ class ProposalValidator:
         return issues
 
     @staticmethod
+    def _derived_disposition(
+        proposal: AgentOperationProposal,
+        binding: ProposalBindingSet,
+    ) -> AgentDisposition:
+        values = [item.disposition for item in proposal.route_dispositions]
+        if not values:
+            return proposal.disposition
+        if binding.route_binding_mode == "ANY_OF":
+            if AgentDisposition.ACCEPT in values:
+                return AgentDisposition.ACCEPT
+            if AgentDisposition.DEFER in values:
+                return AgentDisposition.DEFER
+            return AgentDisposition.REJECT
+        if AgentDisposition.REJECT in values:
+            return AgentDisposition.REJECT
+        if AgentDisposition.DEFER in values:
+            return AgentDisposition.DEFER
+        return AgentDisposition.ACCEPT
+
+    @staticmethod
     def _candidate(
         proposal: AgentOperationProposal,
         evidence: FrozenDiscoveryEvidence,
+        binding: ProposalBindingSet | None = None,
     ) -> OperationCandidate:
         requested = [
             f"{item.kind.value}:{item.subject_ref}" for item in proposal.requested_verification
@@ -1044,12 +1281,29 @@ class ProposalValidator:
             "Agent mapping accepted only as DISCOVERED_UNVERIFIED",
             *[f"Requested verification: {item}" for item in requested],
         ]
+        accepted_route_ids = {
+            item.route_resource_id
+            for item in proposal.route_dispositions
+            if item.disposition == AgentDisposition.ACCEPT
+        }
+        route_ids = (
+            [
+                resource_id
+                for resource_id in proposal.route_resource_ids
+                if resource_id in accepted_route_ids
+            ]
+            if binding is not None
+            and binding.semantic_review_required
+            and accepted_route_ids
+            else proposal.route_resource_ids
+        )
         return OperationCandidate(
             operation=proposal.operation,
             evidence=list(proposal.evidence_refs),
             route_evidence=[
-                evidence.route_resources[resource_id] for resource_id in proposal.route_resource_ids
+                evidence.route_resources[resource_id] for resource_id in route_ids
             ],
+            route_binding_mode=binding.route_binding_mode if binding is not None else "ALL_OF",
             executable_ids=list(proposal.executable_ids),
             hardware_resource_ids=list(proposal.hardware_resource_ids),
             limitations=limitations,
@@ -1286,6 +1540,18 @@ def apply_validated_semantic_dispositions(
             updated.append(candidate)
             continue
         disposition_digest = _digest(decision.model_dump(mode="json"))
+        accepted_route_ids = {
+            route_id
+            for route_id, disposition in decision.route_dispositions.items()
+            if disposition == AgentDisposition.ACCEPT
+        }
+        accepted_routes = canonicalize_route_evidence(
+            [
+                route
+                for route in candidate.route_evidence
+                if route.resource_id in accepted_route_ids
+            ]
+        )
         updated.append(
             candidate.model_copy(
                 update={
@@ -1293,7 +1559,24 @@ def apply_validated_semantic_dispositions(
                     "route_review_dispositions": {
                         route_id: disposition.value
                         for route_id, disposition in decision.route_dispositions.items()
+                        if decision.disposition != AgentDisposition.ACCEPT
+                        or disposition == AgentDisposition.ACCEPT
                     },
+                    "route_evidence": (
+                        accepted_routes
+                        if decision.disposition == AgentDisposition.ACCEPT
+                        else candidate.route_evidence
+                    ),
+                    "limitations": (
+                        [
+                            limitation
+                            for limitation in candidate.limitations
+                            if "Heuristic mapping is ambiguous" not in limitation
+                        ]
+                        if decision.disposition == AgentDisposition.ACCEPT
+                        else candidate.limitations
+                    ),
+                    "route_binding_mode": decision.route_binding_mode,
                     "semantic_review_artifact_sha256": disposition_digest,
                 }
             )

@@ -119,6 +119,39 @@ def test_eligibility_defers_a_candidate_when_only_some_routes_are_observed() -> 
     assert deferred == {"app.lidar.snapshot": "TARGET_ROUTE_NOT_OBSERVED"}
 
 
+def test_any_of_route_binding_promotes_when_one_route_is_observed() -> None:
+    observed = _route("/scan", observed=True)
+    report = DiscoveryReport(
+        discovery_id="disc-any-route",
+        robot_id="demo",
+        status=DiscoveryStatus.PARTIAL,
+        platform={},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={"route_evidence": [observed.model_dump(mode="json")]},
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.lidar.snapshot",
+                route_evidence=[
+                    _route("/scan", observed=False),
+                    _route("/robot1/scan", observed=False),
+                ],
+                route_binding_mode="ANY_OF",
+            )
+        ],
+    )
+
+    eligible, deferred = adapter_operation_eligibility(report)
+
+    assert eligible == {"app.lidar.snapshot"}
+    assert deferred == {}
+
+
 def test_eligibility_defers_incomplete_strict_runtime_identity() -> None:
     observed = _route("/scan", observed=True)
     report = DiscoveryReport(

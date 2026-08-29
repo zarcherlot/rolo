@@ -25,6 +25,26 @@ in `unknowns`. A Registry gap may be described there but must never appear as a 
 actual budget usage and provenance with this skill's version, model ID, and hashes of every input
 artifact used.
 
+## Review semantic route groups
+
+When a deterministic binding has `semantic_review_required`, keep the proposal's evidence, route,
+executable, and hardware ID lists exactly equal to that binding. Decide `ACCEPT`, `DEFER`, or `REJECT`
+for every bound route; do not remove rejected or deferred routes from the proposal. The caller owns
+the later accepted-route slice.
+
+Before accepting a route, call the staged read-only `mapping-evidence-tool.py` against
+`frozen-request.json` with that Operation, route resource ID, and condition `BINDING_MATCH`. Copy the
+exact satisfied receipt into `tool_receipts` and reference its `receipt_id` from that route decision.
+The tool validates only caller-frozen evidence. Never substitute a shell inspection, target command,
+ROS invocation, or fabricated receipt. Use `DEFER` when evidence is insufficient or a required
+condition is not yet known, and `REJECT` when cited evidence contradicts the binding.
+
+Treat the operation-level `disposition` as a summary of route decisions. For `ANY_OF`, summarize as
+`ACCEPT` when at least one route is accepted, otherwise `DEFER` when at least one route is deferred,
+otherwise `REJECT`. For `ALL_OF`, summarize as `REJECT` when any route is rejected, otherwise `DEFER`
+when any route is deferred, otherwise `ACCEPT`. The caller independently derives this result and
+does not trust the summary field.
+
 ## Authority and fallback
 
 Never invent, rename or alias an Operation. Never fabricate evidence/resource IDs, RouteEvidence,

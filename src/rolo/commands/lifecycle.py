@@ -13,6 +13,7 @@ from rolo.core.config import get_settings, prepare_runtime_directories
 from rolo.runtime import create_runtime
 from rolo.stages.adapt.acceptance import write_adapt_acceptance_pack
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
+from rolo.stages.adapt.heuristic_discovery import HeuristicAdaptMode
 from rolo.stages.adapt.journey import (
     AdaptJourneyResult,
     AdaptJourneyService,
@@ -60,10 +61,29 @@ def run_adapt_start(
     known_hosts: Path | None,
     collector_config: str,
     evidence_timeout: float,
+    heuristic_agent_mode: HeuristicAdaptMode | None = None,
+    heuristic_agent_timeout: int | None = None,
+    heuristic_agent_batch_operations: int | None = None,
+    heuristic_agent_parallelism: int | None = None,
     on_output: Callable[[str, str], None] | None = None,
 ) -> AdaptJourneyResult:
     """Run the shared Adapt start application service used by product and expert CLIs."""
     settings = get_settings()
+    heuristic_overrides: dict[str, object] = {}
+    if heuristic_agent_mode is not None:
+        heuristic_overrides["adapt_heuristic_agent_mode"] = heuristic_agent_mode.value
+    if heuristic_agent_timeout is not None:
+        heuristic_overrides["adapt_heuristic_agent_timeout_s"] = heuristic_agent_timeout
+    if heuristic_agent_batch_operations is not None:
+        heuristic_overrides["adapt_heuristic_agent_batch_operations"] = (
+            heuristic_agent_batch_operations
+        )
+    if heuristic_agent_parallelism is not None:
+        heuristic_overrides["adapt_heuristic_agent_parallelism"] = heuristic_agent_parallelism
+    if heuristic_overrides:
+        settings = settings.__class__.model_validate(
+            {**settings.model_dump(), **heuristic_overrides}
+        )
     prepare_runtime_directories(settings)
     evidence = detect_project_evidence(project_root or Path.cwd())
     evidence_deployment = None
@@ -230,6 +250,40 @@ def adapt_stage_start(
         float,
         typer.Option("--evidence-timeout", min=1.0, max=300.0),
     ] = 45.0,
+    heuristic_agent_mode: Annotated[
+        HeuristicAdaptMode | None,
+        typer.Option(
+            "--heuristic-agent-mode",
+            help="Override semantic mapping mode: disabled, shadow, or enabled",
+        ),
+    ] = None,
+    heuristic_agent_timeout: Annotated[
+        int | None,
+        typer.Option(
+            "--heuristic-agent-timeout",
+            min=1,
+            max=3_600,
+            help="Maximum time per semantic mapping Agent batch in seconds",
+        ),
+    ] = None,
+    heuristic_agent_batch_operations: Annotated[
+        int | None,
+        typer.Option(
+            "--heuristic-agent-batch-operations",
+            min=1,
+            max=64,
+            help="Maximum Operations per semantic mapping Agent batch",
+        ),
+    ] = None,
+    heuristic_agent_parallelism: Annotated[
+        int | None,
+        typer.Option(
+            "--heuristic-agent-parallelism",
+            min=1,
+            max=8,
+            help="Maximum concurrent semantic mapping Agent batches",
+        ),
+    ] = None,
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
     try:
@@ -249,6 +303,10 @@ def adapt_stage_start(
             known_hosts=known_hosts,
             collector_config=collector_config,
             evidence_timeout=evidence_timeout,
+            heuristic_agent_mode=heuristic_agent_mode,
+            heuristic_agent_timeout=heuristic_agent_timeout,
+            heuristic_agent_batch_operations=heuristic_agent_batch_operations,
+            heuristic_agent_parallelism=heuristic_agent_parallelism,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

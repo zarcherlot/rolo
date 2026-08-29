@@ -183,8 +183,11 @@ def validate_state_graph_baseline(
             raise ValueError("State Graph edge lacks evidence refs")
 
     candidates = {item.operation: item for item in report.operation_candidates}
+    bundle_operations = {item.operation for item in bundle.operations}
     expected_routes: dict[str, list[RouteEvidence]] = {}
-    for candidate in candidates.values():
+    for operation, candidate in candidates.items():
+        if operation not in bundle_operations:
+            continue
         for route in candidate.route_evidence:
             expected_routes.setdefault(route.resource_id, []).append(route)
     expected_best_routes = {
@@ -195,7 +198,9 @@ def validate_state_graph_baseline(
         for resource_id, routes in expected_routes.items()
     }
     expected_route_semantics: dict[str, set[str]] = {}
-    for candidate in candidates.values():
+    for operation, candidate in candidates.items():
+        if operation not in bundle_operations:
+            continue
         for semantic_binding, endpoint in zip(
             candidate.semantic_bindings, candidate.evidence, strict=False
         ):
