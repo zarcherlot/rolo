@@ -46,6 +46,25 @@ def _provider(tmp_path: Path, runner: _Runner) -> SshTargetHealthProvider:
     )
 
 
+def test_ssh_provider_plan_declares_only_fixed_read_only_operations(tmp_path: Path) -> None:
+    provider = _provider(tmp_path, _Runner({}))
+
+    plan = provider.plan("robot-1")
+
+    assert provider.provider_id == "target-health"
+    assert provider.provider_version == "2.0.0"
+    assert {case.operation for case in plan.cases} == provider.read_only_operations
+    assert all(case.timeout_s <= 60.0 for case in plan.cases)
+    assert all(
+        case.payload in (
+            {"mode": "system"},
+            {"mode": "directory"},
+            {"mode": "version"},
+        )
+        for case in plan.cases
+    )
+
+
 def test_ssh_provider_materializes_main_v2_evidence(tmp_path: Path) -> None:
     runner = _Runner(
         {

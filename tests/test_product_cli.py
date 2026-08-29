@@ -148,6 +148,56 @@ def test_target_verify_health_rejects_unapproved_profile_host_key(
     assert "approved SSH host key" in result.output
 
 
+def test_target_verify_health_returns_nonzero_for_failed_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Report:
+        status = "FAIL"
+
+        def model_dump(self, *, mode: str) -> dict[str, str]:
+            del mode
+            return {"status": self.status, "run_id": "verify-fail"}
+
+    class Provider:
+        def __init__(self, target, **kwargs):
+            del target, kwargs
+
+        def run(self, artifact_root: Path, *, robot_id: str) -> Report:
+            del artifact_root, robot_id
+            return Report()
+
+    monkeypatch.setattr("rolo.product_cli.SshTargetHealthProvider", Provider)
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("robot.example ssh-ed25519 AAAA\n", encoding="utf-8")
+    env = {
+        "ROLO_CONFIG_DIR": str(tmp_path / "config"),
+        "ROLO_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ROLO_OUTPUT_DIR": str(tmp_path / "output"),
+    }
+    get_settings.cache_clear()
+    result = CliRunner().invoke(
+        app,
+        [
+            "target",
+            "verify-health",
+            "ssh://robot@robot.example/home/robot/rolo",
+            "--robot",
+            "staging_robot",
+            "--package-id",
+            "rolo-target",
+            "--package-version",
+            "0.1.0",
+            "--known-hosts",
+            str(known_hosts),
+        ],
+        env=env,
+    )
+    get_settings.cache_clear()
+
+    assert result.exit_code == 2
+    assert json.loads(result.output)["status"] == "FAIL"
+
+
 def test_rolo_adapt_runs_the_existing_local_journey(tmp_path: Path) -> None:
     project = tmp_path / "robot-project"
     project.mkdir()

@@ -49,13 +49,14 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --dev --python 3.12
-      - name: Run real Verify provider and evidence contract matrix
+      - name: Run real Verify provider conformance and evidence contract matrix
         run: >-
           uv run --python 3.12 pytest -q
           tests/test_ssh_target_provider.py
           tests/test_ssh_provider_recovery.py
           tests/test_ssh_provider_handoff.py
           tests/test_ssh_provenance.py
+          tests/test_product_cli.py
           tests/test_verify_readiness.py
           tests/test_target_evidence_deployment.py
           tests/test_stage_agent_runner.py

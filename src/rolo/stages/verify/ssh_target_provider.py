@@ -37,9 +37,14 @@ from rolo.targets.executor import CommandRunner
 class SshTargetHealthProvider:
     """Run fixed Linux/workspace/companion checks and materialize v2 evidence."""
 
+    provider_id = "target-health"
+    provider_version = "2.0.0"
     platform_operation = "target.platform.read"
     workspace_operation = "target.workspace.readiness"
     companion_operation = "target.companion.health"
+    read_only_operations = frozenset(
+        {platform_operation, workspace_operation, companion_operation}
+    )
 
     def __init__(
         self,

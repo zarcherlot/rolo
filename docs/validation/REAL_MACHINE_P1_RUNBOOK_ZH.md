@@ -181,6 +181,8 @@ uv run rolo target verify-health \
 provenance，且 profile 的 SSH host key 必须已经人工批准；没有 profile 时仅使用规范化
 target URI digest。`PASS` 才允许继续，`FAIL`、
 `TIMEOUT`、`CANCELLED` 或 transport error 均必须保留 evidence 并停止后续合入。
+集成线 CI 的 `real-verify-contract` job 会重复执行 provider plan allowlist、超时、取消、
+并发锁、stale-lock recovery、handoff/provenance 以及本命令的 CLI 退出码门禁。
 
 ## 7. 取消、重启和负面注入
 
