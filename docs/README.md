@@ -9,6 +9,7 @@
 - [目标机部署与 Adapt 操作手册](TARGET_DEVICE_OPERATION_MANUAL_ZH.md)：固定版本部署、本地或远程证据采集、完整 Adapt、验收与故障处理；
 - [ROLO 白皮书](ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
 - [三阶段架构](ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
+- [实现地图](IMPLEMENTATION_MAP.md)：代码入口、阶段服务、产物、Schema 与测试的对应关系；
 - [归档文档](archive/README.md)：已完成或被替代的计划、评审样本和一次性验证材料；
 - [Registry Operation 指南](REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
 - [Registry Operation 重设计计划](REGISTRY_OPERATION_REDESIGN_PLAN.md)：Canonical Registry 与 Agent-native Tool 双轨边界、迁移阶段和验收标准；
