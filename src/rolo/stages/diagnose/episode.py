@@ -30,12 +30,45 @@ class TargetProvenance(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["rolo-target-provenance/v1"] = "rolo-target-provenance/v1"
+    schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1"
     target_id: str = Field(min_length=1, max_length=256)
     source: str = Field(min_length=1, max_length=256)
     collector_version: str = Field(min_length=1, max_length=128)
     collected_at: datetime
-    clock_offset_ms: float = Field(ge=-86_400_000, le=86_400_000)
+    clock_offset_ms: float
+    target_binding_ref: str | None = Field(default=None, pattern=r"^artifact://")
+    target_binding_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    collector_session_id: str | None = Field(default=None, min_length=1, max_length=256)
+    clock_source: str | None = Field(default=None, min_length=1, max_length=128)
+    monotonic_ns: int | None = Field(default=None, ge=0)
+
+    @field_validator("clock_offset_ms")
+    @classmethod
+    def validate_clock_offset(cls, value: float) -> float:
+        if not -5_000 <= value <= 5_000:
+            raise ValueError("target provenance clock offset exceeds 5000 ms")
+        return value
+
+    @model_validator(mode="after")
+    def validate_v2_binding(self) -> TargetProvenance:
+        if self.collected_at.tzinfo is None:
+            raise ValueError("target provenance collected_at must include timezone")
+        if self.schema_version == "rolo-target-provenance/v2" and any(
+            value is None
+            for value in (
+                self.target_binding_ref,
+                self.target_binding_sha256,
+                self.collector_session_id,
+                self.clock_source,
+                self.monotonic_ns,
+            )
+        ):
+            raise ValueError("target provenance v2 requires identity, session, and clock binding")
+        if bool(self.target_binding_ref) != bool(self.target_binding_sha256):
+            raise ValueError("target provenance binding reference and hash must be paired")
+        return self
 
 
 class EpisodeObservation(BaseModel):
@@ -79,6 +112,15 @@ class DiagnosisEpisode(BaseModel):
             raise ValueError("episode ended_at must not precede started_at")
         if any(item.provenance.target_id != self.robot_id for item in self.observations):
             raise ValueError("episode observation provenance target does not match robot")
+        if self.started_at.tzinfo is None or self.ended_at.tzinfo is None:
+            raise ValueError("episode timestamps must include timezone")
+        if any(item.observed_at.tzinfo is None for item in self.observations):
+            raise ValueError("episode observation timestamps must include timezone")
+        if any(
+            item.observed_at < self.started_at or item.observed_at > self.ended_at
+            for item in self.observations
+        ):
+            raise ValueError("episode observation timestamp is outside the episode interval")
         if self.status == "COMPLETE":
             phases = {item.phase for item in self.observations}
             required = set(EpisodePhase)

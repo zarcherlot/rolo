@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "os_user": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Os User",
+      "type": "string"
+    },
+    "os_uid": {
+      "minimum": 0,
+      "title": "Os Uid",
+      "type": "integer"
+    },
+    "session_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "os_user",
+    "os_uid",
+    "session_id"
+  ],
+  "title": "StageActorIdentity",
+  "type": "object"
+}

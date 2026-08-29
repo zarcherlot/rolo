@@ -135,6 +135,9 @@ class VerificationReplayFixture(BaseModel):
     robot_id: str = Field(min_length=1, max_length=128)
     target_provenance_ref: str = Field(pattern=r"^artifact://")
     target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1"
     cases: list[VerificationReplayCase] = Field(min_length=1, max_length=256)
     safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
     rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED"
@@ -180,6 +183,21 @@ class VerificationRunReport(BaseModel):
     completed_at: datetime
 
 
+class VerificationRegressionReport(BaseModel):
+    """Rolo-owned result summary paired one-to-one with a v2 evidence package."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-regression-report/v1"] = (
+        "rolo-verification-regression-report/v1"
+    )
+    robot_id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=256)
+    status: Literal["PASS", "FAIL", "CANCELLED", "INCONCLUSIVE"]
+    case_results: list[VerificationCaseResult] = Field(min_length=1, max_length=256)
+    release_authority: Literal["none"] = "none"
+
+
 class VerificationEvidencePackage(BaseModel):
     """Independent evidence envelope required by a real Verify provider."""
 
@@ -190,6 +208,9 @@ class VerificationEvidencePackage(BaseModel):
     run_id: str = Field(min_length=1, max_length=256)
     target_provenance_ref: str = Field(pattern=r"^artifact://")
     target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1"
     case_results: list[VerificationCaseResult] = Field(min_length=1, max_length=256)
     safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
     rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
@@ -224,6 +245,24 @@ def validate_structured_verification_evidence(
             or sha256_file(provenance_path) != evidence.target_provenance_sha256
         ):
             raise ValueError("verification target provenance hash mismatch")
+        if evidence.target_provenance_schema_version == "rolo-target-provenance/v2":
+            from rolo.stages.diagnose.episode import TargetProvenance
+
+            provenance = TargetProvenance.model_validate_json(
+                provenance_path.read_text(encoding="utf-8")
+            )
+            if provenance.schema_version != "rolo-target-provenance/v2":
+                raise ValueError("verification target provenance schema mismatch")
+            if provenance.target_id != evidence.robot_id:
+                raise ValueError("verification target provenance identity mismatch")
+            binding_path = resolve_artifact_ref(
+                artifact_root, provenance.target_binding_ref or ""
+            )
+            if (
+                not binding_path.is_file()
+                or sha256_file(binding_path) != provenance.target_binding_sha256
+            ):
+                raise ValueError("verification target binding hash mismatch")
         if evidence.replay_ref is not None and not resolve_artifact_ref(
             artifact_root, evidence.replay_ref
         ).is_file():
@@ -361,6 +400,7 @@ def run_verification_replay(
         run_id=selected_run,
         target_provenance_ref=fixture.target_provenance_ref,
         target_provenance_sha256=fixture.target_provenance_sha256,
+        target_provenance_schema_version=fixture.target_provenance_schema_version,
         case_results=results,
         safe_stop=fixture.safe_stop,
         rollback=fixture.rollback,
@@ -389,6 +429,13 @@ def run_verification_plan(
     cancel_event: threading.Event | None = None,
     clock: Callable[[], datetime] | None = None,
     run_id: str | None = None,
+    target_provenance_ref: str,
+    target_provenance_sha256: str,
+    target_provenance_schema_version: Literal[
+        "rolo-target-provenance/v1", "rolo-target-provenance/v2"
+    ] = "rolo-target-provenance/v1",
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED",
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"] = "NOT_REQUIRED",
 ) -> VerificationRunReport:
     """Execute bounded read-only cases and persist one tamper-evident evidence artifact."""
 
@@ -444,6 +491,7 @@ def run_verification_plan(
                         operation=case.operation,
                         status=status,
                         message=outcome.message,
+                        provenance_ref=target_provenance_ref,
                     )
                 )
                 continue
@@ -455,6 +503,10 @@ def run_verification_plan(
                     status="PASS" if passed else "FAIL",
                     message=message,
                     audit_ref=outcome.invocation.audit_ref,
+                    provenance_ref=target_provenance_ref,
+                    rollback_status=(
+                        "NOT_REQUIRED" if rollback == "NOT_REQUIRED" else None
+                    ),
                 )
             )
         closed = consumer.close()
@@ -473,14 +525,31 @@ def run_verification_plan(
         status = "CANCELLED"
     elif any(item.status != "PASS" for item in results):
         status = "FAIL"
+    replay_path = artifacts.write_json(
+        f"verify/{plan.robot_id}/runs/{selected_run}/live-replay.json",
+        {
+            "schema_version": "rolo-verification-live-replay/v1",
+            "robot_id": plan.robot_id,
+            "run_id": selected_run,
+            "read_only": True,
+            "case_results": [item.model_dump(mode="json") for item in results],
+        },
+    )
+    evidence = VerificationEvidencePackage(
+        robot_id=plan.robot_id,
+        run_id=selected_run,
+        target_provenance_ref=target_provenance_ref,
+        target_provenance_sha256=target_provenance_sha256,
+        target_provenance_schema_version=target_provenance_schema_version,
+        case_results=results,
+        safe_stop=safe_stop,
+        rollback=rollback,
+        replay_ref=ArtifactLayout(artifacts.root).ref(replay_path),
+    )
     relative = f"verify/{plan.robot_id}/runs/{selected_run}/verification_evidence.json"
     evidence_path = artifacts.write_json(
         relative,
-        {
-            "schema_version": "rolo-verification-evidence/v1",
-            "plan": plan.model_dump(mode="json"),
-            "results": [item.model_dump(mode="json") for item in results],
-        },
+        evidence.model_dump(mode="json"),
     )
     return VerificationRunReport(
         run_id=selected_run,

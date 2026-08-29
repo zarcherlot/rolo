@@ -9,6 +9,7 @@ import pytest
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.stages.agent_runner import (
+    StageAgentRun,
     StageAgentRunner,
     StageAgentTask,
     archive_expired_authorization_requests,
@@ -60,6 +61,20 @@ class _SecretExecutor:
         if on_output:
             on_output("stderr", "token=super-secret Bearer abc.def")
         return {"handoff": "artifact://diagnose/robot-1/latest/missing.json"}
+
+
+class _SelfCancellingExecutor:
+    def __init__(self, artifact_root: Path) -> None:
+        self.artifact_root = artifact_root
+
+    def execute_stage(
+        self, task: StageAgentTask, *, workspace: Path, on_output=None, run_id: str
+    ):
+        del workspace, on_output
+        output = self.artifact_root / "result.json"
+        output.write_text("{}\n", encoding="utf-8")
+        cancel_stage_run(self.artifact_root, task.stage, task.robot_id, run_id)
+        return {"handoff": "artifact://result.json"}
 
 
 def test_stage_runner_requires_confirmation_and_persists_request(tmp_path: Path) -> None:
@@ -132,6 +147,19 @@ def test_stage_runner_applies_rolo_owned_handoff_validator(tmp_path: Path) -> No
     assert run.error == "invalid diagnose handoff"
 
 
+def test_stage_runner_succeeds_after_handoff_validator_accepts(tmp_path: Path) -> None:
+    validated: list[str] = []
+
+    run = StageAgentRunner(
+        ArtifactStore(tmp_path),
+        _FakeExecutor(),
+        handoff_validator=lambda task: validated.append(task.stage),
+    ).run(_task(), workspace=tmp_path / "workspace", confirmed=True)
+
+    assert run.status == "SUCCEEDED"
+    assert validated == ["diagnose"]
+
+
 def test_stage_runner_redacts_secret_like_streams(tmp_path: Path) -> None:
     output: list[str] = []
     run = StageAgentRunner(ArtifactStore(tmp_path), _SecretExecutor()).run(
@@ -169,6 +197,28 @@ def test_stage_runner_requires_confirmation_to_resume_authorization(tmp_path: Pa
             _task(),
             workspace=tmp_path / "workspace",
             confirmed=False,
+            authorization_ref=pending.request_ref,
+        )
+
+
+def test_stage_runner_rejects_cross_session_authorization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    monkeypatch.setattr(
+        "rolo.stages.agent_runner._current_actor_identity",
+        lambda: {
+            "os_user": "other",
+            "os_uid": 2000,
+            "session_id": "f" * 64,
+        },
+    )
+    with pytest.raises(ValueError, match="actor or session"):
+        runner.run(
+            _task(),
+            workspace=tmp_path / "workspace",
+            confirmed=True,
             authorization_ref=pending.request_ref,
         )
 
@@ -261,6 +311,21 @@ def test_cancel_stage_run_is_persistent_and_idempotent(tmp_path: Path) -> None:
     assert cancelled.status == "CANCELLED"
     assert cancelled.cancel_requested is True
     assert cancel_stage_run(tmp_path, "diagnose", "robot-1", pending.run_id).status == "CANCELLED"
+
+
+def test_persistent_cancellation_cannot_be_overwritten_by_executor_completion(
+    tmp_path: Path,
+) -> None:
+    run = StageAgentRunner(
+        ArtifactStore(tmp_path), _SelfCancellingExecutor(tmp_path)
+    ).run(_task(), workspace=tmp_path / "workspace", confirmed=True)
+    assert run.status == "CANCELLED"
+    persisted = StageAgentRun.model_validate_json(
+        (tmp_path / "diagnose/robot-1/runs" / run.run_id / "run.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert persisted.status == "CANCELLED"
 
 
 def test_stage_run_heartbeat_prevents_premature_recovery(tmp_path: Path) -> None:

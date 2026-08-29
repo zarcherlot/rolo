@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "title": "Operation",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "READY",
+        "ERROR",
+        "TIMEOUT"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "returncode": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Returncode"
+    },
+    "output": {
+      "default": "",
+      "title": "Output",
+      "type": "string"
+    },
+    "lines": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Lines",
+      "type": "array"
+    },
+    "count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Count",
+      "type": "integer"
+    },
+    "environment_limited": {
+      "default": false,
+      "title": "Environment Limited",
+      "type": "boolean"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation",
+    "status",
+    "observed_at"
+  ],
+  "title": "CommandResult",
+  "type": "object"
+}

@@ -92,11 +92,11 @@
     }
   },
   "additionalProperties": false,
-  "description": "Independent evidence envelope required by a real Verify provider.",
+  "description": "Rolo-owned result summary paired one-to-one with a v2 evidence package.",
   "properties": {
     "schema_version": {
-      "const": "rolo-verification-evidence/v2",
-      "default": "rolo-verification-evidence/v2",
+      "const": "rolo-verification-regression-report/v1",
+      "default": "rolo-verification-regression-report/v1",
       "title": "Schema Version",
       "type": "string"
     },
@@ -112,23 +112,14 @@
       "title": "Run Id",
       "type": "string"
     },
-    "target_provenance_ref": {
-      "pattern": "^artifact://",
-      "title": "Target Provenance Ref",
-      "type": "string"
-    },
-    "target_provenance_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Target Provenance Sha256",
-      "type": "string"
-    },
-    "target_provenance_schema_version": {
-      "default": "rolo-target-provenance/v1",
+    "status": {
       "enum": [
-        "rolo-target-provenance/v1",
-        "rolo-target-provenance/v2"
+        "PASS",
+        "FAIL",
+        "CANCELLED",
+        "INCONCLUSIVE"
       ],
-      "title": "Target Provenance Schema Version",
+      "title": "Status",
       "type": "string"
     },
     "case_results": {
@@ -140,47 +131,19 @@
       "title": "Case Results",
       "type": "array"
     },
-    "safe_stop": {
-      "enum": [
-        "VERIFIED",
-        "NOT_REQUIRED",
-        "NOT_VERIFIED"
-      ],
-      "title": "Safe Stop",
+    "release_authority": {
+      "const": "none",
+      "default": "none",
+      "title": "Release Authority",
       "type": "string"
-    },
-    "rollback": {
-      "enum": [
-        "VERIFIED",
-        "NOT_REQUIRED",
-        "NOT_VERIFIED"
-      ],
-      "title": "Rollback",
-      "type": "string"
-    },
-    "replay_ref": {
-      "anyOf": [
-        {
-          "pattern": "^artifact://",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Replay Ref"
     }
   },
   "required": [
     "robot_id",
     "run_id",
-    "target_provenance_ref",
-    "target_provenance_sha256",
-    "case_results",
-    "safe_stop",
-    "rollback"
+    "status",
+    "case_results"
   ],
-  "title": "VerificationEvidencePackage",
+  "title": "VerificationRegressionReport",
   "type": "object"
 }

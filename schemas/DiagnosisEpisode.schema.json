@@ -62,8 +62,11 @@
       "description": "Evidence that an observation was collected from the requested target.",
       "properties": {
         "schema_version": {
-          "const": "rolo-target-provenance/v1",
           "default": "rolo-target-provenance/v1",
+          "enum": [
+            "rolo-target-provenance/v1",
+            "rolo-target-provenance/v2"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -91,10 +94,75 @@
           "type": "string"
         },
         "clock_offset_ms": {
-          "maximum": 86400000,
-          "minimum": -86400000,
           "title": "Clock Offset Ms",
           "type": "number"
+        },
+        "target_binding_ref": {
+          "anyOf": [
+            {
+              "pattern": "^artifact://",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Binding Ref"
+        },
+        "target_binding_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Binding Sha256"
+        },
+        "collector_session_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collector Session Id"
+        },
+        "clock_source": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clock Source"
+        },
+        "monotonic_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Monotonic Ns"
         }
       },
       "required": [

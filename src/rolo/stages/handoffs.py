@@ -49,7 +49,6 @@ _AUTHORITY_KEYS = {
     "release_decision",
     "release_approved",
 }
-_AUTHORITY_VALUES = {"RELEASED", "VERIFIED", "APPROVED", "PUBLISHED"}
 _NO_AUTHORITY_VALUES = {"", "NONE", "NO", "FALSE", "DENIED", "NOT_GRANTED", "UNAUTHORIZED"}
 
 
@@ -59,8 +58,6 @@ def _contains_release_claim(value: object, *, key: str = "") -> bool:
         if isinstance(value, str):
             return value.strip().upper() not in _NO_AUTHORITY_VALUES
         return bool(value)
-    if isinstance(value, str) and value.strip().upper() in _AUTHORITY_VALUES:
-        return True
     if isinstance(value, Mapping):
         return any(
             _contains_release_claim(item, key=str(child_key))
@@ -103,7 +100,16 @@ def validate_verification_result(
     # Agent response from becoming a COMPLETE Verify handoff while allowing domain-specific
     # names (checks, cases, artifacts, observations, ...).
     report_markers = {"passed", "failed", "status", "checks", "cases", "results", "outcome"}
-    evidence_markers = {"artifacts", "checks", "evidence", "observations", "logs", "episodes"}
+    evidence_markers = {
+        "artifacts",
+        "checks",
+        "evidence",
+        "observations",
+        "logs",
+        "episodes",
+        "case_results",
+        "target_provenance_ref",
+    }
     if not any(key in regression_report for key in report_markers):
         raise ValueError("regression_report must contain a measurable result marker")
     if not any(key in evidence_package for key in evidence_markers):
@@ -120,6 +126,10 @@ def validate_verification_result(
                 raise ValueError("each case result requires case_id")
             if item.get("status") not in allowed:
                 raise ValueError("each case result has an invalid status")
+    if regression_report.get("schema_version") == "rolo-verification-regression-report/v1":
+        from rolo.stages.verify.acceptance import VerificationRegressionReport
+
+        VerificationRegressionReport.model_validate(regression_report)
 
 
 def _verify_refs(root: Path, pairs: tuple[tuple[str, str], ...]) -> None:
@@ -344,7 +354,20 @@ def validate_verification_handoff(
     if evidence.get("schema_version") == "rolo-verification-evidence/v2":
         from rolo.stages.verify.acceptance import validate_structured_verification_evidence
 
-        validate_structured_verification_evidence(
+        structured = validate_structured_verification_evidence(
             evidence, robot_id=robot_id, artifact_root=root
         )
+        report_results = report.get("case_results")
+        if not isinstance(report_results, list) or not report_results:
+            raise ValueError("v2 verification handoff requires non-empty report case_results")
+        report_identity = [
+            (item.get("case_id"), item.get("status"))
+            for item in report_results
+            if isinstance(item, Mapping)
+        ]
+        evidence_identity = [
+            (item.case_id, item.status) for item in structured.case_results
+        ]
+        if report_identity != evidence_identity:
+            raise ValueError("verification report and evidence case results do not match")
     return handoff

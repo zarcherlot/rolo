@@ -8,7 +8,11 @@ each stage after execution.
 
 from __future__ import annotations
 
+import getpass
+import hashlib
+import inspect
 import json
+import os
 import re
 import shutil
 from collections.abc import Callable, Mapping
@@ -18,10 +22,10 @@ from threading import Event
 from typing import Literal, Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.core.hashing import sha256_file
+from rolo.core.hashing import canonical_json_sha256, sha256_file
 from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 
@@ -34,9 +38,29 @@ _SECRET_ASSIGNMENT = re.compile(
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 
 
+def _current_actor_identity() -> dict[str, object]:
+    session_source = next(
+        (
+            os.environ[name]
+            for name in ("ROLO_SESSION_ID", "XDG_SESSION_ID", "WT_SESSION", "TERM_SESSION_ID")
+            if os.environ.get(name)
+        ),
+        f"local-user-{os.getuid()}",
+    )
+    return {
+        "os_user": getpass.getuser(),
+        "os_uid": os.getuid(),
+        "session_id": hashlib.sha256(session_source.encode("utf-8")).hexdigest(),
+    }
+
+
 def _redact_stream(value: str) -> str:
     value = _SECRET_ASSIGNMENT.sub(r"\1<redacted>", value)
     return _BEARER.sub("Bearer <redacted>", value)
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
 
 
 class StageAgentTask(BaseModel):
@@ -56,6 +80,51 @@ class StageAgentTask(BaseModel):
     model: str | None = Field(default=None, max_length=256)
     plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
+
+
+class StageActorIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    os_user: str = Field(min_length=1, max_length=128)
+    os_uid: int = Field(ge=0)
+    session_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class StageAuthorizationRequest(BaseModel):
+    """Same-user, same-session approval bound to the exact Stage task and inputs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-authorization-request/v2"] = (
+        "rolo-authorization-request/v2"
+    )
+    request_id: str = Field(min_length=1, max_length=128)
+    status: Literal["PENDING", "APPROVED", "EXPIRED"] = "PENDING"
+    run_id: str = Field(min_length=1, max_length=128)
+    scope: str = Field(min_length=1, max_length=256)
+    stage: StageName
+    robot_id: str = Field(min_length=1, max_length=128)
+    executor: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=128)
+    model: str | None = Field(default=None, max_length=256)
+    task_ref: str = Field(pattern=r"^artifact://")
+    task_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_sha256: dict[str, str] = Field(default_factory=dict)
+    actor: StageActorIdentity
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
+    created_at: datetime
+    expires_at: datetime
+    approved_at: datetime | None = None
+    approved_by: StageActorIdentity | None = None
+    expired_at: datetime | None = None
+
+    @field_validator("input_sha256")
+    @classmethod
+    def validate_input_digests(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(not re.fullmatch(r"[0-9a-f]{64}", digest) for digest in value.values()):
+            raise ValueError("authorization input digests must be SHA256 values")
+        return value
 
 
 class StageAgentRun(BaseModel):
@@ -210,7 +279,7 @@ def archive_expired_authorization_requests(
         for request_path in stage_root.glob("*/authorization/requests/*.json"):
             try:
                 payload = json_load(request_path)
-                expires_at = datetime.fromisoformat(str(payload.get("expires_at", "")))
+                expires_at = _parse_iso_datetime(str(payload.get("expires_at", "")))
             except (OSError, ValueError, TypeError):
                 continue
             if payload.get("status") != "PENDING" or expires_at.tzinfo is None:
@@ -427,6 +496,7 @@ class StageAgentRunner:
                     )
                 request["status"] = "APPROVED"
                 request["approved_at"] = datetime.now(timezone.utc).isoformat()
+                request["approved_by"] = _current_actor_identity()
                 atomic_write_text(
                     request_path,
                     json.dumps(request, ensure_ascii=False, indent=2, default=str) + "\n",
@@ -444,7 +514,7 @@ class StageAgentRunner:
             raise ValueError("authorization request task reference does not match the resumed task")
         if not confirmed:
             request = {
-                "schema_version": "rolo-authorization-request/v1",
+                "schema_version": "rolo-authorization-request/v2",
                 "request_id": f"auth-{uuid4().hex}",
                 "status": "PENDING",
                 "run_id": run_id,
@@ -455,11 +525,15 @@ class StageAgentRunner:
                 "provider": task.provider,
                 "model": task.model,
                 "task_ref": task_ref,
+                "task_sha256": canonical_json_sha256(task_payload),
                 "plan_sha256": task.plan_sha256,
+                "input_sha256": dict(task.input_sha256),
+                "actor": _current_actor_identity(),
                 "idempotency_key": selected_idempotency_key,
                 "created_at": started.isoformat(),
                 "expires_at": (started + timedelta(minutes=15)).isoformat(),
             }
+            request = StageAuthorizationRequest.model_validate(request).model_dump(mode="json")
             request_ref = layout.ref(
                 self.artifacts.write_json(
                     f"{task.stage}/{task.robot_id}/authorization/requests/{request['request_id']}.json",
@@ -544,12 +618,33 @@ class StageAgentRunner:
                 self.artifacts.root / task.stage / task.robot_id / ".stage-execution.lock"
             )
             with interprocess_lock(execution_lock, timeout_s=0.0, stale_after_s=3600.0):
-                result = self.executor.execute_stage(
-                    task, workspace=workspace, on_output=stream_output
-                )
+                execute_parameters = inspect.signature(
+                    self.executor.execute_stage
+                ).parameters
+                executor_kwargs: dict[str, object] = {
+                    "workspace": workspace,
+                    "on_output": stream_output,
+                }
+                if "run_id" in execute_parameters:
+                    executor_kwargs["run_id"] = run_id
+                if "cancel_event" in execute_parameters:
+                    executor_kwargs["cancel_event"] = cancel_event
+                result = self.executor.execute_stage(task, **executor_kwargs)
                 output_refs = dict(result)
                 self._validate_output_refs(output_refs)
-                if cancel_event is not None and cancel_event.is_set():
+                completed_run: StageAgentRun | None = None
+                persisted_cancel = False
+                run_path = run_root / "run.json"
+                if run_path.is_file():
+                    try:
+                        persisted_cancel = StageAgentRun.model_validate_json(
+                            run_path.read_text(encoding="utf-8")
+                        ).cancel_requested
+                    except (OSError, ValueError):
+                        persisted_cancel = False
+                if (
+                    cancel_event is not None and cancel_event.is_set()
+                ) or persisted_cancel:
                     completed_run = running.model_copy(
                         update={
                             "status": "CANCELLED",
@@ -561,8 +656,6 @@ class StageAgentRunner:
                     )
                 elif self.handoff_validator is not None:
                     self.handoff_validator(task)
-                else:
-                    completed_run = None
                 if completed_run is None:
                     completed = datetime.now(timezone.utc)
                     stdout_ref = (
@@ -619,21 +712,43 @@ class StageAgentRunner:
     def _validate_authorization_request(
         request: dict[str, object], task: StageAgentTask
     ) -> None:
-        if request.get("schema_version") != "rolo-authorization-request/v1":
+        schema_version = request.get("schema_version")
+        if schema_version not in {
+            "rolo-authorization-request/v1",
+            "rolo-authorization-request/v2",
+        }:
             raise ValueError("unsupported authorization request schema")
+        if schema_version == "rolo-authorization-request/v2":
+            try:
+                StageAuthorizationRequest.model_validate(request)
+            except ValueError as exc:
+                raise ValueError(f"authorization request contract is invalid: {exc}") from exc
         if request.get("status") != "PENDING":
             raise ValueError("authorization request is not pending")
         if request.get("stage") != task.stage or request.get("robot_id") != task.robot_id:
             raise ValueError("authorization request target does not match the task")
         if request.get("executor") != task.executor or request.get("provider") != task.provider:
             raise ValueError("authorization request Agent selection does not match the task")
+        if request.get("model") != task.model:
+            raise ValueError("authorization request model does not match the task")
+        if request.get("scope") != f"{task.stage}.agent.execute":
+            raise ValueError("authorization request scope does not match the task")
         if request.get("plan_sha256") != task.plan_sha256:
             raise ValueError("authorization request plan digest does not match the task")
+        if schema_version == "rolo-authorization-request/v2":
+            if request.get("task_sha256") != canonical_json_sha256(
+                task.model_dump(mode="json")
+            ):
+                raise ValueError("authorization request task digest does not match the task")
+            if request.get("input_sha256") != task.input_sha256:
+                raise ValueError("authorization request input digests do not match the task")
+            if request.get("actor") != _current_actor_identity():
+                raise ValueError("authorization request actor or session does not match")
         expires_at = request.get("expires_at")
         if not isinstance(expires_at, str):
             raise ValueError("authorization request expiry is missing")
         try:
-            expiry = datetime.fromisoformat(expires_at)
+            expiry = _parse_iso_datetime(expires_at)
         except ValueError as exc:
             raise ValueError("authorization request expiry is invalid") from exc
         if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):

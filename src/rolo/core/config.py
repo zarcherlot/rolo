@@ -75,6 +75,8 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
         "api_key_env": "coding_agent_api_key_env",
         "executable": "coding_agent_executable",
         "timeout_s": "coding_agent_timeout_s",
+        "preflight_url": "coding_agent_preflight_url",
+        "connect_timeout_s": "coding_agent_connect_timeout_s",
         "auto_install": "coding_agent_auto_install",
         "require_auth": "coding_agent_require_auth",
     },
@@ -203,6 +205,8 @@ class Settings(BaseSettings):
     coding_agent_executable: str = "codex"
     # Agent runs are interactive; only impose a deadline when explicitly set.
     coding_agent_timeout_s: int | None = None
+    coding_agent_preflight_url: str | None = None
+    coding_agent_connect_timeout_s: float = Field(default=3.0, gt=0, le=30)
     coding_agent_auto_install: bool = True
     coding_agent_require_auth: bool = True
     coding_agent_install_timeout_s: int = 300

@@ -93,6 +93,15 @@
       "title": "Target Provenance Sha256",
       "type": "string"
     },
+    "target_provenance_schema_version": {
+      "default": "rolo-target-provenance/v1",
+      "enum": [
+        "rolo-target-provenance/v1",
+        "rolo-target-provenance/v2"
+      ],
+      "title": "Target Provenance Schema Version",
+      "type": "string"
+    },
     "cases": {
       "items": {
         "$ref": "#/$defs/VerificationReplayCase"

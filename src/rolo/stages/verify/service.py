@@ -16,7 +16,45 @@ from rolo.stages.downstream_tools import (
     create_downstream_tool_consumer,
 )
 from rolo.stages.handoffs import validate_diagnosis_handoff, validate_verification_handoff
-from rolo.stages.verify.acceptance import VerificationPlan
+from rolo.stages.verify.acceptance import VerificationEvidencePackage, VerificationPlan
+
+
+def verification_outcome_status(
+    regression_report: dict[str, object], evidence_payload: dict[str, object]
+) -> StageStatus:
+    """Separate artifact completeness from a real, independently proven PASS."""
+
+    declared = str(regression_report.get("status", "")).upper()
+    decision = str(regression_report.get("decision", "")).upper()
+    if declared != "PASS" or decision in {"INCONCLUSIVE", "UNVERIFIED", "NOT_RUN"}:
+        return StageStatus.DEGRADED
+    report_results = regression_report.get("case_results")
+    if not isinstance(report_results, list) or not report_results:
+        return StageStatus.DEGRADED
+    if any(
+        not isinstance(item, dict) or str(item.get("status", "")).upper() != "PASS"
+        for item in report_results
+    ):
+        return StageStatus.DEGRADED
+    try:
+        evidence = VerificationEvidencePackage.model_validate(evidence_payload)
+    except ValueError:
+        return StageStatus.DEGRADED
+    if evidence.target_provenance_schema_version != "rolo-target-provenance/v2":
+        return StageStatus.DEGRADED
+    if not evidence.case_results or any(item.status != "PASS" for item in evidence.case_results):
+        return StageStatus.DEGRADED
+    if evidence.safe_stop == "NOT_VERIFIED" or evidence.rollback == "NOT_VERIFIED":
+        return StageStatus.DEGRADED
+    report_identity = [
+        (str(item.get("case_id", "")), str(item.get("status", "")))
+        for item in report_results
+        if isinstance(item, dict)
+    ]
+    evidence_identity = [(item.case_id, item.status) for item in evidence.case_results]
+    if report_identity != evidence_identity:
+        return StageStatus.DEGRADED
+    return StageStatus.COMPLETE
 
 
 def create_verification_tool_consumer(
@@ -44,6 +82,7 @@ def build_verification_task(
     provider: str,
     executor: str,
     model: str | None = None,
+    additional_input_refs: dict[str, str] | None = None,
 ) -> StageAgentTask:
     """Build a digest-bound Verify task without executing regression actions."""
     layout = ArtifactLayout(artifact_root)
@@ -64,6 +103,11 @@ def build_verification_task(
         if acceptance_plan.robot_id != robot_id:
             raise ValueError("verification acceptance plan robot identity mismatch")
         input_refs["acceptance_plan"] = layout.ref(acceptance_plan_path)
+    for name, reference in (additional_input_refs or {}).items():
+        if name in input_refs:
+            raise ValueError(f"duplicate verification task input name: {name}")
+        resolve_artifact_ref(artifact_root, reference)
+        input_refs[name] = reference
     input_sha256 = {
         name: sha256_file(resolve_artifact_ref(artifact_root, reference))
         for name, reference in input_refs.items()
@@ -118,15 +162,11 @@ def _verification_status(artifact_root: Path, handoff) -> StageStatus:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("regression report must be a JSON object")
-    declared = str(payload.get("status", "")).upper()
-    case_results = payload.get("case_results")
-    if isinstance(case_results, list) and any(
-        isinstance(item, dict) and item.get("status") != "PASS" for item in case_results
-    ):
-        return StageStatus.DEGRADED
-    if declared in {"FAIL", "CANCELLED", "ERROR", "TIMEOUT"}:
-        return StageStatus.DEGRADED
-    return StageStatus.COMPLETE
+    evidence_path = resolve_artifact_ref(artifact_root, handoff.evidence_package_ref)
+    evidence_payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if not isinstance(evidence_payload, dict):
+        raise ValueError("verification evidence package must be a JSON object")
+    return verification_outcome_status(payload, evidence_payload)
 
 
 def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:

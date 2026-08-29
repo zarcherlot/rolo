@@ -309,6 +309,7 @@ def test_robot_wiki_is_retrievable_but_not_embedded_in_agent_context(tmp_path: P
 def test_codex_executor_reuses_login_without_api_key_and_writes_audit_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("ROLO_ADAPTER_MAX_PROCESSES", raising=False)
     artifact_root = tmp_path / "artifacts"
     workspace = tmp_path / "workspace"
     workspace.mkdir()

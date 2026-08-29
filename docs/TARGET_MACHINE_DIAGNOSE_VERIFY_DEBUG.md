@@ -17,12 +17,26 @@ source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=50
 export ROS_LOCALHOST_ONLY=1
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export CODING_AGENT_PROVIDER=local-target
+export CODING_AGENT_EXECUTOR=local-target
 unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
 
 uv run robotctl config show
 ```
 
 预期：代码版本为待验证远端 HEAD；依赖锁定安装成功；配置输出中的 `ros.rmw_implementation` 为 `rmw_fastrtps_cpp`。记录 `ROS_DOMAIN_ID`、RMW、代理变量和进程上限，避免把目标机注入值误判为代码问题。
+
+为目标工作区建立不可变的本地 profile。`<robot-id>` 必须与后续所有 Stage 命令一致：
+
+```bash
+uv run rolo target profile init "$PWD" --robot <robot-id>
+uv run rolo target profile show --robot <robot-id>
+```
+
+`local-target` 会在授权请求生成前固定 profile digest、workspace device/inode/ctime、
+machine-id hash、OS user/uid、ROS domain 和 RMW。任一身份漂移都会在执行 Linux/ROS 命令前
+失败关闭。外部 Agent 如需网络预检，可显式设置 `CODING_AGENT_PREFLIGHT_URL`；Rolo 只做
+有界 TCP 连通性检测，不记录代理凭据。
 
 ## 2. 采集目标机基线
 
@@ -91,7 +105,11 @@ uv run robotctl diagnose run --robot <robot-id> \
   2>&1 | tee target-debug/diagnose-run.txt
 ```
 
-当前 fake provider 只能验证 contract、CLI/MCP/HTTP 同构和 handoff，不能形成真实诊断结论；因此预期只能是 `INCONCLUSIVE`、`UNVERIFIED_AGENT_OBSERVATION`、`NOT_STARTED` 或 `BLOCKED`，不得出现可影响 release 的 `VERIFIED/PASSED`。真实 Diagnose provider 上线后，必须输出 episode 引用、目标机 provenance/clock/source，并覆盖 baseline → observe → hypothesis → change → smoke → decision 的完整链路。
+`local-target` provider 使用固定只读命令采集真实 `TargetProvenance v2` 和唯一 immutable
+Episode，覆盖 baseline → observe → hypothesis → change(`NO_CHANGE`) → smoke → decision。
+只有 `ros2 doctor --report` 基线与 smoke 均成功、Episode 完整且所有 binding/hash 有效时，
+Diagnose 才为 `COMPLETE`；否则为 `DEGRADED`。fake/Codex 无真实 Episode 时仍只能为
+`INCONCLUSIVE` 或 `DEGRADED`，不得影响 release。
 
 ## 5. Verify 阶段
 
@@ -104,6 +122,10 @@ uv run robotctl verify acceptance-plan \
   --confirm \
   2>&1 | tee target-debug/verify-plan.txt
 ```
+
+首个真实 provider 只接受以下 operation：`linux.uname`、`ros.doctor.report`、
+`ros.node.list`、`ros.topic.list`、`ros.service.list`、`ros.topic.echo_once`。所有命令均以
+参数数组执行，不经过 shell；未知 operation 和任何 publish/write/mutation 操作在执行前拒绝。
 
 随后先无确认运行 Verify，确认同样进入授权等待：
 
@@ -120,7 +142,10 @@ uv run robotctl verify run --robot <robot-id> \
   2>&1 | tee target-debug/verify-run.txt
 ```
 
-当前无真实 Verify provider 时，预期为 `NOT_STARTED` 或带明确 `FAKE_UNEXECUTED` 标记的 `DEGRADED`；不得产生 `VERIFIED/PASSED` 或 release 影响。真实 provider 必须证明 bounded cases、oracle、timeout/cancel、safe-stop、rollback 和 evidence 引用均可复现。
+`local-target` 将每个 bounded case 固化为 replay capture，并生成
+`VerificationEvidencePackage v2`。所有 case PASS、report/evidence 一一匹配、provenance v2
+及 target binding hash 有效，且 safe-stop/rollback 不为 `NOT_VERIFIED` 时 Verify 才为
+`COMPLETE`。当前只读 case 的 safe-stop/rollback 均明确为 `NOT_REQUIRED`。
 
 ## 6. Run 管理与取消
 

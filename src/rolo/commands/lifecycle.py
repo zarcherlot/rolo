@@ -35,11 +35,10 @@ from rolo.stages.adapt.target_evidence import (
 )
 from rolo.stages.agent_runner import cancel_stage_run
 from rolo.stages.contracts import StageName
-from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 from rolo.stages.verify.acceptance import VerificationPlan
-from rolo.stages.verify.service import build_verification_task, publish_verification_plan
+from rolo.stages.verify.service import publish_verification_plan
 
 adapt_stage_app = typer.Typer(
     help="Stage 1: discover, adapt, conform, and publish the canonical control surface."
@@ -459,12 +458,11 @@ def diagnose_stage_plan(
     """Build a provider-neutral Diagnose Agent task without executing it."""
     settings = get_settings()
     try:
-        task = build_diagnosis_task(
-            settings.rolo_artifact_dir,
+        task = DownstreamStageService(settings, "diagnose").build_task(
             robot,
-            provider=provider or settings.coding_agent_provider,
-            executor=executor or settings.coding_agent_executor,
-            model=model if model is not None else settings.coding_agent_model,
+            provider=provider,
+            executor=executor,
+            model=model,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -534,12 +532,11 @@ def verify_stage_plan(
     """Build a provider-neutral Verify Agent task without executing it."""
     settings = get_settings()
     try:
-        task = build_verification_task(
-            settings.rolo_artifact_dir,
+        task = DownstreamStageService(settings, "verify").build_task(
             robot,
-            provider=provider or settings.coding_agent_provider,
-            executor=executor or settings.coding_agent_executor,
-            model=model if model is not None else settings.coding_agent_model,
+            provider=provider,
+            executor=executor,
+            model=model,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

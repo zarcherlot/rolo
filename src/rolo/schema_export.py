@@ -120,18 +120,25 @@ from rolo.stages.adapt.software_relevance import (
 from rolo.stages.adapt.wiki_diff import WikiDiscoveryDiff
 from rolo.stages.adapt.wiki_insights import RoloWikiInsightBundle, WikiInsightBundle
 from rolo.stages.adapt.workset import AdaptOperationWorkset, TargetOperationSlice
-from rolo.stages.agent_runner import StageAgentRun, StageAgentTask
+from rolo.stages.agent_runner import (
+    StageActorIdentity,
+    StageAgentRun,
+    StageAgentTask,
+    StageAuthorizationRequest,
+)
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
 from rolo.stages.diagnose.episode import DiagnosisEpisode, EpisodeObservation, TargetProvenance
 from rolo.stages.diagnose_contract import DiagnosisReport
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
+from rolo.stages.real_target import CommandResult, TargetBinding
 from rolo.stages.verify.acceptance import (
     VerificationCase,
     VerificationCaseResult,
     VerificationEvidencePackage,
     VerificationOracle,
     VerificationPlan,
+    VerificationRegressionReport,
     VerificationReplayCase,
     VerificationReplayFixture,
     VerificationRunReport,
@@ -197,11 +204,14 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     VerificationHandoff,
     StageAgentTask,
     StageAgentRun,
+    StageActorIdentity,
+    StageAuthorizationRequest,
     VerificationOracle,
     VerificationCase,
     VerificationPlan,
     VerificationCaseResult,
     VerificationRunReport,
+    VerificationRegressionReport,
     VerificationEvidencePackage,
     VerificationReplayCase,
     VerificationReplayFixture,
@@ -209,6 +219,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     TargetProvenance,
     EpisodeObservation,
     DiagnosisEpisode,
+    TargetBinding,
+    CommandResult,
     StageAgentEvent,
     StageAgentEventPage,
     StageAgentRunDetail,

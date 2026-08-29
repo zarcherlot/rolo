@@ -56,6 +56,13 @@ def test_result_guards_reject_positive_release_authority() -> None:
         raise AssertionError("positive release authority must fail closed")
 
 
+def test_result_guards_do_not_confuse_verified_safety_evidence_with_release() -> None:
+    handoffs.validate_verification_result(
+        {"status": "PASS", "case_results": [{"case_id": "safe", "status": "PASS"}]},
+        {"checks": [{"safe_stop": "VERIFIED", "rollback": "VERIFIED"}]},
+    )
+
+
 def test_diagnosis_materializer_freezes_and_binds_outputs(tmp_path: Path, monkeypatch) -> None:
     adapter = tmp_path / "adapt" / "robot-1" / "runs" / "adapt-1" / "handoff.json"
     adapter.parent.mkdir(parents=True)

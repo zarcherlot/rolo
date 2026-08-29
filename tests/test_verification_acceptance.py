@@ -54,6 +54,10 @@ def test_oracle_evaluation_is_deterministic_and_bounded() -> None:
 
 
 def test_verification_plan_persists_case_evidence_and_passes(tmp_path: Path) -> None:
+    provenance = tmp_path / "target-provenance.json"
+    provenance.write_text('{"target":"robot-1"}\n', encoding="utf-8")
+    from rolo.core.hashing import sha256_file
+
     plan = VerificationPlan(
         robot_id="robot-1",
         cases=[
@@ -69,6 +73,8 @@ def test_verification_plan_persists_case_evidence_and_passes(tmp_path: Path) -> 
         consumer=_consumer(),
         artifacts=ArtifactStore(tmp_path),
         clock=lambda: NOW,
+        target_provenance_ref="artifact://target-provenance.json",
+        target_provenance_sha256=sha256_file(provenance),
     )
     assert report.status == "PASS"
     assert report.case_results[0].audit_ref == "audit:event-1"
@@ -76,6 +82,10 @@ def test_verification_plan_persists_case_evidence_and_passes(tmp_path: Path) -> 
 
 
 def test_verification_plan_honors_cancellation_before_invocation(tmp_path: Path) -> None:
+    provenance = tmp_path / "target-provenance.json"
+    provenance.write_text('{"target":"robot-1"}\n', encoding="utf-8")
+    from rolo.core.hashing import sha256_file
+
     plan = VerificationPlan(
         robot_id="robot-1",
         cases=[
@@ -94,6 +104,8 @@ def test_verification_plan_honors_cancellation_before_invocation(tmp_path: Path)
         artifacts=ArtifactStore(tmp_path),
         cancel_event=cancel,
         clock=lambda: datetime.now(timezone.utc),
+        target_provenance_ref="artifact://target-provenance.json",
+        target_provenance_sha256=sha256_file(provenance),
     )
     assert report.status == "CANCELLED"
     assert report.case_results[0].status == "CANCELLED"

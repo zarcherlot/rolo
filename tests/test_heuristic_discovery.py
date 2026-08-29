@@ -532,6 +532,7 @@ def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
     codex_home.mkdir()
     monkeypatch.delenv("HOME", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("https_proxy", "http://proxy.example:7897")
     assert CodexDiscoveryPlanningProvider.provider.endswith("rolo-adapt-discovery")

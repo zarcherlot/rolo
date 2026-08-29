@@ -20,9 +20,7 @@ from rolo.stage_agent_read_models import stage_agent_event_page, stage_agent_run
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
 from rolo.stages.agent_runner import cancel_stage_run, list_stage_authorization_requests
-from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.downstream import DownstreamStageService
-from rolo.stages.verify.service import build_verification_task
 from rolo.target_ref import LocalTargetRef, parse_target_ref
 
 TOOLS = [
@@ -244,17 +242,11 @@ def _call(name: str, args: dict[str, Any]) -> Any:
         if not robot_id:
             raise ValueError("robot_id is required")
         settings = get_settings()
-        builder = (
-            build_diagnosis_task if name == "rolo_diagnose_plan" else build_verification_task
-        )
         return _jsonable(
-            builder(
-                settings.rolo_artifact_dir,
-                robot_id,
-                provider=settings.coding_agent_provider,
-                executor=settings.coding_agent_executor,
-                model=settings.coding_agent_model,
-            )
+            DownstreamStageService(
+                settings,
+                "diagnose" if name == "rolo_diagnose_plan" else "verify",
+            ).build_task(robot_id)
         )
     if name in {"rolo_target_inspect", "rolo_bootstrap_plan"}:
         settings = get_settings()

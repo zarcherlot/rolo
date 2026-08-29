@@ -13,6 +13,7 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     monkeypatch.delenv("ROLO_CONFIG_DIR", raising=False)
     monkeypatch.delenv("ROLO_ARTIFACT_DIR", raising=False)
     monkeypatch.delenv("ROLO_OUTPUT_DIR", raising=False)
+    monkeypatch.delenv("ROLO_ADAPTER_MAX_PROCESSES", raising=False)
     monkeypatch.delenv("WIKI_INSIGHTS_AGENT_ENABLED", raising=False)
     monkeypatch.delenv("ADAPT_HEURISTIC_AGENT_MODE", raising=False)
     monkeypatch.setenv("ROLO_SETTINGS_FILE", str(tmp_path / "missing.yaml"))
@@ -38,6 +39,7 @@ def test_user_yaml_is_loaded_below_environment_precedence(
 ) -> None:
     monkeypatch.delenv("RMW_IMPLEMENTATION", raising=False)
     monkeypatch.delenv("ROS_RMW_IMPLEMENTATION", raising=False)
+    monkeypatch.delenv("ROLO_ADAPTER_MAX_PROCESSES", raising=False)
     settings_file = tmp_path / "config.yaml"
     settings_file.write_text(
         """schema_version: rolo-config/v1
