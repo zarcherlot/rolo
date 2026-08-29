@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,18 @@ from rolo.targets.models import (
 )
 
 MAX_DIAGNOSTIC_CHARS = 1000
+
+
+def quote_remote_arg(value: str) -> str:
+    """Quote one argument for the remote POSIX shell used by OpenSSH."""
+    if "\x00" in value:
+        raise ValueError("remote command arguments must not contain NUL bytes")
+    return shlex.quote(value)
+
+
+def quote_remote_argv(remote_argv: list[str]) -> list[str]:
+    """Encode an argv vector before OpenSSH joins it for the remote shell."""
+    return [quote_remote_arg(value) for value in remote_argv]
 
 
 @dataclass(frozen=True)
@@ -172,7 +185,7 @@ class SshTargetExecutor:
         ]
         if self.target.port is not None:
             argv.extend(["-p", str(self.target.port)])
-        return [*argv, "--", destination, *remote_argv]
+        return [*argv, "--", destination, *quote_remote_argv(remote_argv)]
 
     def _run(self, remote_argv: list[str]) -> CommandResult:
         return self.runner.run(self._ssh_argv(remote_argv), timeout_s=self.timeout_s)

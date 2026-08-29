@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from rolo.targets.executor import (
     CommandResult,
     LocalTargetExecutor,
     SshTargetExecutor,
+    quote_remote_argv,
 )
 from rolo.targets.models import (
     BootstrapPlanStatus,
@@ -165,3 +167,25 @@ def test_ssh_target_model_rejects_directly_constructed_unsafe_identity() -> None
             user="robot;touch-x",
             workspace="/home/robot/workspace",
         )
+
+
+@pytest.mark.parametrize(
+    "remote_argv",
+    [
+        ["stat", "-c", "%d %i %Z", "/home/robot/wheeltec_ws"],
+        ["printf", "space value", "quote'and\"double", "glob*;$(touch SHOULD_NOT_RUN)"],
+        ["", "leading-dash-is-an-argument", "$(printf injected)"],
+    ],
+)
+def test_remote_argv_is_shell_safe_and_round_trips(remote_argv: list[str]) -> None:
+    encoded = quote_remote_argv(remote_argv)
+
+    assert shlex.split(" ".join(encoded), comments=False, posix=True) == remote_argv
+    for value, encoded_value in zip(remote_argv, encoded, strict=True):
+        if any(character in value for character in " '\";$*()") or not value:
+            assert encoded_value != value
+
+
+def test_remote_argv_rejects_nul() -> None:
+    with pytest.raises(ValueError, match="NUL"):
+        quote_remote_argv(["printf", "bad\x00value"])
