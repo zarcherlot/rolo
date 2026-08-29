@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field

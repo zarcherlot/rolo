@@ -14,23 +14,23 @@ from rolo.stages.verify.legacy_adapter import (
     LegacyProviderEvidence,
     adapt_legacy_provider_evidence,
 )
-from rolo.stages.verify.ssh_provenance import (
-    SshReadOnlyTransport,
-    SshTargetProvenanceCollector,
-)
-from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
-from rolo.stages.verify.service import (
-    assess_verify,
-    build_verification_task,
-    create_verification_tool_consumer,
-    publish_verification_plan,
-)
 from rolo.stages.verify.readiness import (
     ReadinessCheck,
     RealVerifyReadinessReportV2,
     VerificationProviderManifestV2,
     validate_readiness_report,
 )
+from rolo.stages.verify.service import (
+    assess_verify,
+    build_verification_task,
+    create_verification_tool_consumer,
+    publish_verification_plan,
+)
+from rolo.stages.verify.ssh_provenance import (
+    SshReadOnlyTransport,
+    SshTargetProvenanceCollector,
+)
+from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
 
 __all__ = [
     "assess_verify",

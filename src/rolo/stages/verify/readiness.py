@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rolo.core.hashing import sha256_file
 from rolo.stages.artifact_paths import resolve_artifact_ref
 
-
 ArtifactDigest = str
 
 

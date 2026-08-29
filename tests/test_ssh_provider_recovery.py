@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 
 from rolo.core.persistence import interprocess_lock
-from rolo.target_ref import SshTargetRef
 from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
+from rolo.target_ref import SshTargetRef
 
 
 class _Result:
