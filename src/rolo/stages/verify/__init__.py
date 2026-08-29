@@ -10,6 +10,10 @@ from rolo.stages.verify.acceptance import (
     evaluate_oracle,
     run_verification_plan,
 )
+from rolo.stages.verify.legacy_adapter import (
+    LegacyProviderEvidence,
+    adapt_legacy_provider_evidence,
+)
 from rolo.stages.verify.service import (
     assess_verify,
     build_verification_task,
@@ -30,4 +34,6 @@ __all__ = [
     "VerificationRunReport",
     "evaluate_oracle",
     "run_verification_plan",
+    "LegacyProviderEvidence",
+    "adapt_legacy_provider_evidence",
 ]

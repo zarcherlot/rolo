@@ -64,3 +64,8 @@ Episode，不改变 release authority，可作为后续 provider adapter 的输�
 本轮边界测试已落地在 `tests/test_post_r5_provider_boundary.py`：P1 v1 evidence package、
 SSH 专用 provenance 以及缺失 safe-stop/rollback 的 v2 package 都会被 main contract
 明确拒绝。它们不是迁移完成的证明，而是防止误合入的回归门禁。
+
+本切片新增 `src/rolo/stages/verify/legacy_adapter.py` 和
+`tests/test_legacy_provider_adapter.py`。adapter 只接受带有匹配 plan digest 的 P1 v1
+payload，并强制调用方提供已发布且 hash 匹配的 main provenance artifact；inline SSH
+provenance 不会被复制进 v2 package，safe-stop/rollback 也必须显式传入。

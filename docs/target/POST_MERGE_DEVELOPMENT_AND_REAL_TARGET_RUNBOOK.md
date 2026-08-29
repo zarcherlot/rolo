@@ -119,6 +119,10 @@ Verify provider/materializer 仍需与本分支 canonical producer 做字段级�
 当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
 P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
 
+下一条 adapter 切片已实现于 `src/rolo/stages/verify/legacy_adapter.py`：只有 plan digest、
+canonical target provenance artifact/hash 和显式安全结果均匹配时，才允许把 P1 v1
+payload 写成 main v2 evidence；它尚未接管 SSH provider 的实际执行。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
