@@ -67,6 +67,9 @@ _VIS_HTML = r"""<!doctype html>
       $('robot').innerHTML = robots.map(item => `<option value="${esc(item.robot_id)}">${esc(item.robot_id)}</option>`).join('');
       if (!robots.length) $('requests').textContent = '没有已登记 robot';
     }
+    async function loadSession() {
+      await api('/v1/session');
+    }
     async function loadRequests() {
       const robot = $('robot').value;
       if (!robot) return;
@@ -103,9 +106,9 @@ _VIS_HTML = r"""<!doctype html>
         $('runs').innerHTML = `<pre>${esc(JSON.stringify({detail, events}, null, 2))}</pre>`;
       } catch (error) { $('runs').innerHTML += `<p class="danger">${esc(error.message)}</p>`; }
     }
-    $('refresh').addEventListener('click', async () => { try { await loadRobots(); await loadRequests(); } catch (error) { $('requests').textContent = error.message; } });
+    $('refresh').addEventListener('click', async () => { try { await loadSession(); await loadRobots(); await loadRequests(); } catch (error) { $('requests').textContent = error.message; } });
     $('robot').addEventListener('change', loadRequests); $('stage').addEventListener('change', loadRequests);
-    loadRobots().then(loadRequests).catch(error => $('requests').textContent = error.message);
+    loadSession().then(loadRobots).then(loadRequests).catch(error => $('requests').textContent = error.message);
   </script>
 </body>
 </html>"""

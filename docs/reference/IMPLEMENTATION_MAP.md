@@ -48,6 +48,10 @@ verify (optional): diagnosis handoff → acceptance plan → regression/evidence
 为授权请求提供当前 OS 用户 principal 和 artifact-root 内持久的本地 session fingerprint；
 跨用户或跨 session 的恢复必须拒绝。
 
+HTTP 控制面的 `/v1/session` 只返回非秘密 principal/session_id，同时签发短时、HttpOnly
+的 HMAC `rolo_session` cookie；带 `authorization_ref` 的 Diagnose/Verify 恢复必须持有
+当前用户和持久 session 均匹配的 ticket，缺失、篡改或过期均 fail-closed。
+
 ## 3. Adapt 实现分层
 
 | 层 | 主要模块 | 责任和边界 |

@@ -150,6 +150,67 @@ def test_health_and_robot_registry() -> None:
     assert status.json()["local_visual_detection"] is False
 
 
+def test_local_session_issues_stable_http_only_ticket() -> None:
+    with TestClient(app) as client:
+        first = client.get("/v1/session")
+        second = client.get("/v1/session")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["session_id"] == second.json()["session_id"]
+    assert first.json()["principal"]
+    cookie = first.headers.get("set-cookie", "")
+    assert "rolo_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+    assert "token" not in first.text.casefold()
+
+
+def test_stage_authorization_requires_a_valid_local_session_ticket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(timezone.utc)
+
+    def fake_run(self, robot_id: str, *, confirmed: bool, authorization_ref=None, on_output=None):
+        del on_output
+        return StageAgentRun(
+            stage=self.stage,
+            robot_id=robot_id,
+            run_id="ticket-api-run",
+            status="SUCCEEDED",
+            provider="fake",
+            executor="fake",
+            task_ref="artifact://diagnose/demo_diff/runs/ticket-api-run/task.json",
+            started_at=now,
+            completed_at=now,
+            request_ref=authorization_ref,
+        )
+
+    monkeypatch.setattr("rolo.api.DownstreamStageService.run", fake_run)
+    with TestClient(app) as client:
+        denied = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+        session = client.get("/v1/session")
+        allowed = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+        client.cookies.clear()
+        client.cookies.set("rolo_session", "tampered")
+        tampered = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+
+    assert denied.status_code == 403
+    assert session.status_code == 200
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["request_ref"] == "artifact://request"
+    assert tampered.status_code == 403
+
+
 def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
     settings = get_settings()
     layout = ArtifactLayout(settings.rolo_artifact_dir)
