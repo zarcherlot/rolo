@@ -126,6 +126,11 @@ class ArtifactLayout:
     def stage_file(self, stage: str, robot_id: str, relative: str) -> Path:
         return self.stage_latest(stage, robot_id) / relative
 
+    def verify_readiness(self, robot_id: str) -> Path:
+        """Canonical optional Verify readiness report for one robot."""
+
+        return self.stage_file("verify", robot_id, "readiness.json")
+
 
 def resolve_artifact_ref(root: Path, reference: str) -> Path:
     prefix = "artifact://"
