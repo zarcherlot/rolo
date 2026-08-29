@@ -1,10 +1,16 @@
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+
 # Episode cohort read-model contract
 
-Status: E8 implementation review candidate
+Status: E8 server implementation available; contract remains review-controlled
 
 Feature: `workbench.episode-cohort-read-model/v1`
 
 Base: `workbench.episode-read-model/v1`
+
+Implementation status: the control plane exposes the bounded cohort endpoint and advertises
+`workbench.episode-cohort-read-model/v1`. The implementation remains descriptive and
+revision-pinned; it does not decide improvement, regression, release, remediation or safety.
 
 ## Decision
 

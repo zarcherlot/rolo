@@ -1,10 +1,16 @@
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+
 # Episode revision history contract
 
-Status: E7 contract candidate
+Status: E7 server implementation available; contract remains candidate pending consumer acceptance
 
 Capability: `workbench.episode-revision-history/v1`
 
 Base: `workbench.episode-read-model/v1`
+
+Implementation status: the control plane exposes the revision collection, revision-pinned detail
+and revision-pinned timeline endpoints, and advertises `workbench.episode-revision-history/v1`.
+The feature remains read-only and does not authorize replay, remediation or robot action.
 
 ## Purpose
 

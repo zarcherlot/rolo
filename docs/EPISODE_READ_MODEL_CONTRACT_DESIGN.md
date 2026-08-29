@@ -1,8 +1,14 @@
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+
 # Episode read-model contract design
 
-Status: E2 implementation review  
+Status: E2 server implementation available; public contract remains review-controlled
 Target consumer: rolo-vis Episode Studio  
 Base compatibility boundary: `rolo-vis-mvp-read-model-v1`
+
+Implementation status: the control plane currently exposes the bounded collection, detail and
+revision-pinned timeline surfaces and advertises `workbench.episode-read-model/v1`. This does not
+imply that the full Episode Studio, live streaming, compare, replay or remediation surfaces exist.
 
 ## 1. Decision
 
