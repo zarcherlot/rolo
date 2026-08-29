@@ -87,6 +87,7 @@ authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判�
 - P1 v1 迁移边界：`stages/verify/legacy_adapter.py`，只接受匹配 plan digest 和 canonical provenance 的单向适配；
 - SSH canonical provenance：`stages/verify/ssh_provenance.py`，通过 pinned transport 采集只读目标身份并发布 binding artifact；
 - SSH bounded Verify provider：`stages/verify/ssh_target_provider.py`，固定 platform/workspace/companion case 经 adapter 写入 v2 evidence；
+- Verify handoff materialization：`SshTargetHealthProvider.materialize_handoff()`，重新验证 v2 evidence 后交给 canonical handoff validator；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，生成 provenance 绑定的 evidence package。
 
 Verify 的报告和 evidence package 是可审计输入，不自动等同于真实目标机 acceptance。
@@ -147,7 +148,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 | Registry v1/v2、角色和迁移 | `test_registry.py`、`test_registry_v2.py`、`test_registry_migration.py` |
 | Native Tool session/broker/rollout | `test_agent_native_tools.py`、`test_native_tool_session.py`、`test_native_rollout.py` |
 | Stage Agent 授权、幂等、取消、日志 | `test_stage_agent_runner.py`、`test_stage_agent_read_models.py` |
-| Diagnose/Verify contract、fake、handoff、P1 adapter 与 SSH provider | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_legacy_provider_adapter.py`、`test_post_r5_provider_boundary.py`、`test_ssh_provenance.py`、`test_ssh_target_provider.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
+| Diagnose/Verify contract、fake、handoff、P1 adapter 与 SSH provider | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_legacy_provider_adapter.py`、`test_post_r5_provider_boundary.py`、`test_ssh_provenance.py`、`test_ssh_target_provider.py`、`test_ssh_provider_handoff.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
 | 固定 Linux/ROS 目标与 Stage 插件 | `test_real_target_contracts.py`、`test_plugin_manifest.py` |
 | Episode projection/read model/API | `test_episode_read_models.py`、`test_episode_projection.py`、`test_episode_api.py` |
 | HTTP/MCP/Web 入口 | `test_api.py`、`test_mcp_server.py`、`test_vis.py` |

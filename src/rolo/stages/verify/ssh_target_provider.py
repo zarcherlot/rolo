@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
+import json
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,12 +17,15 @@ from rolo.core.hashing import canonical_json_sha256, sha256_file
 from rolo.core.persistence import interprocess_lock
 from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.diagnose.episode import TargetProvenance
+from rolo.stages.handoffs import VerificationHandoff, commit_verification_handoff
 from rolo.stages.verify.acceptance import (
     VerificationCase,
     VerificationCaseResult,
     VerificationOracle,
     VerificationPlan,
+    VerificationRegressionReport,
     VerificationRunReport,
+    validate_structured_verification_evidence,
 )
 from rolo.stages.verify.legacy_adapter import adapt_legacy_provider_evidence
 from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
@@ -280,6 +284,42 @@ class SshTargetHealthProvider:
             evidence_ref=evidence_ref,
             started_at=started,
             completed_at=completed,
+        )
+
+    def materialize_handoff(
+        self,
+        artifact_root: Path,
+        report: VerificationRunReport,
+    ) -> VerificationHandoff:
+        """Commit provider output through the canonical Verify handoff validator."""
+
+        evidence_path = ArtifactLayout(artifact_root).root / Path(
+            report.evidence_ref.removeprefix("artifact://")
+        )
+        if not evidence_path.is_file():
+            raise ValueError("SSH provider evidence artifact is missing")
+        try:
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("SSH provider evidence artifact is not valid JSON") from exc
+        if not isinstance(evidence, dict):
+            raise ValueError("SSH provider evidence artifact must be a JSON object")
+        validate_structured_verification_evidence(
+            evidence, robot_id=report.robot_id, artifact_root=artifact_root
+        )
+        regression = VerificationRegressionReport(
+            robot_id=report.robot_id,
+            run_id=report.run_id,
+            status=report.status,
+            case_results=report.case_results,
+            release_authority="none",
+        )
+        return commit_verification_handoff(
+            artifact_root,
+            report.robot_id,
+            regression_report=regression.model_dump(mode="json"),
+            evidence_package=evidence,
+            run_id=report.run_id,
         )
 
 

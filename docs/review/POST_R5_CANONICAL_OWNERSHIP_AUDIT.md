@@ -79,3 +79,7 @@ P1 provider 仍需下一轮接入该 collector 后才能产出可适配的 v2 ev
 固定的 platform/workspace/companion 三个只读 case，先保留 legacy v1 source artifact，
 再经 adapter 生成 main v2 evidence。该 provider 尚未接入 Stage handoff，也未宣称物理目标
 或 release readiness。
+
+当前 provider 已提供 `materialize_handoff()`：先重新验证 v2 evidence，再将 canonical
+regression report 和 evidence package 交给 `commit_verification_handoff`；缺少上游
+Diagnose handoff 时仍由既有 validator 拒绝。

@@ -131,6 +131,10 @@ SSH bounded provider execution 已在 `src/rolo/stages/verify/ssh_target_provide
 软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence。下一步仍
 需在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并接入 Verify handoff。
 
+Verify handoff 接入已完成：`materialize_handoff()` 会重新验证 v2 evidence，并通过
+`commit_verification_handoff` 绑定 Diagnose handoff；没有上游 Diagnose handoff 时必须
+保持拒绝，不得单独制造 Verify latest handoff。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以
