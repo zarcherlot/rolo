@@ -51,7 +51,7 @@ class CodexStageAgentExecutor:
                 HarnessRequest(
                     prompt=prompt,
                     workspace=workspace,
-                    timeout_s=self.settings.coding_agent_timeout_s,
+                    timeout_s=self.settings.coding_agent_timeout_s or 1800,
                 ),
                 on_output=on_output,
             )
@@ -118,9 +118,28 @@ class CodexStageAgentExecutor:
 
         if report.get("schema_version") != "rolo-diagnosis-report/v1":
             return report
-        refs = report.get("episode_refs")
+        enriched = dict(report)
+        limitations = enriched.get("limitations")
+        if not isinstance(limitations, list):
+            limitations = []
+        if enriched.get("decision") == "INCONCLUSIVE" and enriched.get("changes") == []:
+            enriched["changes"] = [
+                {
+                    "kind": "NO_CHANGE",
+                    "status": "NOT_APPLIED",
+                    "applied": False,
+                    "reason": "No target change was proposed or executed by the Diagnose Agent.",
+                }
+            ]
+            limitations = [
+                *[str(item) for item in limitations],
+                "The Diagnose Agent proposed no target change; Rolo materialized an explicit "
+                "NO_CHANGE record to preserve the closed-loop contract.",
+            ]
+        enriched["limitations"] = limitations
+        refs = enriched.get("episode_refs")
         if isinstance(refs, list) and refs:
-            return report
+            return enriched
         input_refs = [
             ref for ref in task.input_refs.values() if ref.startswith("artifact://")
         ]
@@ -134,20 +153,16 @@ class CodexStageAgentExecutor:
             "source_input_refs": input_refs,
             "observations": report.get("observations", []),
             "hypotheses": report.get("hypotheses", []),
-            "changes": report.get("changes", []),
+            "changes": enriched.get("changes", []),
             "authority": "UNVERIFIED_AGENT_OBSERVATION",
         }
         path = self.artifacts.write_json(
             f"diagnose/{task.robot_id}/runs/{run_id}/episodes/agent-observation.json",
             observation,
         )
-        enriched = dict(report)
         enriched["episode_refs"] = [layout.ref(path)]
-        limitations = enriched.get("limitations")
-        if not isinstance(limitations, list):
-            limitations = []
         enriched["limitations"] = [
-            *[str(item) for item in limitations],
+            *[str(item) for item in enriched["limitations"]],
             "No target runtime episode was executed; the bound artifact is an "
             "unverified agent observation.",
         ]
@@ -212,7 +227,9 @@ class CodexStageAgentExecutor:
             f"JSON object with this shape: {expected}. No markdown, prose, secrets, or paths "
             "outside artifact references. For Diagnose, episode_refs may be omitted when no "
             "runtime episode exists; Rolo will bind an explicitly unverified observation "
-            "artifact.\n\n"
+            "artifact. Diagnose changes must contain at least one record. When no target change "
+            "was proposed or executed, return one explicit NO_CHANGE record with applied=false "
+            "and use decision=INCONCLUSIVE.\n\n"
             "Materialized input paths:\n"
             + json.dumps(dict(local_inputs or {}), ensure_ascii=False, indent=2)
             + "\n\n"

@@ -51,9 +51,11 @@ class _CapturingHarness(_FakeHarness):
     def __init__(self, payload: dict[str, object]) -> None:
         super().__init__(payload)
         self.prompt = ""
+        self.timeout_s: int | None = None
 
     def run(self, request, *, on_output=None):
         self.prompt = request.prompt
+        self.timeout_s = request.timeout_s
         return super().run(request, on_output=on_output)
 
 
@@ -114,7 +116,39 @@ def test_codex_downstream_materializes_artifact_inputs_for_the_harness(
 
     assert result["regression_report"] == "artifact://verify/robot-1/report.json"
     assert "verification_inputs" in harness.prompt
+    assert harness.timeout_s == 30
     assert (tmp_path / "workspace" / "rolo-stage-inputs" / "verification_inputs.json").is_file()
+
+
+def test_codex_downstream_uses_default_timeout_when_unset(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _CapturingHarness(
+        {"regression_report": {"status": "PASS"}, "evidence_package": {"artifacts": []}}
+    )
+    executor = CodexStageAgentExecutor(
+        artifacts=ArtifactStore(tmp_path),
+        settings=Settings(_env_file=None, coding_agent_timeout_s=None),
+        stage="verify",
+    )
+    monkeypatch.setattr(
+        "rolo.stages.codex_downstream.configured_harness", lambda _settings: harness
+    )
+    monkeypatch.setattr(
+        "rolo.stages.codex_downstream.commit_verification_handoff",
+        lambda *args, **kwargs: type(
+            "Handoff",
+            (),
+            {
+                "regression_report_ref": "artifact://verify/robot-1/report.json",
+                "evidence_package_ref": "artifact://verify/robot-1/evidence.json",
+            },
+        )(),
+    )
+
+    executor.execute_stage(_task("verify"), workspace=tmp_path / "workspace")
+
+    assert harness.timeout_s == 1800
 
 
 def test_codex_verify_executor_requires_both_result_sections(tmp_path: Path, monkeypatch) -> None:
@@ -189,3 +223,39 @@ def test_codex_diagnose_binds_unverified_observation_when_no_episode_exists(tmp_
     assert isinstance(refs, list) and refs[0].startswith("artifact://")
     assert "unverified" in enriched["limitations"][0]
     assert (tmp_path / refs[0].removeprefix("artifact://")).is_file()
+
+
+def test_codex_diagnose_materializes_explicit_no_change_for_inconclusive_result(
+    tmp_path: Path,
+) -> None:
+    executor = CodexStageAgentExecutor(
+        artifacts=ArtifactStore(tmp_path), settings=Settings(_env_file=None), stage="diagnose"
+    )
+    report = {
+        "schema_version": "rolo-diagnosis-report/v1",
+        "robot_id": "robot-1",
+        "baseline": {"speed": 0.2},
+        "observations": [{"kind": "snapshot"}],
+        "hypotheses": [{"kind": "nominal"}],
+        "changes": [],
+        "smoke": {"status": "NOT_RUN"},
+        "decision": "INCONCLUSIVE",
+    }
+    task = _task("diagnose").model_copy(
+        update={"input_refs": {"inputs": "artifact://inputs.json"}}
+    )
+
+    enriched = executor._prepare_diagnosis_report(task, report, "codex-test")
+
+    assert enriched["changes"] == [
+        {
+            "kind": "NO_CHANGE",
+            "status": "NOT_APPLIED",
+            "applied": False,
+            "reason": "No target change was proposed or executed by the Diagnose Agent.",
+        }
+    ]
+    limitations = enriched["limitations"]
+    assert isinstance(limitations, list)
+    assert any("NO_CHANGE" in item for item in limitations)
+    assert any("unverified agent observation" in item for item in limitations)

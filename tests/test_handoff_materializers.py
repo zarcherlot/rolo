@@ -37,6 +37,25 @@ def test_result_guards_reject_release_claims_and_empty_evidence() -> None:
         raise AssertionError("prose-only evidence must not complete Verify")
 
 
+def test_result_guards_accept_explicitly_absent_release_authority() -> None:
+    handoffs.validate_verification_result(
+        {"status": "INCONCLUSIVE"},
+        {"artifacts": [], "release_authority": "none"},
+    )
+
+
+def test_result_guards_reject_positive_release_authority() -> None:
+    try:
+        handoffs.validate_verification_result(
+            {"status": "INCONCLUSIVE"},
+            {"artifacts": [], "release_authority": "approved"},
+        )
+    except ValueError as exc:
+        assert "release" in str(exc)
+    else:
+        raise AssertionError("positive release authority must fail closed")
+
+
 def test_diagnosis_materializer_freezes_and_binds_outputs(tmp_path: Path, monkeypatch) -> None:
     adapter = tmp_path / "adapt" / "robot-1" / "runs" / "adapt-1" / "handoff.json"
     adapter.parent.mkdir(parents=True)

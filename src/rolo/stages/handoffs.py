@@ -50,11 +50,14 @@ _AUTHORITY_KEYS = {
     "release_approved",
 }
 _AUTHORITY_VALUES = {"RELEASED", "VERIFIED", "APPROVED", "PUBLISHED"}
+_NO_AUTHORITY_VALUES = {"", "NONE", "NO", "FALSE", "DENIED", "NOT_GRANTED", "UNAUTHORIZED"}
 
 
 def _contains_release_claim(value: object, *, key: str = "") -> bool:
     normalized_key = key.strip().lower()
     if normalized_key in _AUTHORITY_KEYS:
+        if isinstance(value, str):
+            return value.strip().upper() not in _NO_AUTHORITY_VALUES
         return bool(value)
     if isinstance(value, str) and value.strip().upper() in _AUTHORITY_VALUES:
         return True
