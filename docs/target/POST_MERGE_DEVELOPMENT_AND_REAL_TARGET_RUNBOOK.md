@@ -116,6 +116,9 @@ Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence
 它只生成 `METADATA_ONLY`、`UNVERIFIED`、不可变 Episode，不改变 release authority；后续
 Verify provider/materializer 仍需与本分支 canonical producer 做字段级对照后再接入。
 
+当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
+P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
+
 ## 5. WSL / 固定 Linux ROS rehearsal
 
 目标命令和故障分类以

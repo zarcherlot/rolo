@@ -60,3 +60,7 @@ P1 的 Verify 实现引入了与 main 不同的 authority 边界：
 `codex/post-r5-integration` 已落地 `4ae7e42`（target inspection Episode capture）及
 `7b943d2`（文档与状态登记）。该切片只生成 `METADATA_ONLY`、`UNVERIFIED` 的不可变
 Episode，不改变 release authority，可作为后续 provider adapter 的输入边界。
+
+本轮边界测试已落地在 `tests/test_post_r5_provider_boundary.py`：P1 v1 evidence package、
+SSH 专用 provenance 以及缺失 safe-stop/rollback 的 v2 package 都会被 main contract
+明确拒绝。它们不是迁移完成的证明，而是防止误合入的回归门禁。
