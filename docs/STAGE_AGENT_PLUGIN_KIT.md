@@ -10,6 +10,21 @@ plugin version、`requires_rolo`、支持的 stages 和两个 entry point，并�
 `release_authority` 必须为 `false`。Rolo 在加载代码前可调用
 `load_plugin_manifest()` 校验版本兼容性。
 
+本地插件索引可在不导入插件代码的前提下管理 manifest：
+
+```python
+from pathlib import Path
+from rolo.stages.plugin_manifest import discover_plugins, install_plugin, uninstall_plugin
+
+root = Path("~/.local/share/rolo/plugins").expanduser()
+install_plugin(Path("plugin-manifest.json"), root)
+print(discover_plugins(root))
+uninstall_plugin(root, "example-plugin")
+```
+
+安装默认拒绝同 ID 覆盖，升级必须显式传 `replace=True`；发现阶段跳过不兼容或目录
+身份不匹配的 manifest。Rolo 不负责安装第三方包本身，也不会在发现阶段执行 entry point。
+
 参考模板位于 Rolo 工程外的 `rolo-stage-plugin-kit`，包含 Claude Code reference
 harness/executor。它只把模型返回的结构化 JSON 交给 Rolo handoff materializer；授权、
 输入摘要、输出引用、Diagnose/Verify contract 和 release gate 仍由 Rolo 控制。

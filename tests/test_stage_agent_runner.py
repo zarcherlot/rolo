@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -10,7 +11,10 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.stages.agent_runner import (
     StageAgentRunner,
     StageAgentTask,
+    archive_expired_authorization_requests,
     list_stage_authorization_requests,
+    paginate_stage_stream,
+    prune_stage_streams,
     recover_stale_stage_runs,
 )
 
@@ -219,3 +223,57 @@ def test_stage_runner_rejects_concurrent_execution_for_one_robot_stage(tmp_path:
 
     assert run.status == "FAILED"
     assert "artifact lock" in (run.error or "")
+
+
+def test_stage_runner_idempotency_returns_existing_run(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    first = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=True, idempotency_key="same"
+    )
+    second = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=True, idempotency_key="same"
+    )
+    assert first.status == "SUCCEEDED"
+    assert second.run_id == first.run_id
+
+
+def test_stage_runner_preserves_idempotency_key_when_authorization_resumes(tmp_path: Path) -> None:
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    pending = runner.run(
+        _task(), workspace=tmp_path / "workspace", confirmed=False, idempotency_key="resume-me"
+    )
+    resumed = runner.run(
+        _task(),
+        workspace=tmp_path / "workspace",
+        confirmed=True,
+        authorization_ref=pending.request_ref,
+    )
+    assert resumed.idempotency_key == "resume-me"
+
+
+def test_stage_runner_cancels_before_executor_and_expired_auth_is_archived(tmp_path: Path) -> None:
+    event = Event()
+    event.set()
+    runner = StageAgentRunner(ArtifactStore(tmp_path), _FakeExecutor())
+    run = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=True, cancel_event=event)
+    assert run.status == "CANCELLED"
+    pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
+    request_path = tmp_path / pending.request_ref.removeprefix("artifact://")
+    payload = json.loads(request_path.read_text(encoding="utf-8"))
+    payload["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    request_path.write_text(json.dumps(payload), encoding="utf-8")
+    archived = archive_expired_authorization_requests(tmp_path)
+    assert len(archived) == 1
+    assert json.loads(request_path.read_text(encoding="utf-8"))["status"] == "EXPIRED"
+
+
+def test_stage_stream_pagination_and_retention_keep_newest_records(tmp_path: Path) -> None:
+    stream = tmp_path / "diagnose" / "robot-1" / "runs" / "run-1" / "stdout.jsonl"
+    stream.parent.mkdir(parents=True)
+    stream.write_text(
+        "".join(json.dumps({"line": str(i)}) + "\n" for i in range(10)), encoding="utf-8"
+    )
+    assert paginate_stage_stream(stream, offset=2, limit=2) == [{"line": "2"}, {"line": "3"}]
+    assert prune_stage_streams(tmp_path, max_bytes=40) == 1
+    retained = stream.read_text(encoding="utf-8")
+    assert '"line": "9"' in retained

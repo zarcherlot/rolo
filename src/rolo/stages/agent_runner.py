@@ -13,6 +13,7 @@ import re
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Event
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -53,6 +54,7 @@ class StageAgentTask(BaseModel):
     executor: str = Field(min_length=1, max_length=128)
     model: str | None = Field(default=None, max_length=256)
     plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
 
 
 class StageAgentRun(BaseModel):
@@ -64,7 +66,7 @@ class StageAgentRun(BaseModel):
     stage: StageName
     robot_id: str
     run_id: str
-    status: Literal["WAITING_FOR_AUTH", "RUNNING", "SUCCEEDED", "FAILED"]
+    status: Literal["WAITING_FOR_AUTH", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]
     provider: str
     executor: str
     model: str | None = None
@@ -76,6 +78,8 @@ class StageAgentRun(BaseModel):
     error: str | None = None
     started_at: datetime
     completed_at: datetime | None = None
+    idempotency_key: str | None = None
+    cancel_requested: bool = False
 
 
 class StageAgentExecutor(Protocol):
@@ -187,6 +191,93 @@ def recover_stale_stage_runs(
     return recovered
 
 
+def archive_expired_authorization_requests(
+    artifact_root: Path,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Mark pending authorization requests past their expiry as EXPIRED."""
+
+    current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    archived: list[dict[str, object]] = []
+    for stage in ("diagnose", "verify"):
+        stage_root = artifact_root / stage
+        if not stage_root.is_dir():
+            continue
+        for request_path in stage_root.glob("*/authorization/requests/*.json"):
+            try:
+                payload = json_load(request_path)
+                expires_at = datetime.fromisoformat(str(payload.get("expires_at", "")))
+            except (OSError, ValueError, TypeError):
+                continue
+            if payload.get("status") != "PENDING" or expires_at.tzinfo is None:
+                continue
+            if expires_at > current_time:
+                continue
+            with interprocess_lock(request_path):
+                try:
+                    current = json_load(request_path)
+                except (OSError, ValueError):
+                    continue
+                if current.get("status") != "PENDING":
+                    continue
+                current["status"] = "EXPIRED"
+                current["expired_at"] = current_time.isoformat()
+                atomic_write_text(
+                    request_path,
+                    json.dumps(current, ensure_ascii=False, indent=2) + "\n",
+                    acquire_lock=False,
+                )
+                archived.append(current)
+    return archived
+
+
+def paginate_stage_stream(
+    path: Path, *, offset: int = 0, limit: int = 100
+) -> list[dict[str, object]]:
+    """Read a bounded JSONL page for UI/API consumers without loading whole logs."""
+
+    if offset < 0 or limit <= 0:
+        raise ValueError("stream offset must be non-negative and limit must be positive")
+    page: list[dict[str, object]] = []
+    with path.open(encoding="utf-8") as stream:
+        for index, line in enumerate(stream):
+            if index < offset:
+                continue
+            if len(page) >= limit:
+                break
+            try:
+                value = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(value, dict):
+                page.append(value)
+    return page
+
+
+def prune_stage_streams(artifact_root: Path, *, max_bytes: int = 1_000_000) -> int:
+    """Retain the newest complete JSONL records until each stream fits the budget."""
+
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    changed = 0
+    for path in artifact_root.glob("*/**/runs/*/*.jsonl"):
+        data = path.read_bytes()
+        if len(data) <= max_bytes:
+            continue
+        lines = data.splitlines(keepends=True)
+        retained: list[bytes] = []
+        total = 0
+        for line in reversed(lines):
+            if total + len(line) > max_bytes:
+                break
+            retained.append(line)
+            total += len(line)
+        path.write_bytes(b"".join(reversed(retained)))
+        changed += 1
+    return changed
+
+
 class StageAgentRunner:
     """Run one downstream Agent with explicit user authorization and audit refs."""
 
@@ -209,8 +300,15 @@ class StageAgentRunner:
         confirmed: bool,
         authorization_ref: str | None = None,
         on_output: OutputCallback | None = None,
+        idempotency_key: str | None = None,
+        cancel_event: Event | None = None,
     ) -> StageAgentRun:
         layout = ArtifactLayout(self.artifacts.root)
+        selected_idempotency_key = idempotency_key or task.idempotency_key
+        if selected_idempotency_key:
+            existing = self._find_idempotent_run(task, selected_idempotency_key)
+            if existing is not None:
+                return existing
         if authorization_ref and not confirmed:
             raise ValueError(
                 "resuming a Stage Agent authorization requires explicit current-user confirmation"
@@ -224,6 +322,13 @@ class StageAgentRunner:
             request_path = resolve_artifact_ref(self.artifacts.root, authorization_ref)
             request = json_load(request_path)
             self._validate_authorization_request(request, task)
+            if selected_idempotency_key is None and request.get("idempotency_key"):
+                selected_idempotency_key = str(request["idempotency_key"])
+            elif (
+                selected_idempotency_key is not None
+                and request.get("idempotency_key") not in {None, selected_idempotency_key}
+            ):
+                raise ValueError("authorization request idempotency key does not match the task")
             run_id = str(request["run_id"])
             expected_task_ref = layout.ref(
                 self.artifacts.root / task.stage / task.robot_id / "runs" / run_id / "task.json"
@@ -266,6 +371,7 @@ class StageAgentRunner:
                 "model": task.model,
                 "task_ref": task_ref,
                 "plan_sha256": task.plan_sha256,
+                "idempotency_key": selected_idempotency_key,
                 "created_at": started.isoformat(),
                 "expires_at": (started + timedelta(minutes=15)).isoformat(),
             }
@@ -286,6 +392,7 @@ class StageAgentRunner:
                 task_ref=task_ref,
                 request_ref=request_ref,
                 started_at=started,
+                idempotency_key=selected_idempotency_key,
             )
             self.artifacts.write_json(
                 f"{task.stage}/{task.robot_id}/runs/{run_id}/run.json",
@@ -308,12 +415,28 @@ class StageAgentRunner:
             task_ref=task_ref,
             request_ref=request_ref,
             started_at=started,
+            idempotency_key=selected_idempotency_key,
         )
         self.artifacts.write_json(
             f"{task.stage}/{task.robot_id}/runs/{run_id}/run.json",
             running.model_dump(mode="json"),
         )
         stream_paths: dict[str, Path] = {}
+
+        if cancel_event is not None and cancel_event.is_set():
+            cancelled = running.model_copy(
+                update={
+                    "status": "CANCELLED",
+                    "cancel_requested": True,
+                    "completed_at": datetime.now(timezone.utc),
+                    "error": "stage Agent cancellation requested before execution",
+                }
+            )
+            self.artifacts.write_json(
+                f"{task.stage}/{task.robot_id}/runs/{run_id}/run.json",
+                cancelled.model_dump(mode="json"),
+            )
+            return cancelled
 
         def stream_output(stream: str, line: str) -> None:
             if stream not in {"stdout", "stderr"}:
@@ -340,31 +463,46 @@ class StageAgentRunner:
                 )
                 output_refs = dict(result)
                 self._validate_output_refs(output_refs)
-                if self.handoff_validator is not None:
+                if cancel_event is not None and cancel_event.is_set():
+                    completed_run = running.model_copy(
+                        update={
+                            "status": "CANCELLED",
+                            "cancel_requested": True,
+                            "output_refs": output_refs,
+                            "completed_at": datetime.now(timezone.utc),
+                            "error": "stage Agent cancellation requested",
+                        }
+                    )
+                elif self.handoff_validator is not None:
                     self.handoff_validator(task)
-                completed = datetime.now(timezone.utc)
-                stdout_ref = (
-                    layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
-                )
-                stderr_ref = (
-                    layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
-                )
-                run = StageAgentRun(
-                    stage=task.stage,
-                    robot_id=task.robot_id,
-                    run_id=run_id,
-                    status="SUCCEEDED",
-                    provider=task.provider,
-                    executor=task.executor,
-                    model=task.model,
-                    task_ref=task_ref,
-                    request_ref=request_ref,
-                    stdout_ref=stdout_ref,
-                    stderr_ref=stderr_ref,
-                    output_refs=output_refs,
-                    started_at=started,
-                    completed_at=completed,
-                )
+                else:
+                    completed_run = None
+                if completed_run is None:
+                    completed = datetime.now(timezone.utc)
+                    stdout_ref = (
+                        layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
+                    )
+                    stderr_ref = (
+                        layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
+                    )
+                    completed_run = StageAgentRun(
+                        stage=task.stage,
+                        robot_id=task.robot_id,
+                        run_id=run_id,
+                        status="SUCCEEDED",
+                        provider=task.provider,
+                        executor=task.executor,
+                        model=task.model,
+                        task_ref=task_ref,
+                        request_ref=request_ref,
+                        stdout_ref=stdout_ref,
+                        stderr_ref=stderr_ref,
+                        output_refs=output_refs,
+                        started_at=started,
+                        completed_at=completed,
+                        idempotency_key=selected_idempotency_key,
+                    )
+                run = completed_run
         except Exception as exc:
             stdout_ref = layout.ref(stream_paths["stdout"]) if "stdout" in stream_paths else None
             stderr_ref = layout.ref(stream_paths["stderr"]) if "stderr" in stream_paths else None
@@ -383,6 +521,7 @@ class StageAgentRunner:
                 error=_redact_stream(str(exc)[:2_000]),
                 started_at=started,
                 completed_at=datetime.now(timezone.utc),
+                idempotency_key=selected_idempotency_key,
             )
         self.artifacts.write_json(
             f"{task.stage}/{task.robot_id}/runs/{run_id}/run.json",
@@ -413,6 +552,26 @@ class StageAgentRunner:
             raise ValueError("authorization request expiry is invalid") from exc
         if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
             raise ValueError("authorization request has expired")
+
+    def _find_idempotent_run(
+        self, task: StageAgentTask, idempotency_key: str
+    ) -> StageAgentRun | None:
+        runs_root = (
+            ArtifactLayout(self.artifacts.root)
+            .stage_latest(task.stage, task.robot_id)
+            .parent
+            / "runs"
+        )
+        if not runs_root.is_dir():
+            return None
+        for run_path in sorted(runs_root.glob("*/run.json")):
+            try:
+                run = StageAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if run.idempotency_key == idempotency_key:
+                return run
+        return None
 
     def _validate_output_refs(self, output_refs: Mapping[str, str]) -> None:
         for name, reference in output_refs.items():

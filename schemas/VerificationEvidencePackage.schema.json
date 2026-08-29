@@ -92,61 +92,86 @@
     }
   },
   "additionalProperties": false,
+  "description": "Independent evidence envelope required by a real Verify provider.",
   "properties": {
     "schema_version": {
-      "const": "rolo-verification-run/v1",
-      "default": "rolo-verification-run/v1",
+      "const": "rolo-verification-evidence/v2",
+      "default": "rolo-verification-evidence/v2",
       "title": "Schema Version",
       "type": "string"
     },
-    "run_id": {
-      "title": "Run Id",
-      "type": "string"
-    },
     "robot_id": {
+      "maxLength": 128,
+      "minLength": 1,
       "title": "Robot Id",
       "type": "string"
     },
-    "status": {
-      "enum": [
-        "PASS",
-        "FAIL",
-        "CANCELLED"
-      ],
-      "title": "Status",
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "target_provenance_ref": {
+      "pattern": "^artifact://",
+      "title": "Target Provenance Ref",
+      "type": "string"
+    },
+    "target_provenance_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Provenance Sha256",
       "type": "string"
     },
     "case_results": {
       "items": {
         "$ref": "#/$defs/VerificationCaseResult"
       },
+      "maxItems": 256,
+      "minItems": 1,
       "title": "Case Results",
       "type": "array"
     },
-    "evidence_ref": {
-      "title": "Evidence Ref",
+    "safe_stop": {
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Safe Stop",
       "type": "string"
     },
-    "started_at": {
-      "format": "date-time",
-      "title": "Started At",
+    "rollback": {
+      "enum": [
+        "VERIFIED",
+        "NOT_REQUIRED",
+        "NOT_VERIFIED"
+      ],
+      "title": "Rollback",
       "type": "string"
     },
-    "completed_at": {
-      "format": "date-time",
-      "title": "Completed At",
-      "type": "string"
+    "replay_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replay Ref"
     }
   },
   "required": [
-    "run_id",
     "robot_id",
-    "status",
+    "run_id",
+    "target_provenance_ref",
+    "target_provenance_sha256",
     "case_results",
-    "evidence_ref",
-    "started_at",
-    "completed_at"
+    "safe_stop",
+    "rollback"
   ],
-  "title": "VerificationRunReport",
+  "title": "VerificationEvidencePackage",
   "type": "object"
 }

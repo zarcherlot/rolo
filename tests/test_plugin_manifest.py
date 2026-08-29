@@ -6,8 +6,11 @@ import pytest
 
 from rolo.stages.plugin_manifest import (
     StageAgentPluginManifest,
+    discover_plugins,
+    install_plugin,
     load_plugin_manifest,
     plugin_manifest_json,
+    uninstall_plugin,
     validate_plugin_manifest,
 )
 
@@ -44,3 +47,35 @@ def test_plugin_manifest_rejects_duplicate_stages(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="stages must be unique"):
         load_plugin_manifest(path)
 
+
+def test_plugin_install_discover_and_uninstall_are_manifest_only(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text(plugin_manifest_json(_manifest()), encoding="utf-8")
+    root = tmp_path / "plugins"
+
+    installed = install_plugin(source, root, rolo_version="0.1.0")
+    assert installed.plugin_id == "claude-code-reference"
+    assert [item.plugin_id for item in discover_plugins(root, rolo_version="0.1.0")] == [
+        "claude-code-reference"
+    ]
+    with pytest.raises(FileExistsError):
+        install_plugin(source, root, rolo_version="0.1.0")
+    assert uninstall_plugin(root, "claude-code-reference") is True
+    assert discover_plugins(root, rolo_version="0.1.0") == ()
+    assert uninstall_plugin(root, "claude-code-reference") is False
+
+
+def test_plugin_discovery_skips_incompatible_or_mismatched_manifests(tmp_path: Path) -> None:
+    root = tmp_path / "plugins"
+    root.mkdir()
+    incompatible = _manifest()
+    incompatible.requires_rolo = ">=9.0.0"
+    (root / incompatible.plugin_id).mkdir()
+    (root / incompatible.plugin_id / "plugin-manifest.json").write_text(
+        plugin_manifest_json(incompatible), encoding="utf-8"
+    )
+    (root / "wrong-name").mkdir()
+    (root / "wrong-name" / "plugin-manifest.json").write_text(
+        plugin_manifest_json(_manifest()), encoding="utf-8"
+    )
+    assert discover_plugins(root, rolo_version="0.1.0") == ()

@@ -11,13 +11,15 @@ import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from rolo.core.artifacts import ArtifactStore
-from rolo.stages.artifact_paths import ArtifactLayout
+from rolo.core.hashing import sha256_file
+from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
 from rolo.stages.downstream_tools import DownstreamToolConsumer, DownstreamToolOutcome
 
 
@@ -121,6 +123,8 @@ class VerificationCaseResult(BaseModel):
     status: Literal["PASS", "FAIL", "TIMEOUT", "CANCELLED", "ERROR"]
     message: str = Field(min_length=1, max_length=2_000)
     audit_ref: str | None = None
+    provenance_ref: str | None = None
+    rollback_status: Literal["PERFORMED", "NOT_REQUIRED", "NOT_PERFORMED"] | None = None
     observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -135,6 +139,57 @@ class VerificationRunReport(BaseModel):
     evidence_ref: str
     started_at: datetime
     completed_at: datetime
+
+
+class VerificationEvidencePackage(BaseModel):
+    """Independent evidence envelope required by a real Verify provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-verification-evidence/v2"] = "rolo-verification-evidence/v2"
+    robot_id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=256)
+    target_provenance_ref: str = Field(pattern=r"^artifact://")
+    target_provenance_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    case_results: list[VerificationCaseResult] = Field(min_length=1, max_length=256)
+    safe_stop: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
+    rollback: Literal["VERIFIED", "NOT_REQUIRED", "NOT_VERIFIED"]
+    replay_ref: str | None = Field(default=None, pattern=r"^artifact://")
+
+    @field_validator("case_results")
+    @classmethod
+    def validate_unique_case_ids(
+        cls, value: list[VerificationCaseResult]
+    ) -> list[VerificationCaseResult]:
+        ids = [item.case_id for item in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("verification evidence case IDs must be unique")
+        return value
+
+
+def validate_structured_verification_evidence(
+    payload: Mapping[str, object],
+    *,
+    robot_id: str | None = None,
+    artifact_root: Path | None = None,
+) -> VerificationEvidencePackage:
+    """Validate the provider-owned evidence section without trusting Agent prose."""
+
+    evidence = VerificationEvidencePackage.model_validate(payload)
+    if robot_id is not None and evidence.robot_id != robot_id:
+        raise ValueError("verification evidence robot identity mismatch")
+    if artifact_root is not None:
+        provenance_path = resolve_artifact_ref(artifact_root, evidence.target_provenance_ref)
+        if (
+            not provenance_path.is_file()
+            or sha256_file(provenance_path) != evidence.target_provenance_sha256
+        ):
+            raise ValueError("verification target provenance hash mismatch")
+        if evidence.replay_ref is not None and not resolve_artifact_ref(
+            artifact_root, evidence.replay_ref
+        ).is_file():
+            raise ValueError("verification replay artifact is missing")
+    return evidence
 
 
 def _lookup(payload: Mapping[str, Any], path: str) -> tuple[bool, Any]:

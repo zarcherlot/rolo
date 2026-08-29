@@ -122,12 +122,14 @@ from rolo.stages.adapt.wiki_insights import RoloWikiInsightBundle, WikiInsightBu
 from rolo.stages.adapt.workset import AdaptOperationWorkset, TargetOperationSlice
 from rolo.stages.agent_runner import StageAgentRun, StageAgentTask
 from rolo.stages.contracts import PipelineAssessment, StageAssessment
+from rolo.stages.diagnose.episode import DiagnosisEpisode, EpisodeObservation, TargetProvenance
 from rolo.stages.diagnose_contract import DiagnosisReport
 from rolo.stages.discovery_manifest import DiscoveryRunManifest
 from rolo.stages.handoffs import DiagnosisHandoff, VerificationHandoff
 from rolo.stages.verify.acceptance import (
     VerificationCase,
     VerificationCaseResult,
+    VerificationEvidencePackage,
     VerificationOracle,
     VerificationPlan,
     VerificationRunReport,
@@ -198,7 +200,11 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     VerificationPlan,
     VerificationCaseResult,
     VerificationRunReport,
+    VerificationEvidencePackage,
     DiagnosisReport,
+    TargetProvenance,
+    EpisodeObservation,
+    DiagnosisEpisode,
     StageAgentEvent,
     StageAgentEventPage,
     StageAgentRunDetail,

@@ -61,6 +61,25 @@ uv run robotctl verify run --robot <robot> --confirm
   交叉写入 evidence 或 handoff。
 - 超过 lease 的 `RUNNING` run 可由 `recover_stale_stage_runs()` 标记为 `FAILED`，
   不会被恢复成成功。
+- `idempotency_key` 会返回同一 run；取消请求会得到 `CANCELLED`，不会提升 handoff；
+  授权过期可由 `archive_expired_authorization_requests()` 标记为 `EXPIRED`。
+- 日志可通过 `paginate_stage_stream()` 分页读取，并用 `prune_stage_streams()` 保留最新
+  的完整 JSONL 记录。
+
+真实 Diagnose Episode contract：
+
+- `DiagnosisEpisode` 要求 baseline、observe、hypothesis、change、smoke、decision 六个
+  阶段、递增序号和 target provenance；
+- `publish_episode()` 生成不可变 record 与 publication hash，handoff 消费时会重新校验；
+- 缺少真实 Episode 时仍只允许 `UNVERIFIED_AGENT_OBSERVATION` 或 `INCONCLUSIVE`。
+
+真实 Verify evidence contract：
+
+- `VerificationEvidencePackage` 要求 target provenance 引用及 SHA256、唯一 case results、
+  safe-stop/rollback 结论和可选 replay 引用；
+- `validate_structured_verification_evidence()` 会验证目标身份、provenance hash 和 replay
+  artifact 存在性；
+- evidence contract 失败只能使当前 Verify run 失败，不产生 release authority。
 
 查看阶段状态和产物：
 
