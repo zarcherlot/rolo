@@ -90,6 +90,9 @@ def test_rolo_adapt_requires_local_project_root_for_ssh() -> None:
             "remote_robot",
             "--discover-only",
         ],
+        # Rich reads COLUMNS directly and truncates UsageError text in narrow CI logs.
+        # Keep this assertion about the complete actionable message deterministic.
+        env={"COLUMNS": "120"},
     )
 
     assert result.exit_code == 2
