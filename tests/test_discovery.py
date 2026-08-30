@@ -365,6 +365,40 @@ def test_topic_heuristic_maps_generic_energy_evidence_to_battery_registry_operat
     assert any(item.startswith("topic:") for item in matches[0].evidence)
 
 
+def test_topic_heuristic_does_not_treat_parameter_events_as_current_value_route() -> None:
+    assert not infer_topic_operations(
+        "/parameter_events",
+        interface_type="rcl_interfaces/msg/ParameterEvent",
+    )
+
+
+def test_topic_heuristic_preserves_ambiguous_registry_matches() -> None:
+    bindings = _semantic_bindings(
+        {
+            "ros": ProbeResult(
+                layer="ros",
+                status="SUCCEEDED",
+                data={"topics": ["/telemetry [custom/msg/Telemetry]"]},
+            ),
+            "application": ProbeResult(
+                layer="application",
+                status="SUCCEEDED",
+                data={"projects": []},
+            ),
+        }
+    )
+
+    telemetry = [value for value in bindings.values() if value.get("binding") == "/telemetry"]
+    assert len(telemetry) == 3
+    assert all(value.get("mapping_ambiguous") is True for value in telemetry)
+    assert all(len(value.get("mapping_candidates", [])) == 3 for value in telemetry)
+    candidates = _build_operation_candidates(
+        {key: value for key, value in bindings.items() if value in telemetry}
+    )
+    assert candidates
+    assert all("ambiguous" in " ".join(item.limitations).casefold() for item in candidates)
+
+
 def test_operation_candidates_reject_multiple_write_operations_on_one_route() -> None:
     with pytest.raises(ValueError, match="multiple write Operations"):
         _build_operation_candidates(
