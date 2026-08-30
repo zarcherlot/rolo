@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # 非 ROS 工程适配设计
 
@@ -64,6 +64,8 @@ Gate 不通过就不会生成 `VERIFIED` Catalog。`--help` 失败、入口只�
 
 Promotion 只执行 `describe`，不使用 `invoke` 探测 ABI。`invoke` 只允许在 Tool Catalog、策略、
 授权、目标指纹和输入 Schema 全部通过后由正式 Runtime 发起。
+同一 Operation 若存在多个 gated CLI Route，调用 payload 必须带唯一 route selector；运行时
+记录最终选择的 route identity，缺失或歧义时 fail-closed，不按列表顺序猜测。
 
 ## Python CLI 运行路径
 

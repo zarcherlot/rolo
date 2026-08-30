@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # ROLO 实现地图
 
@@ -60,14 +60,20 @@ HTTP 控制面的 `/v1/session` 只返回非秘密 principal/session_id，同时
 | Discovery | `discovery.py`、`heuristic_discovery.py`、`ros_environment.py`、`evidence.py` | 生成机器证据、可编辑 Wiki、候选能力和 discovery manifest |
 | 规划与 Agent | `journey.py`、`service.py`、`agent_runner.py`、`agent_provider.py` | 构造摘要绑定的任务；Agent 工作区是临时的，不是权威来源 |
 | Bundle 与 Gate | `executor.py`、`conformance.py`、`operation_eligibility.py` | 冻结 Agent 输出，校验身份、入口、Contract、Schema、路由和覆盖率 |
+| 语义映射与 Route Evidence | `application_cli_mapping.py`、`semantic_mapping.py`、`mapping_evidence_tool.py`、`routes.py` | 将静态/运行时接口归一为候选和 `robot-route-evidence/v2`；只允许 Registry-linked、exact-match、可审计的映射进入 Gate |
 | Catalog 与 State Graph | `operation_registry.py`、`operation_registry_v2.py`、`registry_resolver.py`、`state_graph.py` | 由产品代码确定性生成 Active Tool Catalog 和 State Graph |
-| 发布与运行时 | `adapter_runtime.py`、`core/artifacts.py`、`artifact_paths.py` | 写入外部 artifact root，绑定 hash、fingerprint、索引并在运行时复核新鲜度 |
+| 发布与运行时 | `adapter_runtime.py`、`adapter_runner.py`、`core/artifacts.py`、`artifact_paths.py` | 写入外部 artifact root，绑定 hash、fingerprint、索引；promotion 运行有界 CLI `--help`，多路由 invoke 要求显式 selector，并复核运行时环境新鲜度 |
 | Native Tool | `agent_tools/native_tools.py`、`session.py`、`broker.py`、`rollout.py` | 只读观测通道；不能进入 Canonical release authority |
 
 Adapt 的核心不变量是“Agent 提案 ≠ Rolo 权威”：Agent 不能写 Tool Catalog，不能用静态声明
 证明物理行为、可靠性或安全性；独立 Gate 和运行时校验才是发布与调用边界。详细规则见
 [三阶段架构](../architecture/ARCHITECTURE.md)、[Agent-native Tools](../adapt/AGENT_NATIVE_TOOLS.md)
 和 [Registry Operation 指南](../operations/REGISTRY_OPERATION_GUIDE.md)。
+
+语义映射和路由选择也遵循同一边界：`semantic_operation_rules.yaml` 由活动 Registry 校验，
+启发式、源码声明和 CLI `--help` 只能产生有界候选或目标自描述证据；运行时对多条 gated route
+拒绝隐式选择，必须由 payload 提供唯一 selector。Promotion 不执行 Adapter `invoke`，只执行
+受限的自描述 probe。
 
 ## 4. Diagnose 与 Verify 实现分层
 
@@ -153,7 +159,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 
 | 实现面 | 主要测试 |
 |---|---|
-| Adapt journey、bundle、Gate、release | `test_adapt_journey.py`、`test_conformance.py`、`test_adapter_runtime.py` |
+| Adapt journey、bundle、Gate、release、route selector/help probe | `test_adapt_journey.py`、`test_conformance.py`、`test_adapter_runtime.py`、`test_operation_eligibility.py`、`test_state_graph.py` |
 | Registry v1/v2、角色和迁移 | `test_registry.py`、`test_registry_v2.py`、`test_registry_migration.py` |
 | Native Tool session/broker/rollout | `test_agent_native_tools.py`、`test_native_tool_session.py`、`test_native_rollout.py` |
 | Stage Agent 授权、幂等、取消、日志 | `test_stage_agent_runner.py`、`test_stage_agent_read_models.py` |
@@ -168,7 +174,8 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 
 ## 8. 当前已实现与明确边界
 
-已实现的主线包括：离线/目标证据登记、Bounded Discovery、Adapter Agent 临时工作区、
+已实现的主线包括：离线/目标证据登记、Bounded Discovery、Registry-aware 语义映射、结构化
+route evidence、bounded CLI help probe、Adapter Agent 临时工作区、
 独立 Conformance Gate、不可变 Adapt release、Diagnose/Verify Stage Agent envelope、授权
 与恢复、Episode 只读 read model、固定 Linux/ROS 目标上的只读 Diagnose/Verify provider、
 Stage 插件 manifest，以及 Native Tool 的受控观测通道。
@@ -189,6 +196,9 @@ Stage 插件 manifest，以及 Native Tool 的受控观测通道。
 3. 生命周期阶段、Stage Agent runner 或 handoff contract 变化；
 4. `ArtifactLayout`、Schema、Contract catalog 或 Registry 版本变化；
 5. 新增/删除测试保护面，或实现边界从 deferred 变为 active。
+
+6. 语义规则、Route Evidence、CLI self-description、运行时 route selector 或目标依赖环境
+   的行为发生变化。
 
 本文只做“代码 → 文档”的索引，不应成为第二份架构白皮书。若某条内容需要规范性解释，
 应回链到权威文档并在此处删除重复表述。

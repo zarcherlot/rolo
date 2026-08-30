@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # ROLO 文档入口
 
@@ -21,7 +21,7 @@
 - [Registry Operation 重设计计划](operations/REGISTRY_OPERATION_REDESIGN_PLAN.md)：Canonical Registry 与 Agent-native Tool 双轨边界、迁移阶段和验收标准；
 - [Agent-native Tool 运行边界](adapt/AGENT_NATIVE_TOOLS.md)：受控 Linux/ROS/HW 观测、Native Session 和 v2 Registry 使用方式；
 - [R5 WSL 验证](validation/R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
-- [目标机 / WSL P2 验证](target/TARGET_MACHINE_P2_VALIDATION.md)：目标机证据采集、产物自检和 canary 前置条件；
+- [目标机 / WSL P2 历史验证](target/TARGET_MACHINE_P2_VALIDATION.md)：R5 目标机证据采集、产物自检和 canary 前置条件；当前主线请以新的真实目标机运行手册为准；
 - [后续开发与真机验证 RUNBOOK](target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)：分支整合、开发切片、WSL/真机闭环、canary 与回退的统一执行顺序；
 - [真机只读验证 RUNBOOK](target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)：目标机本地 local-target 路径、Diagnose/Verify、取消恢复和证据回收；
 - [目标机 Diagnose/Verify 调试](target/TARGET_MACHINE_DIAGNOSE_VERIFY_DEBUG.md)：RMW、Adapt shadow、Stage handoff 和真实阶段验收步骤；

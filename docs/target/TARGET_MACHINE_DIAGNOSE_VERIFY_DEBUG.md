@@ -1,17 +1,18 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29 -->
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
 
 # 目标机 Diagnose / Verify 调试手册
 
-本手册用于 `codex/registry-redesign-r5` 在真实 Linux/ROS 目标机上的调试与验收。目标机负责提供真实 ROS 图、系统状态、Episode 和 provider 证据；Rolo 负责授权、哈希、handoff、gate 与 release 影响判定。HW USB 不属于本轮产品范围，不因 USB 缺失阻断 Linux/ROS 验收。
+本手册用于已审核的 `origin/main` 或当前切片 PR revision 在真实 Linux/ROS 目标机上的调试与验收。目标机负责提供真实 ROS 图、系统状态、Episode 和 provider 证据；Rolo 负责授权、哈希、handoff、gate 与 release 影响判定。HW USB 不属于本轮产品范围，不因 USB 缺失阻断 Linux/ROS 验收。
 
 ## 1. 代码与环境准备
 
 在目标机执行：
 
 ```bash
-git fetch origin codex/registry-redesign-r5
-git switch codex/registry-redesign-r5
-git pull --ff-only origin codex/registry-redesign-r5
+export EXPECTED_REVISION=<approved-40-character-commit-sha>
+git fetch origin main
+test "$(git rev-parse origin/main)" = "$EXPECTED_REVISION"
+git switch --detach "$EXPECTED_REVISION"
 git rev-parse HEAD
 uv sync --frozen
 source /opt/ros/humble/setup.bash
