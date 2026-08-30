@@ -10,7 +10,10 @@ rules:
     topic_segments: [odom, odometry]
     topic_prefixes: [odom_]
     semantic_uri: semantic://state/base/odometry
-    operations: [app.localization.status]
+    # An Odometry message is a timestamped pose/velocity sample.  It does not
+    # by itself prove localization readiness or quality, so do not infer the
+    # status operation from the topic name alone.
+    operations: [app.localization.pose, app.odometry.sample]
 
   - rule_id: lidar_observation
     topic_segments: [scan, pointcloud, points]

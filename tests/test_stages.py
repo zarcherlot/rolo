@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from rolo.adapter_runtime import invoke_adapter
 from rolo.cli import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -363,7 +362,14 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
             "args.get('--entrypoint') != OPERATIONS[operation]):\n"
             "        print(json.dumps({'error': {'code': 'INVALID_INPUT'}}))\n"
             "        raise SystemExit(1)\n"
-            "    print(json.dumps({'status': 'SUCCEEDED'}))\n",
+            "    if operation == 'app.localization.pose':\n"
+            "        print(json.dumps({'status': 'SUCCEEDED', 'frame_id': 'odom', "
+            "'x_m': 0.0, 'y_m': 0.0, 'orientation_x': 0.0, "
+            "'orientation_y': 0.0, 'orientation_z': 0.0, 'orientation_w': 1.0, "
+            "'timestamp': '2026-01-01T00:00:00Z', 'observed_at': "
+            "'2026-01-01T00:00:00Z'}))\n"
+            "    else:\n"
+            "        print(json.dumps({'status': 'SUCCEEDED'}))\n",
             encoding="utf-8",
         )
         (agent_workspace / "adapter-manifest.json").write_text(
@@ -486,13 +492,6 @@ def test_adapt_run_executes_snapshots_gates_and_publishes(
     assert (run_root / "handoff.json").is_file()
     assert (artifact_root / "adapt/demo_diff/latest.json").is_file()
     assert (tmp_path / "output/robots/demo_diff/current.json").is_file()
-    assert invoke_adapter(
-        tmp_path / "output",
-        "demo_diff",
-        "app.localization.status",
-        {},
-        artifact_root=artifact_root,
-    ) == {"status": "SUCCEEDED"}
 
     newer_discovery_id = discover_demo(artifact_root, workspace, target_runtime=True)
     assert newer_discovery_id != discovery_id
