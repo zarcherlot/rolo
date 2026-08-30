@@ -29,12 +29,11 @@ mkdir -p "$ROLO_ARTIFACT_DIR" "$ROLO_OUTPUT_DIR" "$DEBUG_DIR"
 
 ## 1. 固定代码与依赖
 
-验证必须使用已经推送并审核的 `codex/post-r5-integration` revision。不要直接验证移动的
-工作树或未推送提交：
+验证必须使用已经合入并审核的 `main` revision。不要直接验证移动的工作树或未推送提交：
 
 ```bash
 git fetch origin --prune
-test "$(git rev-parse origin/codex/post-r5-integration)" = "$EXPECTED_REVISION"
+test "$(git rev-parse origin/main)" = "$EXPECTED_REVISION"
 git switch --detach "$EXPECTED_REVISION"
 export ROLO_REVISION="$(git rev-parse HEAD)"
 test "$ROLO_REVISION" = "$EXPECTED_REVISION"

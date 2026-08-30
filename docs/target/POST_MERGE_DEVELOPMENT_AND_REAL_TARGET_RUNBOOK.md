@@ -28,7 +28,7 @@ profile 绑定的 `local-target` Linux/ROS provider、handoff materializer 和�
 ### 2.1 分支顺序
 
 1. 将 `codex/registry-redesign-r5` 与最新默认分支合并并通过本节全部门禁；
-2. 以合入后的默认分支创建新的 `codex/post-r5-integration` 集成分支；
+2. 以合入后的默认分支创建新的 `codex/<slice>` 集成分支；
 3. 对 `codex/p1-real-three-stage` 只做按功能切片的语义移植，不做整分支盲合并；
 4. 每个切片独立提交，必须同时更新状态台账、实现地图、Schema、测试和本 RUNBOOK 的
    完成标记；
@@ -44,12 +44,10 @@ git log -1 --format='%H %cI %s'
 
 要求工作树干净，报告中的 revision 与部署到目标机的 revision 完全一致。
 
-真机验证 revision 必须来自已推送并经人工批准的
-`origin/codex/post-r5-integration`。部署前把批准的 40 位提交写入
-`EXPECTED_REVISION`，执行 `git fetch origin --prune`，并验证
-`git rev-parse origin/codex/post-r5-integration` 与该值完全相同；将实际 HEAD 写入
-`revision.txt`。若远端 revision 变化，则停止本轮部署并重新生成整包证据，禁止在活动
-Runbook 中保留会过期的固定提交值。
+真机验证 revision 必须来自已推送并经人工批准的 `origin/main` 或当前切片 PR。部署前把
+批准的 40 位提交写入 `EXPECTED_REVISION`，执行 `git fetch origin --prune`，并验证对应
+远端 ref 与该值完全相同；将实际 HEAD 写入 `revision.txt`。若远端 revision 变化，则
+停止本轮部署并重新生成整包证据，禁止在活动 Runbook 中保留会过期的固定提交值。
 
 ### 2.2 合入门禁
 
