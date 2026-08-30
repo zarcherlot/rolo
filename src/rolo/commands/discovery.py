@@ -86,6 +86,8 @@ def configured_discovery_service(
                 mapping_skill_path=resolve_skill_path(
                     settings.adapt_mapping_skill_path, "rolo-operation-mapping"
                 ),
+                batch_operations=settings.adapt_heuristic_agent_batch_operations,
+                parallelism=settings.adapt_heuristic_agent_parallelism,
                 **common,
             )
             if settings.adapt_heuristic_agent_provider_enabled

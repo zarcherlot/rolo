@@ -16,7 +16,10 @@ from rolo.contract_catalog import (
 from rolo.core.models import DiscoveryReport, OperationCandidate, ToolDescriptor
 from rolo.schema_subset import validate_schema_definition
 from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
-from rolo.stages.adapt.routes import candidate_route_observed
+from rolo.stages.adapt.routes import (
+    candidate_routes_fully_observed,
+    candidate_runtime_evidence_complete,
+)
 
 
 class CanonicalOperationDefinition(BaseModel):
@@ -551,8 +554,15 @@ def adapter_operation_eligibility(
             deferred[candidate.operation] = "PRODUCT_CONTRACT_NOT_GATEABLE"
         elif not candidate.route_evidence:
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_DECLARED"
-        elif not candidate_route_observed(candidate, report.probes):
+        elif any(
+            "Heuristic mapping is ambiguous" in limitation
+            for limitation in candidate.limitations
+        ):
+            deferred[candidate.operation] = "HEURISTIC_MAPPING_AMBIGUOUS"
+        elif not candidate_routes_fully_observed(candidate, report.probes):
             deferred[candidate.operation] = "TARGET_ROUTE_NOT_OBSERVED"
+        elif not candidate_runtime_evidence_complete(candidate, report.probes):
+            deferred[candidate.operation] = "TARGET_ROUTE_IDENTITY_INCOMPLETE"
         else:
             eligible.add(candidate.operation)
     return eligible, deferred
@@ -702,7 +712,12 @@ def materialize_active_catalog(
                 availability = "UNAVAILABLE"
         elif candidate is not None:
             if definition.operation in bundle_entries:
-                availability = "VERIFIED"
+                if candidate_runtime_evidence_complete(candidate, report.probes):
+                    availability = "VERIFIED"
+                elif candidate_routes_fully_observed(candidate, report.probes):
+                    availability = "ROUTE_VERIFIED"
+                else:
+                    availability = "UNAVAILABLE"
             elif bundle is not None:
                 availability = "UNAVAILABLE"
             else:
@@ -767,6 +782,15 @@ def materialize_active_catalog(
                     *(
                         [f"Deferred from this release: {deferred[definition.operation]}"]
                         if bundle is not None and definition.operation in deferred
+                        else []
+                    ),
+                    *(
+                        [
+                            "Target route was observed, but provider identity, interface schema, "
+                            "or runtime revision evidence is incomplete; operation is route-only "
+                            "and cannot be invoked as VERIFIED."
+                        ]
+                        if availability == "ROUTE_VERIFIED"
                         else []
                     ),
                 ],

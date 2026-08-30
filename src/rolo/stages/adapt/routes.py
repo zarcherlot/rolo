@@ -16,6 +16,39 @@ ROUTE_PROBE_LAYER = {
 }
 
 
+def canonicalize_route_evidence(routes: list[RouteEvidence]) -> list[RouteEvidence]:
+    """Deduplicate routes by stable resource identity, preferring runtime facts."""
+
+    selected: dict[str, RouteEvidence] = {}
+
+    def rank(route: RouteEvidence) -> tuple[int, int, int, str]:
+        completeness = sum(
+            getattr(route, field) is not None
+            for field in (
+                "interface_type",
+                "interface_schema_sha256",
+                "provider_id",
+                "runtime_revision",
+            )
+        )
+        return (
+            int(route.observed),
+            completeness,
+            -len(route.limitations),
+            route.model_dump_json(exclude={"observed_at"}),
+        )
+
+    for route in routes:
+        previous = selected.get(route.resource_id)
+        if previous is None:
+            selected[route.resource_id] = route
+            continue
+        if previous.kind != route.kind or previous.endpoint != route.endpoint:
+            raise ValueError(f"conflicting route resource identity: {route.resource_id}")
+        selected[route.resource_id] = max((previous, route), key=rank)
+    return [selected[resource_id] for resource_id in sorted(selected)]
+
+
 def _ros_endpoint_and_type(value: object) -> tuple[str, str | None]:
     parts = str(value).strip().split(maxsplit=1)
     if not parts:
@@ -170,3 +203,68 @@ def candidate_route_observed(candidate: OperationCandidate, probes: dict[str, Pr
         if any(_route_matches(route, observed) for observed in observed_probe_routes(probe)):
             return True
     return False
+
+
+def candidate_routes_fully_observed(
+    candidate: OperationCandidate,
+    probes: dict[str, ProbeResult],
+) -> bool:
+    """Require every declared route, or one route for ANY_OF, to be observed."""
+    if not candidate.route_evidence:
+        return False
+    matched: list[bool] = []
+    for route in candidate.route_evidence:
+        probe = probes.get(ROUTE_PROBE_LAYER[route.kind])
+        if probe is None or probe.status not in {
+            DiscoveryStatus.SUCCEEDED,
+            DiscoveryStatus.PARTIAL,
+        }:
+            matched.append(False)
+            continue
+        matched.append(
+            any(_route_matches(route, observed) for observed in observed_probe_routes(probe))
+        )
+    return any(matched) if candidate.route_binding_mode == "ANY_OF" else all(matched)
+
+
+def candidate_runtime_evidence_complete(
+    candidate: OperationCandidate,
+    probes: dict[str, ProbeResult],
+) -> bool:
+    """Check provider/schema/revision evidence for every selected observed route."""
+    if not candidate_routes_fully_observed(candidate, probes):
+        return False
+    strict_ros_evidence = any(
+        route.kind.startswith("ros_")
+        and isinstance((probe := probes.get(ROUTE_PROBE_LAYER[route.kind])), ProbeResult)
+        and "route_enrichment" in probe.data
+        for route in candidate.route_evidence
+    )
+    if not strict_ros_evidence:
+        return True
+    completeness: list[bool] = []
+    for route in candidate.route_evidence:
+        probe = probes.get(ROUTE_PROBE_LAYER[route.kind])
+        if probe is None:
+            completeness.append(False)
+            continue
+        observed = next(
+            (
+                item
+                for item in observed_probe_routes(probe)
+                if _route_matches(route, item)
+            ),
+            None,
+        )
+        if observed is None:
+            completeness.append(False)
+            continue
+        completeness.append(
+            not route.kind.startswith("ros_")
+            or bool(
+                observed.provider_id
+                and observed.interface_schema_sha256
+                and observed.runtime_revision
+            )
+        )
+    return any(completeness) if candidate.route_binding_mode == "ANY_OF" else all(completeness)

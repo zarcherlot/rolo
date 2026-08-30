@@ -87,6 +87,39 @@ def test_mixed_discovery_promotes_observed_operation_and_defers_the_rest() -> No
     )
 
 
+def test_any_of_route_binding_promotes_when_one_route_is_observed() -> None:
+    observed = _route("/scan", observed=True)
+    report = DiscoveryReport(
+        discovery_id="disc-any-route",
+        robot_id="demo",
+        status=DiscoveryStatus.PARTIAL,
+        platform={},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={"route_evidence": [observed.model_dump(mode="json")]},
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.lidar.snapshot",
+                route_evidence=[
+                    _route("/scan", observed=False),
+                    _route("/robot1/scan", observed=False),
+                ],
+                route_binding_mode="ANY_OF",
+            )
+        ],
+    )
+
+    eligible, deferred = adapter_operation_eligibility(report)
+
+    assert eligible == {"app.lidar.snapshot"}
+    assert deferred == {}
+
+
 def test_semantic_agent_defer_and_reject_are_distinct_gate_outcomes() -> None:
     route = _route("/camera/image_raw", observed=True)
     for disposition, expected in (
