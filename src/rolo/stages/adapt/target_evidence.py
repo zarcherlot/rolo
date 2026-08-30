@@ -21,6 +21,11 @@ import stat
 import subprocess
 import tempfile
 import time
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib  # type: ignore[no-redef]
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -52,8 +57,11 @@ from rolo.targets.executor import quote_remote_argv
 MAX_BUNDLE_BYTES = 8_000_000
 MAX_CLOCK_SKEW = timedelta(minutes=2)
 MAX_REQUEST_LIFETIME = timedelta(minutes=5)
-MAX_HELP_EXECUTABLES = 4
+# Keep target-side help inspection bounded, but large enough to cover a real
+# application workspace. Active discovery applies its own process budget.
+MAX_HELP_EXECUTABLES = 20
 MAX_HELP_EXECUTABLE_BYTES = 250_000_000
+MAX_HELP_DISCOVERY_CANDIDATES = 64
 MAX_SSH_STDERR_BYTES = 1_000_000
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _SSH_TARGET_PATTERN = re.compile(r"^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$")
@@ -427,6 +435,91 @@ def initialize_collector(
     return descriptor
 
 
+def discover_help_executables(project_root: Path) -> list[Path]:
+    """Discover installed application entrypoints without executing them.
+
+    Enrollment inspects only project metadata and conventional virtualenv or
+    install ``bin`` directories. Paths are still pinned and hashed by
+    :func:`initialize_collector` before any later bounded ``--help`` probe.
+    """
+
+    root = project_root.expanduser().resolve()
+    if not root.is_dir():
+        return []
+    declared: set[str] = set()
+    pyproject = root / "pyproject.toml"
+    try:
+        with pyproject.open("rb") as handle:
+            document = tomllib.load(handle)
+        scripts = document.get("project", {}).get("scripts", {})
+        if isinstance(scripts, Mapping):
+            declared.update(str(name) for name in scripts if str(name).strip())
+    except (OSError, tomllib.TOMLDecodeError, AttributeError):
+        pass
+
+    bin_roots: list[Path] = []
+    for relative in (
+        ".venv/bin",
+        ".venv/Scripts",
+        "venv/bin",
+        "venv/Scripts",
+        "bin",
+        "install",
+        "build",
+    ):
+        candidate = root / relative
+        if candidate.is_dir():
+            bin_roots.append(candidate)
+    for parent in (root / "install", root / "build"):
+        if parent.is_dir():
+            try:
+                bin_roots.extend(
+                    child / "bin"
+                    for child in sorted(parent.iterdir(), key=lambda item: item.name.casefold())
+                    if child.is_dir() and (child / "bin").is_dir()
+                )
+            except OSError:
+                continue
+
+    semantic_prefixes = (
+        "robot",
+        "lerobot",
+        "wheeltec",
+        "camera",
+        "sensor",
+        "lidar",
+        "imu",
+        "teleop",
+        "control",
+        "arm",
+        "motor",
+        "actuator",
+        "gripper",
+    )
+    candidates: dict[str, Path] = {}
+    for directory in bin_roots:
+        try:
+            entries = sorted(directory.iterdir(), key=lambda item: item.name.casefold())
+        except OSError:
+            continue
+        for path in entries:
+            if not path.is_file() or path.is_symlink():
+                continue
+            name = path.name
+            stem = path.stem
+            if (
+                name in declared
+                or stem in declared
+                or name.casefold().startswith(semantic_prefixes)
+            ):
+                candidates[str(path)] = path
+                if len(candidates) >= MAX_HELP_DISCOVERY_CANDIDATES:
+                    break
+        if len(candidates) >= MAX_HELP_DISCOVERY_CANDIDATES:
+            break
+    return sorted(candidates.values(), key=lambda item: str(item).casefold())[:MAX_HELP_EXECUTABLES]
+
+
 def _build_help_allowlist(paths: Sequence[Path]) -> list[CollectorHelpExecutable]:
     if len(paths) > MAX_HELP_EXECUTABLES:
         raise ValueError(f"collector allows at most {MAX_HELP_EXECUTABLES} help executables")
@@ -554,10 +647,13 @@ def ensure_local_deployment(
     *,
     robot_id: str,
     config_root: Path,
+    project_root: Path | None = None,
     help_executables: Sequence[Path] = (),
     ros_setup_files: Sequence[RosSetupFileRecord] = (),
 ) -> tuple[EvidenceDeploymentConfig, Path]:
     """Idempotently establish the target-local collector used by product journeys."""
+    if not help_executables and project_root is not None:
+        help_executables = discover_help_executables(project_root)
     deployment_root = config_root.expanduser().resolve() / "target-evidence"
     deployment_path = deployment_root / f"{robot_id}.json"
     default_state_path = deployment_root / f"{robot_id}-collector.json"
@@ -991,16 +1087,29 @@ def _collect_executable_help(
         descriptor = allowed[executable_id]
         path = Path(descriptor.path)
         if not path.is_file() or path.stat().st_size > MAX_HELP_EXECUTABLE_BYTES:
-            raise ValueError(f"allowlisted executable is unavailable or oversized: {path}")
-        if sha256_file(path) != descriptor.sha256:
-            raise ValueError(f"allowlisted executable digest changed: {executable_id}")
-        with tempfile.TemporaryDirectory(prefix="rolo-target-help-") as temporary:
-            output_path = Path(temporary) / "help.txt"
-            result = run_bounded_help(path, output_path)
-            output = output_path.read_bytes() if output_path.is_file() else b""
-        output_text = output.decode("utf-8", errors="replace")
+            # A single stale or removed executable must not suppress evidence
+            # for every other pinned CLI. Preserve the failure as signed
+            # evidence so route binding can ignore this item while using
+            # successfully inspected siblings.
+            result = HelpProbeResult(
+                status=HelpProbeStatus.FAILED,
+                error=f"allowlisted executable is unavailable or oversized: {path}",
+            )
+            output_text = ""
+            usage, parameters, subcommands = [], [], []
+        else:
+            if sha256_file(path) != descriptor.sha256:
+                raise ValueError(f"allowlisted executable digest changed: {executable_id}")
+            with tempfile.TemporaryDirectory(prefix="rolo-target-help-") as temporary:
+                output_path = Path(temporary) / "help.txt"
+                try:
+                    result = run_bounded_help(path, output_path)
+                except OSError as exc:
+                    result = HelpProbeResult(status=HelpProbeStatus.FAILED, error=str(exc))
+                output = output_path.read_bytes() if output_path.is_file() else b""
+            output_text = output.decode("utf-8", errors="replace")
+            usage, parameters, subcommands = _extract_help_summary(output_text)
         canonical_output = output_text.encode("utf-8")
-        usage, parameters, subcommands = _extract_help_summary(output_text)
         evidence.append(
             TargetExecutableHelpEvidence(
                 executable_id=executable_id,
