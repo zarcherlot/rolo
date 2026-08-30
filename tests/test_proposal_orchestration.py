@@ -38,6 +38,7 @@ from rolo.stages.adapt.proposal_orchestration import (
     ProposalFallbackReason,
     ProposalIssueCode,
     RegistrySnapshot,
+    _codex_event_usage,
     _evidence_aliases,
     _mapping_output_schema,
     _resolve_provider_evidence_aliases,
@@ -87,6 +88,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
             "enum"
         ][0]
         payload["proposals"][0]["evidence_refs"] = [evidence_alias, evidence_alias]
+        payload["proposals"][0]["counter_evidence_refs"] = [evidence_alias]
         output.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -189,6 +191,24 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
     assert by_operation["app.localization.status"]["properties"]["route_resource_ids"][
         "items"
     ]["enum"] == ["ros_topic:/odom"]
+
+
+def test_codex_event_usage_reads_largest_cumulative_jsonl_record() -> None:
+    stdout = "\n".join(
+        [
+            "not-json",
+            json.dumps({"usage": {"input_tokens": 120, "output_tokens": 30}}),
+            json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {"input_tokens": 900, "output_tokens": 125},
+                }
+            ),
+            json.dumps({"input_tokens": True, "output_tokens": 4}),
+        ]
+    )
+
+    assert _codex_event_usage(stdout) == (900, 125)
 
 
 def test_mapping_schema_excludes_context_contracts_without_deterministic_bindings() -> None:
@@ -366,6 +386,71 @@ def _bundle(
     )
 
 
+def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Read frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Return bounded mappings only.", encoding="utf-8")
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.localization.status")
+    )
+    seen: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        workspace = Path(command[command.index("--cd") + 1])
+        child = DiscoverySkillRequest.model_validate_json(
+            (workspace / "frozen-request.json").read_text(encoding="utf-8")
+        )
+        operation = sorted(child.target_operations)[0]
+        seen.append(operation)
+        proposal = (
+            _proposal()
+            if operation == "app.camera.snapshot"
+            else _proposal(
+                operation,
+                evidence_ref="runtime_probe:odom",
+                route_resource_id="ros_topic:/odom",
+                executable_id="exe-localization",
+            )
+        )
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(
+            _bundle(child, [proposal]).model_dump_json(),
+            encoding="utf-8",
+        )
+        stdout = json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 1_000, "output_tokens": 100},
+            }
+        )
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+        batch_operations=1,
+        parallelism=1,
+    )
+
+    actual = provider.propose(request)
+
+    assert seen == ["app.camera.snapshot", "app.localization.status"]
+    assert [item.operation for item in actual.proposals] == seen
+    assert actual.budget_usage.input_tokens == 2_000
+    assert actual.budget_usage.output_tokens == 200
+    assert actual.provenance.input_artifact_sha256 == request.input_artifact_sha256
+
+
 def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice() -> None:
     _report_value, registry, request = _request()
 
@@ -377,7 +462,7 @@ def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice(
     assert request.target_contracts[0].input_schema
     assert request.input_artifact_sha256["registry"] == registry.registry_sha256
     assert request.mapping_skill_name == "rolo-operation-mapping"
-    assert request.mapping_skill_version == "1.0.0"
+    assert request.mapping_skill_version == "1.1.0"
     assert request.discovery_evidence.deterministic_bindings[
         "app.camera.snapshot"
     ].evidence_refs == ["runtime_probe:camera"]
@@ -526,6 +611,83 @@ def test_semantic_accept_requires_and_validates_read_only_tool_receipt() -> None
     assert reviewed[0].route_review_dispositions == {
         candidate.route_evidence[0].resource_id: "ACCEPT"
     }
+
+
+def test_semantic_any_of_accept_slices_rejected_routes_from_candidate() -> None:
+    report, registry, _request_value = _request()
+    camera = report.operation_candidates[0]
+    odom = report.operation_candidates[1].route_evidence[0]
+    candidate = camera.model_copy(
+        update={
+            "evidence": ["runtime_probe:camera", "runtime_probe:odom"],
+            "route_evidence": [camera.route_evidence[0], odom],
+            "route_binding_mode": "ANY_OF",
+            "semantic_review_required": True,
+            "limitations": [
+                "Heuristic mapping is ambiguous; explicit operation evidence is required"
+            ],
+        }
+    )
+    report = report.model_copy(update={"operation_candidates": [candidate]})
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={candidate.operation},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    accepted_route = candidate.route_evidence[0]
+    rejected_route = candidate.route_evidence[1]
+    receipt = AgentEvidenceToolReceipt.model_validate(
+        evaluate_mapping_evidence(
+            request.model_dump(mode="json"),
+            operation=candidate.operation,
+            route_resource_id=accepted_route.resource_id,
+            condition="BINDING_MATCH",
+        )
+    )
+    proposal = _proposal().model_copy(
+        update={
+            "evidence_refs": candidate.evidence,
+            "route_resource_ids": [accepted_route.resource_id, rejected_route.resource_id],
+            "disposition": AgentDisposition.REJECT,
+            "route_dispositions": [
+                AgentRouteDisposition(
+                    route_resource_id=accepted_route.resource_id,
+                    disposition=AgentDisposition.ACCEPT,
+                    rationale="The read-only binding check passed.",
+                    tool_receipt_ids=[receipt.receipt_id],
+                ),
+                AgentRouteDisposition(
+                    route_resource_id=rejected_route.resource_id,
+                    disposition=AgentDisposition.REJECT,
+                    rationale="The route does not satisfy this operation.",
+                ),
+            ],
+            "tool_receipts": [receipt],
+        }
+    )
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    reviewed, applied = apply_validated_semantic_dispositions(
+        report.operation_candidates,
+        artifact,
+    )
+
+    decision = artifact.validated_dispositions[0]
+    assert decision.reported_disposition == AgentDisposition.REJECT
+    assert decision.disposition == AgentDisposition.ACCEPT
+    assert decision.route_binding_mode == "ANY_OF"
+    assert applied == [candidate.operation]
+    assert [item.resource_id for item in reviewed[0].route_evidence] == [
+        accepted_route.resource_id
+    ]
+    assert reviewed[0].route_review_dispositions == {accepted_route.resource_id: "ACCEPT"}
+    assert not any(
+        "Heuristic mapping is ambiguous" in item for item in reviewed[0].limitations
+    )
 
 
 def test_semantic_accept_with_missing_receipt_fails_closed() -> None:

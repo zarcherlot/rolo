@@ -39,6 +39,15 @@
           "title": "Route Evidence",
           "type": "array"
         },
+        "route_binding_mode": {
+          "default": "ALL_OF",
+          "enum": [
+            "ALL_OF",
+            "ANY_OF"
+          ],
+          "title": "Route Binding Mode",
+          "type": "string"
+        },
         "executable_ids": {
           "items": {
             "type": "string"
