@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 import shutil
 from pathlib import Path
 
@@ -115,6 +116,45 @@ def _read_model(path: Path, model: type[BaseModel]) -> BaseModel:
         return model.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"invalid {model.__name__} at {path}: {exc}") from exc
+
+
+def _target_executable_paths(discovery: object) -> list[str]:
+    """Extract exact target executable paths from verified discovery evidence."""
+    paths: set[str] = set()
+    probes = getattr(discovery, "probes", {})
+    if not isinstance(probes, dict):
+        return []
+    for probe in probes.values():
+        data = getattr(probe, "data", {})
+        binding = data.get("target_evidence") if isinstance(data, dict) else None
+        records = binding.get("executable_help", []) if isinstance(binding, dict) else []
+        for record in records:
+            if isinstance(record, dict):
+                path = str(record.get("path", "")).strip()
+                if path and (path.startswith("/") or re.match(r"^[A-Za-z]:[\\/]", path)):
+                    paths.add(path)
+    return sorted(paths)
+
+
+def _reject_hardcoded_target_paths(
+    discovery: object,
+    bundle_files: list[tuple[object, Path]],
+) -> None:
+    """Prevent a release from depending on the collector's host filesystem layout."""
+    target_paths = _target_executable_paths(discovery)
+    if not target_paths:
+        return
+    for _item, path in bundle_files:
+        try:
+            payload = path.read_bytes()
+        except OSError as exc:
+            raise ValueError(f"cannot inspect adapter bundle file: {path}") from exc
+        for target_path in target_paths:
+            if target_path.encode("utf-8") in payload:
+                raise ValueError(
+                    "adapter bundle hardcodes a target executable path; resolve it through "
+                    f"the target environment instead: {target_path}"
+                )
 
 
 def _structured_output_files(result: AdapterAgentResult) -> dict[str, bytes]:
@@ -570,6 +610,19 @@ class AdapterPromotionService:
             checks.append("frozen output hashes and schemas")
 
             discovery = load_report(self.artifacts.root, run.robot_id, run.source_discovery_id)
+            _reject_hardcoded_target_paths(
+                discovery,
+                [
+                    (
+                        declared,
+                        resolve_artifact_ref(self.artifacts.root, published.path),
+                    )
+                    for declared, published in zip(
+                        bundle.declared_files(), snapshot.adapter_files, strict=True
+                    )
+                ],
+            )
+            checks.append("adapter target paths are resolved portably")
             identified_outputs = (
                 (graph, "State Graph"),
                 (conformance, "conformance report"),

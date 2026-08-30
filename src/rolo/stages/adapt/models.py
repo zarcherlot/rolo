@@ -229,6 +229,12 @@ class AdapterReleaseIndex(BaseModel):
 
 class ConformanceScope(str, Enum):
     LOCAL_STATIC = "LOCAL_STATIC"
+    TARGET_RUNTIME_READONLY = "TARGET_RUNTIME_READONLY"
+    PHYSICAL_HARDWARE = "PHYSICAL_HARDWARE"
+    # Legacy report labels are accepted for migration, but are never treated
+    # as independently verified by the Adapt gate.
+    TARGET_RUNTIME = "TARGET_RUNTIME"
+    PHYSICAL = "PHYSICAL"
 
 
 class OperationConformance(BaseModel):
@@ -251,10 +257,14 @@ class OperationConformance(BaseModel):
         migrated = dict(value)
         migrated.pop("safety_valid", None)
         migrated.pop("physical_result_valid", None)
+        # Keep newer scope values in v2/v3 audit artifacts.  Legacy v1 runtime
+        # and physical claims were never independently verifiable and remain
+        # discarded during migration.
+        allowed_scopes = {item.value for item in ConformanceScope}
+        if migrated.get("schema_version") == "robot-adapter-conformance/v1":
+            allowed_scopes = {ConformanceScope.LOCAL_STATIC.value}
         migrated["validation_scopes"] = [
-            scope
-            for scope in migrated.get("validation_scopes", [])
-            if scope == ConformanceScope.LOCAL_STATIC.value
+            scope for scope in migrated.get("validation_scopes", []) if scope in allowed_scopes
         ]
         return migrated
 
