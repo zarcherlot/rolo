@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -38,6 +42,166 @@ class SemanticOperationRuleSet(BaseModel):
         if len(rule_ids) != len(set(rule_ids)):
             raise ValueError("semantic rule IDs must be unique")
         return self
+
+
+@dataclass(frozen=True)
+class TopicOperationMatch:
+    """One registry Operation suggested by generic ROS topic evidence."""
+
+    operation: str
+    semantic_uri: str
+    score: float
+    evidence: tuple[str, ...]
+    rationale: str
+
+
+_TOPIC_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TOPIC_STOP_TOKENS = {
+    "app",
+    "hw",
+    "ros",
+    "topic",
+    "msg",
+    "msgs",
+    "message",
+    "status",
+    "sample",
+    "snapshot",
+    "read",
+    "readings",
+    "data",
+    "the",
+    "and",
+    "or",
+    "of",
+}
+_ENERGY_SIGNAL_TOKENS = frozenset(
+    {"battery", "voltage", "current", "charge", "capacity", "soc", "power"}
+)
+
+
+def _topic_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in _TOPIC_TOKEN_RE.findall(str(value).casefold())
+        if token not in _TOPIC_STOP_TOKENS
+    }
+
+
+def _operation_terms(definition: Any) -> set[str]:
+    values = [
+        definition.operation,
+        definition.description,
+        *definition.capability_requirements,
+        *definition.side_effects,
+        *definition.semantic_units,
+    ]
+    return _topic_tokens(" ".join(str(value) for value in values))
+
+
+def infer_topic_operations(
+    topic: str,
+    *,
+    interface_type: str | None = None,
+    max_matches: int = 1,
+) -> list[TopicOperationMatch]:
+    """Suggest registry Operations from topic/type evidence without vendor rules.
+
+    This is deliberately a proposal layer.  It does not assert that a topic
+    implements a contract: the resulting route remains unverified until target
+    interface schema, provider identity, runtime revision, and conformance are
+    collected.  The scorer uses registry-owned descriptions and capability
+    requirements so a new platform can be handled without adding its topic
+    names to this module.
+    """
+
+    if not str(topic).strip() or max_matches < 1:
+        return []
+    endpoint_tokens = _topic_tokens(topic)
+    type_tokens = _topic_tokens(interface_type or "")
+    evidence_tokens = endpoint_tokens | type_tokens
+    if not evidence_tokens:
+        return []
+
+    from rolo.stages.adapt.operation_registry import canonical_operation_registry
+
+    matches: list[TopicOperationMatch] = []
+    for definition in canonical_operation_registry().operations:
+        if definition.layer not in {"app", "hw"}:
+            continue
+        if definition.contract_lifecycle.value not in {"GATEABLE", "RELEASED"}:
+            continue
+        terms = _operation_terms(definition)
+        operation_tokens = _topic_tokens(definition.operation)
+        domain_terms = operation_tokens | {
+            token
+            for token in terms
+            if token
+            in {
+                "battery",
+                "power",
+                "voltage",
+                "current",
+                "charge",
+                "capacity",
+                "imu",
+                "lidar",
+                "camera",
+                "odometry",
+                "localization",
+                "gnss",
+                "telemetry",
+            }
+        }
+        direct_overlap = endpoint_tokens & domain_terms
+        type_overlap = type_tokens & terms
+        signal_overlap = evidence_tokens & _ENERGY_SIGNAL_TOKENS
+        energy_contract = terms & {"battery", "power", "voltage", "current", "charge", "capacity"}
+        if not direct_overlap and not (signal_overlap and energy_contract):
+            continue
+        score = (
+            len(direct_overlap) * 6.0
+            + len(type_overlap) * 2.0
+            + len(terms & evidence_tokens) * 0.25
+            + min(len(domain_terms), 4) * 0.5
+        )
+        if signal_overlap and "battery" in terms:
+            # Voltage/current/charge are generic battery signals across ROS,
+            # DDS, and vendor application stacks; this is not a vendor map.
+            score += 3.0
+        if definition.access == "write":
+            # Do not let a lexical topic hint make a motion/control route look
+            # stronger than a read-only observation without explicit command
+            # evidence in the topic/type.
+            score -= 2.0
+        if score < 7.0:
+            continue
+        evidence = [
+            *(f"topic:{token}" for token in sorted(direct_overlap)),
+            *(f"type:{token}" for token in sorted(type_overlap)),
+        ]
+        matches.append(
+            TopicOperationMatch(
+                operation=definition.operation,
+                semantic_uri=(
+                    "semantic://heuristic/topic/"
+                    + hashlib.sha256(
+                        f"{topic}\0{interface_type or ''}\0{definition.operation}".encode()
+                    ).hexdigest()[:16]
+                ),
+                score=score,
+                evidence=tuple(sorted(set(evidence))),
+                rationale=(
+                    f"heuristic score={score:.2f}; topic={','.join(sorted(endpoint_tokens))}; "
+                    f"type={','.join(sorted(type_tokens)) or 'none'}"
+                ),
+            )
+        )
+    matches.sort(key=lambda item: (-item.score, item.operation))
+    if not matches:
+        return []
+    top = matches[0].score
+    return [item for item in matches if item.score >= top - 1.0][:max_matches]
 
 
 def semantic_operation_rule_path() -> Path:

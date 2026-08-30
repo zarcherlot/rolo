@@ -80,10 +80,16 @@ from rolo.stages.adapt.inputs import (
     SemanticContext,
     StageSemanticInputs,
 )
-from rolo.stages.adapt.operation_registry import validate_candidate_operations
+from rolo.stages.adapt.operation_registry import (
+    canonical_operation_registry,
+    validate_candidate_operations,
+)
 from rolo.stages.adapt.review import render_discovery_review_markdown
 from rolo.stages.adapt.routes import persist_route_evidence
-from rolo.stages.adapt.semantic_mapping import matching_semantic_rules
+from rolo.stages.adapt.semantic_mapping import (
+    infer_topic_operations,
+    matching_semantic_rules,
+)
 from rolo.stages.adapt.software_relevance import (
     DirectDependencyResolver,
     ResolutionStatus,
@@ -1409,7 +1415,8 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
         topic = _ros_entity_name(raw_topic)
         if not _is_concrete_ros_endpoint(raw_topic):
             continue
-        for rule in matching_semantic_rules(topic):
+        matched_rules = matching_semantic_rules(topic)
+        for rule in matched_rules:
             if any(
                 binding.get("semantic_rule_id") == rule.rule_id
                 and _ros_entity_name(str(binding.get("binding", ""))) == topic
@@ -1430,6 +1437,37 @@ def _semantic_bindings(probes: dict[str, ProbeResult]) -> dict[str, dict[str, An
                     "runtime_revision": runtime_revision,
                     "semantic_rule_id": rule.rule_id,
                     "operations": list(rule.operations),
+                    "route_kind": "ros_topic",
+                    "resource_id": f"ros_topic:{topic}",
+                    "provider_id": None,
+                    "interface_schema_sha256": None,
+                    "observed": source == "live_ros_graph",
+                }
+
+        # Keep the deterministic rule set small and platform-neutral.  When a
+        # topic has no concrete rule-backed Operation (for example a battery
+        # voltage metric), ask the registry-linked heuristic scorer to propose
+        # a contract from the topic name and interface type.  These proposals
+        # remain unverified and cannot bypass the normal gate.
+        if not any(rule.operations for rule in matched_rules):
+            interface_type = _ros_entity_type(raw_topic)
+            for match in infer_topic_operations(topic, interface_type=interface_type):
+                semantic_uri = match.semantic_uri
+                if semantic_uri in bindings:
+                    continue
+                bindings[semantic_uri] = {
+                    "transport": transport,
+                    "binding": topic,
+                    "interface_type": interface_type,
+                    "status": "DISCOVERED_UNVERIFIED",
+                    "evidence": source,
+                    "observed_at": observed_at,
+                    "runtime_revision": runtime_revision,
+                    "semantic_rule_id": f"heuristic:{match.operation}",
+                    "mapping_score": match.score,
+                    "mapping_rationale": match.rationale,
+                    "mapping_evidence": list(match.evidence),
+                    "operations": [match.operation],
                     "route_kind": "ros_topic",
                     "resource_id": f"ros_topic:{topic}",
                     "provider_id": None,
@@ -1812,7 +1850,15 @@ def _read_discovery_urdf(
 def _build_operation_candidates(
     bindings: dict[str, dict[str, Any]],
 ) -> list[OperationCandidate]:
-    """Translate host evidence only into product-defined applicability candidates."""
+    """Translate host evidence only into product-defined applicability candidates.
+
+    A semantic route may fan out to several read operations (for example an
+    odometry stream can support both a bounded sample and a pose observation),
+    but exposing two independent write operations for the same endpoint would
+    create an ambiguous motion authority.  The Registry's access contract is
+    therefore consulted while candidates are assembled and duplicate writes
+    fail closed before they can reach Adapt planning.
+    """
 
     def route(semantic_uri: str) -> RouteEvidence:
         binding = bindings[semantic_uri]
@@ -1844,11 +1890,44 @@ def _build_operation_candidates(
             limitations=limitations,
         )
 
-    candidates: list[OperationCandidate] = []
+    definitions = {
+        item.operation: item for item in canonical_operation_registry().operations
+    }
+    write_routes: dict[tuple[str, str], set[str]] = {}
     operation_bindings: dict[str, list[str]] = {}
     for semantic_uri, binding in bindings.items():
-        for operation in binding.get("operations", []):
-            operation_bindings.setdefault(str(operation), []).append(semantic_uri)
+        operations = [str(operation) for operation in binding.get("operations", [])]
+        route_kind = str(binding.get("route_kind", "ros_topic"))
+        route_endpoint = str(binding.get("binding", ""))
+        if route_kind.startswith("ros_"):
+            route_endpoint = _ros_entity_name(route_endpoint)
+        write_operations = {
+            operation
+            for operation in operations
+            if definitions.get(operation) is not None
+            and definitions[operation].access == "write"
+        }
+        if write_operations:
+            write_routes.setdefault((route_kind, route_endpoint), set()).update(
+                write_operations
+            )
+        for operation in operations:
+            operation_bindings.setdefault(operation, []).append(semantic_uri)
+    conflicts = [
+        (route_kind, endpoint, sorted(operations))
+        for (route_kind, endpoint), operations in sorted(write_routes.items())
+        if len(operations) > 1
+    ]
+    if conflicts:
+        details = "; ".join(
+            f"{route_kind}:{endpoint} -> {operations}"
+            for route_kind, endpoint, operations in conflicts
+        )
+        raise ValueError(
+            "one route cannot expose multiple write Operations; declare an explicit alias "
+            f"or precedence: {details}"
+        )
+    candidates: list[OperationCandidate] = []
     for operation, semantic_uris in sorted(operation_bindings.items()):
         semantic_uris = sorted(semantic_uris)
         candidates.append(
