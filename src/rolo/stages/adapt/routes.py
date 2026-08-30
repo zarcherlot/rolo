@@ -162,13 +162,53 @@ def observed_probe_routes(probe: ProbeResult) -> list[RouteEvidence]:
     return [route for route in probe_routes(probe) if route.observed]
 
 
+def _enrich_ros_routes(probe: ProbeResult, routes: list[RouteEvidence]) -> list[RouteEvidence]:
+    enrichment = probe.data.get("route_enrichment")
+    if probe.layer != "ros" or not isinstance(enrichment, dict):
+        return routes
+    providers = enrichment.get("provider_ids", {})
+    schemas = enrichment.get("interface_schema_sha256", {})
+    if not isinstance(providers, dict):
+        providers = {}
+    if not isinstance(schemas, dict):
+        schemas = {}
+    return [
+        route.model_copy(
+            update={
+                "provider_id": route.provider_id or providers.get(route.endpoint),
+                "interface_schema_sha256": route.interface_schema_sha256
+                or schemas.get(route.interface_type),
+                "limitations": [
+                    item
+                    for item in route.limitations
+                    if not (
+                        item == "ROS interface schema digest was not collected"
+                        and schemas.get(route.interface_type)
+                    )
+                    and not (
+                        item == "ROS provider identity was not collected"
+                        and providers.get(route.endpoint)
+                    )
+                ],
+            }
+        )
+        for route in routes
+    ]
+
+
 def persist_route_evidence(probe: ProbeResult) -> ProbeResult:
     """Attach immutable v2 route records while retaining existing probe fields."""
     if "route_evidence" in probe.data:
-        observed_probe_routes(probe)
-        return probe
+        routes = _enrich_ros_routes(
+            probe,
+            [RouteEvidence.model_validate(item) for item in probe.data["route_evidence"]],
+        )
+        data = dict(probe.data)
+        data["route_evidence"] = [route.model_dump(mode="json") for route in routes]
+        return probe.model_copy(update={"data": data})
     data = dict(probe.data)
-    data["route_evidence"] = [route.model_dump(mode="json") for route in legacy_probe_routes(probe)]
+    routes = _enrich_ros_routes(probe, legacy_probe_routes(probe))
+    data["route_evidence"] = [route.model_dump(mode="json") for route in routes]
     return probe.model_copy(update={"data": data})
 
 

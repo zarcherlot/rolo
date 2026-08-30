@@ -75,3 +75,34 @@ def test_state_graph_rejects_contract_binding_mutation() -> None:
 
     with pytest.raises(ValueError, match="operation binding mismatch"):
         validate_state_graph_baseline(graph, report, bundle)
+
+
+def test_state_graph_ignores_deferred_candidate_semantics_on_shared_route() -> None:
+    report, bundle = _inputs()
+    bundled = report.operation_candidates[0]
+    shared_route = bundled.route_evidence[0]
+    bundled = bundled.model_copy(
+        update={
+            "semantic_bindings": ["semantic://camera/snapshot"],
+            "evidence": [shared_route.endpoint],
+        }
+    )
+    report = report.model_copy(
+        update={
+            "operation_candidates": [
+                bundled,
+                OperationCandidate(
+                    operation="app.camera.status",
+                    semantic_bindings=["semantic://camera/deferred-status"],
+                    evidence=[shared_route.endpoint],
+                    route_evidence=[shared_route],
+                ),
+            ]
+        }
+    )
+
+    graph = build_state_graph_baseline(report, bundle)
+    route = next(node for node in graph.nodes if node["kind"] == "route")
+
+    assert route["semantic_bindings"] == ["semantic://camera/snapshot"]
+    validate_state_graph_baseline(graph, report, bundle)
