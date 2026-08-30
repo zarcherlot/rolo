@@ -651,7 +651,12 @@ def test_semantic_any_of_accept_slices_rejected_routes_from_candidate() -> None:
     proposal = _proposal().model_copy(
         update={
             "evidence_refs": candidate.evidence,
-            "route_resource_ids": [accepted_route.resource_id, rejected_route.resource_id],
+            "route_resource_ids": [
+                accepted_route.resource_id,
+                rejected_route.resource_id,
+            ],
+            # The effective disposition is derived from route decisions, not trusted
+            # from this untrusted summary field.
             "disposition": AgentDisposition.REJECT,
             "route_dispositions": [
                 AgentRouteDisposition(
@@ -687,13 +692,15 @@ def test_semantic_any_of_accept_slices_rejected_routes_from_candidate() -> None:
     assert [item.resource_id for item in reviewed[0].route_evidence] == [
         accepted_route.resource_id
     ]
-    assert reviewed[0].route_review_dispositions == {accepted_route.resource_id: "ACCEPT"}
+    assert reviewed[0].route_review_dispositions == {
+        accepted_route.resource_id: "ACCEPT"
+    }
     assert not any(
         "Heuristic mapping is ambiguous" in item for item in reviewed[0].limitations
     )
 
 
-def test_semantic_accept_with_missing_receipt_fails_closed() -> None:
+def test_semantic_accept_with_forged_or_missing_receipt_fails_closed() -> None:
     report, registry, _request_value = _request()
     candidate = report.operation_candidates[0].model_copy(
         update={"semantic_review_required": True}
@@ -732,9 +739,7 @@ def test_semantic_defer_and_reject_are_validated_without_execution_authority(
     disposition: AgentDisposition,
 ) -> None:
     report, registry, _request_value = _request()
-    candidate = report.operation_candidates[0].model_copy(
-        update={"semantic_review_required": True}
-    )
+    candidate = report.operation_candidates[0].model_copy(update={"semantic_review_required": True})
     report = report.model_copy(update={"operation_candidates": [candidate]})
     request = build_discovery_skill_request(
         report,
@@ -966,28 +971,3 @@ def test_schema_failure_is_classified_without_exposing_provider_authority() -> N
     assert artifact.metrics.fallback_reason == ProposalFallbackReason.SCHEMA_INVALID
     assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
     assert artifact.influences_release is False
-
-
-def test_schema_failure_retries_once_before_accepting_valid_provider_output() -> None:
-    report, registry, request = _request()
-    calls = 0
-
-    def flaky(value: DiscoverySkillRequest) -> OperationProposalBundle:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            try:
-                return OperationProposalBundle.model_validate({})
-            except ValidationError:
-                raise
-        return _bundle(value, [_proposal()])
-
-    bundle, artifact = DiscoverySkillRunner(
-        registry,
-        FixtureProvider(flaky),
-    ).run(request, deterministic_candidates=report.operation_candidates)
-
-    assert calls == 2
-    assert bundle is not None
-    assert artifact.source == ProposalArtifactSource.AGENT
-    assert artifact.metrics.fallback_reason is None

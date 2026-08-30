@@ -87,6 +87,38 @@ def test_mixed_discovery_promotes_observed_operation_and_defers_the_rest() -> No
     )
 
 
+def test_eligibility_defers_a_candidate_when_only_some_routes_are_observed() -> None:
+    observed = _route("/scan", observed=True)
+    report = DiscoveryReport(
+        discovery_id="disc-partial-routes",
+        robot_id="demo",
+        status=DiscoveryStatus.PARTIAL,
+        platform={},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={"route_evidence": [observed.model_dump(mode="json")]},
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.lidar.snapshot",
+                route_evidence=[
+                    _route("/scan", observed=False),
+                    _route("/robot1/scan", observed=False),
+                ],
+            )
+        ],
+    )
+
+    eligible, deferred = adapter_operation_eligibility(report)
+
+    assert eligible == set()
+    assert deferred == {"app.lidar.snapshot": "TARGET_ROUTE_NOT_OBSERVED"}
+
+
 def test_any_of_route_binding_promotes_when_one_route_is_observed() -> None:
     observed = _route("/scan", observed=True)
     report = DiscoveryReport(
@@ -118,6 +150,40 @@ def test_any_of_route_binding_promotes_when_one_route_is_observed() -> None:
 
     assert eligible == {"app.lidar.snapshot"}
     assert deferred == {}
+
+
+def test_eligibility_defers_incomplete_strict_runtime_identity() -> None:
+    observed = _route("/scan", observed=True)
+    report = DiscoveryReport(
+        discovery_id="disc-incomplete-identity",
+        robot_id="demo",
+        status=DiscoveryStatus.PARTIAL,
+        platform={},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [observed.model_dump(mode="json")],
+                    "route_enrichment": {"provider_ids": {}},
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="app.lidar.snapshot",
+                route_evidence=[_route("/scan", observed=False)],
+            )
+        ],
+    )
+
+    eligible, deferred = adapter_operation_eligibility(report)
+
+    assert eligible == set()
+    assert deferred == {
+        "app.lidar.snapshot": "TARGET_ROUTE_IDENTITY_INCOMPLETE"
+    }
 
 
 def test_semantic_agent_defer_and_reject_are_distinct_gate_outcomes() -> None:
@@ -190,7 +256,7 @@ def test_agent_accept_cannot_bypass_high_risk_review() -> None:
     }
 
 
-def test_legacy_cli_candidate_without_explicit_review_flag_fails_closed() -> None:
+def test_legacy_cli_candidate_without_v2_flag_still_fails_closed() -> None:
     route = RouteEvidence(
         resource_id="cli:vendor-find-cameras",
         kind="cli",
