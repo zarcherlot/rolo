@@ -165,8 +165,13 @@ def test_health_and_robot_registry() -> None:
             "/v1/robots/demo_diff/topology/snapshots",
             "build_topology_snapshot_collection",
         ),
+        (
+            "/v1/robots/demo_diff/topology/diff?from=old&to=new",
+            "build_topology_diff",
+        ),
         ("/v1/robots/demo_diff/capabilities", "build_capability_collection"),
         ("/v1/robots/demo_diff/evidence", "build_evidence_collection"),
+        ("/v1/evidence/ev_invalid", "find_evidence"),
     ],
 )
 def test_invalid_evidence_is_exposed_as_conflict(

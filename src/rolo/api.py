@@ -1165,13 +1165,19 @@ async def get_robot_topology_diff(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    diff = build_topology_diff(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-        from_snapshot,
-        to_snapshot,
-    )
+    try:
+        diff = build_topology_diff(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+            from_snapshot,
+            to_snapshot,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology diff evidence failed manifest or integrity validation",
+        ) from exc
     if diff is None:
         raise HTTPException(status_code=404, detail="topology snapshot was not found")
     return diff
@@ -1546,19 +1552,25 @@ async def list_robot_evidence(
 @app.get("/v1/evidence/{evidence_id}", response_model=EvidenceRecord)
 async def get_evidence(evidence_id: str, request: Request) -> EvidenceRecord:
     runtime = get_runtime(request)
-    record = find_evidence(
-        runtime.registry.list(),
-        runtime.settings.rolo_output_dir,
-        evidence_id,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-        pipelines={
-            robot.robot_id: assess_pipeline(
-                runtime.settings.rolo_artifact_dir,
-                robot.robot_id,
-            )
-            for robot in runtime.registry.list()
-        },
-    )
+    try:
+        record = find_evidence(
+            runtime.registry.list(),
+            runtime.settings.rolo_output_dir,
+            evidence_id,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            pipelines={
+                robot.robot_id: assess_pipeline(
+                    runtime.settings.rolo_artifact_dir,
+                    robot.robot_id,
+                )
+                for robot in runtime.registry.list()
+            },
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="evidence record failed manifest or integrity validation",
+        ) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Unknown evidence ID")
     return record
