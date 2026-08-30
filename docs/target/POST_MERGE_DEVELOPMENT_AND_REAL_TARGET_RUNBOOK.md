@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
+<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-31; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
 
 # 后续开发整合与真机验证 RUNBOOK
 
@@ -10,10 +10,10 @@
 
 ## 1. 当前结论与范围
 
-当前 `origin/main@2b82ac1` 已具备：Registry v2、Agent-native 只读 shadow/canary
+当前 `origin/main@ca079ca` 已具备：Registry v2、Agent-native 只读 shadow/canary
 通道、Stage Runner、真实 `DiagnosisEpisode`/`VerificationEvidencePackage v2` contract、
 profile 绑定的 `local-target` Linux/ROS provider、handoff materializer、插件 manifest，
-以及 Registry-aware route mapping、bounded CLI help probe 和显式多路由 selector。
+以及 Registry-aware route mapping、bounded CLI help probe、目标 CLI sandbox 可见性校验和显式多路由 selector。
 
 当前证据最高为固定 WSL/Linux/ROS 软件目标 `E3`，不是物理机器人闭环 `E4`。以下事实
 必须保持分离：

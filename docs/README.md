@@ -23,7 +23,8 @@
 - [R5 WSL 验证](validation/R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
 - [目标机 / WSL P2 历史验证](target/TARGET_MACHINE_P2_VALIDATION.md)：R5 目标机证据采集、产物自检和 canary 前置条件；当前主线请以新的真实目标机运行手册为准；
 - [后续开发与真机验证 RUNBOOK](target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)：分支整合、开发切片、WSL/真机闭环、canary 与回退的统一执行顺序；
-- [真机只读验证 RUNBOOK](target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)：目标机本地 local-target 路径、Diagnose/Verify、取消恢复和证据回收；
+- [真机只读验证 RUNBOOK](target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)：唯一目标机执行入口，统一 Adapt、Diagnose/Verify、SSH health、取消恢复和证据回收；
+- [目标机 Adapt 详细附录](target/TARGET_MACHINE_ADAPT_VALIDATION_ZH.md)：目标证据刷新、Discovery、route selector、CLI help 和 sandbox 专项步骤；
 - [目标机 Diagnose/Verify 调试](target/TARGET_MACHINE_DIAGNOSE_VERIFY_DEBUG.md)：RMW、Adapt shadow、Stage handoff 和真实阶段验收步骤；
 - [P0 Adapt 验收](validation/P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
 - [本地 Diagnose/Verify fake 流程](validation/LOCAL_DIAGNOSE_VERIFY_FAKE.md)：不依赖目标机的 contract、授权和 handoff 开发回归。
