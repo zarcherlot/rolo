@@ -86,7 +86,25 @@ uv run pytest -q
 | DEV-08 | P2 | 跨平台/中间件矩阵 | 覆盖实际目标使用的 OS、ROS 发行版和 RMW；明确网络、DDS 和代理环境限制 | 每个支持组合有固定 profile、重现命令和证据包；未知组合保持 experimental |
 | DEV-09 | P2 | Registry 退役准备 | 统计 v1 wrapper 消费者、回退演练和兼容窗口；形成单独人工评审 | 在 canary 稳定和消费者迁移前不删除 v1 wrapper/contract/audit 材料 |
 
-### 3.1 并行分支整合规则
+### 3.1 本轮明确暂缓项
+
+以下事项不阻断基于最终 `main` revision 的首轮只读 preflight、target evidence collection 和
+Adapt Discovery，但不得据此授予 release authority、扩大 operation allowlist 或执行物理动作。
+恢复时必须重新从本地门禁、Linux CI 和目标身份检查开始，不能复用暂缓前生成的 release、
+handoff 或 acceptance 结论。
+
+| 暂缓项 | 暂缓原因 | 恢复条件 | 当前影响 |
+|---|---|---|---|
+| `codex/adapt-full-hardening` 剩余内容 | 旧分支同时包含运行时、Schema、状态图和真机材料，整支合并会重新引入已迁移实现 | 只从最新 `main` 按独立 producer/consumer 闭环重新拆分，并逐切片完成 Contract、测试和文档评审 | 不阻断首轮只读目标机调试；禁止整支合入 |
+| `codex/unified-agent-deployment` | 旧基线上的大规模部署、Agent、Job 和 GUI 改动超出 P1 只读目标机范围 | 按 W0-W5 与 W6-W10 分层重新审计；先证明最小目标部署和身份链，再单独评审 Job/GUI/自然语言控制面 | 不进入本轮 P1 合入计划 |
+| DEV-04 物理 Episode 完整闭环 | 当前 metadata-only/软件证据不足以证明物理六阶段 Episode | 目标机冻结 baseline/observe/hypothesis/change/smoke/decision 和 provenance，负面样本验证 fail-closed | 允许只读 discovery；阻断 E4 acceptance |
+| DEV-05 物理 Verify oracle | 软件 provider/materializer 已闭环，但真实 pinned SSH、safe-stop 和 oracle 尚需目标证据 | case/evidence 一一对应，完成 host-key、timeout、cancel、rollback 和未知 operation 拒绝演练 | 允许 preflight；阻断物理 Verify 结论 |
+| DEV-06 Native/Slice canary 放量 | 尚未累计足够稳定窗口，且 shadow 不能授予 release authority | 同一 revision/profile 下先完成 3-5 个 shadow 窗口；Slice canary 至少 10 个成功窗口、零高严重度 parity、零 silent drop，并达到 `READY_FOR_REVIEW` | 首轮保持 `ADAPT_NATIVE_TOOL_MODE=off` 或 shadow；禁止 active 放量 |
+| DEV-07 真实进程中断恢复 | 单元/软件故障注入不能替代目标机 kill、reboot、超时和 stale-lock 证据 | 在 pinned 目标完成中断注入，终态只能为 `CANCELLED`/`FAILED`，旧 handoff 不得被提升 | 允许只读检查；阻断长期运行和自动恢复声明 |
+| Windows `atomic_write_text` 临时 rename 失败 | 现象出现在 Windows 外部临时目录，尚未证明影响 Linux 目标路径 | 独立复现并修复或形成明确的平台限制测试；Linux CI 仍必须全绿 | 作为 P2 跨平台问题跟踪，不阻断 Linux 首轮调试 |
+| DEV-08/DEV-09 | 跨平台矩阵和 Registry v1 退役不属于首轮真机只读闭环 | 每个支持组合有固定证据；canary 稳定且消费者迁移完成后另行人工评审 | 不得提前删除 v1 wrapper、Contract 或审计材料 |
+
+### 3.2 并行分支整合规则
 
 `codex/p1-real-three-stage` 与本分支都修改 Stage Runner、Diagnose/Verify handoff、Schema 和
 Provider 边界。整合 DEV-01 时至少对照：
