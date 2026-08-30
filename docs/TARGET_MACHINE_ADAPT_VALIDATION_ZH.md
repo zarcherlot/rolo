@@ -1,7 +1,7 @@
 # 目标机 Adapt 真机验证手册
 
-本文用于在真实机器人目标机（或以目标机应用用户 SSH 登录）验证当前分支
-`codex/adapt-full-hardening`。本轮重点不是验证运动控制，而是验证 Discovery、State Graph、
+本文用于在真实机器人目标机（或以目标机应用用户 SSH 登录）验证已合入 `main` 的 Adapt
+真机验证线。本轮重点不是验证运动控制，而是验证 Discovery、State Graph、
 Adapter binding 和只读运行时路由的完整闭环。
 
 ## 1. 验证边界
@@ -22,15 +22,16 @@ Adapter binding 和只读运行时路由的完整闭环。
 
 ```bash
 git fetch origin
-git switch codex/adapt-full-hardening
-git pull --ff-only origin codex/adapt-full-hardening
+git switch main
+git pull --ff-only origin main
 git rev-parse HEAD
 ```
 
-预期提交为 `8b24a2b` 或其后续提交。若本地没有该分支：
+将上一步输出的 revision 记录到验证目录；真机验证必须固定在本次合入后的
+`main` revision，不要在验证过程中混用其他分支或未推送提交。
 
 ```bash
-git switch --track -c codex/adapt-full-hardening origin/codex/adapt-full-hardening
+git switch --track -c main origin/main  # 仅当本地尚无 main 分支
 ```
 
 安装锁定依赖并检查基础环境：
