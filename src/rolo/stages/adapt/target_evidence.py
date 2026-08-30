@@ -481,11 +481,10 @@ def discover_help_executables(project_root: Path) -> list[Path]:
             except OSError:
                 continue
 
-    semantic_prefixes = (
+    semantic_tokens = (
         "robot",
-        "lerobot",
-        "wheeltec",
         "camera",
+        "cam",
         "sensor",
         "lidar",
         "imu",
@@ -507,11 +506,10 @@ def discover_help_executables(project_root: Path) -> list[Path]:
                 continue
             name = path.name
             stem = path.stem
-            if (
-                name in declared
-                or stem in declared
-                or name.casefold().startswith(semantic_prefixes)
-            ):
+            normalized_name = re.sub(r"[^a-z0-9]+", "_", name.casefold())
+            name_tokens = {token for token in normalized_name.split("_") if token}
+            semantic_match = bool(name_tokens.intersection(semantic_tokens))
+            if name in declared or stem in declared or semantic_match:
                 candidates[str(path)] = path
                 if len(candidates) >= MAX_HELP_DISCOVERY_CANDIDATES:
                     break
@@ -706,6 +704,85 @@ def ensure_local_deployment(
         local_collector_state_path=default_state_path,
     )
     return deployment, default_state_path
+
+
+def refresh_local_deployment(
+    *,
+    robot_id: str,
+    config_root: Path,
+    project_root: Path,
+    expected_collector_id: str,
+    help_executables: Sequence[Path] = (),
+    ros_setup_files: Sequence[RosSetupFileRecord] = (),
+    reason: str = "refresh target executable help allowlist",
+) -> tuple[EvidenceDeploymentConfig, EvidenceDeploymentTransition, Path, Path]:
+    """Expand a local collector's pinned help allowlist through explicit rotation.
+
+    Existing deployments remain immutable during normal Adapt starts. This
+    helper stages a new collector and secret, re-enrolls the deployment only
+    after the expected collector pin matches, and preserves an immutable
+    transition record.
+    """
+
+    deployment_root = config_root.expanduser().resolve() / "target-evidence"
+    deployment_path = deployment_root / f"{robot_id}.json"
+    if not deployment_path.is_file():
+        raise ValueError("target evidence deployment must exist before collector refresh")
+    previous = load_deployment(deployment_path)
+    if previous.mode != EvidenceDeploymentMode.LOCAL:
+        raise ValueError("collector refresh requires a local target evidence deployment")
+    if previous.collector.collector_id != expected_collector_id:
+        raise ValueError("pinned collector identity differs from the expected refresh pin")
+    discovered_help = (
+        list(help_executables) if help_executables else discover_help_executables(project_root)
+    )
+    if not discovered_help:
+        raise ValueError(
+            "collector refresh discovered no safe project entrypoints; "
+            "provide --allow-executable explicitly"
+        )
+
+    # Refresh is additive: operator input may add entries, but cannot silently
+    # drop an already pinned executable from the replacement collector.
+    pinned_paths = [Path(item.path) for item in previous.collector.help_executables]
+    merged_help: list[Path] = []
+    seen_help: set[Path] = set()
+    for requested in [*pinned_paths, *discovered_help]:
+        resolved = requested.expanduser().resolve()
+        if resolved not in seen_help:
+            seen_help.add(resolved)
+            merged_help.append(resolved)
+    if not ros_setup_files:
+        ros_setup_files = list(previous.collector.ros_setup_files)
+
+    refresh_id = uuid4().hex
+    new_state_path = deployment_root / f"{robot_id}-collector-refresh-{refresh_id}.json"
+    new_secret_path = deployment_root / f"{robot_id}-collector-refresh-{refresh_id}.key"
+    try:
+        descriptor = initialize_collector(
+            robot_id=robot_id,
+            state_path=new_state_path,
+            secret_path=new_secret_path,
+            help_executables=merged_help,
+            ros_setup_files=ros_setup_files,
+        )
+        deployment, transition, transition_path = reenroll_deployment(
+            output_path=deployment_path,
+            expected_collector_id=expected_collector_id,
+            reason=reason,
+            descriptor=descriptor,
+            verification_secret_path=new_secret_path,
+            mode=EvidenceDeploymentMode.LOCAL,
+            collector_config=previous.collector_config,
+            local_collector_state_path=new_state_path,
+        )
+    except Exception:
+        # These exact staged files are not active if re-enrollment fails; leave
+        # the previous pinned deployment untouched.
+        new_state_path.unlink(missing_ok=True)
+        new_secret_path.unlink(missing_ok=True)
+        raise
+    return deployment, transition, transition_path, new_state_path
 
 
 def _build_deployment_config(
