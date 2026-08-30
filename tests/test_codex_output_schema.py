@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel
 
 from rolo.stages.adapt.agent_contracts import OperationProposalBundle
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
@@ -87,16 +90,18 @@ def test_codex_output_schema_can_pin_array_items_to_caller_values() -> None:
 
 
 def test_codex_output_schema_removes_defaults_next_to_references() -> None:
-    canonical = OperationProposalBundle.model_json_schema()
-    compatible = codex_output_schema(OperationProposalBundle)
+    class DemoDisposition(str, Enum):
+        ACCEPT = "ACCEPT"
 
-    canonical_disposition = canonical["$defs"]["AgentOperationProposal"]["properties"][
-        "disposition"
-    ]
-    compatible_disposition = compatible["$defs"]["AgentOperationProposal"]["properties"][
-        "disposition"
-    ]
+    class DemoModel(BaseModel):
+        disposition: DemoDisposition = DemoDisposition.ACCEPT
 
-    assert canonical_disposition["$ref"] == "#/$defs/AgentDisposition"
+    canonical = DemoModel.model_json_schema()
+    compatible = codex_output_schema(DemoModel)
+
+    canonical_disposition = canonical["properties"]["disposition"]
+    compatible_disposition = compatible["properties"]["disposition"]
+
+    assert canonical_disposition["$ref"] == "#/$defs/DemoDisposition"
     assert canonical_disposition["default"] == "ACCEPT"
-    assert compatible_disposition == {"$ref": "#/$defs/AgentDisposition"}
+    assert compatible_disposition == {"$ref": "#/$defs/DemoDisposition"}
