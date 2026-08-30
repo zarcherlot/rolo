@@ -12,7 +12,7 @@ def _design() -> dict[str, object]:
 
 
 def _contract() -> str:
-    return (ROOT / "docs" / "WORKBENCH_PLUGIN_HOST_CONTRACT.md").read_text(
+    return (ROOT / "docs" / "architecture" / "WORKBENCH_PLUGIN_HOST_CONTRACT.md").read_text(
         encoding="utf-8"
     )
 
