@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # Canonical-CLI-driven software discovery
 
@@ -369,6 +369,8 @@ semantic mapping requires the declared and observed canonical name to match exac
 documentation commands, an Agent claim, a controller-local binary, or failed self-description never
 satisfy route availability. The complete non-ROS design is documented in
 [NON_ROS_ADAPTATION.md](NON_ROS_ADAPTATION.md).
+If an Operation has multiple gated routes, discovery does not choose one implicitly; the runtime
+requires an explicit selector and keeps the selected route identity in the invocation evidence.
 
 ## Acceptance criteria
 

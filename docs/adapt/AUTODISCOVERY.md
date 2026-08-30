@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # rolo automatic discovery
 

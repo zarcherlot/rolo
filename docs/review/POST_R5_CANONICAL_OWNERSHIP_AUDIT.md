@@ -1,13 +1,14 @@
-<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-29; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: frozen; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
 
 # R5 合入后的 canonical ownership 审计
 
 ## 审计范围
 
-本审计对照以下两个不可变 revision：
+本审计保留 P1 迁移期间的字段归属快照；当前实现状态以最新 `main`、工程状态台账和实现地图
+为准，不再把历史暂缓结论当作当前代码状态。本审计对照以下 revision：
 
-- R5/main：`origin/main@3f11947`（PR #20 合并提交）
-- P1：`origin/codex/p1-real-three-stage@f48b772`
+- R5/main：`origin/main@2b82ac1`（当前复核基线）
+- P1：`origin/codex/p1-real-three-stage@f48b772`（历史比较对象）
 
 审计重点是 Episode capture、target provenance、Verify provider、materializer 和
 evidence package 的字段、Schema version、artifact 绑定与 handoff authority。
@@ -19,8 +20,8 @@ evidence package 的字段、Schema version、artifact 绑定与 handoff authori
 | 本地 Linux/ROS 目标身份与只读命令 | `src/rolo/stages/real_target.py` 的 `TargetBinding`、`LocalTargetCommandRunner` | P1 无等价实现 | 保留 main；作为首轮 E3/E4 的唯一 local-target producer |
 | Episode 与 provenance | `src/rolo/stages/diagnose/episode.py` 的 `DiagnosisEpisode`、`TargetProvenance v1/v2` | `src/rolo/episode_capture.py` | Episode capture 已以窄切片接入；继续复用 main 的 v2 provenance 和 publication 校验 |
 | Verify plan/oracle/replay | `src/rolo/stages/verify/acceptance.py` 的 `VerificationPlan`、`VerificationEvidencePackage v2` | P1 acceptance 扩展了 provider manifest 与 provider evidence index | main contract 保持权威；P1 扩展只能以兼容字段/API 形式移植 |
-| SSH readiness/health provider | main 的 provider-neutral `DownstreamToolConsumer`/local-target 路径 | `src/rolo/stages/verify/target_provider.py`（`VerificationProviderManifest v1`、SSH 专用 provenance） | 暂缓直接合入；先做 adapter 设计和拒绝/迁移 fixture |
-| Provider evidence materializer | main 的 handoff 与 v2 evidence 校验 | `src/rolo/stages/verify/materializer.py`（provider evidence index v1） | 暂缓直接合入；必须先落到 v2 evidence package 和 main handoff |
+| SSH readiness/health provider | `src/rolo/stages/verify/ssh_provenance.py`、`ssh_target_provider.py` 的 canonical v2 provider | P1 的 SSH 专用 provider/manifest（历史比较对象） | 已合入 main；`rolo target verify-health` 提供有界只读入口，仍不等同于物理 E4 acceptance |
+| Provider evidence materializer | `src/rolo/stages/handoffs.py` 与 `src/rolo/stages/verify/ssh_target_provider.py` | P1 provider evidence index（历史比较对象） | 已通过 v2 evidence 和 Diagnose handoff validator；保留单向 adapter，不维护第二套 authority |
 
 ## 不可直接合并的证据
 
@@ -40,9 +41,9 @@ P1 的 Verify 实现引入了与 main 不同的 authority 边界：
    handoffs、agent runner、target provider、两个 Schema 和测试；这证明整分支合并不是
    可审计的移植方式。
 
-## 下一步迁移门禁
+## 当前剩余验证门禁
 
-下一条 Verify provider 切片在提交前必须同时具备：
+历史 P1 payload 仍不得直接成为 authority；当前 main 的后续验证必须同时具备：
 
 - 一个把 SSH host-key、workspace、user 和 machine/session 信息映射到
   `TargetProvenance v2`/`TargetBinding` 的明确 adapter；禁止把 credential 或未经批准的
@@ -52,8 +53,8 @@ P1 的 Verify 实现引入了与 main 不同的 authority 边界：
   timeout、cancel 和未知 operation fail-closed；
 - Schema export、tracked schema、文档台账和真机 runbook 同步更新。
 
-在这些门禁完成前，P1 的 `target_provider.py` 与 `materializer.py` 标记为 **开发中/暂不
-合入**，不应关闭其分支，也不应将其实现宣称为真机可用。
+在这些门禁完成前，SSH provider 只能声明固定软件目标的 E3/有界只读能力，不得宣称物理
+目标 E4 或通用 acceptance oracle 已完成。
 
 ## 当前已落地切片
 
@@ -73,12 +74,13 @@ provenance 不会被复制进 v2 package，safe-stop/rollback 也必须显式传
 随后新增 `src/rolo/stages/verify/ssh_provenance.py`：通过 pinned SSH transport 读取
 workspace stat、machine-id、user/uid 和 ROS/RMW 环境，生成 main `TargetBinding` artifact。
 该 collector 不执行 shell、不写目标机，也不把 known-hosts 或凭据复制进 provenance；
-P1 provider 仍需下一轮接入该 collector 后才能产出可适配的 v2 evidence。
+当前 main 的 `ssh_target_provider.py` 已接入该 collector，并可产出经 adapter 校验的 v2
+evidence；剩余工作是固定 SSH 目标上的真实验证。
 
 当前切片已新增 `src/rolo/stages/verify/ssh_target_provider.py`：它复用 collector，执行
 固定的 platform/workspace/companion 三个只读 case，先保留 legacy v1 source artifact，
-再经 adapter 生成 main v2 evidence。该 provider 尚未接入 Stage handoff，也未宣称物理目标
-或 release readiness。
+再经 adapter 生成 main v2 evidence，并通过 `materialize_handoff()` 接入 canonical Stage
+handoff；该 provider 仍未宣称物理目标 E4 或 release readiness。
 
 当前 provider 已提供 `materialize_handoff()`：先重新验证 v2 evidence，再将 canonical
 regression report 和 evidence package 交给 `commit_verification_handoff`；缺少上游

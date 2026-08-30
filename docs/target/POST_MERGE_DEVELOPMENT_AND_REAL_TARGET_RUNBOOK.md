@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-29; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
+<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
 
 # 后续开发整合与真机验证 RUNBOOK
 
@@ -10,9 +10,10 @@
 
 ## 1. 当前结论与范围
 
-`codex/registry-redesign-r5` 当前已具备：Registry v2、Agent-native 只读 shadow/canary
+当前 `origin/main@2b82ac1` 已具备：Registry v2、Agent-native 只读 shadow/canary
 通道、Stage Runner、真实 `DiagnosisEpisode`/`VerificationEvidencePackage v2` contract、
-profile 绑定的 `local-target` Linux/ROS provider、handoff materializer 和插件 manifest。
+profile 绑定的 `local-target` Linux/ROS provider、handoff materializer、插件 manifest，
+以及 Registry-aware route mapping、bounded CLI help probe 和显式多路由 selector。
 
 当前证据最高为固定 WSL/Linux/ROS 软件目标 `E3`，不是物理机器人闭环 `E4`。以下事实
 必须保持分离：
@@ -27,9 +28,9 @@ profile 绑定的 `local-target` Linux/ROS provider、handoff materializer 和�
 
 ### 2.1 分支顺序
 
-1. 将 `codex/registry-redesign-r5` 与最新默认分支合并并通过本节全部门禁；
+1. 以批准的 `origin/main` 提交作为基线并通过本节全部门禁；
 2. 以合入后的默认分支创建新的 `codex/<slice>` 集成分支；
-3. 对 `codex/p1-real-three-stage` 只做按功能切片的语义移植，不做整分支盲合并；
+3. 对尚未迁移的功能分支只做按功能切片的语义移植，不做整分支盲合并；
 4. 每个切片独立提交，必须同时更新状态台账、实现地图、Schema、测试和本 RUNBOOK 的
    完成标记；
 5. 任何切片门禁失败时停止后续移植，保留上一提交作为可回退点。
@@ -75,11 +76,11 @@ uv run pytest -q
 
 | ID | 优先级 | 开发项 | 完成定义 | 真机前门禁 |
 |---|---|---|---|---|
-| DEV-01 | P0 | 三阶段实现收敛 | 对并行分支的 Episode capture、Verify target provider/materializer、provenance、evidence package 和 run recovery 做字段级对照；选定一个 canonical producer/consumer，删除重复实现前提供迁移测试 | 同一输入只生成一种 Schema/version，tracked/export 一致，旧 handoff 要么兼容要么明确拒绝 |
+| DEV-01 | P0 | 三阶段实现收敛 | 已完成首轮字段归属、canonical producer/consumer 和兼容 adapter；后续只处理新字段或迁移回归 | 同一输入只生成一种 Schema/version，tracked/export 一致，旧 handoff 要么兼容要么明确拒绝 |
 | DEV-02 | P0 | Agent handoff 可信重试 | 为模型输出的 `files[].sha256` 过期/不匹配提供受信的重新冻结、同 workspace 有界重试或可恢复失败协议；不得放宽 digest 校验 | 注入 stale digest 必须 fail-closed；重试后仍由 Rolo 重新计算并绑定全部文件摘要 |
 | DEV-03 | P0 | 目标身份与部署供应链 | 将 profile、machine-id、workspace inode/ctime、ROS domain/RMW 与 approved deployment、SSH host-key/签名和采集 nonce 统一绑定 | 任一身份、签名、host-key、workspace 或 revision 漂移都在执行前拒绝 |
 | DEV-04 | P1 | 物理 Episode capture | 把固定六阶段 Episode 接到真实机器人只读采集，冻结 baseline/observe/hypothesis/change/smoke/decision 与 provenance | 每窗口唯一 immutable Episode；缺阶段、乱序、hash 漂移或假数据不得 `COMPLETE` |
-| DEV-05 | P1 | 真实 Verify provider/oracle | 整合 bounded case provider、materializer、readiness/health、replay capture 和人工批准计划 | case 与 evidence 一一对应；safe-stop/rollback 明确；未知或变异 operation 执行前拒绝 |
+| DEV-05 | P1 | 真实 Verify provider/oracle | bounded case provider、materializer、readiness/health、replay capture 已完成软件闭环；继续做 pinned SSH/物理目标验证和 oracle 评审 | case 与 evidence 一一对应；safe-stop/rollback 明确；未知或变异 operation 执行前拒绝 |
 | DEV-06 | P1 | Native canary 选择与观察 | 增加并验证精确 robot/run/family allowlist、review packet 和可解释的 eligibility 分类 | 至少 10 个成功 canary 窗口，零高严重度 parity、零 silent drop，报告达到 `READY_FOR_REVIEW` |
 | DEV-07 | P1 | 取消、租约和目标中断恢复 | 将 cancel、heartbeat、stale recovery、幂等和并发锁覆盖真实 provider 进程与重启 | kill/reboot/超时注入后只能 `CANCELLED`/`FAILED`，不能提升旧 handoff |
 | DEV-08 | P2 | 跨平台/中间件矩阵 | 覆盖实际目标使用的 OS、ROS 发行版和 RMW；明确网络、DDS 和代理环境限制 | 每个支持组合有固定 profile、重现命令和证据包；未知组合保持 experimental |
@@ -100,7 +101,7 @@ Provider 边界。整合 DEV-01 时至少对照：
 每次只移植一个 producer/consumer 闭环。先写兼容/拒绝测试，再移植实现，最后重新导出
 Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence package。
 
-字段级归属和 P1 Verify provider 的暂缓合入结论记录在
+字段级归属和 P1 Verify provider 的历史迁移结论，以及当前主线的复核说明，记录在
 [R5 canonical ownership 审计](../review/POST_R5_CANONICAL_OWNERSHIP_AUDIT.md)。
 
 ## 4. 开发—验证循环
@@ -135,17 +136,18 @@ HTTP 控制面现通过 `GET /v1/session` 签发短时 HttpOnly `rolo_session` t
 当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
 P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
 
-下一条 adapter 切片已实现于 `src/rolo/stages/verify/legacy_adapter.py`：只有 plan digest、
-canonical target provenance artifact/hash 和显式安全结果均匹配时，才允许把 P1 v1
-payload 写成 main v2 evidence；它尚未接管 SSH provider 的实际执行。
+兼容 adapter 位于 `src/rolo/stages/verify/legacy_adapter.py`：只有 plan digest、canonical
+target provenance artifact/hash 和显式安全结果均匹配时，才允许把 P1 v1 payload 写成 main
+v2 evidence；它保留为单向迁移边界，不取代当前 SSH provider。
 
-SSH provenance collector 已补齐（`src/rolo/stages/verify/ssh_provenance.py`），但尚未接入
-P1 provider；在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复后，才可进入
-provider execution 切片。
+SSH provenance collector 已接入 `ssh_target_provider.py`（`src/rolo/stages/verify/ssh_provenance.py`）；
+在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复，不能把软件 fixture 证据升级
+为物理 E4。
 
 SSH bounded provider execution 已在 `src/rolo/stages/verify/ssh_target_provider.py` 完成
-软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence。下一步仍
-需在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并接入 Verify handoff。
+软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence → handoff
+materializer。下一步是在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并验证 CLI
+入口 `rolo target verify-health` 的目标身份和证据回收。
 
 Verify handoff 接入已完成：`materialize_handoff()` 会重新验证 v2 evidence，并通过
 `commit_verification_handoff` 绑定 Diagnose handoff；没有上游 Diagnose handoff 时必须

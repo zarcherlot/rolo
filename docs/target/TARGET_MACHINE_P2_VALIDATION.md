@@ -1,27 +1,28 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: frozen; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
 
 # 目标机 / WSL P2 验证步骤
 
-本文档用于 `codex/registry-redesign-r5` 的 P0.1 SSH Adapt 产品路径和 P2
-shadow/canary 验证。
+本文档保留 R5 时期的 P0.1 SSH Adapt 产品路径和 P2 shadow/canary 验证记录，
+仅作为历史验证参考。当前主线请优先使用
+[合并后开发与真实目标机运行手册](POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)
+和[真实目标机验证手册](REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)；验证必须固定到批准的
+`origin/main` 提交，不应再切换到历史分支。
 目标机只负责采集真实 Linux、ROS 和产品范围内 HW 证据；代码开发、离线测试和
 artifact 分析在本地完成。
 
 ## 1. 固定代码和 Python 环境
 
 ```bash
-git fetch origin
-git switch codex/registry-redesign-r5
-git pull --ff-only origin codex/registry-redesign-r5
+git fetch origin main
+git switch --detach <approved-main-revision>
 git rev-parse HEAD
 uv sync --frozen
 ```
 
 `HEAD` 必须记录在验证报告中，并与本次验证使用的远端提交一致。
 
-本轮至少应为 `1a36258` 或其后续提交；`c93a35c` 开始支持产品 CLI 复用 approved
-remote evidence deployment 的 SSH Adapt 路径，`1a36258` 进一步把资源/ROS/Agent
-运行 profile 写入 shadow artifact。
+历史基线为 `1a36258`；当前验证应在报告中记录批准的 40 字符主线提交 SHA，
+并以该提交对应的实现和 schema 为准。
 
 ## 2. P0.1 SSH Adapt 产品入口
 

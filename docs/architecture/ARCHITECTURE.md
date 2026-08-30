@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 # rolo three-stage architecture
 
@@ -88,6 +88,10 @@ stage packages.
    Eligibility is per operation. A nongateable contract, missing declared route, or unobserved target
    route leaves only that operation `UNAVAILABLE` with a deferral reason; it does not block unrelated
    eligible operations.
+   For CLI routes, discovery may add bounded `--help` evidence as a non-authoritative candidate;
+   promotion never invokes the operation. If more than one gated route can satisfy an operation,
+   runtime requires an explicit selector and records the selected route in the invocation evidence;
+   it never guesses from route order or display names.
 8. A passed gate publishes an immutable release under external `ROLO_OUTPUT_DIR`, binds every adapter
    file,
    Active Tool Catalog, State Graph, conformance and gate report by hash, writes the audit handoff, and only
