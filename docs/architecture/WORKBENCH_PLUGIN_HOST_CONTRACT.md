@@ -1,3 +1,5 @@
+<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
+
 # E23 robot-hosted Workbench plugin contract
 
 Status: E23A-E23C approved; E23D validation candidate
