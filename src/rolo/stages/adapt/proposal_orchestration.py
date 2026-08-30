@@ -488,7 +488,11 @@ def _mapping_output_schema(
         )
         _set_array_enum(
             properties["counter_evidence_refs"],
-            [aliases[item] for item in binding.evidence_refs],
+            # Supporting and counter evidence must be disjoint. The mapping
+            # schema does not have a separately indexed counter-fact slice;
+            # providers must therefore emit an empty counter-evidence array
+            # instead of repeating supporting evidence.
+            [],
         )
         _set_array_enum(properties["route_resource_ids"], binding.route_resource_ids)
         _set_array_enum(properties["executable_ids"], binding.executable_ids)
@@ -959,13 +963,28 @@ class DiscoverySkillRunner:
         started = time.monotonic()
         bundle: OperationProposalBundle | None = None
         try:
-            bundle = self.provider.propose(request)
-            elapsed_ms = max(0, int((time.monotonic() - started) * 1_000))
-            artifact = self.validator.validate(
-                request,
-                bundle,
-                provider_elapsed_ms=elapsed_ms,
-            )
+            schema_error: ValidationError | None = None
+            artifact: ProposalValidationArtifact | None = None
+            # Provider output is untrusted and schema formatting failures can
+            # be transient. Allow one bounded retry, then retain the explicit
+            # schema-invalid fallback reason if the second attempt fails.
+            for attempt in range(2):
+                try:
+                    bundle = self.provider.propose(request)
+                    elapsed_ms = max(0, int((time.monotonic() - started) * 1_000))
+                    artifact = self.validator.validate(
+                        request,
+                        bundle,
+                        provider_elapsed_ms=elapsed_ms,
+                    )
+                    break
+                except ValidationError as exc:
+                    schema_error = exc
+                    if attempt == 1:
+                        raise
+            if artifact is None and schema_error is not None:
+                raise schema_error
+            assert artifact is not None
         except TimeoutError as exc:
             return bundle, self._fallback(
                 request,

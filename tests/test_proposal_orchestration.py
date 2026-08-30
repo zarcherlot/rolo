@@ -665,3 +665,28 @@ def test_schema_failure_is_classified_without_exposing_provider_authority() -> N
     assert artifact.metrics.fallback_reason == ProposalFallbackReason.SCHEMA_INVALID
     assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
     assert artifact.influences_release is False
+
+
+def test_schema_failure_retries_once_before_accepting_valid_provider_output() -> None:
+    report, registry, request = _request()
+    calls = 0
+
+    def flaky(value: DiscoverySkillRequest) -> OperationProposalBundle:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            try:
+                return OperationProposalBundle.model_validate({})
+            except ValidationError:
+                raise
+        return _bundle(value, [_proposal()])
+
+    bundle, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(flaky),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    assert calls == 2
+    assert bundle is not None
+    assert artifact.source == ProposalArtifactSource.AGENT
+    assert artifact.metrics.fallback_reason is None
