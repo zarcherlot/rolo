@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import time
@@ -57,6 +58,130 @@ def _relative_file(root: Path, relative: str) -> Path:
     if not resolved.is_file():
         raise FileNotFoundError(resolved)
     return resolved
+
+
+def operation_route_binding_document(
+    graph: StateGraphBaseline,
+    operation: str,
+    *,
+    semantic_bindings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the immutable runtime route-binding ABI from the gated graph."""
+
+    operation_node = f"operation:{operation}"
+    nodes = {str(node.get("id", "")): node for node in graph.nodes}
+    if nodes.get(operation_node, {}).get("operation") != operation:
+        raise ValueError(f"State Graph lacks operation route binding: {operation}")
+    route_ids = {
+        str(edge.get("target", ""))
+        for edge in graph.edges
+        if edge.get("source") == operation_node and edge.get("relation") == "routes_to"
+    }
+    bindings: list[dict[str, Any]] = []
+    for route_id in sorted(route_ids):
+        route = nodes.get(route_id, {})
+        if route.get("kind") != "route":
+            raise ValueError(f"State Graph operation has invalid route node: {operation}")
+        bindings.append(
+            {
+                "operation": operation,
+                "route_id": route_id,
+                "resource_id": route.get("resource_id"),
+                "kind": route.get("route_kind"),
+                "endpoint": route.get("endpoint"),
+                "interface_type": route.get("interface_type"),
+                "interface_schema_sha256": route.get("interface_schema_sha256"),
+                "provider_id": route.get("provider_id"),
+                "runtime_revision": route.get("runtime_revision"),
+                "evidence_origin": route.get("evidence_origin"),
+                "semantic_bindings": list(route.get("semantic_bindings", [])),
+            }
+        )
+    if not bindings:
+        raise ValueError(f"State Graph operation has no route bindings: {operation}")
+    graph_semantic_bindings = sorted(
+        {
+            str(value)
+            for binding in bindings
+            for value in binding["semantic_bindings"]
+            if value
+        }
+    )
+    supplied_semantic_bindings = sorted(set(semantic_bindings or graph_semantic_bindings))
+    if supplied_semantic_bindings != graph_semantic_bindings:
+        raise ValueError(f"State Graph semantic binding mismatch: {operation}")
+    return {
+        "schema_version": "rolo-target-route-bindings/v1",
+        "robot_id": graph.robot_id,
+        "operation": operation,
+        "semantic_bindings": supplied_semantic_bindings,
+        "bindings": bindings,
+    }
+
+
+_ROUTE_SELECTOR_KEYS = ("resource_id", "route_id", "endpoint", "topic", "id", "camera")
+_ROUTE_IDENTITY_FIELDS = ("route_id", "resource_id", "endpoint")
+
+
+def _selector_tokens(value: object) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def resolve_route_binding(
+    document: Mapping[str, Any], payload: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Resolve a request to one gated route, failing closed on ambiguity."""
+
+    bindings = document.get("bindings")
+    if not isinstance(bindings, list) or len(bindings) <= 1:
+        if isinstance(bindings, list) and len(bindings) == 1 and isinstance(bindings[0], Mapping):
+            return dict(bindings[0])
+        return None
+    candidates = [dict(binding) for binding in bindings if isinstance(binding, Mapping)]
+    selectors = [
+        (key, str(payload[key]).strip())
+        for key in _ROUTE_SELECTOR_KEYS
+        if isinstance(payload.get(key), str) and str(payload[key]).strip()
+    ]
+    if not selectors:
+        raise ValueError(
+            "operation has multiple target routes; an explicit route selector is required"
+        )
+    for _key, value in selectors:
+        exact = [
+            binding
+            for binding in candidates
+            if any(value == str(binding.get(field, "")).strip() for field in _ROUTE_IDENTITY_FIELDS)
+        ]
+        if len(exact) == 1:
+            return exact[0]
+        if len(exact) > 1:
+            raise ValueError("operation route selector is ambiguous")
+    for _key, value in selectors:
+        value_tokens = _selector_tokens(value)
+        if not value_tokens:
+            continue
+        token_matches = [
+            binding
+            for binding in candidates
+            if value_tokens
+            <= set().union(
+                *(_selector_tokens(binding.get(field, "")) for field in _ROUTE_IDENTITY_FIELDS)
+            )
+        ]
+        if len(token_matches) == 1:
+            return token_matches[0]
+        if len(token_matches) > 1:
+            raise ValueError("operation route selector is ambiguous")
+    raise ValueError("operation route selector does not match a gated route")
+
+
+def require_route_selector(
+    document: Mapping[str, Any], payload: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Require an explicit selector whenever an operation has multiple routes."""
+
+    return resolve_route_binding(document, payload)
 
 
 def _load_release_manifest(path: Path) -> AdapterReleaseManifest:
@@ -347,6 +472,13 @@ def invoke_adapter(
         payload=payload,
         artifact_root=artifact_root,
     )
+    state_graph = StateGraphBaseline.model_validate_json(
+        _relative_file(release_root, release.state_graph).read_text(encoding="utf-8")
+    )
+    route_document = operation_route_binding_document(state_graph, operation)
+    selected_route = require_route_selector(route_document, payload)
+    if selected_route is not None:
+        route_document["selected_route_id"] = selected_route.get("route_id")
     effective_audit_path = audit_path or artifact_root / "runtime/invocation-audit.jsonl"
     authorize_invocation(
         descriptor,
@@ -371,13 +503,19 @@ def invoke_adapter(
     )
     started = time.monotonic()
     try:
+        runtime_environment = release.runtime_environment.as_environment()
+        runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
+            route_document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         completed = (runner or BoundedAdapterRunner()).run(
             adapter_command(package_path)
             + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
             stdin=json.dumps(payload, ensure_ascii=False),
             cwd=release_root,
             timeout_s=min(timeout_s, descriptor.max_duration_s),
-            runtime_environment=release.runtime_environment.as_environment(),
+            runtime_environment=runtime_environment,
         )
     except Exception:
         write_adapter_execution_audit(

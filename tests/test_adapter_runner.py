@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from rolo.adapter_runner import BoundedAdapterRunner
+from rolo.adapter_runner import BoundedAdapterRunner, sanitized_adapter_environment
 from rolo.runtime_context import AdapterRuntimeContext, admitted_runtime_environment
 
 
@@ -152,6 +152,25 @@ def test_runner_passes_only_admitted_robot_runtime_context(tmp_path: Path) -> No
         "AMENT_PREFIX_PATH": str(overlay.resolve()),
         "OPENAI_API_KEY": None,
     }
+
+
+def test_runner_preserves_bounded_internal_route_binding_document(tmp_path: Path) -> None:
+    document = '{"schema_version":"rolo-target-route-bindings/v1"}'
+    environment = sanitized_adapter_environment(
+        tmp_path / "private-home",
+        {"ROLO_TARGET_ROUTE_BINDINGS_JSON": document, "OPENAI_API_KEY": "secret"},
+    )
+
+    assert environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] == document
+    assert "OPENAI_API_KEY" not in environment
+
+
+def test_runner_rejects_oversized_internal_route_binding_document(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="route bindings"):
+        sanitized_adapter_environment(
+            tmp_path / "private-home",
+            {"ROLO_TARGET_ROUTE_BINDINGS_JSON": "x" * 200_001},
+        )
 
 
 def test_runtime_context_drops_missing_and_relative_overlay_paths(tmp_path: Path) -> None:
