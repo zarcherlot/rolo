@@ -475,10 +475,19 @@ def invoke_adapter(
     state_graph = StateGraphBaseline.model_validate_json(
         _relative_file(release_root, release.state_graph).read_text(encoding="utf-8")
     )
-    route_document = operation_route_binding_document(state_graph, operation)
-    selected_route = require_route_selector(route_document, payload)
-    if selected_route is not None:
-        route_document["selected_route_id"] = selected_route.get("route_id")
+    # Releases produced before the Rolo-owned route graph was populated may
+    # still carry a validated, empty v1 graph. Preserve their existing
+    # single-route invocation ABI; new graphs get strict route selection.
+    route_document: dict[str, Any] | None = None
+    if any(
+        node.get("id") == f"operation:{operation}"
+        for node in state_graph.nodes
+        if isinstance(node, Mapping)
+    ):
+        route_document = operation_route_binding_document(state_graph, operation)
+        selected_route = require_route_selector(route_document, payload)
+        if selected_route is not None:
+            route_document["selected_route_id"] = selected_route.get("route_id")
     effective_audit_path = audit_path or artifact_root / "runtime/invocation-audit.jsonl"
     authorize_invocation(
         descriptor,
@@ -504,11 +513,12 @@ def invoke_adapter(
     started = time.monotonic()
     try:
         runtime_environment = release.runtime_environment.as_environment()
-        runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
-            route_document,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        if route_document is not None:
+            runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(
+                route_document,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         completed = (runner or BoundedAdapterRunner()).run(
             adapter_command(package_path)
             + ["invoke", "--operation", operation, "--entrypoint", entry.entrypoint],
