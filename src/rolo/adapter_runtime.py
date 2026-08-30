@@ -629,6 +629,54 @@ def adapter_command(package_path: Path) -> list[str]:
     return [str(package_path)]
 
 
+def _structured_adapter_error(stdout: str, stderr: str) -> str:
+    """Return a bounded diagnostic, preferring a structured adapter error."""
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        payload = None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        parts = [
+            str(value).strip()
+            for value in (error.get("code"), error.get("message"))
+            if value is not None and str(value).strip()
+        ]
+        if parts:
+            return ": ".join(parts)[:1000]
+    diagnostic = stderr.strip()
+    return diagnostic[:1000] if diagnostic else "target CLI returned no diagnostic"
+
+
+def _probe_cli_help(
+    package_path: Path,
+    endpoints: list[str],
+    *,
+    timeout_s: float,
+    runner: AdapterRunner,
+    runtime_environment: Mapping[str, str] | None,
+) -> None:
+    """Run each gated CLI endpoint's bounded, read-only help command."""
+    for endpoint in endpoints:
+        completed = runner.run(
+            [endpoint, "--help"],
+            cwd=package_path.parent,
+            timeout_s=timeout_s,
+            max_stdout_bytes=200_000,
+            max_stderr_bytes=200_000,
+            runtime_environment=runtime_environment,
+        )
+        if completed.timed_out:
+            raise ValueError(f"target CLI help probe timed out: {endpoint}")
+        if completed.output_limited:
+            raise ValueError(f"target CLI help probe exceeded its output limit: {endpoint}")
+        if completed.returncode != 0:
+            raise ValueError(
+                f"target CLI help probe failed with code {completed.returncode}: "
+                f"{endpoint}: {_structured_adapter_error(completed.stdout, completed.stderr)}"
+            )
+
+
 def probe_adapter_package(
     package_path: Path,
     manifest: AdapterBundleManifest,
@@ -636,14 +684,16 @@ def probe_adapter_package(
     timeout_s: float = 10.0,
     runner: AdapterRunner | None = None,
     runtime_environment: Mapping[str, str] | None = None,
+    state_graph: StateGraphBaseline | None = None,
 ) -> None:
-    """Require the generated package to self-describe declared entrypoints.
+    """Require package metadata and gated CLI routes to pass bounded probes.
 
-    Promotion intentionally never executes ``invoke``.  Runtime ABI behavior is
-    covered by deterministic conformance fixtures; only an authorized runtime
-    request may cross the invocation boundary.
+    Promotion intentionally never executes adapter ``invoke``.  CLI ``--help``
+    is read-only evidence for target route availability and is bounded by the
+    same runner limits used at runtime.
     """
-    completed = (runner or BoundedAdapterRunner()).run(
+    effective_runner = runner or BoundedAdapterRunner()
+    completed = effective_runner.run(
         adapter_command(package_path) + ["describe"],
         cwd=package_path.parent,
         timeout_s=timeout_s,
@@ -667,6 +717,25 @@ def probe_adapter_package(
     expected = {item.operation: item.entrypoint for item in manifest.operations}
     if not isinstance(described, dict) or described.get("operations") != expected:
         raise ValueError("adapter package describe does not match its bundle manifest")
+    if state_graph is None:
+        return
+    endpoints = sorted(
+        {
+            str(binding.get("endpoint", "")).strip()
+            for entry in manifest.operations
+            for binding in operation_route_binding_document(state_graph, entry.operation).get(
+                "bindings", []
+            )
+            if binding.get("kind") == "cli" and str(binding.get("endpoint", "")).strip()
+        }
+    )
+    _probe_cli_help(
+        package_path,
+        endpoints,
+        timeout_s=timeout_s,
+        runner=effective_runner,
+        runtime_environment=runtime_environment,
+    )
 
 
 def publish_release(
