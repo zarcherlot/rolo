@@ -1147,8 +1147,13 @@ class HeuristicDiscoveryOrchestrator:
                 if validation.metrics.fallback_reason is not None
                 else None
             )
+            if validation.metrics.fallback_reason is not None:
+                # A planning response can be valid even when the mapping
+                # response falls back. Keep the summary honest about the
+                # completed Agent stages.
+                agent_completed = False
             if bundle is not None:
-                agent_completed = True
+                agent_completed = agent_completed and validation.metrics.fallback_reason is None
                 for unknown in bundle.unknowns:
                     gaps.append(
                         HeuristicEvidenceGap(
