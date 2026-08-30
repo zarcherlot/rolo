@@ -1941,6 +1941,12 @@ def _build_operation_candidates(
                     "and semantic validation",
                     "Requires adapter generation and independent conformance",
                 ],
+                semantic_review_required=any(
+                    str(bindings[semantic_uri].get("semantic_rule_id", "")).startswith(
+                        "heuristic:"
+                    )
+                    for semantic_uri in semantic_uris
+                ),
             )
         )
     validate_candidate_operations(candidates)

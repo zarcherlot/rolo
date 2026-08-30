@@ -525,8 +525,25 @@ def adapter_operation_eligibility(
     deferred: dict[str, str] = {}
     for candidate in report.operation_candidates:
         definition = definitions[candidate.operation]
+        semantic_review_required = candidate.requires_semantic_review
         if candidate.origin == "HEURISTIC_AGENT":
             deferred[candidate.operation] = "HEURISTIC_MAPPING_REQUIRES_VERIFICATION"
+        elif semantic_review_required and candidate.semantic_review_disposition == "NOT_REVIEWED":
+            deferred[candidate.operation] = "AGENT_SEMANTIC_REVIEW_REQUIRED"
+        elif semantic_review_required and candidate.semantic_review_disposition == "DEFER":
+            deferred[candidate.operation] = "AGENT_SEMANTIC_MAPPING_DEFERRED"
+        elif semantic_review_required and candidate.semantic_review_disposition == "REJECT":
+            deferred[candidate.operation] = "AGENT_SEMANTIC_MAPPING_REJECTED"
+        elif semantic_review_required and (
+            set(candidate.route_review_dispositions)
+            != {route.resource_id for route in candidate.route_evidence}
+            or set(candidate.route_review_dispositions.values()) != {"ACCEPT"}
+        ):
+            deferred[candidate.operation] = "AGENT_ROUTE_REVIEW_INCOMPLETE"
+        elif semantic_review_required and (
+            definition.access != "read" or definition.risk in {"R2", "R3"}
+        ):
+            deferred[candidate.operation] = "AGENT_ACCEPT_REQUIRES_HIGH_RISK_REVIEW"
         elif definition.contract_lifecycle not in {
             ContractLifecycle.GATEABLE,
             ContractLifecycle.RELEASED,
