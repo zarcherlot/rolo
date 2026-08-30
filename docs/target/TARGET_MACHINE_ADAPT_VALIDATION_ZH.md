@@ -1,3 +1,5 @@
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md -->
+
 # 目标机 Adapt 真机验证手册
 
 本文用于在真实机器人目标机（或以目标机应用用户 SSH 登录）验证已合入 `main` 的 Adapt
