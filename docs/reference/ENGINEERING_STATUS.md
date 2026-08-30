@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30; last_synced_commit: 2b82ac10669e54cc6be316b13809b685121b639e -->
+<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30; last_synced_commit: 0377b9b28b461c3fe992f91230d6905ed6bd8628 -->
 
 # 工程状态与可信度台账
 
@@ -31,7 +31,7 @@ acceptance 或安全 authority，也不替代架构、操作手册、Contract、
 
 ## 2. 当前功能台账
 
-本次刷新基于远端 `main@2b82ac1`。最新主线新增了 Registry-aware 语义映射、结构化 route
+本次刷新基于远端 `main@0377b9b`。最新主线新增了 Registry-aware 语义映射、结构化 route
 evidence、严格多路由 selector、bounded CLI `--help` probe、目标运行环境依赖解析，以及
 可由 `rolo target verify-health` 调用的 SSH read-only health provider。代码路径和测试路径
 使用反引号标记，由 `scripts/check_docs.py` 检查必须存在。新增公共
