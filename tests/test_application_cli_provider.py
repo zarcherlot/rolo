@@ -354,6 +354,30 @@ def test_cli_operation_inference_does_not_treat_package_info_as_robot_health() -
     assert matches == []
 
 
+def test_cli_operation_inference_blocks_read_mapping_from_side_effecting_entrypoints() -> None:
+    assert infer_application_cli_operations(
+        "camera-record",
+        help_text="Record camera frames to a dataset.",
+    ) == []
+
+
+def test_cli_operation_inference_requires_explicit_emergency_stop_intent() -> None:
+    assert all(
+        item.operation != "app.safety.emergency_stop"
+        for item in infer_application_cli_operations("robot-stop")
+    )
+    matches = infer_application_cli_operations("emergency-stop")
+    assert [item.operation for item in matches] == ["app.safety.emergency_stop"]
+
+
+def test_observed_cli_route_requires_nonempty_help_contract() -> None:
+    empty_help = _help_record("/opt/acme/bin/acme-find-cameras").model_copy(
+        update={"usage": [], "parameters": [], "subcommands": []}
+    )
+
+    assert probe_routes(_bound_linux(empty_help)) == []
+
+
 def test_static_application_route_is_available_to_agent_but_not_runtime_gate(
     tmp_path: Path,
 ) -> None:
