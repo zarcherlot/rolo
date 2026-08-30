@@ -38,3 +38,7 @@ agent_native:
   max_calls: 64
   max_elapsed_s: 600
   max_result_bytes: 8000000
+
+workbench:
+  # Extracted rolo-plugin/v2 package root. null keeps the control plane API-only.
+  plugin_dir: null

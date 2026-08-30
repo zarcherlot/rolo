@@ -98,6 +98,9 @@ _YAML_SECTIONS: dict[str, dict[str, str]] = {
         "max_elapsed_s": "adapt_native_tool_max_elapsed_s",
         "max_result_bytes": "adapt_native_tool_max_result_bytes",
     },
+    "workbench": {
+        "plugin_dir": "rolo_workbench_plugin_dir",
+    },
 }
 
 
@@ -196,6 +199,7 @@ class Settings(BaseSettings):
     rolo_api_token: str | None = None
     rolo_api_token_scopes: str = ""
     rolo_api_max_body_bytes: int = Field(default=16 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
+    rolo_workbench_plugin_dir: Path | None = None
     coding_agent_provider: str = "codex"
     coding_agent_executor: str = "codex"
     coding_agent_base_url: str | None = None
@@ -310,6 +314,9 @@ def settings_template() -> dict[str, Any]:
             "max_calls": defaults.adapt_native_tool_max_calls,
             "max_elapsed_s": defaults.adapt_native_tool_max_elapsed_s,
             "max_result_bytes": defaults.adapt_native_tool_max_result_bytes,
+        },
+        "workbench": {
+            "plugin_dir": None,
         },
     }
 

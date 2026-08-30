@@ -21,6 +21,7 @@ def test_config_init_writes_editable_v1_without_overwrite(tmp_path: Path) -> Non
     payload = yaml.safe_load(destination.read_text(encoding="utf-8"))
     assert payload["schema_version"] == "rolo-config/v1"
     assert payload["ros"]["auto_source"] is True
+    assert payload["workbench"]["plugin_dir"] is None
 
 
 def test_config_validate_prepares_external_directories(
