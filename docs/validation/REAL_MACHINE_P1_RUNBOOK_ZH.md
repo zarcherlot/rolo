@@ -2,7 +2,7 @@
 
 # P1 真机只读验证 Runbook
 
-本 Runbook 用于验证已推送的 `codex/post-r5-integration` 集成线。首轮只允许 Linux/ROS
+本 Runbook 用于验证已合入并审核的 `main` 或当前切片 PR revision。首轮只允许 Linux/ROS
 观测和 companion health；不允许导航、校准、reset、actuator、power、firmware 或任何
 写操作。`adapt-full-hardening` 不属于本轮范围。
 
@@ -21,7 +21,7 @@ export DEBUG_DIR="$VALIDATION_ROOT/debug"
 mkdir -p "$ROLO_ARTIFACT_DIR" "$ROLO_OUTPUT_DIR" "$DEBUG_DIR"
 
 git fetch origin --prune
-test "$(git rev-parse origin/codex/post-r5-integration)" = "$EXPECTED_REVISION"
+test "$(git rev-parse origin/main)" = "$EXPECTED_REVISION"
 git switch --detach "$EXPECTED_REVISION"
 test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
 test -z "$(git status --short)"
