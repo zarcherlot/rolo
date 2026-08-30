@@ -334,6 +334,31 @@ def test_shadow_orchestrator_persists_agent_output_and_missing_evidence(
     assert (summary_path.parent / "operation-proposal-validation.json").is_file()
 
 
+def test_mapping_fallback_does_not_report_agent_completed(tmp_path: Path) -> None:
+    class InvalidMappingProvider(FixtureMappingProvider):
+        def __init__(self) -> None:
+            super().__init__(lambda request: _bundle(request).model_copy(
+                update={"registry_sha256": "0" * 64}
+            ))
+
+    orchestrator = HeuristicDiscoveryOrchestrator(
+        ArtifactStore(tmp_path),
+        mode=HeuristicAdaptMode.SHADOW,
+        planning_provider=FixturePlanningProvider(),
+        mapping_provider=InvalidMappingProvider(),
+        max_probe_rounds=0,
+    )
+
+    summary, _ = orchestrator.run(
+        _report(),
+        _active(),
+        relative_root="discovery/wheeltec-static/runs/disc-invalid-mapping",
+    )
+
+    assert summary.status == HeuristicDiscoveryStatus.FALLBACK
+    assert summary.mapping_fallback_reason == "BUNDLE_INVALID"
+
+
 def test_heuristic_candidate_can_never_be_adapter_eligible_without_verification() -> None:
     report = _report()
     heuristic = report.operation_candidates[0].model_copy(update={"origin": "HEURISTIC_AGENT"})
