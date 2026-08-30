@@ -677,6 +677,123 @@ def _probe_cli_help(
             )
 
 
+def _probe_cli_route_visibility(
+    package_path: Path,
+    manifest: AdapterBundleManifest,
+    state_graph: StateGraphBaseline,
+    *,
+    timeout_s: float,
+    runner: AdapterRunner,
+    runtime_environment: Mapping[str, str] | None,
+) -> None:
+    """Verify gated CLI endpoints and their shebang interpreters resolve in the sandbox."""
+    endpoints = sorted(
+        {
+            str(binding.get("endpoint", "")).strip()
+            for entry in manifest.operations
+            for binding in operation_route_binding_document(state_graph, entry.operation).get(
+                "bindings", []
+            )
+            if binding.get("kind") == "cli" and str(binding.get("endpoint", "")).strip()
+        }
+    )
+    if not endpoints:
+        return
+    script = """
+import json
+import os
+import shlex
+import shutil
+import sys
+
+
+def inspect(item):
+    path = shutil.which(item)
+    result = {"path": path, "interpreter": None, "interpreter_visible": None}
+    if path is None:
+        return result
+    try:
+        with open(path, "rb") as stream:
+            first_line = stream.readline(4096)
+    except OSError:
+        return result
+    if not first_line.startswith(b"#!"):
+        return result
+    try:
+        command = shlex.split(first_line[2:].decode("utf-8", errors="strict").strip())
+    except (UnicodeDecodeError, ValueError):
+        result["interpreter"] = "INVALID_SHEBANG"
+        result["interpreter_visible"] = False
+        return result
+    if not command:
+        result["interpreter"] = "INVALID_SHEBANG"
+        result["interpreter_visible"] = False
+        return result
+    interpreter = command[0]
+    visible = (
+        os.path.isfile(interpreter) and os.access(interpreter, os.X_OK)
+        if os.path.isabs(interpreter)
+        else shutil.which(interpreter) is not None
+    )
+    if os.path.basename(interpreter) == "env":
+        program = next((value for value in command[1:] if not value.startswith("-")), None)
+        if program is not None:
+            interpreter = f"{interpreter} -> {program}"
+            visible = visible and shutil.which(program) is not None
+    result["interpreter"] = interpreter
+    result["interpreter_visible"] = visible
+    return result
+
+
+items = json.load(sys.stdin)
+print(json.dumps({item: inspect(item) for item in items}, sort_keys=True))
+"""
+    completed = runner.run(
+        [sys.executable, "-c", script],
+        stdin=json.dumps(endpoints),
+        cwd=package_path.parent,
+        timeout_s=timeout_s,
+        max_stdout_bytes=200_000,
+        max_stderr_bytes=200_000,
+        runtime_environment=runtime_environment,
+    )
+    if completed.timed_out:
+        raise ValueError("target CLI sandbox visibility probe timed out")
+    if completed.output_limited:
+        raise ValueError("target CLI sandbox visibility probe exceeded its output limit")
+    if completed.returncode != 0:
+        raise ValueError(
+            "target CLI sandbox visibility probe failed with code "
+            f"{completed.returncode}: {completed.stderr.strip()[:1000]}"
+        )
+    try:
+        resolved = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("target CLI sandbox visibility probe returned invalid JSON") from exc
+    missing = [
+        item
+        for item in endpoints
+        if not isinstance(resolved, dict)
+        or not isinstance(resolved.get(item), dict)
+        or not resolved[item].get("path")
+    ]
+    if missing:
+        raise ValueError(
+            "target CLI is not resolvable inside the adapter sandbox: " + ", ".join(missing)
+        )
+    unavailable_interpreters = [
+        item
+        for item in endpoints
+        if resolved[item].get("interpreter") is not None
+        and resolved[item].get("interpreter_visible") is not True
+    ]
+    if unavailable_interpreters:
+        raise ValueError(
+            "target CLI interpreter is not resolvable inside the adapter sandbox: "
+            + ", ".join(unavailable_interpreters)
+        )
+
+
 def probe_adapter_package(
     package_path: Path,
     manifest: AdapterBundleManifest,
@@ -732,6 +849,14 @@ def probe_adapter_package(
     _probe_cli_help(
         package_path,
         endpoints,
+        timeout_s=timeout_s,
+        runner=effective_runner,
+        runtime_environment=runtime_environment,
+    )
+    _probe_cli_route_visibility(
+        package_path,
+        manifest,
+        state_graph,
         timeout_s=timeout_s,
         runner=effective_runner,
         runtime_environment=runtime_environment,
@@ -801,7 +926,10 @@ def publish_release(
             robot_id=robot_id,
             discovery_id=discovery_id,
             target_fingerprint_sha256=target_fingerprint_sha256,
-            runtime_environment=AdapterRuntimeContext.capture(runtime_environment),
+            runtime_environment=AdapterRuntimeContext.capture(
+                runtime_environment,
+                include_executable_path=True,
+            ),
             bundle_manifest="adapter/adapter-manifest.json",
             bundle_manifest_sha256=sha256_file(staging / "adapter/adapter-manifest.json"),
             adapter_package=entry.path,

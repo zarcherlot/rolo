@@ -179,6 +179,123 @@ def test_package_probe_runs_describe_without_crossing_invoke_boundary(
     assert runner.commands[0][-1] == "describe"
 
 
+def test_package_probe_rejects_cli_with_missing_shebang_interpreter(
+    tmp_path: Path,
+) -> None:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.list"
+    )
+    package = tmp_path / "adapter.py"
+    package.write_text("# protocol probe fixture\n", encoding="utf-8")
+    manifest = AdapterBundleManifest(
+        bundle_id="camera-list",
+        bundle_version="1.0.0",
+        robot_id="demo",
+        discovery_id="disc-1",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        files=[
+            {"path": package.name, "sha256": sha256_file(package), "role": "ENTRYPOINT"}
+        ],
+        operations=[
+            {
+                "operation": definition.operation,
+                "entrypoint": "camera_list",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
+    )
+    graph = StateGraphBaseline(
+        robot_id="demo",
+        discovery_id="disc-1",
+        owner="ROLO_GATE",
+        nodes=[
+            {
+                "id": "operation:app.camera.list",
+                "kind": "operation",
+                "operation": "app.camera.list",
+            },
+            {
+                "id": "route:camera",
+                "kind": "route",
+                "route_kind": "cli",
+                "endpoint": "lerobot-list-cameras-readonly",
+            },
+        ],
+        edges=[
+            {
+                "source": "operation:app.camera.list",
+                "target": "route:camera",
+                "relation": "routes_to",
+            }
+        ],
+    )
+
+    class VisibilityRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            self.commands.append(command)
+            if command[-1] == "describe":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps({"operations": {definition.operation: "camera_list"}}),
+                    stderr="",
+                )
+            if "validate-binding" in command:
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "schema_version": "robot-adapter-binding-validation/v1",
+                            "operation": definition.operation,
+                            "entrypoint": "camera_list",
+                            "status": "VALID",
+                        }
+                    ),
+                    stderr="",
+                )
+            if command == ["lerobot-list-cameras-readonly", "--help"]:
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout="usage: lerobot-list-cameras-readonly",
+                    stderr="",
+                )
+            assert command[1] == "-c"
+            assert json.loads(str(kwargs["stdin"])) == ["lerobot-list-cameras-readonly"]
+            return AdapterProcessResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "lerobot-list-cameras-readonly": {
+                            "path": "/target/bin/lerobot-list-cameras-readonly",
+                            "interpreter": "/target/venv/bin/python",
+                            "interpreter_visible": False,
+                        }
+                    }
+                ),
+                stderr="",
+            )
+
+    runner = VisibilityRunner()
+    with pytest.raises(ValueError, match="interpreter is not resolvable"):
+        probe_adapter_package(
+            package,
+            manifest,
+            runner=runner,
+            runtime_environment={"PATH": "/target/bin"},
+            state_graph=graph,
+        )
+
+    assert any(
+        len(command) >= 2 and command[1] == "-c" for command in runner.commands
+    )
+
+
 def test_package_probe_runs_bounded_help_for_gated_cli_routes(tmp_path: Path) -> None:
     definition = next(
         item
@@ -247,16 +364,30 @@ def test_package_probe_runs_bounded_help_for_gated_cli_routes(tmp_path: Path) ->
                     stdout=json.dumps({"operations": {definition.operation: "camera_list"}}),
                     stderr="",
                 )
+            if len(command) >= 2 and command[1] == "-c":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "camera-list": {
+                                "path": "C:/target/bin/camera-list",
+                                "interpreter": None,
+                                "interpreter_visible": None,
+                            }
+                        }
+                    ),
+                    stderr="",
+                )
             assert command == ["camera-list", "--help"]
             return AdapterProcessResult(returncode=0, stdout="usage: camera-list", stderr="")
 
     runner = HelpRunner()
     probe_adapter_package(package, manifest, runner=runner, state_graph=graph)
 
-    assert runner.commands == [
-        [sys.executable, str(package), "describe"],
-        ["camera-list", "--help"],
-    ]
+    assert runner.commands[0] == [sys.executable, str(package), "describe"]
+    assert runner.commands[1] == ["camera-list", "--help"]
+    assert runner.commands[2][0] == sys.executable
+    assert runner.commands[2][1] == "-c"
 
 
 def test_package_probe_rejects_failed_cli_help_probe(tmp_path: Path) -> None:
@@ -348,6 +479,7 @@ def _publish_demo_release(
     target_report: DiscoveryReport | None = None,
     release_id: str = "release-1",
     activate: bool = True,
+    runtime_environment: dict[str, str] | None = None,
 ) -> Path:
     definition = next(
         item
@@ -495,7 +627,7 @@ def _publish_demo_release(
         target_fingerprint_sha256=target_fingerprint_sha256(
             report, operations=["app.camera.snapshot"]
         ),
-        runtime_environment={},
+        runtime_environment=runtime_environment or {},
         bundle_manifest_path=bundle_path,
         adapter_package_path=package,
         adapter_files=[
@@ -510,6 +642,25 @@ def _publish_demo_release(
     if activate:
         activate_release(output, "demo", release_id, artifact_root=tmp_path)
     return output
+
+
+def test_publish_release_preserves_target_executable_path(tmp_path: Path) -> None:
+    target_bin = tmp_path / "target-bin"
+    target_bin.mkdir()
+    target_src = tmp_path / "target-src"
+    target_src.mkdir()
+
+    output = _publish_demo_release(
+        tmp_path,
+        activate=False,
+        runtime_environment={"PATH": str(target_bin), "PYTHONPATH": str(target_src)},
+    )
+
+    release = json.loads(
+        (output / "robots/demo/releases/release-1/manifest.json").read_text(encoding="utf-8")
+    )
+    assert release["runtime_environment"]["PATH"] == str(target_bin)
+    assert release["runtime_environment"]["PYTHONPATH"] == str(target_src)
 
 
 def _sensitive_access(
