@@ -77,22 +77,60 @@ rolo 使用状态图管理发现、标定、操作、建图、定位、导航、
 
 ## 快速开始
 
-开发和评审首先遵循 [ROLO 最高开发准则](docs/architecture/DEVELOPMENT_PRINCIPLES.md)。新环境的第一条
-验收路径是 [10 分钟安装与 Demo](docs/getting-started/QUICKSTART_10_MIN.md)：它使用离线 mock 夹具验证
-安装、Discovery、Wiki、阶段状态和完整 Adapt 测试链路，不冒充真实机器人验收。
+下面是面向第一次使用者的最短路径。完整的离线验收步骤、环境变量和常见问题见
+[10 分钟安装与 Demo](docs/getting-started/QUICKSTART_10_MIN.md)。
 
-### 安装与配置
+### 1. 安装
+
+需要 Git、Python 3.10–3.13 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-git clone --branch v0.1.0-rc.2 --depth 1 https://github.com/zarcherlot/rolo.git
+git clone https://github.com/zarcherlot/rolo.git
 cd rolo
-uv sync --frozen
-
-uv run rolo adapt /path/to/robot-workspace \
-  --robot your_robot_id \
-  --urdf /path/to/robot.urdf \
-  --confirm  # 可省略 URDF；非交互执行 Agent 时必须显式确认
+uv sync --locked --dev
+uv run robotctl runtime health
 ```
+
+`runtime health` 能正常返回即表示本地环境已就绪；后续命令都使用 `uv run`，不会污染系统
+Python。Windows PowerShell 使用同样的命令。
+
+### 2. 适配一个本地机器人工作区
+
+```bash
+uv run rolo adapt /path/to/robot-workspace \
+  --robot my-robot \
+  --urdf /path/to/robot.urdf
+```
+
+`--urdf` 可以省略。Adapt 会执行有界 Discovery，生成机器人 Wiki、目标证据和候选操作；
+只有通过独立 Gate 的路由才会进入可用 Tool Catalog。它不会因为静态源码、mock 或
+`--help` 输出而宣称真实机器人能力。
+
+只想先查看 Discovery 和 Wiki，可加 `--discover-only`。非 ROS 工程无需安装 ROS；远程目标、
+签名证据和 SSH host-key 置备请跳转到[目标机部署手册](docs/target/TARGET_DEVICE_OPERATION_MANUAL_ZH.md)。
+
+### 3. 查看结果与下一步
+
+```bash
+uv run robotctl adapt status --robot my-robot
+uv run robotctl pipeline-status --robot my-robot
+```
+
+| 目的 | 入口 |
+|---|---|
+| 离线 mock 演示 | [10 分钟安装与 Demo](docs/getting-started/QUICKSTART_10_MIN.md) |
+| 细粒度 Adapt / Discovery | [Adapt 短流程](docs/getting-started/ADAPT_SHORT_JOURNEY.md) |
+| 目标机部署与远程证据 | [目标机部署手册](docs/target/TARGET_DEVICE_OPERATION_MANUAL_ZH.md) |
+| Diagnose / Verify | [三阶段架构](docs/architecture/ARCHITECTURE.md) |
+| 当前实现状态和边界 | [工程状态台账](docs/reference/ENGINEERING_STATUS.md) |
+
+模拟后端和离线 fixture 只用于开发验证，不替代急停、碰撞检测、人工授权或真实机器人安全
+验收。写操作、物理目标和 release authority 始终需要对应的 Gate 和人工批准。
+
+## 进阶使用与运行边界
+
+以下内容面向 Codex/Claude Code 集成、远程自举、API、TUI 和三阶段开发；普通用户不需要
+先阅读这一节。
 
 ### Codex/Claude Code 交互与自举授权
 
