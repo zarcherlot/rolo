@@ -89,6 +89,73 @@
       "title": "AgentBudgetUsage",
       "type": "object"
     },
+    "AgentDisposition": {
+      "description": "Agent judgment over one deterministic semantic binding.\n\nThis is advisory until Rolo validates the referenced frozen evidence and\nany evidence-tool receipts.",
+      "enum": [
+        "ACCEPT",
+        "DEFER",
+        "REJECT"
+      ],
+      "title": "AgentDisposition",
+      "type": "string"
+    },
+    "AgentEvidenceCondition": {
+      "description": "Read-only facts that the mapping evidence tool can reproduce.",
+      "enum": [
+        "BINDING_MATCH",
+        "ROUTE_OBSERVED",
+        "INTERFACE_SCHEMA_KNOWN",
+        "PROVIDER_IDENTIFIED",
+        "RUNTIME_REVISION_KNOWN"
+      ],
+      "title": "AgentEvidenceCondition",
+      "type": "string"
+    },
+    "AgentEvidenceToolReceipt": {
+      "additionalProperties": false,
+      "description": "Agent-returned receipt that Rolo independently recomputes.",
+      "properties": {
+        "receipt_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 160,
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$",
+          "title": "Operation",
+          "type": "string"
+        },
+        "route_resource_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Route Resource Id",
+          "type": "string"
+        },
+        "condition": {
+          "$ref": "#/$defs/AgentEvidenceCondition"
+        },
+        "satisfied": {
+          "title": "Satisfied",
+          "type": "boolean"
+        },
+        "result_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Result Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "operation",
+        "route_resource_id",
+        "condition",
+        "satisfied",
+        "result_sha256"
+      ],
+      "title": "AgentEvidenceToolReceipt",
+      "type": "object"
+    },
     "AgentOperationProposal": {
       "additionalProperties": false,
       "description": "Untrusted mapping proposal that only references collected target evidence.",
@@ -135,11 +202,31 @@
         "confidence": {
           "$ref": "#/$defs/ProposalConfidence"
         },
+        "disposition": {
+          "$ref": "#/$defs/AgentDisposition",
+          "default": "ACCEPT"
+        },
         "rationale": {
           "maxLength": 2000,
           "minLength": 8,
           "title": "Rationale",
           "type": "string"
+        },
+        "route_dispositions": {
+          "items": {
+            "$ref": "#/$defs/AgentRouteDisposition"
+          },
+          "maxItems": 32,
+          "title": "Route Dispositions",
+          "type": "array"
+        },
+        "tool_receipts": {
+          "items": {
+            "$ref": "#/$defs/AgentEvidenceToolReceipt"
+          },
+          "maxItems": 128,
+          "title": "Tool Receipts",
+          "type": "array"
         },
         "counter_evidence_refs": {
           "items": {
@@ -165,6 +252,43 @@
         "rationale"
       ],
       "title": "AgentOperationProposal",
+      "type": "object"
+    },
+    "AgentRouteDisposition": {
+      "additionalProperties": false,
+      "description": "Agent decision for exactly one route in a deterministic binding.",
+      "properties": {
+        "route_resource_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Route Resource Id",
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/$defs/AgentDisposition"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 8,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "tool_receipt_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Tool Receipt Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "route_resource_id",
+        "disposition",
+        "rationale"
+      ],
+      "title": "AgentRouteDisposition",
       "type": "object"
     },
     "AgentStopReason": {
@@ -229,8 +353,11 @@
   "description": "Registry-bound Agent proposals awaiting deterministic Rolo validation.",
   "properties": {
     "schema_version": {
-      "const": "rolo-operation-proposal-bundle/v1",
-      "default": "rolo-operation-proposal-bundle/v1",
+      "default": "rolo-operation-proposal-bundle/v2",
+      "enum": [
+        "rolo-operation-proposal-bundle/v1",
+        "rolo-operation-proposal-bundle/v2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
