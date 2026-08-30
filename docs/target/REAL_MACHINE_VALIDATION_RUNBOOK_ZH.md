@@ -1,13 +1,27 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
 
 # ROLO 真机只读验证 RUNBOOK
 
 本手册用于在真实 Linux/ROS 机器人上验证当前集成线。主路径是 **Rolo 直接运行在目标机**，
-使用 main 的 `local-target` provider；控制器到目标机的 SSH provider 目前仍是库级切片，
-尚未接入 `robotctl` CLI，不应在本手册中假设它已经可执行。
+使用 main 的 `local-target` provider；控制器到目标机的 SSH health provider 已通过
+`rolo target verify-health` 提供有界只读入口，但它只完成 health/evidence 预检，不等同于
+完整 Verify handoff 或物理 acceptance。
 
 首轮验证只允许 Linux、workspace、ROS graph 和 companion health 等只读检查。禁止执行
 publish、导航、校准、reset、actuator、power、firmware 或任何会改变机器人状态的操作。
+
+控制器侧 SSH health 预检可使用：
+
+```bash
+uv run rolo target verify-health "ssh://<user>@<host>:<port>/<workspace>" \
+  --robot "$ROBOT_ID" \
+  --package-id <approved-package-id> \
+  --package-version <approved-package-version> \
+  --known-hosts /path/to/pinned/known_hosts
+```
+
+该命令只执行固定的 platform/workspace/companion 只读 case，并要求已批准的 SSH host key；
+结果仍需经过 v2 evidence、provenance 和 handoff 校验。
 
 ## 0. 填写验证变量
 

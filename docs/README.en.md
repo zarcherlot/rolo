@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-30 -->
 
 <p align="center">
   <img src="../rolo-logo.svg" width="720" alt="rolo Loop Exit — robot only loop once">
@@ -22,6 +22,12 @@ can autonomously explain and correct problems.
 > The current version is an MVP under development. The mock backend is suitable for local
 > validation, but it does not replace physical safety controls, emergency stops, collision
 > detection, or human authorization on a real robot.
+
+For implementation-level status and evidence boundaries, use the
+[implementation map](reference/IMPLEMENTATION_MAP.md) and
+[engineering status ledger](reference/ENGINEERING_STATUS.md). They are refreshed against the
+latest approved `main` revision and distinguish stable, partial, experimental, and historical
+capabilities.
 
 ## rolo features
 

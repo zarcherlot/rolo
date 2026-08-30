@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-29 -->
+<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
 
 # Adapt 路线图
 
@@ -15,6 +15,11 @@
 - P3 的 shadow、Provider Conformance 和稳定观察能力已落地，native tool 默认仍保持关闭；
 - 当前 294 项 Registry、Linux/ROS eligibility、Bundle、Catalog、policy 和 release 行为保持
   v1 兼容；
+- Registry-aware topic/semantic mapping、`robot-route-evidence/v2` 归一化、目标 CLI `--help`
+  bounded probe 和多路由显式 selector 已进入当前实现；静态/启发式映射仍不能独立授予
+  route availability 或 release authority；
+- Discovery 会从目标 runtime environment 解析 ROS/Python 依赖，保留 environment-limited、
+  unknown 和 conflict 状态，不把控制器环境冒充目标事实；
 - 真实目标机 shadow、canary 窗口和人工评审完成前，不改变 release authority。
 
 ## 当前工作流
@@ -32,6 +37,8 @@
 - v1/v2 Registry 的身份、digest、兼容窗口和回退路径可重复验证；
 - Provider-neutral Conformance Kit 能覆盖新增 Provider，不扩大 Agent 权限；
 - canary 期间所有失败都能保持 fail-closed，并保留可审计 artifact。
+- CLI route 的 help probe、运行时 route selector 和 semantic mapping fallback 在不同目标
+  环境下保持 exact-match、可解释且无歧义；selector 缺失或 route identity 漂移必须拒绝。
 
 后续开发的切片顺序、并行分支整合边界、WSL rehearsal、物理真机 E4、canary 决策和回退
 统一按 [后续开发整合与真机验证 RUNBOOK](../target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)

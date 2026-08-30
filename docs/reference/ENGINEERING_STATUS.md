@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-29; last_synced_commit: a81920bc1e6621d2406452803bf51636c9e4be0c -->
+<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30; last_synced_commit: 0377b9b28b461c3fe992f91230d6905ed6bd8628 -->
 
 # 工程状态与可信度台账
 
@@ -31,14 +31,18 @@ acceptance 或安全 authority，也不替代架构、操作手册、Contract、
 
 ## 2. 当前功能台账
 
-代码路径和测试路径使用反引号标记，由 `scripts/check_docs.py` 检查必须存在。新增公共
+本次刷新基于远端 `main@0377b9b`。最新主线新增了 Registry-aware 语义映射、结构化 route
+evidence、严格多路由 selector、bounded CLI `--help` probe、目标运行环境依赖解析，以及
+可由 `rolo target verify-health` 调用的 SSH read-only health provider。代码路径和测试路径
+使用反引号标记，由 `scripts/check_docs.py` 检查必须存在。新增公共
 功能、API、Schema、artifact 或状态变化时，必须新增或更新一个 `FEAT-*` 行。
 
 | feature_id | maturity | evidence | user surface | code_paths | test_paths | known limits |
 |---|---|---|---|---|---|---|
 | FEAT-ADAPT-LOCAL | STABLE | E2 | `rolo adapt` 离线/本地路径 | `src/rolo/product_cli.py`; `src/rolo/commands/lifecycle.py` | `tests/test_product_cli.py`; `tests/test_adapt_journey.py` | 不等同于真实目标机验收 |
 | FEAT-ADAPT-GATE-RELEASE | STABLE | E2 | Adapt bundle、conformance、immutable release | `src/rolo/stages/adapt/service.py`; `src/rolo/stages/adapt/conformance.py`; `src/rolo/adapter_runtime.py` | `tests/test_conformance.py`; `tests/test_adapter_runtime.py`; `tests/test_adapt_journey.py` | Adapt 不证明物理结果、可靠性或安全性 |
-| FEAT-TARGET-EVIDENCE | PARTIAL | E2 | 目标证据采集和部署前检查 | `src/rolo/stages/adapt/target_evidence.py`; `src/rolo/targets/executor.py`; `src/rolo/episode_capture.py` | `tests/test_target_evidence_deployment.py`; `tests/test_target_executors.py`; `tests/test_episode_capture.py` | 真实目标、SSH 和平台依赖仍需环境验证 |
+| FEAT-ADAPT-ROUTE-MAPPING | PARTIAL | E3 | Registry-aware semantic mapping、route evidence、CLI help probe 和多路由 selector | `src/rolo/stages/adapt/application_cli_mapping.py`; `src/rolo/stages/adapt/semantic_mapping.py`; `src/rolo/stages/adapt/mapping_evidence_tool.py`; `src/rolo/stages/adapt/routes.py`; `src/rolo/adapter_runtime.py` | `tests/test_heuristic_discovery.py`; `tests/test_ros_probe.py`; `tests/test_operation_eligibility.py`; `tests/test_state_graph.py`; `tests/test_adapter_runtime.py` | 启发式/静态映射仍是候选证据；help probe 只证明有界自描述；多路由调用必须显式 selector |
+| FEAT-TARGET-EVIDENCE | PARTIAL | E3 | 目标证据采集和部署前检查 | `src/rolo/stages/adapt/target_evidence.py`; `src/rolo/targets/executor.py`; `src/rolo/episode_capture.py`; `src/rolo/stages/verify/ssh_target_provider.py` | `tests/test_target_evidence_deployment.py`; `tests/test_target_executors.py`; `tests/test_episode_capture.py`; `tests/test_ssh_target_provider.py` | 固定 WSL/Linux/ROS 目标已有 E3 软件证据；物理目标、SSH 网络和平台差异仍需环境验证 |
 | FEAT-REGISTRY-V2 | PARTIAL | E2 | v2 Canonical Registry 与迁移校验 | `src/rolo/stages/adapt/operation_registry_v2.py`; `src/rolo/stages/adapt/registry_resolver.py` | `tests/test_registry_v2.py`; `tests/test_registry_migration.py` | v1 兼容、v2 投影和 Native family 不能混用 |
 | FEAT-NATIVE-TOOLS | EXPERIMENTAL | E3 | Native Session、Broker、family rollout | `src/rolo/agent_tools/native_tools.py`; `src/rolo/agent_tools/session.py`; `src/rolo/agent_tools/broker.py`; `src/rolo/agent_tools/rollout.py` | `tests/test_agent_native_tools.py`; `tests/test_native_tool_session.py`; `tests/test_native_rollout.py` | 固定 WSL/ROS 目标已完成 shadow/canary rehearsal；默认关闭且只读观测不能授予 release authority |
 | FEAT-STAGE-RUNNER | STABLE | E3 | Diagnose/Verify 授权、幂等、取消、日志、重启恢复维护和本地 session 绑定 | `src/rolo/stages/agent_runner.py`; `src/rolo/stages/downstream.py`; `src/rolo/user_identity.py` | `tests/test_stage_agent_runner.py`; `tests/test_stage_agent_read_models.py`; `tests/test_stage_recovery_maintenance.py`; `tests/test_user_identity.py` | Runner/maintenance 不决定业务结论或 acceptance；本地 session 绑定依赖 artifact root 的持久 session 文件，真实进程 kill/reboot 仍需目标机注入 |
