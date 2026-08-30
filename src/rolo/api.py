@@ -80,7 +80,13 @@ from rolo.fleet_read_models import (
     get_fleet_blocker_detail,
 )
 from rolo.job_service import JobService, JobServiceError
-from rolo.jobs import JobEventPage, JobPage, JobRecovery, run_bootstrap_job
+from rolo.jobs import (
+    JOB_API_FEATURES,
+    JobEventPage,
+    JobPage,
+    JobRecovery,
+    run_bootstrap_job,
+)
 from rolo.lifecycle_read_models import (
     LifecycleRunCollection,
     LifecycleRunDetail,
@@ -361,7 +367,7 @@ async def health(request: Request) -> HealthResponse:
         robots=len(runtime.registry),
         robot_use_backend=runtime.robot_use_backend.name,
         openai_key_configured=bool(runtime.settings.openai_api_key),
-        api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES],
+        api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES, *JOB_API_FEATURES],
     )
 
 
