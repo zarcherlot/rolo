@@ -12,8 +12,10 @@ from rolo.adapter_runtime import (
     activate_release,
     adapter_command,
     invoke_adapter,
+    operation_route_binding_document,
     probe_adapter_package,
     publish_release,
+    resolve_route_binding,
 )
 from rolo.cli import app
 from rolo.core.config import get_settings
@@ -26,8 +28,9 @@ from rolo.core.models import (
     RouteEvidence,
     ToolDescriptor,
 )
-from rolo.stages.adapt.models import AdapterBundleManifest, ToolCatalog
+from rolo.stages.adapt.models import AdapterBundleManifest, StateGraphBaseline, ToolCatalog
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
+from rolo.stages.adapt.state_graph import build_state_graph_baseline
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
 
 
@@ -64,6 +67,58 @@ def _target_report() -> DiscoveryReport:
             )
         ],
     )
+
+
+def _multi_route_graph() -> StateGraphBaseline:
+    return StateGraphBaseline(
+        robot_id="demo",
+        discovery_id="disc-1",
+        owner="ROLO_GATE",
+        nodes=[
+            {"id": "operation:camera", "kind": "operation", "operation": "camera"},
+            {
+                "id": "route:b",
+                "kind": "route",
+                "resource_id": "ros_topic:/camera/rear",
+                "route_kind": "ros_topic",
+                "endpoint": "/camera/rear",
+                "semantic_bindings": ["camera.rear"],
+            },
+            {
+                "id": "route:a",
+                "kind": "route",
+                "resource_id": "ros_topic:/camera/front",
+                "route_kind": "ros_topic",
+                "endpoint": "/camera/front",
+                "semantic_bindings": ["camera.front"],
+            },
+        ],
+        edges=[
+            {"source": "operation:camera", "target": "route:b", "relation": "routes_to"},
+            {"source": "operation:camera", "target": "route:a", "relation": "routes_to"},
+        ],
+    )
+
+
+def test_route_binding_document_is_deterministic_and_fail_closed() -> None:
+    document = operation_route_binding_document(_multi_route_graph(), "camera")
+
+    assert document["schema_version"] == "rolo-target-route-bindings/v1"
+    assert [item["route_id"] for item in document["bindings"]] == ["route:a", "route:b"]
+    assert document["semantic_bindings"] == ["camera.front", "camera.rear"]
+    assert resolve_route_binding(document, {"endpoint": "/camera/rear"})["route_id"] == "route:b"
+    assert resolve_route_binding(document, {"camera": "front"})["route_id"] == "route:a"
+    with pytest.raises(ValueError, match="explicit route selector"):
+        resolve_route_binding(document, {})
+    with pytest.raises(ValueError, match="does not match"):
+        resolve_route_binding(document, {"endpoint": "/camera/unknown"})
+
+
+def test_route_binding_document_rejects_semantic_binding_mismatch() -> None:
+    with pytest.raises(ValueError, match="semantic binding mismatch"):
+        operation_route_binding_document(
+            _multi_route_graph(), "camera", semantic_bindings=["camera.only"]
+        )
 
 
 def test_package_probe_runs_describe_without_crossing_invoke_boundary(
@@ -253,10 +308,13 @@ def _publish_demo_release(
     )
     catalog_path = source / "tool-catalog.json"
     catalog_path.write_text(catalog.model_dump_json(indent=2), encoding="utf-8")
-    generic = '{"robot_id":"demo","discovery_id":"disc-1","nodes":[],"edges":[]}'
+    report = target_report or _target_report()
     state_graph = source / "state-graph.json"
     state_graph.write_text(
-        '{"schema_version":"robot-state-graph/v1",' + generic[1:], encoding="utf-8"
+        build_state_graph_baseline(report, bundle)
+        .model_copy(update={"schema_version": "robot-state-graph/v1"})
+        .model_dump_json(indent=2),
+        encoding="utf-8",
     )
     conformance = source / "conformance-report.json"
     conformance.write_text(
@@ -279,7 +337,6 @@ def _publish_demo_release(
         encoding="utf-8",
     )
     output = tmp_path / "output"
-    report = target_report or _target_report()
     publish_release(
         output_root=output,
         robot_id="demo",
@@ -348,6 +405,42 @@ def test_runtime_invokes_only_the_entrypoint_bound_in_active_catalog(tmp_path: P
     assert execution[1]["release_id"] == "release-1"
     assert "result_sha256" in execution[1]
     assert "front_camera" not in audit.read_text(encoding="utf-8")
+
+
+def test_runtime_injects_gated_route_binding_document(tmp_path: Path) -> None:
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.environment: dict[str, str] | None = None
+
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            assert command[-1] == "camera_snapshot"
+            self.environment = kwargs["runtime_environment"]  # type: ignore[assignment]
+            return AdapterProcessResult(
+                returncode=0,
+                stdout=json.dumps({"status": "SUCCEEDED", "camera": "front_camera"}),
+                stderr="",
+            )
+
+    output = _publish_demo_release(tmp_path)
+    policy, audit = _sensitive_access(tmp_path)
+    runner = CaptureRunner()
+
+    invoke_adapter(
+        output,
+        "demo",
+        "app.camera.snapshot",
+        {"camera": "front_camera"},
+        artifact_root=tmp_path,
+        policy_path=policy,
+        audit_path=audit,
+        runner=runner,
+    )
+
+    assert runner.environment is not None
+    document = json.loads(runner.environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"])
+    assert document["schema_version"] == "rolo-target-route-bindings/v1"
+    assert document["operation"] == "app.camera.snapshot"
+    assert document["selected_route_id"].startswith("route:")
 
 
 def test_runtime_denies_sensitive_operation_without_protected_policy(tmp_path: Path) -> None:

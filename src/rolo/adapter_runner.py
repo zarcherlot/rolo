@@ -50,6 +50,8 @@ _INHERITED_ENVIRONMENT = {
     "WINDIR",
 }
 _SANDBOX_TARGET_PATH = "_ROLO_ADAPTER_TARGET_PATH"
+_ROUTE_BINDINGS_ENVIRONMENT = "ROLO_TARGET_ROUTE_BINDINGS_JSON"
+_MAX_ROUTE_BINDINGS_CHARS = 200_000
 
 def sanitized_adapter_environment(
     private_home: Path,
@@ -72,8 +74,14 @@ def sanitized_adapter_environment(
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
+    source = dict(runtime_environment or {})
+    route_bindings = source.pop(_ROUTE_BINDINGS_ENVIRONMENT, None)
+    if route_bindings is not None and (
+        not isinstance(route_bindings, str) or len(route_bindings) > _MAX_ROUTE_BINDINGS_CHARS
+    ):
+        raise ValueError("invalid target route bindings environment value")
     admitted = admitted_runtime_environment(
-        runtime_environment or {},
+        source,
         include_executable_path=True,
     )
     target_path = admitted.pop("PATH", None)
@@ -86,6 +94,8 @@ def sanitized_adapter_environment(
             else target_path
         )
     environment.update(admitted)
+    if route_bindings is not None:
+        environment[_ROUTE_BINDINGS_ENVIRONMENT] = route_bindings
     return environment
 
 
