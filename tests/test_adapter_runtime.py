@@ -179,6 +179,156 @@ def test_package_probe_runs_describe_without_crossing_invoke_boundary(
     assert runner.commands[0][-1] == "describe"
 
 
+def test_package_probe_runs_bounded_help_for_gated_cli_routes(tmp_path: Path) -> None:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.list"
+    )
+    package = tmp_path / "adapter.py"
+    package.write_text("# protocol probe fixture\n", encoding="utf-8")
+    manifest = AdapterBundleManifest(
+        bundle_id="camera-list",
+        bundle_version="1.0.0",
+        robot_id="demo",
+        discovery_id="disc-1",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        files=[
+            {"path": package.name, "sha256": sha256_file(package), "role": "ENTRYPOINT"}
+        ],
+        operations=[
+            {
+                "operation": definition.operation,
+                "entrypoint": "camera_list",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
+    )
+    graph = StateGraphBaseline(
+        robot_id="demo",
+        discovery_id="disc-1",
+        owner="ROLO_GATE",
+        nodes=[
+            {
+                "id": f"operation:{definition.operation}",
+                "kind": "operation",
+                "operation": definition.operation,
+            },
+            {
+                "id": "route:cli",
+                "kind": "route",
+                "resource_id": "cli:camera-list",
+                "route_kind": "cli",
+                "endpoint": "camera-list",
+                "semantic_bindings": [],
+            },
+        ],
+        edges=[
+            {
+                "source": f"operation:{definition.operation}",
+                "target": "route:cli",
+                "relation": "routes_to",
+            }
+        ],
+    )
+
+    class HelpRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del kwargs
+            self.commands.append(command)
+            if command[-1] == "describe":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps({"operations": {definition.operation: "camera_list"}}),
+                    stderr="",
+                )
+            assert command == ["camera-list", "--help"]
+            return AdapterProcessResult(returncode=0, stdout="usage: camera-list", stderr="")
+
+    runner = HelpRunner()
+    probe_adapter_package(package, manifest, runner=runner, state_graph=graph)
+
+    assert runner.commands == [
+        [sys.executable, str(package), "describe"],
+        ["camera-list", "--help"],
+    ]
+
+
+def test_package_probe_rejects_failed_cli_help_probe(tmp_path: Path) -> None:
+    definition = next(
+        item
+        for item in canonical_operation_registry().operations
+        if item.operation == "app.camera.list"
+    )
+    package = tmp_path / "adapter.py"
+    package.write_text("# protocol probe fixture\n", encoding="utf-8")
+    manifest = AdapterBundleManifest(
+        bundle_id="camera-list",
+        bundle_version="1.0.0",
+        robot_id="demo",
+        discovery_id="disc-1",
+        package_file=package.name,
+        package_sha256=sha256_file(package),
+        files=[
+            {"path": package.name, "sha256": sha256_file(package), "role": "ENTRYPOINT"}
+        ],
+        operations=[
+            {
+                "operation": definition.operation,
+                "entrypoint": "camera_list",
+                "contract_version": definition.contract_version,
+                "contract_sha256": definition.contract_sha256,
+            }
+        ],
+    )
+    graph = StateGraphBaseline(
+        robot_id="demo",
+        discovery_id="disc-1",
+        owner="ROLO_GATE",
+        nodes=[
+            {
+                "id": f"operation:{definition.operation}",
+                "kind": "operation",
+                "operation": definition.operation,
+            },
+            {
+                "id": "route:cli",
+                "kind": "route",
+                "resource_id": "cli:camera-list",
+                "route_kind": "cli",
+                "endpoint": "camera-list",
+                "semantic_bindings": [],
+            },
+        ],
+        edges=[
+            {
+                "source": f"operation:{definition.operation}",
+                "target": "route:cli",
+                "relation": "routes_to",
+            }
+        ],
+    )
+
+    class FailingHelpRunner:
+        def run(self, command: list[str], **kwargs: object) -> AdapterProcessResult:
+            del kwargs
+            if command[-1] == "describe":
+                return AdapterProcessResult(
+                    returncode=0,
+                    stdout=json.dumps({"operations": {definition.operation: "camera_list"}}),
+                    stderr="",
+                )
+            return AdapterProcessResult(returncode=2, stdout="", stderr="unsupported")
+
+    with pytest.raises(ValueError, match="target CLI help probe failed.*camera-list"):
+        probe_adapter_package(package, manifest, runner=FailingHelpRunner(), state_graph=graph)
+
+
 def test_python_zipapp_uses_interpreter_launcher(tmp_path: Path) -> None:
     package = tmp_path / "adapter.pyz"
 
