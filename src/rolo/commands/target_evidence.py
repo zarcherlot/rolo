@@ -21,6 +21,7 @@ from rolo.stages.adapt.target_evidence import (
     collect_over_ssh,
     collect_target_evidence,
     configure_deployment,
+    discover_help_executables,
     initialize_collector,
     load_collector_state,
     load_deployment,
@@ -109,7 +110,11 @@ def collector_init(
             robot_id=robot_id,
             state_path=config,
             secret_path=secret_file,
-            help_executables=allow_executable or (),
+            help_executables=(
+                allow_executable
+                if allow_executable
+                else discover_help_executables(project_root) if project_root else ()
+            ),
             ros_setup_files=ros_setup_files,
         )
     except ValueError as exc:
@@ -168,7 +173,11 @@ def collector_rotate(
             expected_collector_id=expected_collector_id,
             new_state_path=config,
             new_secret_path=secret_file,
-            help_executables=allow_executable or (),
+            help_executables=(
+                allow_executable
+                if allow_executable
+                else discover_help_executables(project_root) if project_root else ()
+            ),
             ros_setup_files=ros_setup_files,
         )
         descriptor_out.parent.mkdir(parents=True, exist_ok=True)
@@ -353,7 +362,12 @@ def collect(
     """Collect and verify one fresh target evidence bundle."""
     try:
         deployment = load_deployment(deployment_config or deployment_path(robot_id))
-        request = new_request(robot_id, executable_help_ids=executable_help_id or ())
+        requested_help_ids = (
+            executable_help_id
+            if executable_help_id is not None
+            else [item.executable_id for item in deployment.collector.help_executables]
+        )
+        request = new_request(robot_id, executable_help_ids=requested_help_ids)
         if deployment.mode == EvidenceDeploymentMode.LOCAL:
             state_path = collector_state or Path(deployment.local_collector_state_path or "")
             bundle = collect_target_evidence(request, load_collector_state(state_path))

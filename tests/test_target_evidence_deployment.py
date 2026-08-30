@@ -30,6 +30,7 @@ from rolo.stages.adapt.target_evidence import (
     collect_over_ssh,
     collect_target_evidence,
     configure_deployment,
+    discover_help_executables,
     ensure_local_deployment,
     initialize_collector,
     load_collector_state,
@@ -41,6 +42,28 @@ from rolo.stages.adapt.target_evidence import (
     verify_evidence_bundle,
 )
 from rolo.stages.artifact_paths import resolve_artifact_ref
+
+
+def test_project_entrypoint_discovery_covers_all_application_clis(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.scripts]\n"
+        "lerobot-find-cameras = 'lerobot.cli:find'\n"
+        "lerobot-info = 'lerobot.cli:info'\n"
+        "lerobot-teleoperate = 'lerobot.cli:teleoperate'\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / ".venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("lerobot-find-cameras", "lerobot-info", "lerobot-teleoperate"):
+        (bin_dir / name).write_text("#!/bin/sh\n", encoding="utf-8")
+
+    discovered = discover_help_executables(tmp_path)
+
+    assert [item.name for item in discovered] == [
+        "lerobot-find-cameras",
+        "lerobot-info",
+        "lerobot-teleoperate",
+    ]
 
 
 def _collector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -273,6 +296,45 @@ def test_target_help_rejects_unknown_id_and_changed_executable(
             ),
             state,
         )
+
+
+def test_target_help_preserves_sibling_evidence_when_one_executable_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.target_host_fingerprint", lambda: "a" * 64
+    )
+    first = tmp_path / "camera-driver"
+    second = tmp_path / "robot-info"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    state_path = tmp_path / "collector.json"
+    secret_path = tmp_path / "collector.key"
+    descriptor = initialize_collector(
+        robot_id="wheeltec",
+        state_path=state_path,
+        secret_path=secret_path,
+        help_executables=[first, second],
+    )
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(
+        target_evidence_module,
+        "run_bounded_help",
+        lambda _path, _output: target_evidence_module.HelpProbeResult(
+            status=HelpProbeStatus.SUCCEEDED
+        ),
+    )
+    second.unlink()
+
+    request = new_request(
+        "wheeltec",
+        executable_help_ids=[item.executable_id for item in descriptor.help_executables],
+    )
+    bundle = collect_target_evidence(request, load_collector_state(state_path))
+
+    statuses = {item.path: item.help_probe.status for item in bundle.executable_help}
+    assert statuses[str(first.resolve())] == HelpProbeStatus.SUCCEEDED
+    assert statuses[str(second.resolve())] == HelpProbeStatus.FAILED
 
 
 def test_target_help_cli_enrollment_and_collection_handoff(
