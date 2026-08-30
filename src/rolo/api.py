@@ -1055,12 +1055,18 @@ async def list_robot_discoveries(
         runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_discovery_snapshot_collection(
-        runtime.settings.rolo_artifact_dir,
-        robot_id,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        return build_discovery_snapshot_collection(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            limit=limit,
+            offset=offset,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="discovery evidence failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/topology", response_model=RobotTopology)
@@ -1070,12 +1076,18 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    topology, _ = build_robot_topology(
-        robot,
-        runtime.settings.rolo_output_dir,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-    )
-    return topology
+    try:
+        topology, _ = build_robot_topology(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+        )
+        return topology
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology evidence failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get(
@@ -1094,8 +1106,12 @@ async def get_robot_topology_path(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
     try:
+        topology, _ = build_robot_topology(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+        )
         return explain_topology_path(
             topology,
             from_node,
@@ -1104,6 +1120,11 @@ async def get_robot_topology_path(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Unknown topology node") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology evidence failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get(
@@ -1119,11 +1140,17 @@ async def list_robot_topology_snapshots(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_topology_snapshot_collection(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-    )
+    try:
+        return build_topology_snapshot_collection(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology snapshot history failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/topology/diff", response_model=TopologyDiff)
@@ -1170,18 +1197,24 @@ async def list_robot_capabilities(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_capability_collection(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-        limit=limit,
-        offset=offset,
-        query=query,
-        layer=layer,
-        lifecycle=lifecycle,
-        risk=risk,
-        availability=availability,
-    )
+    try:
+        return build_capability_collection(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+            limit=limit,
+            offset=offset,
+            query=query,
+            layer=layer,
+            lifecycle=lifecycle,
+            risk=risk,
+            availability=availability,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="capability evidence failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/runs", response_model=LifecycleRunCollection)
@@ -1493,15 +1526,21 @@ async def list_robot_evidence(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_evidence_collection(
-        robot,
-        runtime.settings.rolo_output_dir,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-        limit=limit,
-        offset=offset,
-        authority=authority,
-        pipeline=assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id),
-    )
+    try:
+        return build_evidence_collection(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            limit=limit,
+            offset=offset,
+            authority=authority,
+            pipeline=assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id),
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="evidence read model failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/evidence/{evidence_id}", response_model=EvidenceRecord)

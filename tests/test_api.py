@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import rolo.api as api
 from rolo.api import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -118,6 +119,7 @@ def test_health_and_robot_registry() -> None:
     assert topology_path.status_code == 200
     assert topology_path.json()["schema_version"] == "rolo-topology-path-explanation/v1"
     assert topology_path.json()["found"] is True
+
     assert topology_path.json()["hop_count"] == 1
     assert topology_path.json()["steps"][0]["evidence_ids"]
     assert capabilities.status_code == 200
@@ -148,6 +150,39 @@ def test_health_and_robot_registry() -> None:
     assert evidence_detail.json()["reference_hint"] != ""
     assert "tests/" not in evidence_detail.text
     assert status.json()["local_visual_detection"] is False
+
+
+@pytest.mark.parametrize(
+    ("path", "builder"),
+    [
+        ("/v1/robots/demo_diff/discoveries", "build_discovery_snapshot_collection"),
+        ("/v1/robots/demo_diff/topology", "build_robot_topology"),
+        (
+            "/v1/robots/demo_diff/topology/path?from=base&to=base",
+            "build_robot_topology",
+        ),
+        (
+            "/v1/robots/demo_diff/topology/snapshots",
+            "build_topology_snapshot_collection",
+        ),
+        ("/v1/robots/demo_diff/capabilities", "build_capability_collection"),
+        ("/v1/robots/demo_diff/evidence", "build_evidence_collection"),
+    ],
+)
+def test_invalid_evidence_is_exposed_as_conflict(
+    path: str,
+    builder: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_invalid_evidence(*args: object, **kwargs: object) -> None:
+        raise ValueError("invalid evidence")
+
+    monkeypatch.setattr(api, builder, raise_invalid_evidence)
+    with TestClient(app) as client:
+        response = client.get(path)
+
+    assert response.status_code == 409
+    assert "integrity validation" in response.json()["detail"]
 
 
 def test_local_session_issues_stable_http_only_ticket() -> None:
