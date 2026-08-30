@@ -19,11 +19,15 @@ from rolo.core.models import (
 from rolo.stages.adapt.agent_contracts import (
     AgentArtifactProvenance,
     AgentBudgetUsage,
+    AgentDisposition,
+    AgentEvidenceToolReceipt,
     AgentOperationProposal,
+    AgentRouteDisposition,
     AgentStopReason,
     OperationProposalBundle,
     ProposalConfidence,
 )
+from rolo.stages.adapt.mapping_evidence_tool import evaluate as evaluate_mapping_evidence
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.proposal_orchestration import (
     CodexOperationMappingProvider,
@@ -37,6 +41,7 @@ from rolo.stages.adapt.proposal_orchestration import (
     _evidence_aliases,
     _mapping_output_schema,
     _resolve_provider_evidence_aliases,
+    apply_validated_semantic_dispositions,
     build_discovery_skill_request,
     persist_proposal_artifacts,
 )
@@ -468,6 +473,137 @@ def test_runner_accepts_valid_proposal_as_discovered_unverified_and_persists_art
     assert set(refs) == {"bundle", "validation"}
     assert Path(refs["bundle"]).is_file()
     assert Path(refs["validation"]).is_file()
+
+
+def test_semantic_accept_requires_and_validates_read_only_tool_receipt() -> None:
+    report, registry, _request_value = _request()
+    candidate = report.operation_candidates[0].model_copy(
+        update={"semantic_review_required": True}
+    )
+    report = report.model_copy(update={"operation_candidates": [candidate]})
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={candidate.operation},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    receipt = AgentEvidenceToolReceipt.model_validate(
+        evaluate_mapping_evidence(
+            request.model_dump(mode="json"),
+            operation=candidate.operation,
+            route_resource_id=candidate.route_evidence[0].resource_id,
+            condition="BINDING_MATCH",
+        )
+    )
+    proposal = _proposal().model_copy(
+        update={
+            "disposition": AgentDisposition.ACCEPT,
+            "route_dispositions": [
+                AgentRouteDisposition(
+                    route_resource_id=candidate.route_evidence[0].resource_id,
+                    disposition=AgentDisposition.ACCEPT,
+                    rationale="The frozen route is bound to this exact candidate.",
+                    tool_receipt_ids=[receipt.receipt_id],
+                )
+            ],
+            "tool_receipts": [receipt],
+        }
+    )
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    reviewed, applied = apply_validated_semantic_dispositions(
+        report.operation_candidates,
+        artifact,
+    )
+
+    assert artifact.source == ProposalArtifactSource.AGENT
+    assert artifact.validated_dispositions[0].disposition == AgentDisposition.ACCEPT
+    assert applied == [candidate.operation]
+    assert reviewed[0].semantic_review_disposition == "ACCEPT"
+    assert reviewed[0].route_review_dispositions == {
+        candidate.route_evidence[0].resource_id: "ACCEPT"
+    }
+
+
+def test_semantic_accept_with_missing_receipt_fails_closed() -> None:
+    report, registry, _request_value = _request()
+    candidate = report.operation_candidates[0].model_copy(
+        update={"semantic_review_required": True}
+    )
+    report = report.model_copy(update={"operation_candidates": [candidate]})
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={candidate.operation},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    proposal = _proposal().model_copy(
+        update={
+            "route_dispositions": [
+                AgentRouteDisposition(
+                    route_resource_id=candidate.route_evidence[0].resource_id,
+                    disposition=AgentDisposition.ACCEPT,
+                    rationale="The route looks compatible but was not tool-checked.",
+                )
+            ]
+        }
+    )
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    assert artifact.source == ProposalArtifactSource.DETERMINISTIC_FALLBACK
+    assert ProposalIssueCode.ACCEPT_WITHOUT_SATISFIED_BINDING in (
+        artifact.rejected_proposals[0].issue_codes
+    )
+
+
+@pytest.mark.parametrize("disposition", [AgentDisposition.DEFER, AgentDisposition.REJECT])
+def test_semantic_defer_and_reject_are_validated_without_execution_authority(
+    disposition: AgentDisposition,
+) -> None:
+    report, registry, _request_value = _request()
+    candidate = report.operation_candidates[0].model_copy(
+        update={"semantic_review_required": True}
+    )
+    report = report.model_copy(update={"operation_candidates": [candidate]})
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={candidate.operation},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    proposal = _proposal().model_copy(
+        update={
+            "disposition": disposition,
+            "route_dispositions": [
+                AgentRouteDisposition(
+                    route_resource_id=candidate.route_evidence[0].resource_id,
+                    disposition=disposition,
+                    rationale="The available evidence does not justify semantic acceptance.",
+                )
+            ],
+        }
+    )
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda value: _bundle(value, [proposal])),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+
+    reviewed, applied = apply_validated_semantic_dispositions(
+        report.operation_candidates,
+        artifact,
+    )
+
+    assert artifact.source == ProposalArtifactSource.AGENT
+    assert artifact.operation_candidates == []
+    assert artifact.validated_dispositions[0].disposition == disposition
+    assert applied == [candidate.operation]
+    assert reviewed[0].semantic_review_disposition == disposition.value
 
 
 def test_outside_slice_proposal_falls_back_and_records_false_positive() -> None:
