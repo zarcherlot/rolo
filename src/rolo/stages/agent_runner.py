@@ -8,7 +8,6 @@ each stage after execution.
 
 from __future__ import annotations
 
-import getpass
 import hashlib
 import inspect
 import json
@@ -28,6 +27,7 @@ from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import canonical_json_sha256, sha256_file
 from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
+from rolo.user_identity import current_user_principal, current_user_session_fingerprint
 
 StageName = Literal["diagnose", "verify"]
 OutputCallback = Callable[[str, str], None]
@@ -38,19 +38,26 @@ _SECRET_ASSIGNMENT = re.compile(
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 
 
-def _current_actor_identity() -> dict[str, object]:
-    session_source = next(
-        (
-            os.environ[name]
-            for name in ("ROLO_SESSION_ID", "XDG_SESSION_ID", "WT_SESSION", "TERM_SESSION_ID")
-            if os.environ.get(name)
-        ),
-        f"local-user-{os.getuid()}",
-    )
+def _current_actor_identity(state_root: Path | None = None) -> dict[str, object]:
+    """Capture the current user and durable local session for authorization binding."""
+
+    uid = getattr(os, "getuid", lambda: 0)()
+    if state_root is None:
+        session_source = next(
+            (
+                os.environ[name]
+                for name in ("ROLO_SESSION_ID", "XDG_SESSION_ID", "WT_SESSION", "TERM_SESSION_ID")
+                if os.environ.get(name)
+            ),
+            f"local-user-{uid}",
+        )
+        session_id = hashlib.sha256(session_source.encode("utf-8")).hexdigest()
+    else:
+        session_id = current_user_session_fingerprint(state_root)
     return {
-        "os_user": getpass.getuser(),
-        "os_uid": os.getuid(),
-        "session_id": hashlib.sha256(session_source.encode("utf-8")).hexdigest(),
+        "os_user": current_user_principal(),
+        "os_uid": uid,
+        "session_id": session_id,
     }
 
 
@@ -153,6 +160,19 @@ class StageAgentRun(BaseModel):
     heartbeat_at: datetime | None = None
 
 
+class StageMaintenanceReport(BaseModel):
+    """Auditable result of bounded, non-replaying Stage runtime maintenance."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["rolo-stage-maintenance-report/v1"] = (
+        "rolo-stage-maintenance-report/v1"
+    )
+    recovered_run_ids: list[str] = Field(default_factory=list)
+    expired_authorization_refs: list[str] = Field(default_factory=list)
+    removed_stale_marker_paths: list[str] = Field(default_factory=list)
+
+
 class StageAgentExecutor(Protocol):
     """Plugin boundary for a Diagnose or Verify Agent product."""
 
@@ -202,7 +222,12 @@ def list_stage_authorization_requests(
                     continue
                 if robot_id and payload.get("robot_id") != robot_id:
                     continue
-                requests.append(payload)
+                requests.append(
+                    {
+                        **payload,
+                        "request_ref": layout.ref(request_path),
+                    }
+                )
     requests.sort(key=lambda item: str(item.get("created_at", "")))
     return requests
 
@@ -261,6 +286,156 @@ def recover_stale_stage_runs(
             )
             recovered.append(failed)
     return recovered
+
+
+def recover_all_stale_stage_runs(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+) -> list[StageAgentRun]:
+    """Recover stale runs across all selected Stage/robot roots.
+
+    This is a restart-safe wrapper around :func:`recover_stale_stage_runs`.
+    Recovery only transitions persisted ``RUNNING`` records to terminal ``FAILED``;
+    it never resumes an executor or replays a target operation.  The existing
+    stage/robot-specific function remains the compatibility API for callers that
+    already have an exact identity.
+    """
+
+    if stale_after_s <= 0:
+        raise ValueError("stale_after_s must be positive")
+    root = artifact_root.resolve()
+    selected_stages: tuple[StageName, ...] = (stage,) if stage else ("diagnose", "verify")
+    recovered: list[StageAgentRun] = []
+    for selected_stage in selected_stages:
+        stage_root = root / selected_stage
+        if not stage_root.is_dir():
+            continue
+        if robot_id is not None:
+            candidates = (stage_root / robot_id,)
+        else:
+            candidates = tuple(path for path in stage_root.iterdir() if path.is_dir())
+        for robot_root in candidates:
+            if not robot_root.is_dir():
+                continue
+            recovered.extend(
+                recover_stale_stage_runs(
+                    root,
+                    selected_stage,
+                    robot_root.name,
+                    stale_after_s=stale_after_s,
+                )
+            )
+    return recovered
+
+
+def remove_stale_stage_markers(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+) -> list[str]:
+    """Remove orphaned ``active-run.json`` markers after bounded recovery.
+
+    A marker is retained while its referenced run is still ``RUNNING``.  Once the
+    run is terminal or missing and the marker's claimed timestamp exceeds the
+    threshold, it is removed under the same inter-process lock used by writers.
+    Malformed or future-dated markers are preserved for manual inspection.
+    """
+
+    if stale_after_s <= 0:
+        raise ValueError("stale_after_s must be positive")
+    root = artifact_root.resolve()
+    now = datetime.now(timezone.utc)
+    selected_stages: tuple[StageName, ...] = (stage,) if stage else ("diagnose", "verify")
+    removed: list[str] = []
+    for selected_stage in selected_stages:
+        stage_root = root / selected_stage
+        if not stage_root.is_dir():
+            continue
+        candidates = (
+            (stage_root / robot_id,)
+            if robot_id is not None
+            else tuple(path for path in stage_root.iterdir() if path.is_dir())
+        )
+        for robot_root in candidates:
+            marker = robot_root / "active-run.json"
+            if not marker.is_file():
+                continue
+            try:
+                payload = json_load(marker)
+                claimed_at = _parse_iso_datetime(str(payload["claimed_at"]))
+                marker_run_id = str(payload["run_id"])
+            except (KeyError, OSError, TypeError, ValueError):
+                continue
+            if claimed_at.tzinfo is None:
+                claimed_at = claimed_at.replace(tzinfo=timezone.utc)
+            if (now - claimed_at.astimezone(timezone.utc)).total_seconds() < stale_after_s:
+                continue
+            run_path = robot_root / "runs" / marker_run_id / "run.json"
+            if run_path.is_file():
+                try:
+                    referenced = StageAgentRun.model_validate_json(
+                        run_path.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    continue
+                if referenced.status == "RUNNING":
+                    continue
+            try:
+                with interprocess_lock(marker):
+                    if not marker.is_file():
+                        continue
+                    current = json_load(marker)
+                    if str(current.get("run_id")) != marker_run_id:
+                        continue
+                    marker.unlink()
+                removed.append(str(marker))
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+    return sorted(removed)
+
+
+def maintain_stage_runtime(
+    artifact_root: Path,
+    *,
+    stage: StageName | None = None,
+    robot_id: str | None = None,
+    stale_after_s: float = 3600.0,
+    now: datetime | None = None,
+) -> StageMaintenanceReport:
+    """Run restart housekeeping without replaying or elevating any handoff.
+
+    ``now`` is accepted for deterministic callers and is used for authorization
+    expiry; stale run/marker age continues to use wall-clock time in the lower-level
+    APIs so existing behavior remains unchanged.
+    """
+
+    recovered = recover_all_stale_stage_runs(
+        artifact_root,
+        stage=stage,
+        robot_id=robot_id,
+        stale_after_s=stale_after_s,
+    )
+    expired = archive_expired_authorization_requests(artifact_root, now=now)
+    removed = remove_stale_stage_markers(
+        artifact_root,
+        stage=stage,
+        robot_id=robot_id,
+        stale_after_s=stale_after_s,
+    )
+    return StageMaintenanceReport(
+        recovered_run_ids=sorted(run.run_id for run in recovered),
+        expired_authorization_refs=[
+            str(item["request_id"])
+            for item in expired
+            if isinstance(item.get("request_id"), str)
+        ],
+        removed_stale_marker_paths=removed,
+    )
 
 
 def archive_expired_authorization_requests(
@@ -496,7 +671,7 @@ class StageAgentRunner:
                     )
                 request["status"] = "APPROVED"
                 request["approved_at"] = datetime.now(timezone.utc).isoformat()
-                request["approved_by"] = _current_actor_identity()
+                request["approved_by"] = _current_actor_identity(self.artifacts.root)
                 atomic_write_text(
                     request_path,
                     json.dumps(request, ensure_ascii=False, indent=2, default=str) + "\n",
@@ -528,7 +703,7 @@ class StageAgentRunner:
                 "task_sha256": canonical_json_sha256(task_payload),
                 "plan_sha256": task.plan_sha256,
                 "input_sha256": dict(task.input_sha256),
-                "actor": _current_actor_identity(),
+                "actor": _current_actor_identity(self.artifacts.root),
                 "idempotency_key": selected_idempotency_key,
                 "created_at": started.isoformat(),
                 "expires_at": (started + timedelta(minutes=15)).isoformat(),
@@ -708,9 +883,8 @@ class StageAgentRunner:
         )
         return run
 
-    @staticmethod
     def _validate_authorization_request(
-        request: dict[str, object], task: StageAgentTask
+        self, request: dict[str, object], task: StageAgentTask
     ) -> None:
         schema_version = request.get("schema_version")
         if schema_version not in {
@@ -742,7 +916,7 @@ class StageAgentRunner:
                 raise ValueError("authorization request task digest does not match the task")
             if request.get("input_sha256") != task.input_sha256:
                 raise ValueError("authorization request input digests do not match the task")
-            if request.get("actor") != _current_actor_identity():
+            if request.get("actor") != _current_actor_identity(self.artifacts.root):
                 raise ValueError("authorization request actor or session does not match")
         expires_at = request.get("expires_at")
         if not isinstance(expires_at, str):

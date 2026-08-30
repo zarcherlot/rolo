@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "description": "Frozen capabilities for a provider that emits canonical v2 evidence.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-verification-provider-manifest/v2",
+      "default": "rolo-verification-provider-manifest/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "provider_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "provider_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider Version",
+      "type": "string"
+    },
+    "executor_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+      "title": "Executor Id",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "supported_operations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Supported Operations",
+      "type": "array"
+    },
+    "max_case_timeout_s": {
+      "default": 600.0,
+      "exclusiveMinimum": 0.0,
+      "maximum": 600.0,
+      "title": "Max Case Timeout S",
+      "type": "number"
+    },
+    "read_only": {
+      "const": true,
+      "default": true,
+      "title": "Read Only",
+      "type": "boolean"
+    },
+    "cancellation_supported": {
+      "const": true,
+      "default": true,
+      "title": "Cancellation Supported",
+      "type": "boolean"
+    },
+    "safe_stop_supported": {
+      "const": true,
+      "default": true,
+      "title": "Safe Stop Supported",
+      "type": "boolean"
+    },
+    "evidence_contract": {
+      "const": "rolo-verification-evidence/v2",
+      "default": "rolo-verification-evidence/v2",
+      "title": "Evidence Contract",
+      "type": "string"
+    },
+    "target_provenance_schema_version": {
+      "const": "rolo-target-provenance/v2",
+      "default": "rolo-target-provenance/v2",
+      "title": "Target Provenance Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider_id",
+    "provider_version",
+    "executor_id",
+    "supported_operations"
+  ],
+  "title": "VerificationProviderManifestV2",
+  "type": "object"
+}

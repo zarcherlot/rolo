@@ -563,7 +563,17 @@ def verify_acceptance_plan(
     settings = get_settings()
     try:
         plan = VerificationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
-        reference = publish_verification_plan(settings.rolo_artifact_dir, robot, plan)
+        allowed_operations = None
+        if settings.coding_agent_executor.strip().lower() == "local-target":
+            from rolo.stages.real_target import LocalTargetCommandRunner
+
+            allowed_operations = LocalTargetCommandRunner.READ_ONLY_OPERATIONS
+        reference = publish_verification_plan(
+            settings.rolo_artifact_dir,
+            robot,
+            plan,
+            allowed_operations=allowed_operations,
+        )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit({"status": "PUBLISHED", "robot_id": robot, "plan_ref": reference})

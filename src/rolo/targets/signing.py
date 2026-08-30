@@ -8,11 +8,13 @@ import json
 from pathlib import Path
 from typing import Literal
 
+from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rolo.core.hashing import sha256_file
 
 _SHA256 = r"^[0-9a-f]{64}$"
+_VERSION = r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
 
 
 def _canonical_json(value: object) -> bytes:
@@ -62,8 +64,22 @@ class CompanionReleasePolicy(BaseModel):
         "rolo-target-companion-release-policy/v1"
     )
     publisher_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}$")
+    minimum_version: str | None = Field(default=None, pattern=_VERSION)
+    maximum_version: str | None = Field(default=None, pattern=_VERSION)
     revoked_versions: list[str] = Field(default_factory=list)
     revoked_hashes: list[str] = Field(default_factory=list)
+
+    @field_validator("maximum_version")
+    @classmethod
+    def _validate_version_window(cls, value: str | None, info) -> str | None:
+        minimum = info.data.get("minimum_version")
+        if value is not None and minimum is not None:
+            try:
+                if Version(value) < Version(minimum):
+                    raise ValueError("maximum companion version is below minimum version")
+            except InvalidVersion as exc:
+                raise ValueError("companion release policy version is invalid") from exc
+        return value
 
     @field_validator("revoked_hashes")
     @classmethod
@@ -127,6 +143,24 @@ def verify_companion_manifest(
             raise ValueError("companion package version has been revoked")
         if manifest.package_sha256 in release_policy.revoked_hashes:
             raise ValueError("companion package hash has been revoked")
+        try:
+            package_version = Version(manifest.package_version)
+            minimum = (
+                Version(release_policy.minimum_version)
+                if release_policy.minimum_version
+                else None
+            )
+            maximum = (
+                Version(release_policy.maximum_version)
+                if release_policy.maximum_version
+                else None
+            )
+        except InvalidVersion as exc:
+            raise ValueError("companion release policy version is invalid") from exc
+        if minimum is not None and package_version < minimum:
+            raise ValueError("companion package version is below the supported minimum")
+        if maximum is not None and package_version > maximum:
+            raise ValueError("companion package version exceeds the supported maximum")
     expected_package = (manifest_path.parent / manifest.package_file).resolve()
     if expected_package != package_path:
         raise ValueError("companion package path does not match its manifest")

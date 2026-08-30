@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import rolo.api as api
 from rolo.api import app
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
@@ -118,6 +119,7 @@ def test_health_and_robot_registry() -> None:
     assert topology_path.status_code == 200
     assert topology_path.json()["schema_version"] == "rolo-topology-path-explanation/v1"
     assert topology_path.json()["found"] is True
+
     assert topology_path.json()["hop_count"] == 1
     assert topology_path.json()["steps"][0]["evidence_ids"]
     assert capabilities.status_code == 200
@@ -150,6 +152,117 @@ def test_health_and_robot_registry() -> None:
     assert status.json()["local_visual_detection"] is False
 
 
+@pytest.mark.parametrize(
+    ("path", "builder"),
+    [
+        ("/v1/robots/demo_diff/discoveries", "build_discovery_snapshot_collection"),
+        ("/v1/robots/demo_diff/topology", "build_robot_topology"),
+        (
+            "/v1/robots/demo_diff/topology/path?from=base&to=base",
+            "build_robot_topology",
+        ),
+        (
+            "/v1/robots/demo_diff/topology/snapshots",
+            "build_topology_snapshot_collection",
+        ),
+        (
+            "/v1/robots/demo_diff/topology/diff?from=old&to=new",
+            "build_topology_diff",
+        ),
+        ("/v1/robots/demo_diff/capabilities", "build_capability_collection"),
+        ("/v1/robots/demo_diff/evidence", "build_evidence_collection"),
+        ("/v1/evidence/ev_invalid", "find_evidence"),
+    ],
+)
+def test_invalid_evidence_is_exposed_as_conflict(
+    path: str,
+    builder: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_invalid_evidence(*args: object, **kwargs: object) -> None:
+        raise ValueError("invalid evidence")
+
+    monkeypatch.setattr(api, builder, raise_invalid_evidence)
+    with TestClient(app) as client:
+        response = client.get(path)
+
+    assert response.status_code == 409
+    assert "integrity validation" in response.json()["detail"]
+
+
+def test_local_session_issues_stable_http_only_ticket() -> None:
+    with TestClient(app) as client:
+        first = client.get("/v1/session")
+        second = client.get("/v1/session")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["session_id"] == second.json()["session_id"]
+    assert first.json()["principal"]
+    cookie = first.headers.get("set-cookie", "")
+    assert "rolo_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+    assert "token" not in first.text.casefold()
+
+
+def test_stage_authorization_requires_a_valid_local_session_ticket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(timezone.utc)
+
+    def fake_run(self, robot_id: str, *, confirmed: bool, authorization_ref=None, on_output=None):
+        del on_output
+        return StageAgentRun(
+            stage=self.stage,
+            robot_id=robot_id,
+            run_id="ticket-api-run",
+            status="SUCCEEDED",
+            provider="fake",
+            executor="fake",
+            task_ref="artifact://diagnose/demo_diff/runs/ticket-api-run/task.json",
+            started_at=now,
+            completed_at=now,
+            request_ref=authorization_ref,
+        )
+
+    monkeypatch.setattr("rolo.api.DownstreamStageService.run", fake_run)
+    with TestClient(app) as client:
+        denied = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+        session = client.get("/v1/session")
+        allowed = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+        client.cookies.clear()
+        client.cookies.set("rolo_session", "tampered")
+        tampered = client.post(
+            "/v1/robots/demo_diff/diagnose/run",
+            json={"confirmed": True, "authorization_ref": "artifact://request"},
+        )
+
+    assert denied.status_code == 403
+    assert session.status_code == 200
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["request_ref"] == "artifact://request"
+    assert tampered.status_code == 403
+
+
+def test_bootstrap_plan_endpoint_is_read_only(tmp_path: Path) -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/targets/bootstrap-plan",
+            json={"target": str(tmp_path)},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "rolo-target-bootstrap-plan/v1"
+    assert response.json()["target"]["kind"] == "local"
+
+
 def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
     settings = get_settings()
     layout = ArtifactLayout(settings.rolo_artifact_dir)
@@ -172,13 +285,31 @@ def test_stage_agent_run_and_events_are_identity_bound(tmp_path: Path) -> None:
         "diagnose/demo_diff/runs/api-run-1/stdout.jsonl",
         {"observed_at": datetime.now(timezone.utc).isoformat(), "line": "streamed"},
     )
+    store.write_json(
+        "diagnose/demo_diff/runs/api-run-1/diagnosis_report.json",
+        {"schema_version": "rolo-diagnosis-report/v1", "status": "PASS"},
+    )
+    run = run.model_copy(
+        update={
+            "output_refs": {
+                "diagnosis_report": "artifact://diagnose/demo_diff/runs/api-run-1/diagnosis_report.json"
+            }
+        }
+    )
+    store.write_json(
+        "diagnose/demo_diff/runs/api-run-1/run.json", run.model_dump(mode="json")
+    )
     with TestClient(app) as client:
         detail = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1")
         events = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1/events")
+        evidence = client.get("/v1/robots/demo_diff/diagnose/runs/api-run-1/evidence")
     assert detail.status_code == 200
     assert detail.json()["run"]["run_id"] == "api-run-1"
     assert events.status_code == 200
     assert events.json()["items"][0]["line"] == "streamed"
+    assert evidence.status_code == 200
+    assert evidence.json()["schema_version"] == "rolo-stage-agent-evidence/v1"
+    assert evidence.json()["artifacts"]["diagnosis_report"]["payload"]["status"] == "PASS"
 
 
 def test_unknown_robot_is_404() -> None:

@@ -143,6 +143,11 @@ from rolo.stages.verify.acceptance import (
     VerificationReplayFixture,
     VerificationRunReport,
 )
+from rolo.stages.verify.readiness import (
+    ReadinessCheck,
+    RealVerifyReadinessReportV2,
+    VerificationProviderManifestV2,
+)
 
 CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationContract,
@@ -215,6 +220,9 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     VerificationEvidencePackage,
     VerificationReplayCase,
     VerificationReplayFixture,
+    VerificationProviderManifestV2,
+    ReadinessCheck,
+    RealVerifyReadinessReportV2,
     DiagnosisReport,
     TargetProvenance,
     EpisodeObservation,

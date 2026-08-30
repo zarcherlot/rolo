@@ -59,3 +59,20 @@ def test_release_policy_rejects_revoked_version_and_untrusted_publisher(tmp_path
         verify_companion_manifest(
             manifest, package, verification_key=b"test-key", release_policy=revoked
         )
+
+
+def test_release_policy_rejects_package_outside_compatibility_window(tmp_path):
+    package, manifest, _ = build_companion_package(
+        tmp_path,
+        package_id="rolo-target",
+        package_version="1.2.3",
+        architecture="x86_64",
+        publisher_id="rolo",
+        verification_key=b"test-key",
+    )
+    policy = CompanionReleasePolicy(publisher_id="rolo", minimum_version="1.3.0")
+
+    with pytest.raises(ValueError, match="below the supported minimum"):
+        verify_companion_manifest(
+            manifest, package, verification_key=b"test-key", release_policy=policy
+        )

@@ -1,0 +1,8 @@
+[project]
+name = "rolo-example-harness"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["rolo"]
+
+[project.entry-points."rolo.harnesses"]
+example = "rolo_example_harness:factory"

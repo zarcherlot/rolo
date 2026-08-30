@@ -42,8 +42,15 @@ verify (optional): diagnosis handoff → acceptance plan → regression/evidence
 - Verify：`src/rolo/stages/verify/service.py`。
 
 `src/rolo/stages/agent_runner.py` 是 Diagnose/Verify 共用的执行边界，负责任务摘要、授权、
-幂等、运行状态、日志流、取消、租约恢复和 handoff validator 回调。它本身不授予 release
-或 acceptance authority。
+幂等、运行状态、日志流、取消、租约恢复和 handoff validator 回调。`maintain_stage_runtime`
+提供重启后的全局 stale-run/孤儿 active-marker 清理；该维护过程只把中断运行置为终态，
+不重放 executor，也不授予 release 或 acceptance authority。`src/rolo/user_identity.py`
+为授权请求提供当前 OS 用户 principal 和 artifact-root 内持久的本地 session fingerprint；
+跨用户或跨 session 的恢复必须拒绝。
+
+HTTP 控制面的 `/v1/session` 只返回非秘密 principal/session_id，同时签发短时、HttpOnly
+的 HMAC `rolo_session` cookie；带 `authorization_ref` 的 Diagnose/Verify 恢复必须持有
+当前用户和持久 session 均匹配的 ticket，缺失、篡改或过期均 fail-closed。
 
 ## 3. Adapt 实现分层
 
@@ -73,6 +80,8 @@ Adapt 的核心不变量是“Agent 提案 ≠ Rolo 权威”：Agent 不能写 
 - 只读工具会话：`stages/downstream_tools.py`；
 - Episode 发布与验证：`stages/diagnose/episode.py`、`episode_projection.py`；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，只允许绑定 profile 的只读命令。
+- 授权身份：`user_identity.py` 生成当前用户和持久 session fingerprint；`agent_provider.py`
+  拒绝声明了不同 stage 的插件，避免 provider/executor 越界。
 
 Diagnose 可以生成冻结配置和严格的 diagnosis report，但不能单凭 Agent 输出改变 release
 authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判断。
@@ -84,6 +93,10 @@ authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判�
 - 执行边界：共用 `stages/agent_runner.py`；
 - 证据校验：`stages/handoffs.py`、`stages/verify/acceptance.py`；
 - 离线回放：`stages/verify/acceptance.py` 中的 replay/oracle 路径；
+- P1 v1 迁移边界：`stages/verify/legacy_adapter.py`，只接受匹配 plan digest 和 canonical provenance 的单向适配；
+- SSH canonical provenance：`stages/verify/ssh_provenance.py`，通过 pinned transport 采集只读目标身份并发布 binding artifact；
+- SSH bounded Verify provider：`stages/verify/ssh_target_provider.py`，固定 platform/workspace/companion case 经 adapter 写入 v2 evidence；
+- Verify handoff materialization：`SshTargetHealthProvider.materialize_handoff()`，重新验证 v2 evidence 后交给 canonical handoff validator；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，生成 provenance 绑定的 evidence package。
 
 Verify 的报告和 evidence package 是可审计输入，不自动等同于真实目标机 acceptance。
@@ -112,6 +125,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 - `src/rolo/episode_read_models.py`：模型、枚举、边界和分页/窗口类型；
 - `src/rolo/episode_projection.py`：从内部 record 构造对外只读 projection；
 - `src/rolo/episode_observation_bundles.py`：观察 bundle 的 producer/校验；
+- `src/rolo/episode_capture.py`：从只读 target inspection 生成 metadata-only immutable Episode；
 - `src/rolo/api.py`：episodes、revision history、cohort、observation bundle 端点。
 
 四类接口均以 revision pin 和 bounded read 为原则；它们不隐式提供实时采集、写操作、回放
@@ -143,7 +157,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 | Registry v1/v2、角色和迁移 | `test_registry.py`、`test_registry_v2.py`、`test_registry_migration.py` |
 | Native Tool session/broker/rollout | `test_agent_native_tools.py`、`test_native_tool_session.py`、`test_native_rollout.py` |
 | Stage Agent 授权、幂等、取消、日志 | `test_stage_agent_runner.py`、`test_stage_agent_read_models.py` |
-| Diagnose/Verify contract、fake 与 handoff | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
+| Diagnose/Verify contract、fake、handoff、P1 adapter 与 SSH provider | `test_diagnosis_contract.py`、`test_verify_evidence_contract.py`、`test_legacy_provider_adapter.py`、`test_post_r5_provider_boundary.py`、`test_ssh_provenance.py`、`test_ssh_target_provider.py`、`test_ssh_provider_handoff.py`、`test_ssh_provider_recovery.py`、`test_fake_downstream.py`、`test_handoff_materializers.py` |
 | 固定 Linux/ROS 目标与 Stage 插件 | `test_real_target_contracts.py`、`test_plugin_manifest.py` |
 | Episode projection/read model/API | `test_episode_read_models.py`、`test_episode_projection.py`、`test_episode_api.py` |
 | HTTP/MCP/Web 入口 | `test_api.py`、`test_mcp_server.py`、`test_vis.py` |

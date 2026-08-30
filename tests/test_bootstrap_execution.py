@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,9 +25,16 @@ from rolo.targets.signing import sign_companion_manifest
 
 
 class FakeTransport:
-    def __init__(self, target: SshTargetRef, *, fail_action: str | None = None) -> None:
+    def __init__(
+        self,
+        target: SshTargetRef,
+        *,
+        fail_action: str | None = None,
+        health_output: str | None = None,
+    ) -> None:
         self.target = target
         self.fail_action = fail_action
+        self.health_output = health_output
         self.uploads: list[tuple[Path, str]] = []
         self.commands: list[tuple[str, ...]] = []
 
@@ -52,6 +60,7 @@ class FakeTransport:
         return CommandResult(
             command,
             1 if self.fail_action == action else 0,
+            stdout=(self.health_output or "rolo-target 1.0.0") if action == "health" else "",
             stderr=f"{action} denied",
         )
 
@@ -181,6 +190,29 @@ def test_bootstrap_health_failure_restores_previous_companion_when_backup_exists
     assert any(command[:3] == ("sudo", "-n", "mv") for command in transport.commands)
 
 
+def test_bootstrap_health_version_mismatch_restores_previous_companion(
+    tmp_path: Path,
+) -> None:
+    manifest, package = _package(tmp_path)
+    plan, request, decision = _authority()
+    transport = FakeTransport(_target(), health_output="rolo-target 0.9.0")
+
+    result = execute_bootstrap(
+        plan,
+        request,
+        decision,
+        manifest_path=manifest,
+        package_path=package,
+        verification_key=b"verification-key",
+        transport=transport,
+        rollback_on_failure=True,
+    )
+
+    assert result.status == "FAILED"
+    assert any("version mismatch" in item for item in result.diagnostics)
+    assert any(command[:3] == ("sudo", "-n", "mv") for command in transport.commands)
+
+
 def test_bootstrap_rejects_changed_plan_or_bad_manifest_before_transport(tmp_path: Path) -> None:
     manifest, package = _package(tmp_path)
     plan, request, decision = _authority()
@@ -238,6 +270,25 @@ def test_subprocess_bootstrap_transport_builds_bounded_scp_and_ssh_argv(tmp_path
     assert ssh[0] == "ssh"
     assert ssh.count("--") == 1
     assert ssh[-2:] == ("rolo-target", "--version")
+
+
+def test_subprocess_bootstrap_transport_quotes_remote_scp_path_and_argv(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    runner = RecordingRunner()
+    transport = SubprocessBootstrapTransport(_target(), known_hosts=known_hosts, runner=runner)
+    remote_path = "/tmp/space value/quote'glob*;$(touch NOPE).pkg"
+
+    transport.upload(tmp_path / "package.bin", remote_path, timeout_s=5)
+    transport.execute(["printf", "space value", "quote'glob*;$(touch NOPE)"], timeout_s=5)
+
+    scp, ssh = runner.calls
+    assert shlex.split(scp[-1].split(":", 1)[1]) == [remote_path]
+    assert shlex.split(" ".join(ssh[-3:])) == [
+        "printf",
+        "space value",
+        "quote'glob*;$(touch NOPE)",
+    ]
 
 
 def test_bootstrap_rejects_expired_approval_before_transport(tmp_path: Path) -> None:

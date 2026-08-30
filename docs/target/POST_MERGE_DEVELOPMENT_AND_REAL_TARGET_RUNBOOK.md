@@ -44,6 +44,13 @@ git log -1 --format='%H %cI %s'
 
 要求工作树干净，报告中的 revision 与部署到目标机的 revision 完全一致。
 
+真机验证 revision 必须来自已推送并经人工批准的
+`origin/codex/post-r5-integration`。部署前把批准的 40 位提交写入
+`EXPECTED_REVISION`，执行 `git fetch origin --prune`，并验证
+`git rev-parse origin/codex/post-r5-integration` 与该值完全相同；将实际 HEAD 写入
+`revision.txt`。若远端 revision 变化，则停止本轮部署并重新生成整包证据，禁止在活动
+Runbook 中保留会过期的固定提交值。
+
 ### 2.2 合入门禁
 
 ```bash
@@ -95,6 +102,9 @@ Provider 边界。整合 DEV-01 时至少对照：
 每次只移植一个 producer/consumer 闭环。先写兼容/拒绝测试，再移植实现，最后重新导出
 Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence package。
 
+字段级归属和 P1 Verify provider 的暂缓合入结论记录在
+[R5 canonical ownership 审计](../review/POST_R5_CANONICAL_OWNERSHIP_AUDIT.md)。
+
 ## 4. 开发—验证循环
 
 每个 DEV 切片均执行以下顺序：
@@ -108,6 +118,50 @@ Schema；禁止同时保留名称相同但字段或 authority 不同的 evidence
 7. **合入**：一个切片一个提交，报告 HEAD、命令、证据路径、hash 和未解决边界。
 
 任何阶段失败，只修复当前切片并从本地门禁重新开始，不沿用失败提交生成的 artifact。
+
+当前 DEV-01 已落地首个窄切片 `target inspection Episode capture`（提交 `4ae7e42`）：
+它只生成 `METADATA_ONLY`、`UNVERIFIED`、不可变 Episode，不改变 release authority；后续
+Verify provider/materializer 仍需与本分支 canonical producer 做字段级对照后再接入。
+
+DEV-03 的首个身份边界切片已在独立分支实现：`user_identity.py` 持久化当前本地 session，
+Stage Agent 授权恢复继续要求完全匹配当前用户、session、stage、provider、executor、plan
+和输入摘要；声明了错误 stage 的插件在创建时拒绝。该切片不改变 canonical real-target 或
+evidence v2 authority，合入前须通过成功、跨用户、跨 session、provider 越界和伪造 session
+测试。
+
+HTTP 控制面现通过 `GET /v1/session` 签发短时 HttpOnly `rolo_session` ticket；rolo-vis
+启动或刷新时先取该 ticket。任何带 `authorization_ref` 的恢复请求必须通过当前用户和
+持久 session 的 HMAC 校验，不能再用可伪造的明文 session header；缺失、篡改或过期均应
+返回 403。真机验证需记录 `/v1/session` 的 session_id 与批准请求使用同一 artifact root。
+
+当前还增加了 provider boundary 拒绝 fixture（`tests/test_post_r5_provider_boundary.py`）：
+P1 v1 evidence/provenance 和缺少显式 safe-stop/rollback 的 payload 均必须 fail-closed。
+
+下一条 adapter 切片已实现于 `src/rolo/stages/verify/legacy_adapter.py`：只有 plan digest、
+canonical target provenance artifact/hash 和显式安全结果均匹配时，才允许把 P1 v1
+payload 写成 main v2 evidence；它尚未接管 SSH provider 的实际执行。
+
+SSH provenance collector 已补齐（`src/rolo/stages/verify/ssh_provenance.py`），但尚未接入
+P1 provider；在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复后，才可进入
+provider execution 切片。
+
+SSH bounded provider execution 已在 `src/rolo/stages/verify/ssh_target_provider.py` 完成
+软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence。下一步仍
+需在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并接入 Verify handoff。
+
+Verify handoff 接入已完成：`materialize_handoff()` 会重新验证 v2 evidence，并通过
+`commit_verification_handoff` 绑定 Diagnose handoff；没有上游 Diagnose handoff 时必须
+保持拒绝，不得单独制造 Verify latest handoff。
+
+Provider 可靠性回归已补齐：`tests/test_ssh_provider_recovery.py` 注入 timeout、运行中
+cancel、并发锁和 stale-lock 恢复。下一阶段须在 pinned SSH 目标复现同样故障，并记录
+进程中断/重启后的 artifact、handoff 和回退结果。
+
+DEV-07 的首个兼容切片已落地：`recover_all_stale_stage_runs` 与
+`maintain_stage_runtime` 扫描选定 Stage/robot 的运行记录，在重启后将超出租约的
+`RUNNING` 运行安全置为 `FAILED`，并清理指向终态/缺失运行的 stale `active-run.json`。
+该切片保留既有精确 stage/robot recovery API，维护过程不恢复 executor、不重放目标操作，
+测试覆盖跨 Stage 扫描、heartbeat 活跃保护、孤儿 marker、幂等重复运行。
 
 ## 5. WSL / 固定 Linux ROS rehearsal
 

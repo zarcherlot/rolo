@@ -38,6 +38,34 @@ jobs:
       - run: uv run --python ${{ matrix.python-version }} ruff check .
       - run: uv run --python ${{ matrix.python-version }} pytest
 
+  real-verify-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev --python 3.12
+      - name: Run real Verify provider conformance and evidence contract matrix
+        run: >-
+          uv run --python 3.12 pytest -q
+          tests/test_ssh_target_provider.py
+          tests/test_ssh_provider_recovery.py
+          tests/test_ssh_provider_handoff.py
+          tests/test_ssh_provenance.py
+          tests/test_product_cli.py
+          tests/test_verify_readiness.py
+          tests/test_target_evidence_deployment.py
+          tests/test_stage_agent_runner.py
+          tests/test_handoff_materializers.py
+          tests/test_api.py
+          tests/test_episode_api.py
+      - name: Enforce canonical schema drift gate
+        run: uv run --python 3.12 pytest -q tests/test_schemas.py
+
   package:
     runs-on: ubuntu-latest
     needs: [verify, docs]

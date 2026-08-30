@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "description": "One named, deterministic readiness assertion.",
+  "properties": {
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "detail": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Detail",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "detail"
+  ],
+  "title": "ReadinessCheck",
+  "type": "object"
+}

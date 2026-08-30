@@ -20,6 +20,7 @@ from rolo.stages.agent_runner import (
     paginate_stage_stream,
     prune_stage_streams,
     recover_stale_stage_runs,
+    remove_stale_stage_markers,
 )
 
 
@@ -180,11 +181,13 @@ def test_authorization_listing_filters_exact_robot_and_stage(tmp_path: Path) -> 
     verify_task = _task().model_copy(update={"stage": "verify", "robot_id": "robot-2"})
     runner.run(verify_task, workspace=tmp_path / "workspace", confirmed=False)
 
-    assert len(
-        list_stage_authorization_requests(
-            tmp_path, stage="diagnose", robot_id="robot-1"
-        )
-    ) == 1
+    requests = list_stage_authorization_requests(
+        tmp_path, stage="diagnose", robot_id="robot-1"
+    )
+    assert len(requests) == 1
+    assert requests[0]["request_ref"].startswith(
+        "artifact://diagnose/robot-1/authorization/requests/"
+    )
     assert list_stage_authorization_requests(tmp_path, stage="verify", robot_id="robot-1") == []
 
 
@@ -208,7 +211,7 @@ def test_stage_runner_rejects_cross_session_authorization(
     pending = runner.run(_task(), workspace=tmp_path / "workspace", confirmed=False)
     monkeypatch.setattr(
         "rolo.stages.agent_runner._current_actor_identity",
-        lambda: {
+        lambda *_args: {
             "os_user": "other",
             "os_uid": 2000,
             "session_id": "f" * 64,
@@ -326,6 +329,27 @@ def test_persistent_cancellation_cannot_be_overwritten_by_executor_completion(
         )
     )
     assert persisted.status == "CANCELLED"
+
+
+def test_remove_stale_orphan_active_marker(tmp_path: Path) -> None:
+    marker = tmp_path / "verify" / "robot-1" / "active-run.json"
+    marker.parent.mkdir(parents=True)
+    claimed_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    marker.write_text(
+        json.dumps({"run_id": "missing-run", "claimed_at": claimed_at.isoformat()})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    removed = remove_stale_stage_markers(
+        tmp_path,
+        stage="verify",
+        robot_id="robot-1",
+        stale_after_s=60,
+    )
+
+    assert removed == [str(marker)]
+    assert not marker.exists()
 
 
 def test_stage_run_heartbeat_prevents_premature_recovery(tmp_path: Path) -> None:

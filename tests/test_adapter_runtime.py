@@ -1,6 +1,7 @@
 import getpass
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from typer.testing import CliRunner
 from rolo.adapter_runner import AdapterProcessResult
 from rolo.adapter_runtime import (
     activate_release,
+    adapter_command,
     invoke_adapter,
     probe_adapter_package,
     publish_release,
@@ -120,6 +122,12 @@ def test_package_probe_runs_describe_without_crossing_invoke_boundary(
 
     assert len(runner.commands) == 1
     assert runner.commands[0][-1] == "describe"
+
+
+def test_python_zipapp_uses_interpreter_launcher(tmp_path: Path) -> None:
+    package = tmp_path / "adapter.pyz"
+
+    assert adapter_command(package) == [sys.executable, str(package)]
 
 
 @pytest.fixture(autouse=True)

@@ -18,6 +18,8 @@ from rolo.targets.executor import (
     MAX_DIAGNOSTIC_CHARS,
     CommandResult,
     SubprocessCommandRunner,
+    quote_remote_arg,
+    quote_remote_argv,
 )
 from rolo.targets.models import BootstrapAction, BootstrapPlanStatus, TargetBootstrapPlan
 from rolo.targets.signing import CompanionManifest, verify_companion_manifest
@@ -83,11 +85,12 @@ class SubprocessBootstrapTransport:
     def upload(self, local_path: Path, remote_path: str, *, timeout_s: float) -> CommandResult:
         options = self._options("scp")
         destination = options[-1]
-        argv = [*options[:-2], "--", str(local_path), f"{destination}:{remote_path}"]
+        remote_spec = f"{destination}:{quote_remote_arg(remote_path)}"
+        argv = [*options[:-2], "--", str(local_path), remote_spec]
         return self.runner.run(argv, timeout_s=timeout_s)
 
     def execute(self, remote_argv: list[str], *, timeout_s: float) -> CommandResult:
-        argv = [*self._options("ssh"), *remote_argv]
+        argv = [*self._options("ssh"), *quote_remote_argv(remote_argv)]
         return self.runner.run(argv, timeout_s=timeout_s)
 
 
@@ -255,8 +258,17 @@ def execute_bootstrap(
             diagnostics=diagnostics,
         )
     health = transport.execute(["rolo-target", "--version"], timeout_s=timeout_s)
-    if health.returncode != 0:
-        diagnostics = [_transport_failure(health, "companion health check")]
+    expected_health = f"{manifest.package_id} {manifest.package_version}"
+    health_output = health.stdout.strip()
+    if health.returncode != 0 or health_output != expected_health:
+        diagnostics = (
+            [_transport_failure(health, "companion health check")]
+            if health.returncode != 0
+            else [
+                "companion health version mismatch: "
+                f"expected {expected_health!r}, observed {health_output!r}"
+            ]
+        )
         if rollback_available:
             rollback = transport.execute(
                 ["sudo", "-n", "mv", "-f", "--", rollback_path, "/usr/local/bin/rolo-target"],

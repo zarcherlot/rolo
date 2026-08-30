@@ -171,7 +171,7 @@ def _layer(value: str) -> CapabilityLayer:
 def _optional_discovery(artifact_root: Path, robot_id: str) -> DiscoveryReport | None:
     try:
         return load_latest_report(artifact_root, robot_id)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError, ValueError):
         return None
 
 

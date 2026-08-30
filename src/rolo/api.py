@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import binascii
 import hmac
 import ipaddress
+import json
+import time
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -91,6 +95,7 @@ from rolo.stage_agent_read_models import (
     StageAgentRunDetail,
     stage_agent_event_page,
     stage_agent_run_detail,
+    stage_agent_run_evidence,
 )
 from rolo.stages.adapt.operation_governance import (
     ExecutionClass,
@@ -106,12 +111,19 @@ from rolo.stages.agent_runner import (
     cancel_stage_run,
     list_stage_authorization_requests,
 )
+from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.contracts import PipelineAssessment, StageName
 from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline
-from rolo.target_ref import SshTargetRef
+from rolo.stages.verify.readiness import (
+    ReadinessCheck,
+    RealVerifyReadinessReportV2,
+    validate_readiness_report,
+)
+from rolo.target_ref import SshTargetRef, parse_target_ref
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
+from rolo.targets.executor import create_target_executor
 from rolo.targets.models import TargetBootstrapPlan
 from rolo.targets.security import validate_bootstrap_security
 from rolo.topology_history_read_models import (
@@ -124,6 +136,7 @@ from rolo.topology_path_read_models import (
     TopologyPathExplanation,
     explain_topology_path,
 )
+from rolo.user_identity import current_user_principal, current_user_session_id
 from rolo.wiki_read_models import RobotWikiSnapshot, build_robot_wiki
 from rolo.workbench_read_models import (
     EvidenceAuthority,
@@ -234,6 +247,66 @@ def get_job_service() -> JobService:
     return JobService(get_settings().rolo_config_dir / "jobs")
 
 
+_SESSION_TICKET_TTL_SECONDS = 3600
+
+
+def _session_ticket_key(settings, session_id: str) -> bytes:
+    """Derive the local ticket signing key without exposing a credential."""
+
+    configured = settings.rolo_api_token
+    return (configured or f"rolo-local-session:{session_id}").encode("utf-8")
+
+
+def _issue_session_ticket(settings, *, principal: str, session_id: str) -> str:
+    payload = {
+        "principal": principal,
+        "session_id": session_id,
+        "expires_at": int(time.time()) + _SESSION_TICKET_TTL_SECONDS,
+    }
+    encoded = urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).decode("ascii")
+    signature = hmac.new(
+        _session_ticket_key(settings, session_id), encoded.encode("ascii"), "sha256"
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _valid_session_ticket(request: Request, settings, *, expected_session: str) -> bool:
+    """Validate a browser ticket against this process's user and durable session."""
+
+    ticket = request.cookies.get("rolo_session", "")
+    encoded, separator, supplied_signature = ticket.partition(".")
+    if not encoded or separator != "." or len(supplied_signature) != 64:
+        return False
+    if any(character not in "0123456789abcdef" for character in supplied_signature.casefold()):
+        return False
+    try:
+        encoded_bytes = encoded.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    expected_signature = hmac.new(
+        _session_ticket_key(settings, expected_session), encoded_bytes, "sha256"
+    ).hexdigest()
+    if not hmac.compare_digest(supplied_signature, expected_signature):
+        return False
+    try:
+        payload = json.loads(urlsafe_b64decode(encoded + "===").decode("utf-8"))
+    except (binascii.Error, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    try:
+        principal = current_user_principal()
+    except ValueError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("principal") == principal
+        and payload.get("session_id") == expected_session
+        and isinstance(payload.get("expires_at"), int)
+        and payload["expires_at"] > int(time.time())
+    )
+
+
 class BootstrapExecutePayload(BaseModel):
     """File-backed bootstrap inputs; secrets never travel in the request body."""
 
@@ -246,6 +319,14 @@ class BootstrapExecutePayload(BaseModel):
     known_hosts: Path
     execute: bool = False
     timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
+
+
+class BootstrapPlanPayload(BaseModel):
+    """Read-only target bootstrap planning request for rolo-vis."""
+
+    target: str = Field(min_length=1, max_length=1024)
+    known_hosts: Path | None = None
+    timeout_s: float = Field(default=10.0, ge=1.0, le=300.0)
 
 
 class StageAuthorizationRequestCollection(BaseModel):
@@ -264,6 +345,13 @@ class StageRunPayload(BaseModel):
     authorization_ref: str | None = Field(default=None, max_length=512)
 
 
+class LocalSessionResponse(BaseModel):
+    """Non-secret identity returned while issuing a local browser ticket."""
+
+    principal: str
+    session_id: str
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     runtime = get_runtime(request)
@@ -275,6 +363,25 @@ async def health(request: Request) -> HealthResponse:
         openai_key_configured=bool(runtime.settings.openai_api_key),
         api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES],
     )
+
+
+@app.get("/v1/session", response_model=LocalSessionResponse)
+def get_local_session(request: Request, response: Response) -> LocalSessionResponse:
+    """Issue a short-lived, HttpOnly ticket for same-user browser approvals."""
+
+    settings = get_settings()
+    principal = current_user_principal()
+    session_id = current_user_session_id(settings.rolo_artifact_dir)
+    response.set_cookie(
+        "rolo_session",
+        _issue_session_ticket(settings, principal=principal, session_id=session_id),
+        max_age=_SESSION_TICKET_TTL_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+    return LocalSessionResponse(principal=principal, session_id=session_id)
 
 
 @app.get("/v1/robots", response_model=list[RobotCapability])
@@ -329,6 +436,21 @@ def execute_target_bootstrap(payload: BootstrapExecutePayload) -> dict[str, obje
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"status": "BOOTSTRAP_EXECUTED", "job_id": job.job_id, "result": result}
+
+
+@app.post("/v1/targets/bootstrap-plan", response_model=TargetBootstrapPlan)
+def plan_target_bootstrap(payload: BootstrapPlanPayload) -> TargetBootstrapPlan:
+    """Build a read-only, typed bootstrap plan for GUI or API clients."""
+
+    try:
+        target = parse_target_ref(payload.target)
+        return create_target_executor(
+            target,
+            known_hosts=payload.known_hosts,
+            timeout_s=payload.timeout_s,
+        ).plan_bootstrap()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/v1/jobs", response_model=JobPage)
@@ -659,6 +781,58 @@ async def get_robot_pipeline(robot_id: str, request: Request) -> PipelineAssessm
 
 
 @app.get(
+    "/v1/robots/{robot_id}/verify/readiness",
+    response_model=RealVerifyReadinessReportV2,
+)
+async def get_robot_verify_readiness(
+    robot_id: str, request: Request
+) -> RealVerifyReadinessReportV2:
+    """Read the optional canonical Verify readiness gate for rolo-vis.
+
+    Missing readiness is an explicit BLOCKED result, not a 404: the endpoint is
+    a feature-negotiated read model and never grants release authority.
+    """
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    path = ArtifactLayout(runtime.settings.rolo_artifact_dir).verify_readiness(robot_id)
+    if path.is_symlink():
+        raise HTTPException(
+            status_code=409,
+            detail="Verify readiness report failed integrity validation",
+        )
+    if not path.is_file():
+        return RealVerifyReadinessReportV2(
+            robot_id=robot_id,
+            status="BLOCKED",
+            checks={
+                "readiness_report": ReadinessCheck(
+                    status="FAIL", detail="Verify readiness report is not available"
+                )
+            },
+            blockers=["Verify readiness report is not available"],
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Verify readiness report must be a JSON object")
+        report = validate_readiness_report(
+            payload,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            robot_id=robot_id,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Verify readiness report failed integrity validation",
+        ) from exc
+    return report
+
+
+@app.get(
     "/v1/robots/{robot_id}/stage-auth-requests",
     response_model=StageAuthorizationRequestCollection,
 )
@@ -702,6 +876,15 @@ async def _run_downstream_stage(
     runtime = get_runtime(request)
     try:
         runtime.registry.get(robot_id)
+        if payload.authorization_ref:
+            expected_session = current_user_session_id(runtime.settings.rolo_artifact_dir)
+            if not _valid_session_ticket(
+                request, runtime.settings, expected_session=expected_session
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="stage authorization requires an authenticated local Rolo session",
+                )
         return DownstreamStageService(runtime.settings, stage).run(
             robot_id,
             confirmed=payload.confirmed,
@@ -770,6 +953,29 @@ async def get_stage_agent_run(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="stage Agent run is unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/v1/robots/{robot_id}/{stage}/runs/{run_id}/evidence")
+async def get_stage_agent_evidence(
+    robot_id: str,
+    stage: Literal["diagnose", "verify"],
+    run_id: str,
+    request: Request,
+) -> dict[str, object]:
+    """Expose only evidence/report artifacts explicitly referenced by a run."""
+
+    runtime = get_runtime(request)
+    try:
+        runtime.registry.get(robot_id)
+        return stage_agent_run_evidence(
+            runtime.settings.rolo_artifact_dir, stage, robot_id, run_id
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="stage Agent evidence is unavailable") from exc
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -849,12 +1055,18 @@ async def list_robot_discoveries(
         runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_discovery_snapshot_collection(
-        runtime.settings.rolo_artifact_dir,
-        robot_id,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        return build_discovery_snapshot_collection(
+            runtime.settings.rolo_artifact_dir,
+            robot_id,
+            limit=limit,
+            offset=offset,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="discovery evidence failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/topology", response_model=RobotTopology)
@@ -864,12 +1076,18 @@ async def get_robot_topology(robot_id: str, request: Request) -> RobotTopology:
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    topology, _ = build_robot_topology(
-        robot,
-        runtime.settings.rolo_output_dir,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-    )
-    return topology
+    try:
+        topology, _ = build_robot_topology(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+        )
+        return topology
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology evidence failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get(
@@ -888,8 +1106,12 @@ async def get_robot_topology_path(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    topology, _ = build_robot_topology(robot, runtime.settings.rolo_output_dir)
     try:
+        topology, _ = build_robot_topology(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+        )
         return explain_topology_path(
             topology,
             from_node,
@@ -898,6 +1120,11 @@ async def get_robot_topology_path(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Unknown topology node") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology evidence failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get(
@@ -913,11 +1140,17 @@ async def list_robot_topology_snapshots(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_topology_snapshot_collection(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-    )
+    try:
+        return build_topology_snapshot_collection(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology snapshot history failed release freshness or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/topology/diff", response_model=TopologyDiff)
@@ -932,13 +1165,19 @@ async def get_robot_topology_diff(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    diff = build_topology_diff(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-        from_snapshot,
-        to_snapshot,
-    )
+    try:
+        diff = build_topology_diff(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+            from_snapshot,
+            to_snapshot,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="topology diff evidence failed manifest or integrity validation",
+        ) from exc
     if diff is None:
         raise HTTPException(status_code=404, detail="topology snapshot was not found")
     return diff
@@ -964,18 +1203,24 @@ async def list_robot_capabilities(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_capability_collection(
-        robot,
-        runtime.settings.rolo_artifact_dir,
-        runtime.settings.rolo_output_dir,
-        limit=limit,
-        offset=offset,
-        query=query,
-        layer=layer,
-        lifecycle=lifecycle,
-        risk=risk,
-        availability=availability,
-    )
+    try:
+        return build_capability_collection(
+            robot,
+            runtime.settings.rolo_artifact_dir,
+            runtime.settings.rolo_output_dir,
+            limit=limit,
+            offset=offset,
+            query=query,
+            layer=layer,
+            lifecycle=lifecycle,
+            risk=risk,
+            availability=availability,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="capability evidence failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/robots/{robot_id}/runs", response_model=LifecycleRunCollection)
@@ -1287,33 +1532,45 @@ async def list_robot_evidence(
         robot = runtime.registry.get(robot_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return build_evidence_collection(
-        robot,
-        runtime.settings.rolo_output_dir,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-        limit=limit,
-        offset=offset,
-        authority=authority,
-        pipeline=assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id),
-    )
+    try:
+        return build_evidence_collection(
+            robot,
+            runtime.settings.rolo_output_dir,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            limit=limit,
+            offset=offset,
+            authority=authority,
+            pipeline=assess_pipeline(runtime.settings.rolo_artifact_dir, robot_id),
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="evidence read model failed manifest or integrity validation",
+        ) from exc
 
 
 @app.get("/v1/evidence/{evidence_id}", response_model=EvidenceRecord)
 async def get_evidence(evidence_id: str, request: Request) -> EvidenceRecord:
     runtime = get_runtime(request)
-    record = find_evidence(
-        runtime.registry.list(),
-        runtime.settings.rolo_output_dir,
-        evidence_id,
-        artifact_root=runtime.settings.rolo_artifact_dir,
-        pipelines={
-            robot.robot_id: assess_pipeline(
-                runtime.settings.rolo_artifact_dir,
-                robot.robot_id,
-            )
-            for robot in runtime.registry.list()
-        },
-    )
+    try:
+        record = find_evidence(
+            runtime.registry.list(),
+            runtime.settings.rolo_output_dir,
+            evidence_id,
+            artifact_root=runtime.settings.rolo_artifact_dir,
+            pipelines={
+                robot.robot_id: assess_pipeline(
+                    runtime.settings.rolo_artifact_dir,
+                    robot.robot_id,
+                )
+                for robot in runtime.registry.list()
+            },
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="evidence record failed manifest or integrity validation",
+        ) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Unknown evidence ID")
     return record

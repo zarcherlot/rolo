@@ -322,7 +322,23 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             blockers=["Run adapt discovery"],
             agent_requirement=AgentRequirement.ADAPTER_AGENT,
         )
-    report = load_latest_report(artifact_root, robot_id)
+    try:
+        report = load_latest_report(artifact_root, robot_id)
+    except (OSError, ValueError):
+        # A broken latest marker must degrade the read model, not take down the
+        # control-plane overview endpoint. The next discovery run can repair it.
+        return StageAssessment(
+            stage=StageName.ADAPT,
+            robot_id=robot_id,
+            status=StageStatus.BLOCKED,
+            summary="Latest Adapt discovery evidence is unavailable or invalid",
+            prerequisites=[str(discovery_report)],
+            artifacts={"inputs": str(adapt_inputs)},
+            blockers=[
+                "Latest discovery evidence failed manifest, schema, or integrity validation"
+            ],
+            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+        )
     if report.status == DiscoveryStatus.FAILED:
         return StageAssessment(
             stage=StageName.ADAPT,
