@@ -20,6 +20,7 @@ from rolo.stages.agent_runner import (
     paginate_stage_stream,
     prune_stage_streams,
     recover_stale_stage_runs,
+    remove_stale_stage_markers,
 )
 
 
@@ -328,6 +329,27 @@ def test_persistent_cancellation_cannot_be_overwritten_by_executor_completion(
         )
     )
     assert persisted.status == "CANCELLED"
+
+
+def test_remove_stale_orphan_active_marker(tmp_path: Path) -> None:
+    marker = tmp_path / "verify" / "robot-1" / "active-run.json"
+    marker.parent.mkdir(parents=True)
+    claimed_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    marker.write_text(
+        json.dumps({"run_id": "missing-run", "claimed_at": claimed_at.isoformat()})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    removed = remove_stale_stage_markers(
+        tmp_path,
+        stage="verify",
+        robot_id="robot-1",
+        stale_after_s=60,
+    )
+
+    assert removed == [str(marker)]
+    assert not marker.exists()
 
 
 def test_stage_run_heartbeat_prevents_premature_recovery(tmp_path: Path) -> None:
