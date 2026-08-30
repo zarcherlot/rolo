@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel
 
 from rolo.stages.adapt.agent_contracts import OperationProposalBundle
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
@@ -84,3 +87,21 @@ def test_codex_output_schema_can_pin_array_items_to_caller_values() -> None:
     assert finding["properties"]["basis"]["items"]["enum"] == refs
     assert finding["properties"]["counter_evidence_refs"]["items"]["enum"] == refs
     assert assessment["properties"]["basis"]["items"]["enum"] == refs
+
+
+def test_codex_output_schema_removes_defaults_next_to_references() -> None:
+    class DemoDisposition(str, Enum):
+        ACCEPT = "ACCEPT"
+
+    class DemoModel(BaseModel):
+        disposition: DemoDisposition = DemoDisposition.ACCEPT
+
+    canonical = DemoModel.model_json_schema()
+    compatible = codex_output_schema(DemoModel)
+
+    canonical_disposition = canonical["properties"]["disposition"]
+    compatible_disposition = compatible["properties"]["disposition"]
+
+    assert canonical_disposition["$ref"] == "#/$defs/DemoDisposition"
+    assert canonical_disposition["default"] == "ACCEPT"
+    assert compatible_disposition == {"$ref": "#/$defs/DemoDisposition"}
