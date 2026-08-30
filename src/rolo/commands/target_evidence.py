@@ -27,6 +27,7 @@ from rolo.stages.adapt.target_evidence import (
     load_deployment,
     new_request,
     reenroll_deployment,
+    refresh_local_deployment,
     restricted_collector_authorized_key,
     stage_collector_rotation,
     verify_evidence_bundle,
@@ -195,6 +196,70 @@ def collector_rotate(
             "secret_path": str(secret_file.resolve()),
             "previous_collector_preserved": True,
             "next": "transfer the new descriptor and secret, then run re-enroll",
+        }
+    )
+
+
+@target_evidence_app.command("collector-refresh")
+def collector_refresh(
+    robot_id: Annotated[str, typer.Option("--robot-id", "--robot")],
+    project_root: Annotated[
+        Path, typer.Option("--project-root", help="Target workspace used to discover entrypoints")
+    ],
+    expected_collector_id: Annotated[
+        str, typer.Option("--expected-collector-id", help="Current pinned collector identity")
+    ],
+    config_root: Annotated[
+        Path | None, typer.Option("--config-root", help="Rolo config root; defaults to settings")
+    ] = None,
+    allow_executable: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--allow-executable",
+            help="Explicit safe executable override; repeatable (otherwise auto-discover)",
+        ),
+    ] = None,
+    ros_setup: Annotated[
+        list[Path] | None,
+        typer.Option("--ros-setup", help="Approved ROS setup file; repeat in source order"),
+    ] = None,
+    reason: Annotated[
+        str, typer.Option("--reason", help="Immutable transition reason")
+    ] = "refresh target executable help allowlist",
+) -> None:
+    """Explicitly expand a local collector's bounded executable-help allowlist."""
+    try:
+        settings = get_settings()
+        root = config_root or settings.rolo_config_dir
+        install_roots = [project_root.expanduser().resolve() / "install"]
+        _, ros_setup_files = select_ros_setup_files(
+            auto_source=settings.ros_auto_source,
+            configured=ros_setup or settings.ros_setup_files,
+            project_root=project_root,
+            install_roots=install_roots,
+        )
+        deployment, transition, transition_path, state_path = refresh_local_deployment(
+            robot_id=robot_id,
+            config_root=root,
+            project_root=project_root,
+            expected_collector_id=expected_collector_id,
+            help_executables=allow_executable or (),
+            ros_setup_files=ros_setup_files,
+            reason=reason,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "COLLECTOR_REFRESHED",
+            "deployment": deployment.model_dump(mode="json"),
+            "transition": transition.model_dump(mode="json"),
+            "transition_path": str(transition_path),
+            "collector_state": str(state_path),
+            "help_executables": [
+                item.model_dump(mode="json") for item in deployment.collector.help_executables
+            ],
+            "next": f"robotctl target-evidence collect --robot {robot_id}",
         }
     )
 
