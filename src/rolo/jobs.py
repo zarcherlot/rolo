@@ -17,6 +17,8 @@ from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalR
 from rolo.targets.bootstrap import BootstrapExecutionResult, BootstrapTransport, execute_bootstrap
 from rolo.targets.models import TargetBootstrapPlan
 
+JOB_API_FEATURES = ("workbench.job-read-model/v1",)
+
 
 class JobStatus(str, Enum):
     CREATED = "CREATED"
