@@ -17,14 +17,13 @@ from rolo.stages.adapt.conformance import (
     validate_adapter_handoff,
 )
 from rolo.stages.adapt.discovery import load_latest_report
-from rolo.stages.adapt.models import AdaptGateReport
 from rolo.stages.adapt.operation_registry import (
     adapter_operation_eligibility,
     canonical_operation_registry,
 )
 from rolo.stages.adapt.proposal_orchestration import RegistrySnapshot
 from rolo.stages.adapt.service import assess_adapt
-from rolo.stages.artifact_paths import ArtifactLayout, resolve_artifact_ref
+from rolo.stages.artifact_paths import ArtifactLayout
 
 
 class AcceptanceRegistry(BaseModel):
@@ -55,9 +54,6 @@ class AcceptanceRelease(BaseModel):
     gate_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     handoff_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     release_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    validation_scope: Literal["STRUCTURAL_ONLY", "TARGET_RUNTIME_READONLY"] = (
-        "STRUCTURAL_ONLY"
-    )
 
 
 class AdaptAcceptancePack(BaseModel):
@@ -142,18 +138,12 @@ def build_adapt_acceptance_pack(
                 output_root=output_root,
             )
             latest_handoff = latest_adapter_handoff_path(artifact_root, robot_id)
-            gate_report = AdaptGateReport.model_validate_json(
-                resolve_artifact_ref(artifact_root, handoff.gate_report_ref).read_text(
-                    encoding="utf-8"
-                )
-            )
             release = AcceptanceRelease(
                 run_id=handoff.source_agent_run_id,
                 gate_status="PASSED",
                 gate_report_sha256=handoff.gate_report_sha256,
                 handoff_sha256=sha256_file(latest_handoff),
                 release_manifest_sha256=handoff.release_manifest_sha256,
-                validation_scope=gate_report.validation_scope,
             )
         except (OSError, ValueError) as exc:
             blockers.append(f"Latest Adapt release validation failed: {exc}")

@@ -401,9 +401,6 @@ class AdaptGateReport(BaseModel):
     robot_id: str
     discovery_id: str
     status: AdaptGateStatus
-    validation_scope: Literal["STRUCTURAL_ONLY", "TARGET_RUNTIME_READONLY"] = (
-        "STRUCTURAL_ONLY"
-    )
     checks: list[str] = Field(default_factory=list)
     error: str | None = None
     checked_at: datetime = Field(default_factory=utc_now)

@@ -722,16 +722,6 @@ class AdapterPromotionService:
                     raise ValueError(f"target operation route was not observed: {operation}")
             checks.append("product-owned operation contracts")
             checks.append("Adapter Agent bundle local-static declarations (advisory)")
-            validation_scope = (
-                "TARGET_RUNTIME_READONLY" if runtime_probe_requested else "STRUCTURAL_ONLY"
-            )
-            checks.append(
-                "target route identity/read-only evidence (no operation outcome execution)"
-                if runtime_probe_requested
-                else "structural route declarations only; target runtime was not probed"
-            )
-            # Preserve the stable audit token used by existing consumers while
-            # adding the explicit scope above.
             checks.append("target route existence without outcome execution")
 
             _, manifest_path = load_and_verify_discovery_manifest(
@@ -815,7 +805,6 @@ class AdapterPromotionService:
                 robot_id=run.robot_id,
                 discovery_id=run.source_discovery_id,
                 status=AdaptGateStatus.PASSED,
-                validation_scope=validation_scope,
                 checks=checks,
             )
             persisted_gate = self.artifacts.write_json(
