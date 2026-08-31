@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import shutil
@@ -33,6 +34,26 @@ from rolo.targets.profiles import (
 )
 
 _NOW = datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc)
+_READ_SCOPES = "jobs:read,targets:read,approval-gates:read,artifact-analysis:read"
+
+
+def _loopback_host(value: str) -> bool:
+    if value.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def _configure_server_environment(host: str) -> None:
+    """Bind the harness API to an explicit auth posture without exposing secrets."""
+
+    os.environ["ROLO_HOST"] = host
+    if not _loopback_host(host) and not os.environ.get("ROLO_API_TOKEN"):
+        raise RuntimeError("non-loopback staging harness requires ROLO_API_TOKEN")
+    if os.environ.get("ROLO_API_TOKEN") and not os.environ.get("ROLO_API_TOKEN_SCOPES"):
+        os.environ["ROLO_API_TOKEN_SCOPES"] = _READ_SCOPES
 
 
 def _write_job(root: Path, job: Job, events: list[JobEvent]) -> None:
@@ -341,6 +362,10 @@ def main() -> int:
     if args.no_serve:
         return 0
     os.environ["ROLO_CONFIG_DIR"] = str(root)
+    # Keep API authentication aligned with the actual bind address. Tokens are
+    # read only from the environment; they are never accepted as CLI arguments,
+    # printed, or written into the harness manifest.
+    _configure_server_environment(args.host)
     os.environ.setdefault("ROLO_ARTIFACT_DIR", str(root / "runtime-artifacts"))
     os.environ.setdefault("ROLO_OUTPUT_DIR", str(root / "runtime-output"))
     get_settings.cache_clear()
