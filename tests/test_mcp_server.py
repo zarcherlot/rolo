@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.mcp_server import handle
@@ -87,3 +89,61 @@ def test_mcp_stage_cancel_persists_cancelled_status(tmp_path: Path, monkeypatch)
     )
     assert result["result"]["structuredContent"]["status"] == "CANCELLED"
     get_settings.cache_clear()
+
+
+def test_mcp_protocol_and_error_responses(monkeypatch) -> None:
+    initialized = handle({"jsonrpc": "2.0", "id": "i", "method": "initialize"})
+    assert initialized["result"]["protocolVersion"] == "2024-11-05"
+    assert handle({"jsonrpc": "2.0", "id": 1, "method": "ping"})["result"] == {}
+    unknown = handle({"jsonrpc": "2.0", "id": 2, "method": "unknown"})
+    assert unknown["error"]["code"] == -32601
+    invalid = handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "missing", "arguments": {}},
+        }
+    )
+    assert invalid["error"]["code"] == -32000
+
+    monkeypatch.setattr(
+        "rolo.mcp_server.get_settings", lambda: type("S", (), {"rolo_artifact_dir": Path(".")})()
+    )
+    monkeypatch.setattr(
+        "rolo.mcp_server.list_stage_authorization_requests", lambda *args, **kwargs: [{"ok": True}]
+    )
+    listed = handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "rolo_stage_auth_requests", "arguments": {"stage": ""}},
+        }
+    )
+    assert listed["result"]["structuredContent"]["requests"] == [{"ok": True}]
+    with pytest.raises(ValueError, match="stage must be"):
+        from rolo.mcp_server import _call
+
+        _call("rolo_stage_cancel", {"stage": "bad", "robot_id": "r", "run_id": "x"})
+
+
+def test_mcp_adapt_requires_confirmation_and_calls_canonical_service(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from rolo.mcp_server import _call
+
+    pending = _call(
+        "rolo_adapt_start",
+        {"target": str(tmp_path), "robot_id": "demo", "confirmed": False},
+    )
+    assert pending["status"] == "AUTHORIZATION_REQUIRED"
+    with pytest.raises(ValueError, match="local workspace"):
+        _call("rolo_adapt_start", {"target": "ssh://host/opt/robot", "robot_id": "demo"})
+    monkeypatch.setattr(
+        "rolo.mcp_server.run_adapt_start", lambda **kwargs: {"ok": kwargs["robot_id"]}
+    )
+    monkeypatch.setattr("rolo.mcp_server.get_settings", lambda: type("S", (), {})())
+    assert _call(
+        "rolo_adapt_start", {"target": str(tmp_path), "robot_id": "demo", "confirmed": True}
+    ) == {"ok": "demo"}
