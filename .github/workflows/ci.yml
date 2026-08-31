@@ -36,7 +36,17 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --dev --python ${{ matrix.python-version }}
       - run: uv run --python ${{ matrix.python-version }} ruff check .
-      - run: uv run --python ${{ matrix.python-version }} pytest
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            uv run --python ${{ matrix.python-version }} pytest \
+              --cov=src/rolo \
+              --cov-report=term-missing \
+              --cov-report=xml \
+              --cov-fail-under=81.90
+          else
+            uv run --python ${{ matrix.python-version }} pytest
+          fi
 
   real-verify-contract:
     runs-on: ubuntu-latest
