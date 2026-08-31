@@ -35,6 +35,14 @@ from rolo.adapt_read_models import (
     build_robot_slice_stability,
     build_robot_target_operation_slice,
 )
+from rolo.approval_gate_read_models import (
+    APPROVAL_GATE_API_FEATURES,
+    ApprovalGateCollection,
+    ApprovalGateConflict,
+    ApprovalGateSummary,
+    build_approval_gate_collection,
+    get_approval_gate_summary,
+)
 from rolo.capability_read_models import (
     CapabilityAvailability,
     CapabilityCollection,
@@ -185,6 +193,10 @@ def _loopback_host(value: str) -> bool:
 
 
 def _required_scope(path: str, method: str) -> str | None:
+    if method == "GET" and path == "/v1/approval-gates":
+        return "approval-gates:read"
+    if method == "GET" and path.startswith("/v1/jobs/") and path.endswith("/approval-gate"):
+        return "approval-gates:read"
     if method == "GET" and path.startswith("/v1/targets/") and path.endswith("/readiness"):
         return "targets:read"
     if method == "GET" and (path == "/v1/jobs" or path.startswith("/v1/jobs/")):
@@ -381,6 +393,7 @@ async def health(request: Request) -> HealthResponse:
             *EPISODE_API_FEATURES,
             *JOB_API_FEATURES,
             *TARGET_READINESS_API_FEATURES,
+            *APPROVAL_GATE_API_FEATURES,
         ],
     )
 
@@ -530,6 +543,57 @@ def list_jobs(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": str(exc)},
         ) from exc
+
+
+@app.get("/v1/approval-gates", response_model=ApprovalGateCollection)
+def list_approval_gates(
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ApprovalGateCollection:
+    """Return sanitized approval, gate, and recovery state for bootstrap jobs."""
+
+    try:
+        return build_approval_gate_collection(
+            get_settings().rolo_config_dir, limit=limit, offset=offset
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "APPROVAL_GATE_UNAVAILABLE",
+                "message": "approval-gate facts are unavailable",
+            },
+        ) from exc
+
+
+@app.get("/v1/jobs/{job_id}/approval-gate", response_model=ApprovalGateSummary)
+def read_approval_gate(job_id: str) -> ApprovalGateSummary:
+    """Return the approval/gate projection bound to one exact job id."""
+
+    try:
+        summary = get_approval_gate_summary(get_settings().rolo_config_dir, job_id)
+    except ApprovalGateConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "APPROVAL_GATE_CONFLICT",
+                "message": "job and target readiness revisions do not match",
+            },
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "APPROVAL_GATE_UNAVAILABLE",
+                "message": "approval-gate facts are unavailable",
+            },
+        ) from exc
+    if summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "JOB_NOT_FOUND", "message": "approval-gate is unavailable"},
+        )
+    return summary
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobRecovery)

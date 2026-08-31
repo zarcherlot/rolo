@@ -1,0 +1,285 @@
+{
+  "$defs": {
+    "ApprovalGateStep": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "VERIFY_PLATFORM",
+            "VERIFY_WORKSPACE",
+            "INSTALL_COMPANION",
+            "HEALTH_CHECK"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "enum": [
+            "READ_ONLY",
+            "HOST_MUTATION"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "approval_required": {
+          "title": "Approval Required",
+          "type": "boolean"
+        },
+        "description": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "risk",
+        "approval_required",
+        "description"
+      ],
+      "title": "ApprovalGateStep",
+      "type": "object"
+    },
+    "ApprovalGateSummary": {
+      "additionalProperties": false,
+      "description": "Display-only state; it never contains an approval token or executable action.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-approval-gate-summary/v1",
+          "default": "rolo-approval-gate-summary/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "job_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Job Id",
+          "type": "string"
+        },
+        "target_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "producer_revision": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Producer Revision",
+          "type": "string"
+        },
+        "plan_status": {
+          "enum": [
+            "READY",
+            "APPROVAL_REQUIRED",
+            "BLOCKED"
+          ],
+          "title": "Plan Status",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/ApprovalGateStep"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        },
+        "required_approvals": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Required Approvals",
+          "type": "array"
+        },
+        "approval_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "EXPIRED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Status"
+        },
+        "gate_status": {
+          "enum": [
+            "PENDING",
+            "PASSED",
+            "FAILED",
+            "BLOCKED"
+          ],
+          "title": "Gate Status",
+          "type": "string"
+        },
+        "gate_checks": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Gate Checks",
+          "type": "array"
+        },
+        "recovery_state": {
+          "enum": [
+            "NOT_REQUIRED",
+            "AVAILABLE",
+            "BLOCKED",
+            "UNKNOWN"
+          ],
+          "title": "Recovery State",
+          "type": "string"
+        },
+        "blockers": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ],
+          "title": "Freshness",
+          "type": "string"
+        },
+        "contains_secret_payloads": {
+          "const": false,
+          "default": false,
+          "title": "Contains Secret Payloads",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "job_id",
+        "target_id",
+        "producer_revision",
+        "plan_status",
+        "steps",
+        "approval_status",
+        "gate_status",
+        "gate_checks",
+        "recovery_state",
+        "observed_at",
+        "freshness"
+      ],
+      "title": "ApprovalGateSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-approval-gate-collection/v1",
+      "default": "rolo-approval-gate-collection/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ApprovalGateSummary"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "minimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "limit": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "next_offset": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Offset"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "freshness": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "producer_revision": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Producer Revision",
+      "type": "string"
+    },
+    "contains_secret_payloads": {
+      "const": false,
+      "default": false,
+      "title": "Contains Secret Payloads",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "total",
+    "limit",
+    "offset",
+    "observed_at",
+    "freshness",
+    "producer_revision"
+  ],
+  "title": "ApprovalGateCollection",
+  "type": "object"
+}
