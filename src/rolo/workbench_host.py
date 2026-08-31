@@ -18,6 +18,7 @@ from rolo.adapt_read_models import ADAPT_API_FEATURES
 from rolo.api import app as control_plane_app
 from rolo.core.config import get_settings
 from rolo.episode_read_models import EPISODE_API_FEATURES
+from rolo.target_readiness import TARGET_READINESS_API_FEATURES
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,9 @@ MAX_PLUGIN_FILES = 2048
 MAX_PLUGIN_FILE_BYTES = 16 * 1024 * 1024
 MAX_PLUGIN_TOTAL_BYTES = 256 * 1024 * 1024
 
-SUPPORTED_API_FEATURES = frozenset([*ADAPT_API_FEATURES, *EPISODE_API_FEATURES])
+SUPPORTED_API_FEATURES = frozenset(
+    [*ADAPT_API_FEATURES, *EPISODE_API_FEATURES, *TARGET_READINESS_API_FEATURES]
+)
 SAFE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 CHECKSUM_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 HASHED_ASSET = re.compile(r"-[A-Za-z0-9_-]{6,}\.[A-Za-z0-9]+$")

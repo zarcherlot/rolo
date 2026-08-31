@@ -148,6 +148,7 @@ from rolo.stages.verify.readiness import (
     RealVerifyReadinessReportV2,
     VerificationProviderManifestV2,
 )
+from rolo.target_readiness import TargetReadinessCollection, TargetReadinessSummary
 
 CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     OperationContract,
@@ -271,6 +272,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     CommittedEpisodeObservationRecord,
     EpisodeObservationBundleCollection,
     PublishedEpisodeObservationBundleProjection,
+    TargetReadinessSummary,
+    TargetReadinessCollection,
 )
 
 # Keep the pre-v2 filenames as compatibility exports for downstream consumers.

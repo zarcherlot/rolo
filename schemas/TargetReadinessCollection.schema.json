@@ -1,0 +1,245 @@
+{
+  "$defs": {
+    "TargetReadinessSummary": {
+      "additionalProperties": false,
+      "description": "Public R1 facts; target references and credentials are intentionally absent.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-target-readiness-summary/v1",
+          "default": "rolo-target-readiness-summary/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[a-z][a-z0-9_-]{2,63}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_kind": {
+          "enum": [
+            "local",
+            "ssh"
+          ],
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "READY",
+            "HOST_KEY_REQUIRED",
+            "UNREACHABLE",
+            "WORKSPACE_MISSING",
+            "UNSUPPORTED"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reachable": {
+          "title": "Reachable",
+          "type": "boolean"
+        },
+        "host_key_pinned": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Host Key Pinned"
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform"
+        },
+        "architecture": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Architecture"
+        },
+        "workspace_accessible": {
+          "title": "Workspace Accessible",
+          "type": "boolean"
+        },
+        "companion": {
+          "enum": [
+            "NOT_REQUIRED",
+            "AVAILABLE",
+            "MISSING",
+            "UNKNOWN"
+          ],
+          "title": "Companion",
+          "type": "string"
+        },
+        "blockers": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "diagnostics": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Diagnostics",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ],
+          "title": "Freshness",
+          "type": "string"
+        },
+        "producer_revision": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Producer Revision",
+          "type": "string"
+        },
+        "contains_secret_payloads": {
+          "const": false,
+          "default": false,
+          "title": "Contains Secret Payloads",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "target_id",
+        "target_kind",
+        "state",
+        "reachable",
+        "host_key_pinned",
+        "workspace_accessible",
+        "companion",
+        "observed_at",
+        "freshness",
+        "producer_revision"
+      ],
+      "title": "TargetReadinessSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Paginated collection returned by the R1 list endpoint.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-target-readiness-collection/v1",
+      "default": "rolo-target-readiness-collection/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/TargetReadinessSummary"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "total": {
+      "minimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "limit": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "next_offset": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Offset"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "freshness": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "producer_revision": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Producer Revision",
+      "type": "string"
+    },
+    "contains_secret_payloads": {
+      "const": false,
+      "default": false,
+      "title": "Contains Secret Payloads",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "total",
+    "limit",
+    "offset",
+    "observed_at",
+    "freshness",
+    "producer_revision"
+  ],
+  "title": "TargetReadinessCollection",
+  "type": "object"
+}
