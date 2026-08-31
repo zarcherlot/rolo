@@ -157,6 +157,29 @@ publisher/provider 和接口 schema 摘要。检查 `target-evidence.json` 中 R
 根据工程布局补充 `--build-root`、`--install-root`、`--doc-root`、`--launch-root` 或
 `--executable`；不要把不存在的路径写进命令。然后查看摘要：
 
+若目标工作负载是 Nav2，生命周期探针必须指向实际 lifecycle node；不要使用不存在的
+`/localization_server`。在与 collector 相同的 ROS Domain/RMW 环境中检查：
+
+```bash
+for node in \
+  /amcl \
+  /map_server \
+  /controller_server \
+  /planner_server \
+  /local_costmap/local_costmap \
+  /global_costmap/global_costmap
+do
+  printf '%s: ' "$node"
+  ros2 lifecycle get "$node"
+done | tee "$VALIDATION_DIR/nav2-lifecycle.txt"
+```
+
+预期六个节点均返回 `active [3]`。若 costmap 使用 namespace 或非 composed 启动方式，先从
+`ros2 node list` 取得真实全限定节点名，再逐个探测；不得用父容器或猜测名称代替 lifecycle
+node。节点不存在与节点非 active 必须分别记录。
+
+然后查看摘要：
+
 ```bash
 uv run robotctl adapt discover review --robot "$ROBOT_ID" \
   | tee "$VALIDATION_DIR/discover-review.txt"
@@ -202,7 +225,7 @@ uv run robotctl adapt start \
   --project-root "$PROJECT_ROOT" \
   --urdf "$URDF_PATH" \
   --active-probe runtime-readonly \
-  --heuristic-agent-timeout 120 \
+  --heuristic-agent-timeout 300 \
   --timeout 1800 \
   2>&1 | tee "$VALIDATION_DIR/adapt-start.txt"
 ```
@@ -210,11 +233,17 @@ uv run robotctl adapt start \
 没有 URDF 时，删除 `--urdf "$URDF_PATH"`。如果使用已配置的远程 collector，则按目标证据
 部署手册使用 `--evidence-mode remote`；远程采集失败不能退回 controller 本地探测。
 
-`--heuristic-agent-timeout` 是 discovery planning 和每次 mapping 调用的单次预算；mapping
-的所有批次还共享同一个总 deadline，超时会保留 deterministic fallback 并在
+`--heuristic-agent-timeout` 是 discovery planning 的单次预算，也是完整 mapping 阶段
+（包括排队和所有并发批次）的总 deadline。调用前会使用与 helper 相同的受控环境检查
+endpoint/proxy TCP 可达性及本地 Codex 登录状态；readiness 失败应在连接预算内立即返回，
+而不是等待完整模型预算。超时会保留 deterministic fallback，并在
 `heuristic/summary.json`、`operation-proposal-validation.json` 中记录
-`PROVIDER_TIMEOUT`，不会让目标机进程无限等待。若 Codex CLI 或模型端不可用，应先确认这些
-fallback artifact 已落盘，再处理 Agent 登录/网络问题，不要重复启动多个长时间的 Adapt 进程。
+`PROVIDER_TIMEOUT`、prompt/context 字符数及批次完成情况，不会让目标机进程无限等待。
+默认不要清空 WSL 中已配置的 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`；helper 会只继承
+受控 allowlist 中的代理变量。若 readiness 明确失败，应先修复 Agent 登录/网络问题，不要
+重复启动多个长时间的 Adapt 进程。planning、mapping 和 Wiki helper 默认使用 `low`
+reasoning effort：这些阶段只做受 schema 约束的分类/映射，caller 会确定性补齐证据、身份、
+预算和收据并再次验证；不要让模型重复输出 caller-owned 大字段或逐路由执行 shell 工具。
 
 完整成功条件：
 

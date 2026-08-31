@@ -361,7 +361,8 @@ def test_mapping_fallback_does_not_report_agent_completed(tmp_path: Path) -> Non
     )
 
     assert summary.status == HeuristicDiscoveryStatus.FALLBACK
-    assert summary.mapping_fallback_reason == "BUNDLE_INVALID"
+    assert summary.mapping_fallback_reason.startswith("BUNDLE_INVALID:")
+    assert "Registry identity" in summary.mapping_fallback_reason
 
 
 def test_heuristic_candidate_can_never_be_adapter_eligible_without_verification() -> None:
@@ -566,10 +567,13 @@ def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("https_proxy", "http://proxy.example:7897")
     assert CodexDiscoveryPlanningProvider.provider.endswith("rolo-adapt-discovery")
-    provider = CodexDiscoveryPlanningProvider(skill_path=Path("skill.md"))
+    provider = CodexDiscoveryPlanningProvider(
+        skill_path=Path("skill.md"), preflight_enabled=False
+    )
     command = provider._command(Path("workspace"), Path("schema.json"), Path("output.json"))
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert 'model_reasoning_effort="low"' in command
     assert provider._environment()["HOME"] == str(tmp_path)
     assert provider._environment()["CODEX_HOME"] == str(codex_home)
     assert provider._environment()["HTTPS_PROXY"] == "http://proxy.example:7897"
@@ -607,6 +611,7 @@ def test_codex_planning_timeout_reaps_descendants(tmp_path: Path) -> None:
         skill_path=skill,
         executable=str(executable),
         timeout_s=1,
+        preflight_enabled=False,
     )
 
     started = time.monotonic()
