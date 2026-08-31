@@ -1,13 +1,23 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-31; supersedes: docs/validation/REAL_MACHINE_P1_RUNBOOK_ZH.md; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
 
 # ROLO 真机只读验证 RUNBOOK
 
-本手册用于在真实 Linux/ROS 机器人上验证当前集成线。主路径是 **Rolo 直接运行在目标机**，
-使用 main 的 `local-target` provider；控制器到目标机的 SSH provider 目前仍是库级切片，
-尚未接入 `robotctl` CLI，不应在本手册中假设它已经可执行。
+本手册是 P1 真机验证的唯一执行入口，覆盖 Adapt、Diagnose、Verify 和 SSH health 的只读路径。
+Adapt Discovery/promotion 使用 `codex` executor；Diagnose/Verify 使用 main 的 `local-target`
+provider。控制器到目标机的 SSH health 仅允许使用有界只读入口，不等同完整 Verify handoff
+或物理 acceptance。
 
 首轮验证只允许 Linux、workspace、ROS graph 和 companion health 等只读检查。禁止执行
 publish、导航、校准、reset、actuator、power、firmware 或任何会改变机器人状态的操作。
+
+各阶段 provider 固定如下，不得在目标机临时切换 provider 绕过门禁：
+
+| 阶段 | provider / executor | 说明 |
+|---|---|---|
+| Adapt shadow、Discovery、promotion | `codex` / `codex` | 只读、bounded，不执行 adapter `invoke` |
+| Diagnose | `local-target` / `local-target` | 未授权必须停在 `WAITING_FOR_AUTH` |
+| Verify | `local-target` / `local-target` | 只执行批准的 canonical v2 bounded case |
+| SSH health | `target verify-health` | 仅 health/evidence 预检 |
 
 ## 0. 填写验证变量
 
@@ -16,6 +26,7 @@ publish、导航、校准、reset、actuator、power、firmware 或任何会改�
 ```bash
 export ROBOT_ID=<approved-robot-id>
 export PROJECT_ROOT=/path/to/robot/workspace
+export EXPECTED_REVISION=<approved-40-character-commit-sha>
 export VALIDATION_ROOT="$HOME/rolo-real-validation/$ROBOT_ID"
 export ROLO_ARTIFACT_DIR="$VALIDATION_ROOT/artifacts"
 export ROLO_OUTPUT_DIR="$VALIDATION_ROOT/output"
@@ -26,15 +37,36 @@ mkdir -p "$ROLO_ARTIFACT_DIR" "$ROLO_OUTPUT_DIR" "$DEBUG_DIR"
 `PROJECT_ROOT`、artifact、output 和 debug 目录必须位于源码树之外。不要把 API key、SSH
 私钥、代理凭据或完整未脱敏环境变量写入 artifact。
 
-## 1. 固定代码与依赖
-
-验证必须使用已经推送并审核的 `codex/post-r5-integration` revision。不要直接验证移动的
-工作树或未推送提交：
+变量填写后立即执行入口门禁。任何一项失败都必须停止，不得继续生成或上传验证产物：
 
 ```bash
-git fetch origin codex/post-r5-integration
-git switch --detach origin/codex/post-r5-integration
+set -euo pipefail
+: "${ROBOT_ID:?ROBOT_ID must be an approved physical robot id}"
+: "${PROJECT_ROOT:?PROJECT_ROOT must point to the deployed target workspace}"
+: "${EXPECTED_REVISION:?EXPECTED_REVISION must be the approved 40-character SHA}"
+
+[[ "$ROBOT_ID" != "demo_diff" && "$ROBOT_ID" != demo_* && "$ROBOT_ID" != mock_* ]]
+[[ "${ROBOT_USE_BACKEND:-}" != "mock" ]]
+[[ "${ROLO_CONFIG_DIR:-}" != *"tests/fixtures"* ]]
+[[ "$PROJECT_ROOT" != *"tests/fixtures"* && "$PROJECT_ROOT" != *"/src" && "$PROJECT_ROOT" != *"\\src" ]]
+[[ "$EXPECTED_REVISION" =~ ^[0-9a-fA-F]{40}$ ]]
+[[ "${ADAPT_NATIVE_TOOL_MODE:-off}" == "off" ]]
+printf 'real-target-runbook=PASS\nrobot_id=%s\nproject_root=%s\n' "$ROBOT_ID" "$PROJECT_ROOT"
+```
+
+这些检查专门阻止 Quickstart 的 `demo_diff`、mock backend、fixture profile 和 source-only
+路径误被当成真机 preflight。
+
+## 1. 固定代码与依赖
+
+验证必须使用已经合入并审核的 `main` revision。不要直接验证移动的工作树或未推送提交：
+
+```bash
+git fetch origin --prune
+test "$(git rev-parse origin/main)" = "$EXPECTED_REVISION"
+git switch --detach "$EXPECTED_REVISION"
 export ROLO_REVISION="$(git rev-parse HEAD)"
+test "$ROLO_REVISION" = "$EXPECTED_REVISION"
 git status --short
 uv sync --frozen
 ```
@@ -48,8 +80,6 @@ source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=50
 export ROS_LOCALHOST_ONLY=1
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-export CODING_AGENT_PROVIDER=local-target
-export CODING_AGENT_EXECUTOR=local-target
 export ADAPT_NATIVE_TOOL_MODE=off
 unset ADAPT_NATIVE_TOOL_RUN_IDS
 unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
@@ -124,6 +154,8 @@ uv run rolo target profile show --robot "$ROBOT_ID" | tee "$DEBUG_DIR/profile.tx
 先保持 native 工具关闭，确认主链路基线：
 
 ```bash
+export CODING_AGENT_PROVIDER=codex
+export CODING_AGENT_EXECUTOR=codex
 uv run robotctl adapt run --robot "$ROBOT_ID" \
   2>&1 | tee "$DEBUG_DIR/adapt-shadow-01.txt"
 ```
@@ -145,6 +177,8 @@ Canonical eligibility、Bundle 或 release。
 先验证授权暂停，不得直接执行：
 
 ```bash
+export CODING_AGENT_PROVIDER=local-target
+export CODING_AGENT_EXECUTOR=local-target
 uv run robotctl diagnose plan --robot "$ROBOT_ID" \
   2>&1 | tee "$DEBUG_DIR/diagnose-plan.txt"
 uv run robotctl diagnose run --robot "$ROBOT_ID" \
@@ -210,6 +244,8 @@ uv run robotctl diagnose run --robot "$ROBOT_ID" \
 写操作或变异 payload 必须在执行前拒绝。
 
 ```bash
+export CODING_AGENT_PROVIDER=local-target
+export CODING_AGENT_EXECUTOR=local-target
 uv run robotctl verify acceptance-plan \
   --robot "$ROBOT_ID" \
   --plan-file "$DEBUG_DIR/verify-plan.json" \
