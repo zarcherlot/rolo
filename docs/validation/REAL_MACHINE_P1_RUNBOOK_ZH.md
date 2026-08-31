@@ -1,6 +1,9 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: archived; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-31; source_of_truth: docs/target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md -->
 
-# P1 真机只读验证 Runbook
+# P1 真机只读验证 Runbook（归档跳转页）
+
+执行入口已统一为[真机验证主 Runbook](../target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)。本文件保留历史验证记录，
+不再作为独立执行手册；Adapt 目标证据和 route 专项见主 Runbook 的 [Adapt 详细附录](../target/TARGET_MACHINE_ADAPT_VALIDATION_ZH.md)。
 
 本 Runbook 用于验证已合入并审核的 `main` 或当前切片 PR revision。首轮只允许 Linux/ROS
 观测和 companion health；不允许导航、校准、reset、actuator、power、firmware 或任何

@@ -1,14 +1,24 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-30; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-31; supersedes: docs/validation/REAL_MACHINE_P1_RUNBOOK_ZH.md; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
 
 # ROLO 真机只读验证 RUNBOOK
 
-本手册用于在真实 Linux/ROS 机器人上验证当前集成线。主路径是 **Rolo 直接运行在目标机**，
-使用 main 的 `local-target` provider；控制器到目标机的 SSH health provider 已通过
+本手册是 P1 真机验证的唯一执行入口，覆盖 Adapt、Diagnose、Verify 和 SSH health 的只读路径。
+Adapt 由 `codex` executor 负责 Discovery/promotion，Diagnose/Verify 使用 main 的 `local-target`
+provider；控制器到目标机的 SSH health provider 已通过
 `rolo target verify-health` 提供有界只读入口，但它只完成 health/evidence 预检，不等同于
 完整 Verify handoff 或物理 acceptance。
 
 首轮验证只允许 Linux、workspace、ROS graph 和 companion health 等只读检查。禁止执行
 publish、导航、校准、reset、actuator、power、firmware 或任何会改变机器人状态的操作。
+
+各阶段的 provider 约束固定如下；不要在目标机临时切换 provider 来绕过门禁：
+
+| 阶段 | provider / executor | 入口 | 说明 |
+|---|---|---|---|
+| Adapt shadow、Discovery、promotion | `codex` / `codex` | 本文第 4 节；Adapt 目标证据与 route 专项见 [Adapt 详细附录](TARGET_MACHINE_ADAPT_VALIDATION_ZH.md) | 只读、bounded，不执行 adapter `invoke` |
+| Diagnose | `local-target` / `local-target` | 本文第 5 节 | 未授权必须停在 `WAITING_FOR_AUTH` |
+| Verify | `local-target` / `local-target` | 本文第 6 节 | 只执行批准的 canonical v2 bounded case |
+| SSH health | `target verify-health` | 本文第 7 节 | 仅 health/evidence 预检，不等同物理 acceptance |
 
 控制器侧 SSH health 预检可使用：
 
