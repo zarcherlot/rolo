@@ -114,12 +114,10 @@ jobs:
           merge-multiple: false
       - name: Combine and enforce coverage gate
         run: |
-          uv run coverage combine \
-            coverage-artifacts/coverage-verify \
-            coverage-artifacts/coverage-real-verify \
-            coverage-artifacts/coverage-lerobot \
-            coverage-artifacts/coverage-production-sandbox \
-            coverage-artifacts/coverage-ssh-target
+          for name in verify real-verify lerobot production-sandbox ssh-target; do
+            cp "coverage-artifacts/coverage-${name}/.coverage" ".coverage.${name}"
+          done
+          uv run coverage combine
           uv run coverage report --fail-under=84.00
           uv run coverage xml -o coverage-merged.xml
       - name: Upload merged coverage report
