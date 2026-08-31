@@ -63,6 +63,7 @@ def test_live_harness_manifest_is_repeatable_and_explicitly_bounded(tmp_path: Pa
     second = harness._manifest(second_root)
     assert first == second
     assert first["schema_version"] == "rolo-staging-harness-manifest/v1"
+    assert first["status"] == "BLOCKED"
     assert set(first["failure_semantics"].values()) >= {"BLOCKED", "PENDING", "PENDING_EXTERNAL"}
     assert all(str(item).startswith("job_") for item in first["job_ids"])
 

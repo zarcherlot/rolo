@@ -197,12 +197,13 @@ class StagingHarnessManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["rolo-staging-harness-manifest/v1"] = "rolo-staging-harness-manifest/v1"
+    status: Literal["PASS", "BLOCKED", "PENDING_EXTERNAL"]
     release_line: Annotated[str, StringConstraints(min_length=1, max_length=64)]
     rolo_revision: Revision
     producer_revisions: dict[str, Revision] = Field(min_length=1, max_length=8)
     target_ids: list[OpaqueId] = Field(min_length=1, max_length=100)
     job_ids: list[OpaqueId] = Field(min_length=1, max_length=100)
-    gate_results: dict[str, Literal["PASS", "BLOCKED", "PENDING_EXTERNAL"]] = Field(
+    gate_results: dict[str, Literal["PASS", "BLOCKED", "PENDING", "PENDING_EXTERNAL"]] = Field(
         min_length=1, max_length=16
     )
     failure_semantics: dict[str, Literal["BLOCKED", "PENDING", "PENDING_EXTERNAL"]] = Field(

@@ -285,6 +285,7 @@ def _manifest(root: Path) -> dict[str, object]:
     return StagingHarnessManifest.model_validate(
         {
             "schema_version": "rolo-staging-harness-manifest/v1",
+            "status": "BLOCKED",
             "release_line": "0.1.x",
             "rolo_revision": _rolo_revision(),
             "producer_revisions": {
@@ -295,9 +296,9 @@ def _manifest(root: Path) -> dict[str, object]:
             "target_ids": [item.target_id for item in readiness.items],
             "job_ids": [item.job_id for item in approvals.items],
             "gate_results": {
-                "r0_jobs": "PASS",
-                "r1_target_readiness": "PASS",
-                "r2_approval_gate": "PASS",
+                "r0_jobs": "BLOCKED",
+                "r1_target_readiness": "BLOCKED",
+                "r2_approval_gate": "PENDING",
                 "r4_artifact_analysis": "PASS",
             },
             "failure_semantics": {

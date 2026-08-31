@@ -15,6 +15,10 @@ one item per external scenario. A `VERIFIED` item must include OS, architecture,
 a redacted package digest, opaque Job ID, gate result, timestamp, and summary.
 `BLOCKED` and `PENDING_EXTERNAL` items carry no implied readiness.
 
+The deterministic staging harness manifest is `BLOCKED` when seeded negative
+states are present; individual gate results remain explicit `PASS`, `BLOCKED`,
+or `PENDING` values and are never collapsed into a readiness claim.
+
 The producer rejects duplicate or unknown scenarios, malformed revisions, unsafe
 references (URLs, credentials, SSH/known-host data, paths, commands, or bytes),
 and verified items without an audited input file. The generated

@@ -8,6 +8,15 @@
       "title": "Schema Version",
       "type": "string"
     },
+    "status": {
+      "enum": [
+        "PASS",
+        "BLOCKED",
+        "PENDING_EXTERNAL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
     "release_line": {
       "maxLength": 64,
       "minLength": 1,
@@ -54,6 +63,7 @@
         "enum": [
           "PASS",
           "BLOCKED",
+          "PENDING",
           "PENDING_EXTERNAL"
         ],
         "type": "string"
@@ -90,6 +100,7 @@
     }
   },
   "required": [
+    "status",
     "release_line",
     "rolo_revision",
     "producer_revisions",
