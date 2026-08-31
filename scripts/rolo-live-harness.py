@@ -99,7 +99,11 @@ def _seed(root: Path) -> None:
         Job(
             job_id="job_approved_pending",
             operation="target.bootstrap.execute",
-            target=approved.target.model_dump_json(),
+            # Keep the pending approval job bound to the same target as the
+            # sanitized analysis summary below.  The failed SSH job remains
+            # separately bound to the approved-but-unreachable fixture so the
+            # harness still exercises an independent failure state.
+            target=profiles.load("ready-local").target.model_dump_json(),
             status=JobStatus.RUNNING,
             revision=1,
             created_at=_NOW,

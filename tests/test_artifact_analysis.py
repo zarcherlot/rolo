@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 from datetime import datetime, timezone
@@ -13,6 +14,15 @@ from rolo.artifact_analysis import ArtifactAnalysisConflict, ArtifactAnalysisSum
 from rolo.core.config import get_settings
 from rolo.target_ref import LocalTargetRef
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
+
+
+def _load_live_harness():
+    path = Path(__file__).parents[1] / "scripts" / "rolo-live-harness.py"
+    spec = importlib.util.spec_from_file_location("rolo_live_harness", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _summary(
@@ -145,3 +155,24 @@ def test_artifact_summary_rejects_oversized_and_unsafe_nested_values() -> None:
     }
     with pytest.raises(ValueError):
         ArtifactAnalysisSummary.model_validate(unsafe)
+
+
+def test_live_harness_job_artifact_fixture_identity_is_bound(tmp_path: Path, monkeypatch) -> None:
+    harness = _load_live_harness()
+    harness._seed(tmp_path)
+    monkeypatch.setenv("ROLO_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ROLO_ARTIFACT_DIR", str(tmp_path / "runtime-artifacts"))
+    monkeypatch.setenv("ROLO_OUTPUT_DIR", str(tmp_path / "runtime-output"))
+    get_settings.cache_clear()
+    try:
+        with TestClient(app) as client:
+            pending = client.get("/v1/jobs/job_approved_pending/artifact-analysis")
+            failed = client.get("/v1/jobs/job_approved_failed/artifact-analysis")
+        assert pending.status_code == 200
+        assert pending.json()["target_id"] == "ready-local"
+        assert pending.json()["job_id"] == "job_approved_pending"
+        # Preserve the fail-closed negative: a different job must not inherit
+        # the ready-local summary merely because another fixture has one.
+        assert failed.status_code == 409
+    finally:
+        get_settings.cache_clear()
