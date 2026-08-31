@@ -61,7 +61,7 @@ show_missing = true
 skip_covered = true
 precision = 2
 # Baseline for the existing suite; raise this ratchet after M1/M2 land.
-fail_under = 81.90
+fail_under = 84.00
 
 [tool.ruff]
 line-length = 100

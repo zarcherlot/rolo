@@ -43,7 +43,7 @@ jobs:
               --cov=src/rolo \
               --cov-report=term-missing \
               --cov-report=xml \
-              --cov-fail-under=81.90
+              --cov-fail-under=84.00
           else
             uv run --python ${{ matrix.python-version }} pytest
           fi
