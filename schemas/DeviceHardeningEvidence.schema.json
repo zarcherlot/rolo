@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "os": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Os",
+      "type": "string"
+    },
+    "architecture": {
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Architecture",
+      "type": "string"
+    },
+    "package_digest": {
+      "pattern": "^[0-9a-f]{8,64}(?:…[0-9a-f]{8,64})?$",
+      "title": "Package Digest",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "gate_result": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Gate Result",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "os",
+    "architecture",
+    "package_digest",
+    "job_id",
+    "gate_result",
+    "observed_at",
+    "summary"
+  ],
+  "title": "DeviceHardeningEvidence",
+  "type": "object"
+}

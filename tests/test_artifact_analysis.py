@@ -176,3 +176,24 @@ def test_live_harness_job_artifact_fixture_identity_is_bound(tmp_path: Path, mon
         assert failed.status_code == 409
     finally:
         get_settings.cache_clear()
+
+
+def test_artifact_scope_is_separate_from_job_read_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ROLO_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("ROLO_HOST", "0.0.0.0")
+    monkeypatch.setenv("ROLO_API_TOKEN", "read-only-token")
+    monkeypatch.setenv("ROLO_API_TOKEN_SCOPES", "jobs:read")
+    get_settings.cache_clear()
+    _write_fixture(tmp_path, _summary())
+    try:
+        with TestClient(app) as client:
+            denied = client.get(
+                "/v1/targets/demo-target/artifact-analysis",
+                headers={"Authorization": "Bearer read-only-token"},
+            )
+        assert denied.status_code == 403
+        assert denied.json()["detail"]["code"] == "SCOPE_REQUIRED"
+    finally:
+        get_settings.cache_clear()
