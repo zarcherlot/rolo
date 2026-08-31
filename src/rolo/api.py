@@ -43,6 +43,13 @@ from rolo.approval_gate_read_models import (
     build_approval_gate_collection,
     get_approval_gate_summary,
 )
+from rolo.artifact_analysis import (
+    ARTIFACT_ANALYSIS_API_FEATURES,
+    ArtifactAnalysisConflict,
+    ArtifactAnalysisSummary,
+    get_artifact_analysis,
+    get_job_artifact_analysis,
+)
 from rolo.capability_read_models import (
     CapabilityAvailability,
     CapabilityCollection,
@@ -193,6 +200,10 @@ def _loopback_host(value: str) -> bool:
 
 
 def _required_scope(path: str, method: str) -> str | None:
+    if method == "GET" and path.startswith("/v1/targets/") and path.endswith("/artifact-analysis"):
+        return "artifact-analysis:read"
+    if method == "GET" and path.startswith("/v1/jobs/") and path.endswith("/artifact-analysis"):
+        return "artifact-analysis:read"
     if method == "GET" and path == "/v1/approval-gates":
         return "approval-gates:read"
     if method == "GET" and path.startswith("/v1/jobs/") and path.endswith("/approval-gate"):
@@ -394,6 +405,7 @@ async def health(request: Request) -> HealthResponse:
             *JOB_API_FEATURES,
             *TARGET_READINESS_API_FEATURES,
             *APPROVAL_GATE_API_FEATURES,
+            *ARTIFACT_ANALYSIS_API_FEATURES,
         ],
     )
 
@@ -531,6 +543,36 @@ def read_target_readiness(target_id: str) -> TargetReadinessSummary:
     return summary
 
 
+@app.get("/v1/targets/{target_id}/artifact-analysis", response_model=ArtifactAnalysisSummary)
+def read_artifact_analysis(target_id: str) -> ArtifactAnalysisSummary:
+    """Return a bounded, producer-owned artifact analysis summary."""
+
+    try:
+        summary = get_artifact_analysis(get_settings().rolo_config_dir, target_id)
+    except ArtifactAnalysisConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ARTIFACT_ANALYSIS_INVALID", "message": str(exc)},
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ARTIFACT_ANALYSIS_UNAVAILABLE",
+                "message": "artifact-analysis facts are unavailable",
+            },
+        ) from exc
+    if summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ARTIFACT_ANALYSIS_NOT_AVAILABLE",
+                "message": "artifact analysis is unavailable for this target",
+            },
+        )
+    return summary
+
+
 @app.get("/v1/jobs", response_model=JobPage)
 def list_jobs(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -592,6 +634,36 @@ def read_approval_gate(job_id: str) -> ApprovalGateSummary:
         raise HTTPException(
             status_code=404,
             detail={"code": "JOB_NOT_FOUND", "message": "approval-gate is unavailable"},
+        )
+    return summary
+
+
+@app.get("/v1/jobs/{job_id}/artifact-analysis", response_model=ArtifactAnalysisSummary)
+def read_job_artifact_analysis(job_id: str) -> ArtifactAnalysisSummary:
+    """Return the summary bound to one persisted job and target."""
+
+    try:
+        summary = get_job_artifact_analysis(get_settings().rolo_config_dir, job_id)
+    except ArtifactAnalysisConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ARTIFACT_ANALYSIS_INVALID", "message": str(exc)},
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ARTIFACT_ANALYSIS_UNAVAILABLE",
+                "message": "artifact-analysis facts are unavailable",
+            },
+        ) from exc
+    if summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ARTIFACT_ANALYSIS_NOT_AVAILABLE",
+                "message": "artifact analysis is unavailable for this job",
+            },
         )
     return summary
 

@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "value": {
+      "maximum": 1000000000,
+      "minimum": 0,
+      "title": "Value",
+      "type": "number"
+    },
+    "display": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Display",
+      "type": "string"
+    },
+    "tone": {
+      "enum": [
+        "blue",
+        "slate",
+        "violet",
+        "amber",
+        "green"
+      ],
+      "title": "Tone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "label",
+    "value",
+    "display",
+    "tone"
+  ],
+  "title": "ArtifactAnalysisMetric",
+  "type": "object"
+}

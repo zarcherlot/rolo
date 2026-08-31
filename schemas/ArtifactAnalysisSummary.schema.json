@@ -1,0 +1,502 @@
+{
+  "$defs": {
+    "ArtifactAnalysisFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "tone": {
+          "enum": [
+            "blue",
+            "slate",
+            "violet",
+            "amber",
+            "green"
+          ],
+          "title": "Tone",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tone",
+        "title",
+        "body"
+      ],
+      "title": "ArtifactAnalysisFinding",
+      "type": "object"
+    },
+    "ArtifactAnalysisGraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "state": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "State",
+          "type": "string"
+        },
+        "tone": {
+          "enum": [
+            "blue",
+            "slate",
+            "violet",
+            "amber",
+            "green"
+          ],
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "state",
+        "tone"
+      ],
+      "title": "ArtifactAnalysisGraphNode",
+      "type": "object"
+    },
+    "ArtifactAnalysisMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Display",
+          "type": "string"
+        },
+        "tone": {
+          "enum": [
+            "blue",
+            "slate",
+            "violet",
+            "amber",
+            "green"
+          ],
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "value",
+        "display",
+        "tone"
+      ],
+      "title": "ArtifactAnalysisMetric",
+      "type": "object"
+    },
+    "ArtifactAnalysisOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "route": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Route",
+          "type": "string"
+        },
+        "route_status": {
+          "enum": [
+            "observed",
+            "unresolved",
+            "deferred"
+          ],
+          "title": "Route Status",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Checks",
+          "type": "array"
+        },
+        "contract": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "route",
+        "route_status",
+        "checks",
+        "contract"
+      ],
+      "title": "ArtifactAnalysisOperation",
+      "type": "object"
+    },
+    "ArtifactAnalysisStage": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "partial",
+            "blocked",
+            "pending"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timestamp": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "status",
+        "timestamp",
+        "detail"
+      ],
+      "title": "ArtifactAnalysisStage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Producer-owned bounded summary; no bytes, locations, or executable text.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-artifact-analysis-summary/v1",
+      "default": "rolo-artifact-analysis-summary/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "analysis_id": {
+      "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "target_id": {
+      "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "robot_id": {
+      "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+      "title": "Robot Id",
+      "type": "string"
+    },
+    "job_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Job Id"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "discovery_id": {
+      "pattern": "^[a-z][a-z0-9._:-]{0,127}$",
+      "title": "Discovery Id",
+      "type": "string"
+    },
+    "source_kind": {
+      "const": "rolo_api",
+      "default": "rolo_api",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "source_label": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Source Label",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "freshness": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "contains_secret_payloads": {
+      "const": false,
+      "default": false,
+      "title": "Contains Secret Payloads",
+      "type": "boolean"
+    },
+    "kind": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Kind",
+      "type": "string"
+    },
+    "run_status": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Run Status",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "gate_status": {
+      "enum": [
+        "PASSED",
+        "BLOCKED",
+        "NOT_AVAILABLE"
+      ],
+      "title": "Gate Status",
+      "type": "string"
+    },
+    "gate_label": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Gate Label",
+      "type": "string"
+    },
+    "gate_tone": {
+      "enum": [
+        "blue",
+        "slate",
+        "violet",
+        "amber",
+        "green"
+      ],
+      "title": "Gate Tone",
+      "type": "string"
+    },
+    "release_status": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Release Status",
+      "type": "string"
+    },
+    "release_label": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Release Label",
+      "type": "string"
+    },
+    "release_tone": {
+      "enum": [
+        "blue",
+        "slate",
+        "violet",
+        "amber",
+        "green"
+      ],
+      "title": "Release Tone",
+      "type": "string"
+    },
+    "run_duration": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Run Duration",
+      "type": "string"
+    },
+    "event_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Event Count",
+      "type": "integer"
+    },
+    "eligible_operation_count": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Eligible Operation Count",
+      "type": "integer"
+    },
+    "route_review_flags": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Route Review Flags",
+      "type": "string"
+    },
+    "context_bars": {
+      "items": {
+        "$ref": "#/$defs/ArtifactAnalysisMetric"
+      },
+      "maxItems": 40,
+      "title": "Context Bars",
+      "type": "array"
+    },
+    "evidence_note": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Evidence Note",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/ArtifactAnalysisOperation"
+      },
+      "maxItems": 40,
+      "title": "Operations",
+      "type": "array"
+    },
+    "graph_nodes": {
+      "items": {
+        "$ref": "#/$defs/ArtifactAnalysisGraphNode"
+      },
+      "maxItems": 40,
+      "title": "Graph Nodes",
+      "type": "array"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/ArtifactAnalysisStage"
+      },
+      "maxItems": 40,
+      "title": "Stages",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ArtifactAnalysisFinding"
+      },
+      "maxItems": 40,
+      "title": "Findings",
+      "type": "array"
+    },
+    "hashes": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "maxItems": 40,
+      "title": "Hashes",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 240,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 40,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "analysis_id",
+    "target_id",
+    "robot_id",
+    "discovery_id",
+    "source_label",
+    "observed_at",
+    "freshness",
+    "kind",
+    "run_status",
+    "title",
+    "description",
+    "gate_status",
+    "gate_label",
+    "gate_tone",
+    "release_status",
+    "release_label",
+    "release_tone",
+    "run_duration",
+    "event_count",
+    "eligible_operation_count",
+    "route_review_flags",
+    "context_bars",
+    "evidence_note",
+    "operations",
+    "graph_nodes",
+    "stages",
+    "findings",
+    "hashes",
+    "limitations"
+  ],
+  "title": "ArtifactAnalysisSummary",
+  "type": "object"
+}

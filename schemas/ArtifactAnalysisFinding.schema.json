@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "tone": {
+      "enum": [
+        "blue",
+        "slate",
+        "violet",
+        "amber",
+        "green"
+      ],
+      "title": "Tone",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "body": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tone",
+    "title",
+    "body"
+  ],
+  "title": "ArtifactAnalysisFinding",
+  "type": "object"
+}

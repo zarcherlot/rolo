@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from rolo.jobs import JobEventPage, JobPage, JobRecovery, JobStore
+
+
+def _opaque_target(target: str) -> str:
+    """Expose a stable target handle without returning URI/path/credential material."""
+
+    return f"target-{hashlib.sha256(target.encode('utf-8')).hexdigest()[:16]}"
 
 
 class JobServiceError(ValueError):
@@ -20,13 +27,28 @@ class JobService:
 
     def list(self, *, limit: int = 20, offset: int = 0) -> JobPage:
         try:
-            return self.store.job_page(limit=limit, offset=offset)
+            page = self.store.job_page(limit=limit, offset=offset)
+            return page.model_copy(
+                update={
+                    "items": [
+                        item.model_copy(update={"target": _opaque_target(item.target)})
+                        for item in page.items
+                    ]
+                }
+            )
         except ValueError as exc:
             raise JobServiceError("INVALID_PAGINATION", str(exc)) from exc
 
     def recover(self, job_id: str) -> JobRecovery:
         try:
-            return self.store.recover(job_id)
+            recovery = self.store.recover(job_id)
+            return recovery.model_copy(
+                update={
+                    "job": recovery.job.model_copy(
+                        update={"target": _opaque_target(recovery.job.target)}
+                    )
+                }
+            )
         except FileNotFoundError as exc:
             raise JobServiceError("JOB_NOT_FOUND", "job not found", status_code=404) from exc
         except ValueError as exc:
