@@ -13,6 +13,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 import tokenize
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
@@ -111,6 +112,8 @@ from rolo.stages.discovery_manifest import (
 MAX_COMMAND_OUTPUT = 200_000
 MAX_SOURCE_FILES = 10_000
 MAX_DISCOVERED_ITEMS = 1_000
+MAX_ROUTE_ENRICHMENT_TOPICS = 128
+ROUTE_ENRICHMENT_BUDGET_S = 20.0
 SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "venv",
     "build",
@@ -471,7 +474,10 @@ class LinuxProbe:
         warnings: list[str] = []
         executable_checks = {
             "ros2": ["ros2", "--help"],
-            "colcon": ["colcon", "version-check"],
+            # ``version-check`` may consult package indexes and block on a
+            # network-isolated WSL target. Linux discovery only needs a
+            # bounded self-description, so use the offline help path.
+            "colcon": ["colcon", "--help"],
             "python3": ["python3", "--version"],
             "cmake": ["cmake", "--version"],
             "git": ["git", "--version"],
@@ -684,10 +690,18 @@ class RosProbe:
                     "verification remains conservative."
                 )
 
+        enrichment_truncated = False
         if self.enrich_routes:
             providers: dict[str, str] = {}
             schemas: dict[str, str] = {}
-            for raw_topic in data.get("topics", [])[:MAX_DISCOVERED_ITEMS]:
+            schema_attempted: set[str] = set()
+            topics = list(data.get("topics", []))
+            enrichment_truncated = len(topics) > MAX_ROUTE_ENRICHMENT_TOPICS
+            enrichment_deadline = time.monotonic() + ROUTE_ENRICHMENT_BUDGET_S
+            for raw_topic in topics[:MAX_ROUTE_ENRICHMENT_TOPICS]:
+                if time.monotonic() >= enrichment_deadline:
+                    enrichment_truncated = True
+                    break
                 endpoint, interface_type = _ros_entity_name(raw_topic), _ros_entity_type(raw_topic)
                 if not endpoint:
                     continue
@@ -696,17 +710,32 @@ class RosProbe:
                     node_names = _ros_topic_publisher_names(info.get("stdout", ""))
                     if len(node_names) == 1:
                         providers[endpoint] = f"ros_node:{node_names[0]}"
-                if interface_type:
+                if (
+                    interface_type
+                    and interface_type not in schema_attempted
+                    and time.monotonic() < enrichment_deadline
+                ):
+                    schema_attempted.add(interface_type)
                     schema = self._run_ros(["interface", "show", interface_type])
                     if schema.get("returncode") == 0:
                         payload = schema.get("stdout", "").encode("utf-8")
                         schemas[interface_type] = hashlib.sha256(payload).hexdigest()
+                elif interface_type and interface_type not in schema_attempted:
+                    enrichment_truncated = True
             data["route_enrichment"] = {
                 "provider_ids": providers,
                 "interface_schema_sha256": schemas,
                 "provider_evidence_source": "ros2 topic info -v",
                 "schema_evidence_source": "ros2 interface show",
+                "topic_limit": MAX_ROUTE_ENRICHMENT_TOPICS,
+                "budget_s": ROUTE_ENRICHMENT_BUDGET_S,
+                "truncated": enrichment_truncated,
             }
+            if enrichment_truncated:
+                warnings.append(
+                    "ROS route enrichment reached its bounded topic/time budget; remaining "
+                    "routes retain conservative missing provider/schema evidence."
+                )
             probe_owned_endpoints = {
                 endpoint
                 for endpoint, provider in providers.items()
@@ -732,7 +761,7 @@ class RosProbe:
         if successes:
             status = (
                 DiscoveryStatus.SUCCEEDED
-                if successes == len(command_map)
+                if successes == len(command_map) and not enrichment_truncated
                 else DiscoveryStatus.PARTIAL
             )
         else:
