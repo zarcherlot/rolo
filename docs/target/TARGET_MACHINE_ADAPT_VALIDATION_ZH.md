@@ -147,6 +147,13 @@ uv run robotctl adapt discover run \
 记录 `SUCCEEDED`、`FAILED` 或 `TIMEOUT`；单个入口失败不能抹掉其他入口的证据。Discovery
 不得再出现 `--active-probe runtime-readonly requires --target-evidence-bundle`。
 
+当前采集器会对 ROS graph 做一次有界双采样，并对最多 128 个 topic 在 20 秒预算内采集
+publisher/provider 和接口 schema 摘要。检查 `target-evidence.json` 中 ROS probe 的
+`stability` 与 `route_enrichment`：`stability.stable=true` 才表示两次 graph 快照一致；
+`route_enrichment.truncated=true` 或缺少某条 route 的 provider/schema 时，只能保留
+`PARTIAL` 证据，不能把该 route 提升为已验证操作。若这两个字段完全不存在，说明目标机仍
+在使用旧 collector，先更新到包含本轮修复的 `main` revision 后重新 enrollment/collect。
+
 根据工程布局补充 `--build-root`、`--install-root`、`--doc-root`、`--launch-root` 或
 `--executable`；不要把不存在的路径写进命令。然后查看摘要：
 

@@ -307,6 +307,48 @@ def test_ros_probe_ignores_subscribers_when_identifying_topic_provider(
     )
 
 
+def test_ros_probe_route_enrichment_is_bounded_by_topic_budget(
+    tmp_path: Path, monkeypatch
+) -> None:
+    probe = RosProbe(
+        ros_root=tmp_path / "missing",
+        environment={"ROS_DISTRO": "humble"},
+        enrich_routes=True,
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.discovery.MAX_ROUTE_ENRICHMENT_TOPICS", 1
+    )
+
+    def succeeded(args):
+        if args[:2] == ["topic", "list"]:
+            stdout = "/first [std_msgs/msg/String]\n/second [std_msgs/msg/String]\n"
+        elif args[:3] == ["topic", "info", "-v"]:
+            stdout = "Node name: first_node\nEndpoint type: PUBLISHER\n"
+        elif args[:2] == ["interface", "show"]:
+            stdout = "string data\n"
+        else:
+            stdout = ""
+        return {
+            "available": True,
+            "argv": ["ros2", *args],
+            "returncode": 0,
+            "stdout": stdout,
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(probe, "_run_ros", succeeded)
+
+    result = probe.run()
+
+    enrichment = result.data["route_enrichment"]
+    assert result.status == "PARTIAL"
+    assert enrichment["topic_limit"] == 1
+    assert enrichment["truncated"] is True
+    assert enrichment["provider_ids"] == {"/first": "ros_node:first_node"}
+    assert enrichment["interface_schema_sha256"]
+    assert any(item.startswith("/second ") for item in result.data["topics"])
+
+
 def test_ros_probe_does_not_misclassify_argument_error_as_sandbox(
     tmp_path: Path,
     monkeypatch,
@@ -394,3 +436,27 @@ def test_linux_probe_does_not_publish_a_cli_route_when_self_description_fails(
     assert result.data["executables"]["ros2"]["installed"] is True
     assert result.data["executables"]["ros2"]["available"] is False
     assert not any(item.endpoint == "ros2" for item in legacy_probe_routes(result))
+
+
+def test_linux_probe_uses_offline_colcon_help(monkeypatch) -> None:
+    monkeypatch.setattr("rolo.stages.adapt.discovery.platform.system", lambda: "Linux")
+    monkeypatch.setattr("rolo.stages.adapt.discovery.shutil.which", lambda name: f"/bin/{name}")
+    calls: list[list[str]] = []
+
+    def succeeded(argv, **_kwargs):
+        calls.append(list(argv))
+        return {
+            "available": True,
+            "argv": list(argv),
+            "returncode": 0,
+            "stdout": "colcon help\n",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr("rolo.stages.adapt.discovery._run", succeeded)
+
+    result = LinuxProbe().run()
+
+    assert result.status == "SUCCEEDED"
+    assert ["colcon", "--help"] in calls
+    assert ["colcon", "version-check"] not in calls

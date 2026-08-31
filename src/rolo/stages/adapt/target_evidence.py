@@ -1103,7 +1103,12 @@ def collect_target_evidence(
     collectors = {
         "hw": lambda: HardwareProbe().run(robot_id=state.robot_id),
         "linux": lambda: LinuxProbe().run(),
-        "ros": lambda: RosProbe().run(),
+        # Target evidence is the source of truth used by the controller's
+        # runtime discovery path.  Collect the same bounded, enriched ROS
+        # snapshot as the on-target probe dispatcher so route bindings carry
+        # provider/schema evidence and unstable graph snapshots are rejected
+        # conservatively.
+        "ros": lambda: RosProbe(enrich_routes=True, stabilize=True).run(),
     }
     with _temporary_environment(ros_environment.environment):
         probes = {

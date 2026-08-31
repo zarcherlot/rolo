@@ -104,6 +104,10 @@ def _stub_probes(monkeypatch: pytest.MonkeyPatch) -> None:
             return ProbeResult(layer="linux", status="SUCCEEDED", data={"arch": "arm64"})
 
     class Ros:
+        def __init__(self, *, enrich_routes: bool = False, stabilize: bool = False):
+            self.enrich_routes = enrich_routes
+            self.stabilize = stabilize
+
         def run(self):
             return ProbeResult(
                 layer="ros",
@@ -158,6 +162,62 @@ def test_local_bundle_is_target_bound_signed_and_read_only(
     assert probes["hw"].data["target_evidence"]["target_host_fingerprint"] == "a" * 64
     assert probes["hw"].data["target_evidence"]["deployment_mode"] == "local"
     assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (bundle.payload_sha256)
+
+
+def test_collector_uses_bounded_enriched_ros_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, state_path, secret_path = _collector(tmp_path, monkeypatch)
+    seen: dict[str, bool] = {}
+
+    class Ros:
+        def __init__(self, *, enrich_routes: bool = False, stabilize: bool = False):
+            seen["enrich_routes"] = enrich_routes
+            seen["stabilize"] = stabilize
+
+        def run(self):
+            return ProbeResult(
+                layer="ros",
+                status="SUCCEEDED",
+                data={
+                    "nodes": ["/lidar"],
+                    "topics": ["/scan [sensor_msgs/msg/LaserScan]"],
+                    "services": [],
+                    "actions": [],
+                    "stability": {
+                        "attempts": 2,
+                        "stable": True,
+                        "sampled_fields": ["actions", "nodes", "services", "topics"],
+                    },
+                    "route_enrichment": {
+                        "provider_ids": {"/scan": "ros_node:/lidar"},
+                        "interface_schema_sha256": {"sensor_msgs/msg/LaserScan": "a" * 64},
+                    },
+                },
+            )
+
+    monkeypatch.setattr("rolo.stages.adapt.target_evidence.RosProbe", Ros)
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.LOCAL,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        local_collector_state_path=state_path,
+    )
+
+    request = new_request("wheeltec")
+    bundle = collect_target_evidence(request, load_collector_state(state_path))
+    verify_evidence_bundle(
+        bundle,
+        deployment=deployment,
+        request=request,
+    )
+
+    assert seen == {"enrich_routes": True, "stabilize": True}
+    ros_data = bundle.probes["ros"].data
+    assert ros_data["stability"]["stable"] is True
+    assert ros_data["route_enrichment"]["provider_ids"]["/scan"] == "ros_node:/lidar"
 
 
 def test_collector_pins_and_signs_ros_environment_bootstrap(
