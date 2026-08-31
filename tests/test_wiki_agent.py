@@ -81,11 +81,13 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     monkeypatch.setattr("rolo.stages.adapt.wiki_agent.shutil.which", lambda _: "codex")
     monkeypatch.setattr("rolo.stages.adapt.wiki_agent.run_bounded_codex_agent", fake_run)
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:7897")
+    monkeypatch.setenv("https_proxy", "http://proxy.example:7897")
     report, active = _review_inputs()
     provider = CodexWikiInsightProvider(
         skill_path=skill,
         executable="codex",
         api_key="fixture-secret",
+        preflight_enabled=False,
     )
 
     bundle = provider.infer(report, active)
@@ -94,6 +96,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert isinstance(command, list)
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert 'model_reasoning_effort="low"' in command
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
@@ -133,6 +136,7 @@ def test_codex_wiki_timeout_reaps_descendants(
         skill_path=skill,
         executable=str(executable),
         timeout_s=1,
+        preflight_enabled=False,
     )
 
     started = time.monotonic()

@@ -26,8 +26,11 @@ def test_zero_configuration_defaults_are_private_and_unenrolled(
     assert settings.wiki_insights_agent_enabled is True
     assert settings.adapt_heuristic_agent_mode == "shadow"
     assert settings.adapt_heuristic_agent_provider_enabled is True
-    assert settings.adapt_heuristic_agent_timeout_s == 120
-    assert settings.adapt_heuristic_agent_batch_operations == 4
+    assert settings.adapt_heuristic_agent_timeout_s == 300
+    assert settings.adapt_heuristic_agent_batch_operations == 8
+    assert settings.adapt_heuristic_agent_reasoning_effort == "low"
+    assert settings.wiki_insights_agent_timeout_s == 300
+    assert settings.wiki_insights_agent_reasoning_effort == "low"
     assert settings.adapt_heuristic_agent_parallelism == 2
     assert settings.rolo_adapter_max_address_space_bytes == 4 * 1024 * 1024 * 1024
     assert settings.rolo_adapter_max_processes == 128

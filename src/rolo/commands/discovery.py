@@ -53,6 +53,9 @@ def configured_discovery_service(
             base_url=settings.coding_agent_base_url,
             api_key=settings.resolved_coding_agent_api_key,
             timeout_s=settings.wiki_insights_agent_timeout_s,
+            preflight_url=settings.coding_agent_preflight_url,
+            connect_timeout_s=settings.coding_agent_connect_timeout_s,
+            reasoning_effort=settings.wiki_insights_agent_reasoning_effort,
         )
         if settings.wiki_insights_agent_enabled
         else None
@@ -67,6 +70,9 @@ def configured_discovery_service(
             "base_url": settings.coding_agent_base_url,
             "api_key": settings.resolved_coding_agent_api_key,
             "timeout_s": settings.adapt_heuristic_agent_timeout_s,
+            "preflight_url": settings.coding_agent_preflight_url,
+            "connect_timeout_s": settings.coding_agent_connect_timeout_s,
+            "reasoning_effort": settings.adapt_heuristic_agent_reasoning_effort,
         }
         planning_provider = (
             CodexDiscoveryPlanningProvider(
