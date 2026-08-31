@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "state": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "State",
+      "type": "string"
+    },
+    "tone": {
+      "enum": [
+        "blue",
+        "slate",
+        "violet",
+        "amber",
+        "green"
+      ],
+      "title": "Tone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "label",
+    "state",
+    "tone"
+  ],
+  "title": "ArtifactAnalysisGraphNode",
+  "type": "object"
+}

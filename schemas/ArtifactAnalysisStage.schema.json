@@ -1,0 +1,41 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "partial",
+        "blocked",
+        "pending"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "timestamp": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "detail": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Detail",
+      "type": "string"
+    }
+  },
+  "required": [
+    "label",
+    "status",
+    "timestamp",
+    "detail"
+  ],
+  "title": "ArtifactAnalysisStage",
+  "type": "object"
+}

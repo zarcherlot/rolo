@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "route": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Route",
+      "type": "string"
+    },
+    "route_status": {
+      "enum": [
+        "observed",
+        "unresolved",
+        "deferred"
+      ],
+      "title": "Route Status",
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "maxLength": 240,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Checks",
+      "type": "array"
+    },
+    "contract": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Contract",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "route",
+    "route_status",
+    "checks",
+    "contract"
+  ],
+  "title": "ArtifactAnalysisOperation",
+  "type": "object"
+}

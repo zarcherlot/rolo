@@ -17,6 +17,14 @@ from rolo.agent_tools import (
     NativeToolSessionDescriptor,
 )
 from rolo.approval_gate_read_models import ApprovalGateCollection, ApprovalGateSummary
+from rolo.artifact_analysis import (
+    ArtifactAnalysisFinding,
+    ArtifactAnalysisGraphNode,
+    ArtifactAnalysisMetric,
+    ArtifactAnalysisOperation,
+    ArtifactAnalysisStage,
+    ArtifactAnalysisSummary,
+)
 from rolo.capabilities import (
     CapabilityDescriptor,
     CapabilityResolutionShadow,
@@ -277,6 +285,12 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     TargetReadinessCollection,
     ApprovalGateSummary,
     ApprovalGateCollection,
+    ArtifactAnalysisMetric,
+    ArtifactAnalysisOperation,
+    ArtifactAnalysisGraphNode,
+    ArtifactAnalysisStage,
+    ArtifactAnalysisFinding,
+    ArtifactAnalysisSummary,
 )
 
 # Keep the pre-v2 filenames as compatibility exports for downstream consumers.
