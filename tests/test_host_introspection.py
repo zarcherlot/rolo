@@ -99,9 +99,7 @@ def test_second_linux_metadata_batch_is_bounded_and_read_only(
     monkeypatch.setattr(
         host_introspection.shutil,
         "which",
-        lambda name: (
-            f"/usr/bin/{name}" if name in {"docker", "dpkg-query", "dpkg"} else None
-        ),
+        lambda name: f"/usr/bin/{name}" if name in {"docker", "dpkg-query", "dpkg"} else None,
     )
 
     def fake_command(argv: list[str], **kwargs: object) -> dict[str, object]:
@@ -363,6 +361,134 @@ def test_structured_redaction_hides_nested_secret_fields() -> None:
     assert host_introspection._redact_data(value) == {
         "Config": {"Env": ["SAFE=yes", "TOKEN=<redacted>"], "ApiKey": "<redacted>"}
     }
+
+
+def test_command_reports_missing_timeout_failure_and_bounded_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.shutil, "which", lambda _: None)
+    assert host_introspection._command(["missing-tool"])["status"] == "UNAVAILABLE"
+
+    monkeypatch.setattr(host_introspection.shutil, "which", lambda _: "/usr/bin/tool")
+
+    def timeout_run(*args, **kwargs):
+        del args, kwargs
+        raise host_introspection.subprocess.TimeoutExpired(
+            "tool", 1, output="secret=abc", stderr="bad"
+        )
+
+    monkeypatch.setattr(host_introspection.subprocess, "run", timeout_run)
+    timed_out = host_introspection._command(["tool"])
+    assert timed_out["status"] == "TIMEOUT"
+    assert "abc" not in timed_out["stdout"]
+
+    def failed_run(*args, **kwargs):
+        del args, kwargs
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(host_introspection.subprocess, "run", failed_run)
+    assert host_introspection._command(["tool"])["status"] == "PROBE_FAILED"
+
+
+def test_platform_specific_adapters_cover_windows_and_unavailable_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Other")
+    for operation in (
+        host_introspection.service_list,
+        host_introspection.schedule_list,
+        host_introspection.process_list,
+    ):
+        assert operation()["status"] == "UNAVAILABLE"
+    with pytest.raises(ValueError, match="invalid service name"):
+        host_introspection.service_inspect("-bad")
+    with pytest.raises(ValueError, match="invalid container name"):
+        host_introspection.container_inspect("bad\nname")
+
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        host_introspection,
+        "_command",
+        lambda argv, **kwargs: {
+            "status": "SUCCEEDED",
+            "stdout": ("SERVICE_NAME: robot\n        STATE              : 4  RUNNING\n")
+            if argv[0] == "sc.exe"
+            else '"Image Name","PID"\n"robot.exe","42"\n',
+        },
+    )
+    assert host_introspection.service_list()["data"]["services"][0]["name"] == "robot"
+    assert host_introspection.process_list()["data"]["processes"][0]["pid"] == 42
+
+
+def test_container_schedule_process_and_file_edge_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(host_introspection.shutil, "which", lambda _: None)
+    assert host_introspection.container_list()["status"] == "UNAVAILABLE"
+    with pytest.raises(ValueError, match="runtime must be"):
+        host_introspection.container_list("containerd")
+
+    missing = tmp_path / "missing"
+    assert host_introspection.file_hash(missing)["status"] == "UNAVAILABLE"
+    assert host_introspection.file_list(missing)["status"] == "UNAVAILABLE"
+    assert host_introspection.binary_describe(missing)["status"] == "UNAVAILABLE"
+    with pytest.raises(ValueError, match="pid must be positive"):
+        host_introspection.process_inspect(0)
+    with pytest.raises(ValueError, match="pid must be positive"):
+        host_introspection.process_resources(-1)
+
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        host_introspection.shutil,
+        "which",
+        lambda name: "/usr/bin/docker" if name == "docker" else None,
+    )
+    monkeypatch.setattr(
+        host_introspection,
+        "_command",
+        lambda argv, **kwargs: {"status": "SUCCEEDED", "stdout": "bad-json\n"},
+    )
+    assert host_introspection.container_list("docker")["data"]["containers"] == [
+        {"raw": "bad-json"}
+    ]
+    assert host_introspection.container_stats()["data"]["containers"] == [{"raw": "bad-json"}]
+
+
+def test_binary_cli_package_and_config_branches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = tmp_path / "script"
+    script.write_bytes(b"#!/usr/bin/env python\nprint('ok')\n")
+    monkeypatch.setattr(
+        host_introspection,
+        "_command",
+        lambda argv, **kwargs: {"status": "SUCCEEDED", "stdout": "ok"},
+    )
+    described = host_introspection.binary_describe(script)
+    assert described["data"]["format"] == "script"
+    assert host_introspection.cli_probe(script, ["--help"])["data"]["probe_status"] == "SUCCEEDED"
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host_introspection.shutil, "which", lambda _: None)
+    assert host_introspection.package_inspect("unknown")["status"] == "UNAVAILABLE"
+    with pytest.raises(ValueError, match="invalid package name"):
+        host_introspection.package_inspect("-bad")
+    assert host_introspection.config_locate(binary=script)["data"]["candidates"] == []
+
+
+def test_linux_service_schedule_process_and_resource_failure_shapes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_introspection.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        host_introspection,
+        "_command",
+        lambda argv, **kwargs: {"status": "PROBE_FAILED", "stdout": "", "stderr": "failed"},
+    )
+    assert host_introspection.service_list()["status"] == "PARTIAL"
+    assert host_introspection.schedule_list()["status"] == "PARTIAL"
+    assert host_introspection.process_list()["status"] == "PARTIAL"
+    assert host_introspection.resource_gpu()["status"] in {"UNAVAILABLE", "PARTIAL", "SUCCEEDED"}
+    assert host_introspection.middleware_status()["operation"] == "middleware.status"
 
 
 def test_cli_exposes_introspection_command_tree() -> None:

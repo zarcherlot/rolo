@@ -36,7 +36,27 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --dev --python ${{ matrix.python-version }}
       - run: uv run --python ${{ matrix.python-version }} ruff check .
-      - run: uv run --python ${{ matrix.python-version }} pytest
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            uv run --python ${{ matrix.python-version }} pytest \
+              --cov=src/rolo \
+              --cov-report=term-missing \
+              --cov-report=xml \
+              --cov-fail-under=84.00
+          else
+            uv run --python ${{ matrix.python-version }} pytest
+          fi
+      - name: Upload statement coverage fragment
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-verify
+          path: |
+            .coverage*
+            coverage.xml
+          include-hidden-files: true
+          if-no-files-found: error
 
   real-verify-contract:
     runs-on: ubuntu-latest
@@ -52,6 +72,7 @@ jobs:
       - name: Run real Verify provider conformance and evidence contract matrix
         run: >-
           uv run --python 3.12 pytest -q
+          --cov=src/rolo --cov-report= --cov-fail-under=0
           tests/test_ssh_target_provider.py
           tests/test_ssh_provider_recovery.py
           tests/test_ssh_provider_handoff.py
@@ -63,12 +84,52 @@ jobs:
           tests/test_handoff_materializers.py
           tests/test_api.py
           tests/test_episode_api.py
+      - name: Upload integration coverage fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-real-verify
+          path: .coverage*
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Enforce canonical schema drift gate
         run: uv run --python 3.12 pytest -q tests/test_schemas.py
 
+  coverage-merge:
+    runs-on: ubuntu-latest
+    needs: [verify, real-verify-contract, lerobot-e2e, production-sandbox, ssh-target-e2e]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev --python 3.12
+      - name: Download coverage fragments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: coverage-artifacts
+          merge-multiple: false
+      - name: Combine and enforce coverage gate
+        run: |
+          for name in verify real-verify lerobot production-sandbox ssh-target; do
+            cp "coverage-artifacts/coverage-${name}/.coverage" ".coverage.${name}"
+          done
+          uv run coverage combine
+          uv run coverage report --fail-under=84.00
+          uv run coverage xml -o coverage-merged.xml
+      - name: Upload merged coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-merged
+          path: coverage-merged.xml
+          if-no-files-found: error
+
   package:
     runs-on: ubuntu-latest
-    needs: [verify, docs]
+    needs: [verify, docs, coverage-merge]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
@@ -162,7 +223,14 @@ jobs:
           LEROBOT_ROOT: ${{ github.workspace }}/.ci/lerobot
           LEROBOT_INFO: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-info
           LEROBOT_FIND_CAMERAS: ${{ github.workspace }}/.ci/lerobot-venv/bin/lerobot-find-cameras
-        run: uv run pytest -q tests/test_lerobot_e2e.py
+        run: uv run pytest -q --cov=src/rolo --cov-report= --cov-fail-under=0 tests/test_lerobot_e2e.py
+      - name: Upload integration coverage fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lerobot
+          path: .coverage*
+          include-hidden-files: true
+          if-no-files-found: error
 
   production-sandbox:
     runs-on: ubuntu-latest
@@ -189,7 +257,14 @@ jobs:
             fi
           done
       - run: uv sync --locked --dev --python 3.12
-      - run: uv run --python 3.12 pytest -q tests/test_production_sandbox.py
+      - run: uv run --python 3.12 pytest -q --cov=src/rolo --cov-report= --cov-fail-under=0 tests/test_production_sandbox.py
+      - name: Upload integration coverage fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-production-sandbox
+          path: .coverage*
+          include-hidden-files: true
+          if-no-files-found: error
 
   ssh-target-e2e:
     runs-on: ubuntu-latest
@@ -206,4 +281,11 @@ jobs:
       - name: Run real SSH collector and preflight acceptance
         env:
           ROLO_RUN_SSH_E2E: "1"
-        run: uv run --python 3.12 pytest -q tests/test_ssh_target_e2e.py
+        run: uv run --python 3.12 pytest -q --cov=src/rolo --cov-report= --cov-fail-under=0 tests/test_ssh_target_e2e.py
+      - name: Upload integration coverage fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ssh-target
+          path: .coverage*
+          include-hidden-files: true
+          if-no-files-found: error
