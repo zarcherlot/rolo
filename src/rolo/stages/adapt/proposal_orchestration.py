@@ -620,9 +620,7 @@ class CodexOperationMappingProvider:
         self.timeout_s = timeout_s
         self.batch_operations = batch_operations
         self.parallelism = parallelism
-        # A mapping run may contain several batches.  Keep the default total
-        # budget equal to one configured Agent timeout so a stalled provider
-        # cannot multiply the wait by the number of batches.
+        # A run with multiple batches still has one caller-visible budget.
         self.max_elapsed_s = float(timeout_s if max_elapsed_s is None else max_elapsed_s)
 
     def _command(self, workspace: Path, schema: Path, output: Path) -> list[str]:
@@ -885,7 +883,12 @@ class CodexOperationMappingProvider:
             ),
         )
 
-    def propose(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+    def _propose_with_deadline(
+        self,
+        request: DiscoverySkillRequest,
+        *,
+        deadline: float,
+    ) -> OperationProposalBundle:
         for label, path in (
             ("discovery", self.discovery_skill_path),
             ("mapping", self.mapping_skill_path),
@@ -900,13 +903,12 @@ class CodexOperationMappingProvider:
             if operation in request.target_operations and binding.evidence_refs
         )
         if len(operations) <= self.batch_operations:
-            return self._propose_once(request, deadline=time.monotonic() + self.max_elapsed_s)
+            return self._propose_once(request, deadline=deadline)
         batches = [
             self._batch_request(request, operations[index : index + self.batch_operations])
             for index in range(0, len(operations), self.batch_operations)
         ]
         started = time.monotonic()
-        deadline = started + self.max_elapsed_s
         executor = ThreadPoolExecutor(
             max_workers=min(self.parallelism, len(batches)),
             thread_name_prefix="rolo-operation-mapping",
@@ -928,10 +930,12 @@ class CodexOperationMappingProvider:
                 for future in done:
                     bundles[futures[future]] = future.result()
         finally:
-            # Every child received the same absolute deadline.  Waiting here
-            # is therefore bounded and prevents orphaned provider workers from
-            # keeping the target process alive after fallback is selected.
-            executor.shutdown(wait=True, cancel_futures=True)
+            # Workers use the same absolute deadline; cancel anything that has
+            # not started and never wait past the caller's hard deadline here.
+            # The subprocess boundary has its own timeout and terminates the
+            # actual Codex invocation; a misbehaving plugin thread must not
+            # hold discovery hostage after fallback is selected.
+            executor.shutdown(wait=False, cancel_futures=True)
         completed_bundles = [bundle for bundle in bundles if bundle is not None]
         if len(completed_bundles) != len(batches):
             raise TimeoutError("Operation mapping Agent total timeout exceeded")
@@ -940,6 +944,22 @@ class CodexOperationMappingProvider:
             completed_bundles,
             elapsed_ms=max(0, int((time.monotonic() - started) * 1_000)),
         )
+
+    def propose(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+        return self._propose_with_deadline(
+            request,
+            deadline=time.monotonic() + self.max_elapsed_s,
+        )
+
+    def propose_with_deadline(
+        self,
+        request: DiscoverySkillRequest,
+        *,
+        deadline: float,
+    ) -> OperationProposalBundle:
+        """Run a mapping request under a caller-owned absolute deadline."""
+
+        return self._propose_with_deadline(request, deadline=deadline)
 
 
 class ProposalIssueCode(str, Enum):
@@ -1386,6 +1406,12 @@ class DiscoverySkillRunner:
                 reason=ProposalFallbackReason.PROVIDER_NOT_CONFIGURED,
             )
         started = time.monotonic()
+        provider_budget = getattr(self.provider, "max_elapsed_s", None)
+        provider_deadline = (
+            started + float(provider_budget)
+            if isinstance(provider_budget, (int, float)) and provider_budget > 0
+            else None
+        )
         bundle: OperationProposalBundle | None = None
         try:
             schema_error: ValidationError | None = None
@@ -1395,7 +1421,13 @@ class DiscoverySkillRunner:
             # schema-invalid fallback reason if the second attempt fails.
             for attempt in range(2):
                 try:
-                    bundle = self.provider.propose(request)
+                    if provider_deadline is not None and time.monotonic() >= provider_deadline:
+                        raise TimeoutError("Operation mapping Agent total timeout exceeded")
+                    propose_with_deadline = getattr(self.provider, "propose_with_deadline", None)
+                    if provider_deadline is not None and callable(propose_with_deadline):
+                        bundle = propose_with_deadline(request, deadline=provider_deadline)
+                    else:
+                        bundle = self.provider.propose(request)
                     elapsed_ms = max(0, int((time.monotonic() - started) * 1_000))
                     artifact = self.validator.validate(
                         request,

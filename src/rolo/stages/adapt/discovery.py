@@ -114,6 +114,7 @@ MAX_SOURCE_FILES = 10_000
 MAX_DISCOVERED_ITEMS = 1_000
 MAX_ROUTE_ENRICHMENT_TOPICS = 128
 ROUTE_ENRICHMENT_BUDGET_S = 20.0
+MAX_ROS_STABILITY_ATTEMPTS = 3
 SKIP_DIRECTORIES = BASE_SKIP_DIRECTORIES | {
     "venv",
     "build",
@@ -653,7 +654,7 @@ class RosProbe:
                 sandbox_failures += failure_class == "EXECUTION_SANDBOX_RESTRICTED"
             data["command_diagnostics"][field] = diagnostic
             if result.get("returncode") == 0:
-                data[field] = result["stdout"].splitlines()[:MAX_DISCOVERED_ITEMS]
+                data[field] = _canonical_ros_snapshot(result.get("stdout", ""))
                 successes += 1
             else:
                 warnings.append(
@@ -666,25 +667,39 @@ class RosProbe:
             )
 
         if self.stabilize and successes:
-            first = {field: list(data[field]) for field in command_map}
-            second: dict[str, list[str]] = {}
-            for field, args in command_map.items():
-                sample = self._run_ros(args)
-                second[field] = (
-                    sample.get("stdout", "").splitlines()[:MAX_DISCOVERED_ITEMS]
-                    if sample.get("returncode") == 0
-                    else []
-                )
-            stable = all(first[field] == second[field] for field in command_map)
+            previous = {field: list(data[field]) for field in command_map}
+            stable = False
+            attempts = 1
+            # DDS discovery can briefly omit already-running participants. A
+            # second sample alone turns that transient into a false warning;
+            # allow one additional bounded sample and accept only two
+            # consecutive identical, fully successful snapshots.
+            while attempts < MAX_ROS_STABILITY_ATTEMPTS:
+                current: dict[str, list[str]] = {}
+                current_success = True
+                for field, args in command_map.items():
+                    sample = self._run_ros(args)
+                    succeeded = sample.get("returncode") == 0
+                    current_success = current_success and succeeded
+                    current[field] = (
+                        _canonical_ros_snapshot(sample.get("stdout", ""))
+                        if succeeded
+                        else []
+                    )
+                attempts += 1
+                if current_success and all(
+                    previous[field] == current[field] for field in command_map
+                ):
+                    stable = True
+                    data.update(current)
+                    break
+                previous = current
             data["stability"] = {
-                "attempts": 2,
+                "attempts": attempts,
                 "stable": stable,
                 "sampled_fields": sorted(command_map),
             }
-            if stable:
-                for field in command_map:
-                    data[field] = second[field]
-            else:
+            if not stable:
                 warnings.append(
                     "ROS runtime graph did not stabilize across bounded samples; route "
                     "verification remains conservative."
@@ -1474,6 +1489,20 @@ class ApplicationProbe:
 def _ros_entity_name(value: str) -> str:
     name = value.split(" ", 1)[0].strip()
     return f"/{name.lstrip('/')}" if name else ""
+
+
+def _canonical_ros_snapshot(stdout: str) -> list[str]:
+    """Normalize ROS CLI graph output before comparing bounded samples.
+
+    DDS discovery does not guarantee enumeration order.  Comparing the raw
+    command output therefore reports false instability on an unchanged graph.
+    Empty lines are not graph facts; duplicate lines are removed because the
+    ROS list commands describe sets of entities.
+    """
+
+    return sorted({line.strip() for line in str(stdout).splitlines() if line.strip()})[
+        :MAX_DISCOVERED_ITEMS
+    ]
 
 
 def _is_concrete_ros_endpoint(value: str) -> bool:
