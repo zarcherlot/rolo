@@ -126,6 +126,13 @@ from rolo.stages.verify.readiness import (
     RealVerifyReadinessReportV2,
     validate_readiness_report,
 )
+from rolo.target_readiness import (
+    TARGET_READINESS_API_FEATURES,
+    TargetReadinessCollection,
+    TargetReadinessSummary,
+    build_target_readiness_collection,
+    get_target_readiness_summary,
+)
 from rolo.target_ref import SshTargetRef, parse_target_ref
 from rolo.targets.approvals import BootstrapApprovalDecision, BootstrapApprovalRequest
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
@@ -178,6 +185,8 @@ def _loopback_host(value: str) -> bool:
 
 
 def _required_scope(path: str, method: str) -> str | None:
+    if method == "GET" and path.startswith("/v1/targets/") and path.endswith("/readiness"):
+        return "targets:read"
     if method == "GET" and (path == "/v1/jobs" or path.startswith("/v1/jobs/")):
         return "jobs:read"
     if method == "GET" and path.endswith("/stage-auth-requests"):
@@ -367,7 +376,12 @@ async def health(request: Request) -> HealthResponse:
         robots=len(runtime.registry),
         robot_use_backend=runtime.robot_use_backend.name,
         openai_key_configured=bool(runtime.settings.openai_api_key),
-        api_features=[*ADAPT_API_FEATURES, *EPISODE_API_FEATURES, *JOB_API_FEATURES],
+        api_features=[
+            *ADAPT_API_FEATURES,
+            *EPISODE_API_FEATURES,
+            *JOB_API_FEATURES,
+            *TARGET_READINESS_API_FEATURES,
+        ],
     )
 
 
@@ -457,6 +471,51 @@ def plan_target_bootstrap(payload: BootstrapPlanPayload) -> TargetBootstrapPlan:
         ).plan_bootstrap()
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/v1/targets/readiness", response_model=TargetReadinessCollection)
+def list_target_readiness(
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TargetReadinessCollection:
+    """Return sanitized, paginated connection/workspace readiness facts."""
+
+    try:
+        return build_target_readiness_collection(
+            get_settings().rolo_config_dir,
+            limit=limit,
+            offset=offset,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "TARGET_READINESS_UNAVAILABLE",
+                "message": "target readiness facts are unavailable",
+            },
+        ) from exc
+
+
+@app.get("/v1/targets/{target_id}/readiness", response_model=TargetReadinessSummary)
+def read_target_readiness(target_id: str) -> TargetReadinessSummary:
+    """Return one sanitized target readiness summary by opaque target id."""
+
+    try:
+        summary = get_target_readiness_summary(get_settings().rolo_config_dir, target_id)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "TARGET_READINESS_UNAVAILABLE",
+                "message": "target readiness facts are unavailable",
+            },
+        ) from exc
+    if summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "TARGET_NOT_FOUND", "message": "target readiness is unavailable"},
+        )
+    return summary
 
 
 @app.get("/v1/jobs", response_model=JobPage)

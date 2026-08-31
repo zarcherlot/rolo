@@ -101,6 +101,23 @@ class TargetProfileStore:
             raise ValueError("target profile identity does not match its path")
         return profile
 
+    def list_profiles(self) -> list[TargetProfile]:
+        """Load every persisted profile in stable order.
+
+        A malformed profile is an unavailable producer fact, so fail the complete
+        read model instead of silently returning a partial fleet projection.
+        """
+
+        if not self.root.is_dir():
+            return []
+        profiles: list[TargetProfile] = []
+        for path in sorted(self.root.glob("*.json"), key=lambda item: item.name):
+            if path.is_symlink():
+                raise ValueError(f"target profile must not be a symlink: {path}")
+            profile_id = path.stem
+            profiles.append(self.load(profile_id))
+        return profiles
+
     def save(self, profile: TargetProfile) -> Path:
         if profile.profile_id != profile.robot_id:
             raise ValueError("target profile_id and robot_id must match")
