@@ -257,14 +257,18 @@ async def protect_control_plane(request: Request, call_next):
                 content={"detail": "Remote API binding requires ROLO_API_TOKEN"},
             )
         if not supplied or not hmac.compare_digest(supplied, token):
-            return JSONResponse(status_code=401, content={"detail": "Invalid API token"})
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid API token"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         required_scope = _required_scope(request.url.path, request.method)
         configured_scopes = {
             item.strip()
             for item in settings.rolo_api_token_scopes.split(",")
             if item.strip()
         }
-        if required_scope and configured_scopes and required_scope not in configured_scopes:
+        if required_scope and required_scope not in configured_scopes:
             return JSONResponse(
                 status_code=403,
                 content={
@@ -273,6 +277,7 @@ async def protect_control_plane(request: Request, call_next):
                         "message": f"API token requires scope {required_scope}",
                     }
                 },
+                headers={"WWW-Authenticate": f'Bearer scope="{required_scope}"'},
             )
     return await call_next(request)
 

@@ -871,7 +871,33 @@ def test_remote_api_binding_fails_closed_without_token(
     monkeypatch.delenv("ROLO_API_TOKEN", raising=False)
     get_settings.cache_clear()
 
-    with TestClient(app) as client:
-        response = client.get("/v1/robot-use/status")
+    try:
+        with TestClient(app) as client:
+            response = client.get("/v1/robot-use/status")
 
-    assert response.status_code == 503
+        assert response.status_code == 503
+    finally:
+        # The settings object is process-cached, while monkeypatch restores
+        # the environment after this test. Clear it before the next app
+        # lifespan so later tests cannot inherit the remote binding.
+        get_settings.cache_clear()
+
+
+def test_remote_api_requires_explicit_read_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ROLO_HOST", "0.0.0.0")
+    monkeypatch.setenv("ROLO_API_TOKEN", "read-only-token")
+    monkeypatch.delenv("ROLO_API_TOKEN_SCOPES", raising=False)
+    get_settings.cache_clear()
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/jobs",
+            headers={"Authorization": "Bearer read-only-token"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "SCOPE_REQUIRED"
+    assert response.headers["www-authenticate"] == 'Bearer scope="jobs:read"'
+    get_settings.cache_clear()

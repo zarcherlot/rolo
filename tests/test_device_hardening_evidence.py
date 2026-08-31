@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,24 @@ def test_live_harness_manifest_is_repeatable_and_explicitly_bounded(tmp_path: Pa
     assert first["status"] == "BLOCKED"
     assert set(first["failure_semantics"].values()) >= {"BLOCKED", "PENDING", "PENDING_EXTERNAL"}
     assert all(str(item).startswith("job_") for item in first["job_ids"])
+
+
+def test_live_harness_non_loopback_requires_environment_token(monkeypatch) -> None:
+    harness = _load_harness()
+    monkeypatch.setenv("ROLO_HOST", "127.0.0.1")
+    monkeypatch.delenv("ROLO_API_TOKEN", raising=False)
+    monkeypatch.delenv("ROLO_API_TOKEN_SCOPES", raising=False)
+    with pytest.raises(RuntimeError, match="non-loopback staging harness requires ROLO_API_TOKEN"):
+        harness._configure_server_environment("0.0.0.0")
+
+
+def test_live_harness_assigns_only_read_scopes_when_token_is_present(monkeypatch) -> None:
+    harness = _load_harness()
+    monkeypatch.setenv("ROLO_HOST", "127.0.0.1")
+    monkeypatch.setenv("ROLO_API_TOKEN", "short-lived")
+    monkeypatch.delenv("ROLO_API_TOKEN_SCOPES", raising=False)
+    harness._configure_server_environment("0.0.0.0")
+    assert os.environ["ROLO_API_TOKEN_SCOPES"] == harness._READ_SCOPES
 
 
 def test_verified_export_requires_audited_bounded_input(tmp_path: Path) -> None:
