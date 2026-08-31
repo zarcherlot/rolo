@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import tempfile
 from collections import deque
 from copy import deepcopy
@@ -17,6 +16,7 @@ from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
 from rolo.stages.adapt.agent_environment import codex_helper_environment
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
+from rolo.stages.adapt.proposal_orchestration import run_bounded_codex_agent
 from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 from rolo.stages.adapt.wiki_insights import (
     RoloWikiHeuristicFinding,
@@ -560,17 +560,12 @@ class CodexWikiInsightProvider:
                 ),
                 encoding="utf-8",
             )
-            completed = subprocess.run(
+            completed = run_bounded_codex_agent(
                 self._command(workspace, schema, output),
                 input=prompt,
-                capture_output=True,
-                check=False,
                 cwd=workspace,
                 env=self._environment(),
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self.timeout_s,
+                timeout=float(self.timeout_s),
             )
             if completed.returncode != 0:
                 detail = (completed.stderr or completed.stdout).strip().splitlines()
