@@ -12,6 +12,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10 only
 
 from pydantic import BaseModel, Field
 
+from rolo.device_hardening_evidence import DEVICE_HARDENING_SCHEMA, DeviceHardeningEvidenceBundle
+
 
 class ReleaseCheckResult(BaseModel):
     schema_version: str = "rolo-release-check/v1"
@@ -45,7 +47,13 @@ def run_release_check(
     try:
         api = importlib.import_module("rolo.api").app
         route_paths = {route.path for route in api.routes}
-        for path in ("/v1/jobs", "/v1/jobs/{job_id}", "/v1/jobs/{job_id}/events"):
+        for path in (
+            "/v1/jobs",
+            "/v1/jobs/{job_id}",
+            "/v1/jobs/{job_id}/events",
+            "/v1/targets/{target_id}/artifact-analysis",
+            "/v1/jobs/{job_id}/artifact-analysis",
+        ):
             if path not in route_paths:
                 failures.append(f"missing API route: {path}")
             else:
@@ -65,6 +73,14 @@ def run_release_check(
             failures.append(f"pyproject: {exc}")
     else:
         failures.append(f"missing pyproject: {path}")
+    try:
+        schema = DeviceHardeningEvidenceBundle.model_json_schema()
+        if schema["properties"]["schema_version"]["const"] != DEVICE_HARDENING_SCHEMA:
+            failures.append("device hardening schema version drift")
+        else:
+            checks.append("device-hardening-schema:registered")
+    except (KeyError, TypeError, ValueError) as exc:
+        failures.append(f"device-hardening-schema: {exc}")
     if require_artifacts:
         artifact_root = dist_path or path.parent / "dist"
         artifacts = [

@@ -14,7 +14,7 @@ Schema、Operation Contract、运行时 Gate 及其测试；阶段契约以对�
 | `rolo` | `src/rolo/product_cli.py` | 面向产品流程的自然语言、目标机、profile、job 和 Adapt 入口 |
 | `robotctl` | `src/rolo/cli.py`、`src/rolo/commands/` | 面向开发和运维的生命周期、Registry、Schema、target-evidence 和运行时命令 |
 | `rolo-vis` | `src/rolo/vis.py` | 同源只读 Web 控制台；授权动作仍由服务端校验 |
-| HTTP 控制面 | `src/rolo/api.py` | `/v1` 查询、阶段 run/取消、授权请求和 read model API |
+| HTTP 控制面 | `src/rolo/api.py` | `/v1` 查询、阶段 run/取消、授权请求和 read model API；非 loopback 请求使用 Bearer token，并对受保护 read/write endpoint 执行显式 scope 校验 |
 | `rolo-mcp` | `src/rolo/mcp_server.py` | MCP/Agent 访问控制面和受限工具，不绕过服务端 Gate |
 
 CLI 的公开脚本定义位于 `pyproject.toml`。新增入口必须同时说明输入、产物、失败关闭行为
@@ -155,6 +155,10 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 拼接本地绝对路径。Schema 文件位于 `schemas/`，生成型 Contract 目录由
 `src/rolo/contract_catalog.py` 维护。
 
+脱敏 device-hardening handoff 由 `src/rolo/device_hardening_evidence.py` 通过
+`rolo target export-device-hardening` 生成；可重复的本地 staging fixture 和其
+revision-pinned manifest 由 `scripts/rolo-live-harness.py` 提供。
+
 ## 7. 测试保护面
 
 | 实现面 | 主要测试 |
@@ -167,6 +171,7 @@ Episode 原始 record、不可变 publication 和脱敏 projection 由：
 | 固定 Linux/ROS 目标与 Stage 插件 | `test_real_target_contracts.py`、`test_plugin_manifest.py` |
 | Episode projection/read model/API | `test_episode_read_models.py`、`test_episode_projection.py`、`test_episode_api.py` |
 | HTTP/MCP/Web 入口 | `test_api.py`、`test_mcp_server.py`、`test_vis.py` |
+| Device-hardening producer、harness manifest 和 release ledger | `test_device_hardening_evidence.py`、`test_artifact_analysis.py` |
 | Schema 与 Contract 完整性 | `test_schemas.py`、`test_contract_catalog.py` |
 
 新增公共入口或产物时，至少补充一条成功路径、一条拒绝/失败路径，并把测试加入本表；

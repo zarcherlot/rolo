@@ -8,17 +8,24 @@ executes a bootstrap; the process only serves the existing GET API.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import ipaddress
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
 
+from rolo.approval_gate_read_models import build_approval_gate_collection
 from rolo.artifact_analysis import ArtifactAnalysisSummary
 from rolo.core.config import get_settings
+from rolo.device_hardening_evidence import StagingHarnessManifest
 from rolo.jobs import Job, JobEvent, JobStatus
+from rolo.target_readiness import build_target_readiness_collection
 from rolo.target_ref import LocalTargetRef, SshTargetRef
 from rolo.targets.profiles import (
     CredentialReference,
@@ -27,6 +34,26 @@ from rolo.targets.profiles import (
 )
 
 _NOW = datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc)
+_READ_SCOPES = "jobs:read,targets:read,approval-gates:read,artifact-analysis:read"
+
+
+def _loopback_host(value: str) -> bool:
+    if value.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def _configure_server_environment(host: str) -> None:
+    """Bind the harness API to an explicit auth posture without exposing secrets."""
+
+    os.environ["ROLO_HOST"] = host
+    if not _loopback_host(host) and not os.environ.get("ROLO_API_TOKEN"):
+        raise RuntimeError("non-loopback staging harness requires ROLO_API_TOKEN")
+    if os.environ.get("ROLO_API_TOKEN") and not os.environ.get("ROLO_API_TOKEN_SCOPES"):
+        os.environ["ROLO_API_TOKEN_SCOPES"] = _READ_SCOPES
 
 
 def _write_job(root: Path, job: Job, events: list[JobEvent]) -> None:
@@ -111,6 +138,7 @@ def _seed(root: Path) -> None:
         ),
         [
             JobEvent(
+                event_id="evt_job_approved_pending_1",
                 job_id="job_approved_pending",
                 sequence=1,
                 event_type="JOB_STARTED",
@@ -133,6 +161,7 @@ def _seed(root: Path) -> None:
         ),
         [
             JobEvent(
+                event_id="evt_job_approved_failed_1",
                 job_id="job_approved_failed",
                 sequence=1,
                 event_type="BOOTSTRAP_FAILED",
@@ -168,6 +197,7 @@ def _seed(root: Path) -> None:
         ),
         [
             JobEvent(
+                event_id="evt_job_blocked_1",
                 job_id="job_blocked",
                 sequence=1,
                 event_type="JOB_BLOCKED",
@@ -241,11 +271,80 @@ def _seed(root: Path) -> None:
     )
 
 
+def _rolo_revision() -> str:
+    configured = os.environ.get("ROLO_REVISION")
+    if configured:
+        return configured
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    revision = result.stdout.strip()
+    if not revision:
+        raise RuntimeError("staging harness requires a git revision")
+    return revision
+
+
+def _manifest(root: Path) -> dict[str, object]:
+    readiness = build_target_readiness_collection(root, observed_at=_NOW)
+    approvals = build_approval_gate_collection(root, observed_at=_NOW)
+    artifact = ArtifactAnalysisSummary.model_validate_json(
+        (root / "artifact-analysis" / "ready-local.json").read_text(encoding="utf-8")
+    )
+    # Approval revisions are derived from persisted transport targets in the
+    # core read model.  Replace those root-specific details with the bounded
+    # identity/status tuple so the harness manifest is stable across temp roots.
+    approval_revision = hashlib.sha256(
+        "|".join(
+            f"{item.job_id}:{item.target_id}:{item.gate_status}:{item.recovery_state}"
+            for item in approvals.items
+        ).encode("utf-8")
+    ).hexdigest()
+    return StagingHarnessManifest.model_validate(
+        {
+            "schema_version": "rolo-staging-harness-manifest/v1",
+            "status": "BLOCKED",
+            "release_line": "0.1.x",
+            "rolo_revision": _rolo_revision(),
+            "producer_revisions": {
+                "target_readiness": readiness.producer_revision,
+                "approval_gate": approval_revision,
+                "artifact_analysis": artifact.producer_revision,
+            },
+            "target_ids": [item.target_id for item in readiness.items],
+            "job_ids": [item.job_id for item in approvals.items],
+            "gate_results": {
+                "r0_jobs": "BLOCKED",
+                "r1_target_readiness": "BLOCKED",
+                "r2_approval_gate": "PENDING",
+                "r4_artifact_analysis": "PASS",
+            },
+            "failure_semantics": {
+                "blocked_target": "BLOCKED",
+                "pending_approval": "PENDING",
+                "external_device": "PENDING_EXTERNAL",
+            },
+            "limitations": [
+                "Harness is deterministic and read-only; it never connects to a host.",
+                "PASS means the read model path is available, not physical or release readiness.",
+            ],
+        }
+    ).model_dump(mode="json")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--config-dir", type=Path)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="Write the deterministic harness manifest to this path",
+    )
     parser.add_argument("--no-serve", action="store_true", help="seed config and print its path")
     args = parser.parse_args()
     holder = (
@@ -255,12 +354,18 @@ def main() -> int:
     )
     root = args.config_dir or Path(holder.name)
     _seed(root)
+    manifest_path = args.manifest or root / "harness-manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(_manifest(root), indent=2) + "\n", encoding="utf-8")
     print(f"ROLO_CONFIG_DIR={root}")
+    print(f"ROLO_HARNESS_MANIFEST={manifest_path}")
     if args.no_serve:
         return 0
-    import os
-
     os.environ["ROLO_CONFIG_DIR"] = str(root)
+    # Keep API authentication aligned with the actual bind address. Tokens are
+    # read only from the environment; they are never accepted as CLI arguments,
+    # printed, or written into the harness manifest.
+    _configure_server_environment(args.host)
     os.environ.setdefault("ROLO_ARTIFACT_DIR", str(root / "runtime-artifacts"))
     os.environ.setdefault("ROLO_OUTPUT_DIR", str(root / "runtime-output"))
     get_settings.cache_clear()

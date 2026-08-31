@@ -51,9 +51,10 @@ evidence、严格多路由 selector、bounded CLI `--help` probe、目标 CLI sa
 | FEAT-STAGE-PLUGIN | PARTIAL | E1 | Stage executor/harness entry point 与 manifest | `src/rolo/stages/plugin_manifest.py`; `src/rolo/agent_provider.py` | `tests/test_plugin_manifest.py`; `tests/test_codex_downstream.py` | 插件包安装、隔离运行和跨版本生产验证仍待完成 |
 | FEAT-LOCAL-REAL-TARGET | PARTIAL | E3 | profile 绑定的 Linux/ROS Diagnose/Verify provider | `src/rolo/stages/real_target.py`; `src/rolo/targets/profiles.py` | `tests/test_real_target_contracts.py`; `tests/test_target_profiles.py` | 当前是固定 WSL/Linux/ROS 软件目标，不等同于物理机器人 E4 闭环 |
 | FEAT-EPISODE-READ-MODEL | PARTIAL | E2 | Episode list/detail、revision、cohort、observation bundle | `src/rolo/episode_read_models.py`; `src/rolo/episode_projection.py`; `src/rolo/episode_observation_bundles.py`; `src/rolo/episode_capture.py`; `src/rolo/api.py` | `tests/test_episode_read_models.py`; `tests/test_episode_projection.py`; `tests/test_episode_observation_bundles.py`; `tests/test_episode_api.py`; `tests/test_episode_capture.py` | 只读、bounded、revision-pinned；不代表实时采集或 remediation |
-| FEAT-ROLO-VIS | EXPERIMENTAL | E1 | 同源只读 Web 控制台和授权恢复 | `src/rolo/vis.py`; `src/rolo/api.py` | `tests/test_vis.py`; `tests/test_api.py` | UI 不是安全边界，服务端仍是 authority |
+| FEAT-ROLO-VIS | EXPERIMENTAL | E1 | 同源只读 Web 控制台和授权恢复 | `src/rolo/vis.py`; `src/rolo/api.py` | `tests/test_vis.py`; `tests/test_api.py` | UI 不是安全边界，服务端仍是 authority；非 loopback 控制面要求 Bearer token，Job/Target Readiness/Approval Gate/Artifact Analysis 必须显式配置独立 read scope |
 | FEAT-ROLO-MCP | EXPERIMENTAL | E1 | MCP/Agent 控制面访问 | `src/rolo/mcp_server.py` | `tests/test_mcp_server.py` | 不得绕过 HTTP/Stage/Tool Gate |
 | FEAT-TARGET-BOOTSTRAP | EXPERIMENTAL | E1 | 目标机 bootstrap plan/request/approve/execute | `src/rolo/targets/bootstrap.py`; `src/rolo/product_cli.py`; `src/rolo/api.py` | `tests/test_bootstrap_cli.py`; `tests/test_bootstrap_api.py`; `tests/test_bootstrap_execution.py` | 依赖目标环境、授权和部署策略 |
+| FEAT-DEVICE-HARDENING-EVIDENCE | PARTIAL | E2 | 脱敏 device-hardening bundle、可重复 harness manifest、release ledger | `src/rolo/device_hardening_evidence.py`; `scripts/rolo-live-harness.py`; `src/rolo/product_cli.py` | `tests/test_device_hardening_evidence.py`; `tests/test_artifact_analysis.py` | 默认所有真实设备场景为 PENDING_EXTERNAL；真实 staging、人工 review 和 E4 证据尚未提供 |
 
 ## 3. 可信度边界
 

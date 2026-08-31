@@ -174,6 +174,57 @@ def test_ros_probe_uses_humble_compatible_action_arguments(
     assert all("--no-daemon" in args for args in calls[:-1])
 
 
+def test_ros_probe_stability_ignores_dds_enumeration_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    probe = RosProbe(
+        ros_root=tmp_path / "missing",
+        environment={"ROS_DISTRO": "humble"},
+        stabilize=True,
+    )
+    samples = {
+        "node": ["/b\n/a\n", "/a\n/b\n"],
+        "topic": [
+            "/topic_b [std_msgs/msg/String]\n/topic_a [std_msgs/msg/String]\n",
+            "/topic_a [std_msgs/msg/String]\n/topic_b [std_msgs/msg/String]\n",
+        ],
+        "service": [
+            ("/svc_b [example_interfaces/srv/AddTwoInts]\n"
+             "/svc_a [example_interfaces/srv/AddTwoInts]\n"),
+            ("/svc_a [example_interfaces/srv/AddTwoInts]\n"
+             "/svc_b [example_interfaces/srv/AddTwoInts]\n"),
+        ],
+        "action": [
+            ("/act_b [example_interfaces/action/Fibonacci]\n"
+             "/act_a [example_interfaces/action/Fibonacci]\n"),
+            ("/act_a [example_interfaces/action/Fibonacci]\n"
+             "/act_b [example_interfaces/action/Fibonacci]\n"),
+        ],
+    }
+    seen = {key: 0 for key in samples}
+
+    def succeeded(args):
+        key = args[0]
+        index = seen[key]
+        seen[key] += 1
+        return {
+            "available": True,
+            "argv": ["ros2", *args],
+            "returncode": 0,
+            "stdout": samples[key][min(index, 1)],
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(probe, "_run_ros", succeeded)
+    result = probe.run()
+
+    assert result.data["stability"] == {
+        "attempts": 2,
+        "stable": True,
+        "sampled_fields": ["actions", "nodes", "services", "topics"],
+    }
+
+
 def test_ros_probe_filters_topics_owned_only_by_its_ros2cli_daemon(
     tmp_path: Path, monkeypatch
 ) -> None:

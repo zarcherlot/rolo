@@ -1,0 +1,115 @@
+{
+  "additionalProperties": false,
+  "description": "Stable, sanitized metadata emitted by the local staging harness.",
+  "properties": {
+    "schema_version": {
+      "const": "rolo-staging-harness-manifest/v1",
+      "default": "rolo-staging-harness-manifest/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "BLOCKED",
+        "PENDING_EXTERNAL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "release_line": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Release Line",
+      "type": "string"
+    },
+    "rolo_revision": {
+      "pattern": "^[0-9a-f]{7,64}$",
+      "title": "Rolo Revision",
+      "type": "string"
+    },
+    "producer_revisions": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{7,64}$",
+        "type": "string"
+      },
+      "maxProperties": 8,
+      "minProperties": 1,
+      "title": "Producer Revisions",
+      "type": "object"
+    },
+    "target_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Target Ids",
+      "type": "array"
+    },
+    "job_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Job Ids",
+      "type": "array"
+    },
+    "gate_results": {
+      "additionalProperties": {
+        "enum": [
+          "PASS",
+          "BLOCKED",
+          "PENDING",
+          "PENDING_EXTERNAL"
+        ],
+        "type": "string"
+      },
+      "maxProperties": 16,
+      "minProperties": 1,
+      "title": "Gate Results",
+      "type": "object"
+    },
+    "failure_semantics": {
+      "additionalProperties": {
+        "enum": [
+          "BLOCKED",
+          "PENDING",
+          "PENDING_EXTERNAL"
+        ],
+        "type": "string"
+      },
+      "maxProperties": 16,
+      "minProperties": 1,
+      "title": "Failure Semantics",
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 240,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "release_line",
+    "rolo_revision",
+    "producer_revisions",
+    "target_ids",
+    "job_ids",
+    "gate_results",
+    "failure_semantics",
+    "limitations"
+  ],
+  "title": "StagingHarnessManifest",
+  "type": "object"
+}

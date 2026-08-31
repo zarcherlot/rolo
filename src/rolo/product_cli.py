@@ -15,6 +15,10 @@ from rolo.commands.lifecycle import run_adapt_start
 from rolo.console import run_console
 from rolo.core.config import get_settings
 from rolo.core.hashing import canonical_json_sha256
+from rolo.device_hardening_evidence import (
+    build_device_hardening_bundle,
+    write_device_hardening_bundle,
+)
 from rolo.episode_capture import capture_target_inspection_episode
 from rolo.job_service import JobService
 from rolo.jobs import JobStatus, JobStore, run_bootstrap_job
@@ -574,6 +578,60 @@ def target_companion_verify(
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit({"status": "COMPANION_VERIFIED", "verification": result.model_dump(mode="json")})
+
+
+@target_app.command("export-device-hardening")
+def export_device_hardening(
+    target_id: Annotated[str, typer.Option("--target-id", help="Producer-owned target profile")],
+    release_line: Annotated[str, typer.Option("--release-line", help="Rolo release line")],
+    output: Annotated[Path, typer.Option("--output", help="Sanitized bundle output path")],
+    rolo_revision: Annotated[str | None, typer.Option("--rolo-revision")] = None,
+    evidence_input: Annotated[
+        Path | None, typer.Option("--evidence-input", help="Audited external evidence JSON")
+    ] = None,
+    ledger_output: Annotated[
+        Path | None, typer.Option("--ledger-output", help="Optional release ledger output")
+    ] = None,
+) -> None:
+    """Export a sanitized device-hardening bundle for rolo-vis."""
+    import subprocess
+
+    revision = rolo_revision
+    if revision is None:
+        try:
+            revision = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parents[2],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise typer.BadParameter("--rolo-revision is required outside a git checkout") from exc
+    try:
+        bundle = build_device_hardening_bundle(
+            get_settings().rolo_config_dir,
+            target_id=target_id,
+            release_line=release_line,
+            rolo_revision=revision,
+            evidence_input=evidence_input,
+        )
+        bundle_path, ledger_path = write_device_hardening_bundle(
+            bundle, output, ledger_output=ledger_output
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "PENDING_EXTERNAL"
+            if any(item.status == "PENDING_EXTERNAL" for item in bundle.evidence)
+            else "READY_FOR_REVIEW",
+            "bundle": str(bundle_path),
+            "ledger": str(ledger_path) if ledger_path else None,
+            "target_id": bundle.target_id,
+            "producer_revision": bundle.producer_revision,
+        }
+    )
 
 
 @profile_app.command("init")
