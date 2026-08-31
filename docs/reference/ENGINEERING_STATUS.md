@@ -54,6 +54,7 @@ evidence、严格多路由 selector、bounded CLI `--help` probe、目标 CLI sa
 | FEAT-ROLO-VIS | EXPERIMENTAL | E1 | 同源只读 Web 控制台和授权恢复 | `src/rolo/vis.py`; `src/rolo/api.py` | `tests/test_vis.py`; `tests/test_api.py` | UI 不是安全边界，服务端仍是 authority |
 | FEAT-ROLO-MCP | EXPERIMENTAL | E1 | MCP/Agent 控制面访问 | `src/rolo/mcp_server.py` | `tests/test_mcp_server.py` | 不得绕过 HTTP/Stage/Tool Gate |
 | FEAT-TARGET-BOOTSTRAP | EXPERIMENTAL | E1 | 目标机 bootstrap plan/request/approve/execute | `src/rolo/targets/bootstrap.py`; `src/rolo/product_cli.py`; `src/rolo/api.py` | `tests/test_bootstrap_cli.py`; `tests/test_bootstrap_api.py`; `tests/test_bootstrap_execution.py` | 依赖目标环境、授权和部署策略 |
+| FEAT-DEVICE-HARDENING-EVIDENCE | PARTIAL | E2 | 脱敏 device-hardening bundle、可重复 harness manifest、release ledger | `src/rolo/device_hardening_evidence.py`; `scripts/rolo-live-harness.py`; `src/rolo/product_cli.py` | `tests/test_device_hardening_evidence.py`; `tests/test_artifact_analysis.py` | 默认所有真实设备场景为 PENDING_EXTERNAL；真实 staging、人工 review 和 E4 证据尚未提供 |
 
 ## 3. 可信度边界
 

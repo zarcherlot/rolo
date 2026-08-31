@@ -77,6 +77,11 @@ jobs:
       - run: uv sync --locked --dev --python 3.12
       - name: Run product release smoke checks
         run: uv run --python 3.12 rolo release-check
+      - name: Enforce producer safety and identity gate
+        run: >-
+          uv run --python 3.12 pytest -q
+          tests/test_device_hardening_evidence.py
+          tests/test_artifact_analysis.py
       - name: Build wheel and sdist
         run: uv build
       - name: Build and verify signed target companion

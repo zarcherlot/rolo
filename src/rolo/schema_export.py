@@ -45,6 +45,14 @@ from rolo.core.models import (
     RouteEvidence,
     ToolDescriptor,
 )
+from rolo.device_hardening_evidence import (
+    DeviceHardeningEvidence,
+    DeviceHardeningEvidenceBundle,
+    DeviceHardeningEvidenceItem,
+    ReleaseLedger,
+    ReleaseLedgerEntry,
+    StagingHarnessManifest,
+)
 from rolo.episode_observation_bundles import (
     CommittedEpisodeObservationRecord,
     EpisodeObservationBundleCollection,
@@ -291,6 +299,12 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     ArtifactAnalysisStage,
     ArtifactAnalysisFinding,
     ArtifactAnalysisSummary,
+    DeviceHardeningEvidence,
+    DeviceHardeningEvidenceItem,
+    DeviceHardeningEvidenceBundle,
+    ReleaseLedgerEntry,
+    ReleaseLedger,
+    StagingHarnessManifest,
 )
 
 # Keep the pre-v2 filenames as compatibility exports for downstream consumers.

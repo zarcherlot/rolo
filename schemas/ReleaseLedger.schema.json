@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "ReleaseLedgerEntry": {
+      "additionalProperties": false,
+      "description": "Auditable scenario index; it contains no raw transport or file data.",
+      "properties": {
+        "schema_version": {
+          "const": "rolo-release-ledger-entry/v1",
+          "default": "rolo-release-ledger-entry/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "release_line": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Release Line",
+          "type": "string"
+        },
+        "rolo_revision": {
+          "pattern": "^[0-9a-f]{7,64}$",
+          "title": "Rolo Revision",
+          "type": "string"
+        },
+        "producer_revision": {
+          "pattern": "^[0-9a-f]{7,64}$",
+          "title": "Producer Revision",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_kind": {
+          "enum": [
+            "local",
+            "ssh"
+          ],
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "scenario_id": {
+          "pattern": "^[a-z][a-z0-9_-]{2,63}$",
+          "title": "Scenario Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PENDING_EXTERNAL",
+            "BLOCKED",
+            "VERIFIED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "package_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8,64}(?:…[0-9a-f]{8,64})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Digest"
+        },
+        "gate_result": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gate Result"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "review_status": {
+          "default": "UNREVIEWED",
+          "enum": [
+            "UNREVIEWED",
+            "REVIEWED"
+          ],
+          "title": "Review Status",
+          "type": "string"
+        },
+        "review_note": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Note"
+        }
+      },
+      "required": [
+        "release_line",
+        "rolo_revision",
+        "producer_revision",
+        "target_id",
+        "target_kind",
+        "scenario_id",
+        "status"
+      ],
+      "title": "ReleaseLedgerEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rolo-release-ledger/v1",
+      "default": "rolo-release-ledger/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/ReleaseLedgerEntry"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries"
+  ],
+  "title": "ReleaseLedger",
+  "type": "object"
+}
