@@ -16,6 +16,7 @@ from rolo.agent_tools import (
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
 )
+from rolo.approval_gate_read_models import ApprovalGateCollection, ApprovalGateSummary
 from rolo.capabilities import (
     CapabilityDescriptor,
     CapabilityResolutionShadow,
@@ -274,6 +275,8 @@ CANONICAL_SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     PublishedEpisodeObservationBundleProjection,
     TargetReadinessSummary,
     TargetReadinessCollection,
+    ApprovalGateSummary,
+    ApprovalGateCollection,
 )
 
 # Keep the pre-v2 filenames as compatibility exports for downstream consumers.

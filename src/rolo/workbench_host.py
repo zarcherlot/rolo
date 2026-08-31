@@ -16,6 +16,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rolo.adapt_read_models import ADAPT_API_FEATURES
 from rolo.api import app as control_plane_app
+from rolo.approval_gate_read_models import APPROVAL_GATE_API_FEATURES
 from rolo.core.config import get_settings
 from rolo.episode_read_models import EPISODE_API_FEATURES
 from rolo.target_readiness import TARGET_READINESS_API_FEATURES
@@ -29,7 +30,12 @@ MAX_PLUGIN_FILE_BYTES = 16 * 1024 * 1024
 MAX_PLUGIN_TOTAL_BYTES = 256 * 1024 * 1024
 
 SUPPORTED_API_FEATURES = frozenset(
-    [*ADAPT_API_FEATURES, *EPISODE_API_FEATURES, *TARGET_READINESS_API_FEATURES]
+    [
+        *ADAPT_API_FEATURES,
+        *EPISODE_API_FEATURES,
+        *TARGET_READINESS_API_FEATURES,
+        *APPROVAL_GATE_API_FEATURES,
+    ]
 )
 SAFE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 CHECKSUM_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
