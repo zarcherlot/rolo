@@ -51,6 +51,26 @@ mkdir -p "$ROLO_ARTIFACT_DIR" "$ROLO_OUTPUT_DIR" "$DEBUG_DIR"
 `PROJECT_ROOT`、artifact、output 和 debug 目录必须位于源码树之外。不要把 API key、SSH
 私钥、代理凭据或完整未脱敏环境变量写入 artifact。
 
+变量填写后立即执行入口门禁。任何一项失败都必须停止，不得继续生成或上传验证产物：
+
+```bash
+set -euo pipefail
+: "${ROBOT_ID:?ROBOT_ID must be an approved physical robot id}"
+: "${PROJECT_ROOT:?PROJECT_ROOT must point to the deployed target workspace}"
+: "${EXPECTED_REVISION:?EXPECTED_REVISION must be the approved 40-character SHA}"
+
+[[ "$ROBOT_ID" != "demo_diff" && "$ROBOT_ID" != demo_* && "$ROBOT_ID" != mock_* ]]
+[[ "${ROBOT_USE_BACKEND:-}" != "mock" ]]
+[[ "${ROLO_CONFIG_DIR:-}" != *"tests/fixtures"* ]]
+[[ "$PROJECT_ROOT" != *"tests/fixtures"* && "$PROJECT_ROOT" != *"/src" && "$PROJECT_ROOT" != *"\\src" ]]
+[[ "$EXPECTED_REVISION" =~ ^[0-9a-fA-F]{40}$ ]]
+[[ "${ADAPT_NATIVE_TOOL_MODE:-off}" == "off" ]]
+printf 'real-target-runbook=PASS\nrobot_id=%s\nproject_root=%s\n' "$ROBOT_ID" "$PROJECT_ROOT"
+```
+
+这些检查专门阻止 Quickstart 的 `demo_diff`、mock backend、fixture profile 和 source-only
+路径误被当成真机 preflight。
+
 ## 1. 固定代码与依赖
 
 验证必须使用已经合入并审核的 `main` revision。不要直接验证移动的工作树或未推送提交：
@@ -239,6 +259,8 @@ uv run robotctl diagnose run --robot "$ROBOT_ID" \
 写操作或变异 payload 必须在执行前拒绝。
 
 ```bash
+export CODING_AGENT_PROVIDER=local-target
+export CODING_AGENT_EXECUTOR=local-target
 uv run robotctl verify acceptance-plan \
   --robot "$ROBOT_ID" \
   --plan-file "$DEBUG_DIR/verify-plan.json" \
