@@ -202,12 +202,19 @@ uv run robotctl adapt start \
   --project-root "$PROJECT_ROOT" \
   --urdf "$URDF_PATH" \
   --active-probe runtime-readonly \
+  --heuristic-agent-timeout 120 \
   --timeout 1800 \
   2>&1 | tee "$VALIDATION_DIR/adapt-start.txt"
 ```
 
 没有 URDF 时，删除 `--urdf "$URDF_PATH"`。如果使用已配置的远程 collector，则按目标证据
 部署手册使用 `--evidence-mode remote`；远程采集失败不能退回 controller 本地探测。
+
+`--heuristic-agent-timeout` 是 discovery planning 和每次 mapping 调用的单次预算；mapping
+的所有批次还共享同一个总 deadline，超时会保留 deterministic fallback 并在
+`heuristic/summary.json`、`operation-proposal-validation.json` 中记录
+`PROVIDER_TIMEOUT`，不会让目标机进程无限等待。若 Codex CLI 或模型端不可用，应先确认这些
+fallback artifact 已落盘，再处理 Agent 登录/网络问题，不要重复启动多个长时间的 Adapt 进程。
 
 完整成功条件：
 

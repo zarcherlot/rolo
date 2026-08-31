@@ -454,6 +454,59 @@ def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
     assert actual.provenance.input_artifact_sha256 == request.input_artifact_sha256
 
 
+def test_codex_mapping_provider_uses_one_total_deadline_for_all_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Read frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Return bounded mappings only.", encoding="utf-8")
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.localization.status")
+    )
+    deadlines: list[float] = []
+
+    def fake_propose_once(
+        child: DiscoverySkillRequest,
+        *,
+        deadline: float | None = None,
+    ) -> OperationProposalBundle:
+        assert deadline is not None
+        deadlines.append(deadline)
+        operation = sorted(child.target_operations)[0]
+        proposal = (
+            _proposal()
+            if operation == "app.camera.snapshot"
+            else _proposal(
+                operation,
+                evidence_ref="runtime_probe:odom",
+                route_resource_id="ros_topic:/odom",
+                executable_id="exe-localization",
+            )
+        )
+        return _bundle(child, [proposal])
+
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+        batch_operations=1,
+        parallelism=1,
+        timeout_s=30,
+        max_elapsed_s=0.5,
+    )
+    monkeypatch.setattr(provider, "_propose_once", fake_propose_once)
+
+    actual = provider.propose(request)
+
+    assert [item.operation for item in actual.proposals] == sorted(request.target_operations)
+    assert len(deadlines) == 2
+    assert max(deadlines) == min(deadlines)
+
+
 def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice() -> None:
     _report_value, registry, request = _request()
 
