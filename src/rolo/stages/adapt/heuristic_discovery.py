@@ -35,6 +35,7 @@ from rolo.stages.adapt.proposal_orchestration import (
     apply_validated_semantic_dispositions,
     build_discovery_skill_request,
     persist_proposal_artifacts,
+    run_bounded_codex_agent,
 )
 from rolo.stages.adapt.skill_contracts import AdaptDiscoveryPlan, DiscoveryRemainingBudget
 from rolo.stages.adapt.target_fingerprint import target_fingerprint_sha256
@@ -451,16 +452,11 @@ class CodexDiscoveryPlanningProvider:
                 encoding="utf-8",
             )
             try:
-                completed = subprocess.run(
+                completed = run_bounded_codex_agent(
                     self._command(workspace, schema, output),
                     input=prompt,
-                    capture_output=True,
-                    check=False,
                     cwd=workspace,
                     env=self._environment(),
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
                     timeout=self.timeout_s,
                 )
             except subprocess.TimeoutExpired as exc:

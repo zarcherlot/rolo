@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -42,11 +44,128 @@ from rolo.stages.adapt.operation_registry import (
 from rolo.stages.adapt.routes import canonicalize_route_evidence, probe_routes
 
 MAX_MAPPING_CONTEXT_CHARS = 200_000
+MAX_CODEX_AGENT_STDOUT_BYTES = 8_000_000
+MAX_CODEX_AGENT_STDERR_BYTES = 1_000_000
+CODEX_AGENT_TERMINATION_TIMEOUT_S = 5.0
 MAPPING_SKILL_NAME = "rolo-operation-mapping"
 MAPPING_SKILL_VERSION = "1.1.0"
 _SEMVER_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
 _EVIDENCE_ALIAS_PREFIX = "ev:"
 _EVIDENCE_ALIAS_HEX_LENGTH = 24
+
+
+def _terminate_codex_process_tree(process: subprocess.Popen[bytes]) -> None:
+    """Terminate the isolated Agent process group and reap its leader."""
+
+    if os.name == "nt":
+        if process.poll() is None:
+            try:
+                subprocess.run(
+                    ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=CODEX_AGENT_TERMINATION_TIMEOUT_S,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    else:
+        # start_new_session=True makes the Agent the process-group leader. Do
+        # this even when the leader already exited: a plugin/grandchild may
+        # still own inherited descriptors and keep the Python worker alive.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    if process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=CODEX_AGENT_TERMINATION_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
+def run_bounded_codex_agent(
+    command: list[str],
+    *,
+    input: str,
+    cwd: Path,
+    env: Mapping[str, str],
+    timeout: float,
+) -> subprocess.CompletedProcess[str]:
+    """Run Codex without inheritable pipes and kill its whole tree on timeout.
+
+    ``subprocess.run(..., capture_output=True)`` waits for pipe EOF after
+    killing only the direct child. Codex plugins can leave descendants that
+    inherit those pipes, so a timed-out mapping writes fallback evidence while
+    non-daemon executor workers keep Discovery alive. File-backed streams plus
+    an isolated process group make both timeout and cleanup caller-bounded.
+    """
+
+    if timeout <= 0:
+        raise subprocess.TimeoutExpired(command, timeout)
+    process: subprocess.Popen[bytes] | None = None
+    process_tree_reaped = False
+    with (
+        tempfile.TemporaryFile() as stdin_stream,
+        tempfile.TemporaryFile() as stdout_stream,
+        tempfile.TemporaryFile() as stderr_stream,
+    ):
+        stdin_stream.write(input.encode("utf-8"))
+        stdin_stream.seek(0)
+        popen_options: dict[str, Any] = {
+            "stdin": stdin_stream,
+            "stdout": stdout_stream,
+            "stderr": stderr_stream,
+            "cwd": cwd,
+            "env": dict(env),
+        }
+        if os.name == "nt":
+            popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_options["start_new_session"] = True
+        try:
+            process = subprocess.Popen(command, **popen_options)
+            deadline = time.monotonic() + timeout
+            while process.poll() is None:
+                if os.fstat(stdout_stream.fileno()).st_size > MAX_CODEX_AGENT_STDOUT_BYTES:
+                    raise RuntimeError("Codex Agent stdout exceeded its size limit")
+                if os.fstat(stderr_stream.fileno()).st_size > MAX_CODEX_AGENT_STDERR_BYTES:
+                    raise RuntimeError("Codex Agent stderr exceeded its size limit")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                time.sleep(min(0.02, remaining))
+            returncode = process.wait()
+            # Reap any plugin descendants before reading the file-backed
+            # streams and returning control to the executor.
+            _terminate_codex_process_tree(process)
+            process_tree_reaped = True
+            stdout_size = os.fstat(stdout_stream.fileno()).st_size
+            stderr_size = os.fstat(stderr_stream.fileno()).st_size
+            if stdout_size > MAX_CODEX_AGENT_STDOUT_BYTES:
+                raise RuntimeError("Codex Agent stdout exceeded its size limit")
+            if stderr_size > MAX_CODEX_AGENT_STDERR_BYTES:
+                raise RuntimeError("Codex Agent stderr exceeded its size limit")
+            stdout_stream.seek(0)
+            stderr_stream.seek(0)
+            stdout = stdout_stream.read(MAX_CODEX_AGENT_STDOUT_BYTES + 1).decode(
+                "utf-8", errors="replace"
+            )
+            stderr = stderr_stream.read(MAX_CODEX_AGENT_STDERR_BYTES + 1).decode(
+                "utf-8", errors="replace"
+            )
+            return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+        finally:
+            if process is not None and not process_tree_reaped:
+                _terminate_codex_process_tree(process)
 
 
 def _digest(value: object) -> str:
@@ -724,16 +843,11 @@ class CodexOperationMappingProvider:
                 encoding="utf-8",
             )
             try:
-                completed = subprocess.run(
+                completed = run_bounded_codex_agent(
                     self._command(workspace, schema, output),
                     input=prompt,
-                    capture_output=True,
-                    check=False,
                     cwd=workspace,
                     env=self._environment(),
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
                     timeout=timeout_s,
                 )
             except subprocess.TimeoutExpired as exc:
@@ -930,12 +1044,11 @@ class CodexOperationMappingProvider:
                 for future in done:
                     bundles[futures[future]] = future.result()
         finally:
-            # Workers use the same absolute deadline; cancel anything that has
-            # not started and never wait past the caller's hard deadline here.
-            # The subprocess boundary has its own timeout and terminates the
-            # actual Codex invocation; a misbehaving plugin thread must not
-            # hold discovery hostage after fallback is selected.
-            executor.shutdown(wait=False, cancel_futures=True)
+            # Workers use the same absolute deadline and the subprocess helper
+            # terminates the complete Agent process group. Reap every worker
+            # before returning fallback so no non-daemon executor thread can
+            # keep Discovery alive after its final artifacts are written.
+            executor.shutdown(wait=True, cancel_futures=True)
         completed_bundles = [bundle for bundle in bundles if bundle is not None]
         if len(completed_bundles) != len(batches):
             raise TimeoutError("Operation mapping Agent total timeout exceeded")

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -97,7 +99,7 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         lambda _value: "codex",
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run",
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent",
         fake_run,
     )
     monkeypatch.setenv("ALL_PROXY", "http://proxy.example:7897")
@@ -170,7 +172,7 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
         "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent", fake_run
     )
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
@@ -436,7 +438,7 @@ def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
         "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent", fake_run
     )
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
@@ -505,6 +507,51 @@ def test_codex_mapping_provider_uses_one_total_deadline_for_all_batches(
     assert [item.operation for item in actual.proposals] == sorted(request.target_operations)
     assert len(deadlines) == 2
     assert max(deadlines) == min(deadlines)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_codex_mapping_timeout_reaps_descendants_and_executor_workers(
+    tmp_path: Path,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Read frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Return bounded mappings only.", encoding="utf-8")
+    executable = tmp_path / "blocking-agent"
+    descendant_marker = tmp_path / "descendant-survived"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        + repr(
+            "import pathlib, time; time.sleep(0.5); "
+            f"pathlib.Path({str(descendant_marker)!r}).write_text('alive')"
+        )
+        + "])\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.localization.status")
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+        executable=str(executable),
+        timeout_s=1,
+        max_elapsed_s=0.25,
+        batch_operations=1,
+        parallelism=2,
+    )
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="timed out|total timeout"):
+        provider.propose(request)
+
+    assert time.monotonic() - started < 2.0
+    time.sleep(0.7)
+    assert not descendant_marker.exists()
 
 
 def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice() -> None:
