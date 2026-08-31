@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Collection, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
@@ -600,6 +600,7 @@ class CodexOperationMappingProvider:
         timeout_s: int = 30,
         batch_operations: int = 4,
         parallelism: int = 2,
+        max_elapsed_s: float | None = None,
     ) -> None:
         if timeout_s < 1:
             raise ValueError("Operation mapping Agent timeout must be at least one second")
@@ -607,6 +608,8 @@ class CodexOperationMappingProvider:
             raise ValueError("Operation mapping batch size must be between 1 and 64")
         if parallelism < 1 or parallelism > 8:
             raise ValueError("Operation mapping parallelism must be between 1 and 8")
+        if max_elapsed_s is not None and max_elapsed_s <= 0:
+            raise ValueError("Operation mapping total timeout must be positive")
         self.discovery_skill_path = discovery_skill_path.expanduser().resolve()
         self.mapping_skill_path = mapping_skill_path.expanduser().resolve()
         self.executable = executable
@@ -617,6 +620,10 @@ class CodexOperationMappingProvider:
         self.timeout_s = timeout_s
         self.batch_operations = batch_operations
         self.parallelism = parallelism
+        # A mapping run may contain several batches.  Keep the default total
+        # budget equal to one configured Agent timeout so a stalled provider
+        # cannot multiply the wait by the number of batches.
+        self.max_elapsed_s = float(timeout_s if max_elapsed_s is None else max_elapsed_s)
 
     def _command(self, workspace: Path, schema: Path, output: Path) -> list[str]:
         command = [
@@ -660,7 +667,12 @@ class CodexOperationMappingProvider:
     def _environment(self) -> dict[str, str]:
         return codex_helper_environment(api_key=self.api_key)
 
-    def _propose_once(self, request: DiscoverySkillRequest) -> OperationProposalBundle:
+    def _propose_once(
+        self,
+        request: DiscoverySkillRequest,
+        *,
+        deadline: float | None = None,
+    ) -> OperationProposalBundle:
         for label, path in (
             ("discovery", self.discovery_skill_path),
             ("mapping", self.mapping_skill_path),
@@ -690,6 +702,11 @@ class CodexOperationMappingProvider:
             f"TRUSTED MAPPING SKILL:\n{mapping_skill}\n\n"
             f"UNTRUSTED FROZEN DISCOVERY REQUEST:\n{context}"
         )
+        timeout_s = float(self.timeout_s)
+        if deadline is not None:
+            timeout_s = min(timeout_s, deadline - time.monotonic())
+            if timeout_s <= 0:
+                raise TimeoutError("Operation mapping Agent total timeout exceeded")
         with tempfile.TemporaryDirectory(prefix="rolo-operation-mapping-") as temporary:
             workspace = Path(temporary)
             schema = workspace / "operation-proposal-bundle.schema.json"
@@ -719,7 +736,7 @@ class CodexOperationMappingProvider:
                     text=True,
                     encoding="utf-8",
                     errors="replace",
-                    timeout=self.timeout_s,
+                    timeout=timeout_s,
                 )
             except subprocess.TimeoutExpired as exc:
                 raise TimeoutError("Operation mapping Agent timed out") from exc
@@ -883,20 +900,44 @@ class CodexOperationMappingProvider:
             if operation in request.target_operations and binding.evidence_refs
         )
         if len(operations) <= self.batch_operations:
-            return self._propose_once(request)
+            return self._propose_once(request, deadline=time.monotonic() + self.max_elapsed_s)
         batches = [
             self._batch_request(request, operations[index : index + self.batch_operations])
             for index in range(0, len(operations), self.batch_operations)
         ]
         started = time.monotonic()
-        with ThreadPoolExecutor(
+        deadline = started + self.max_elapsed_s
+        executor = ThreadPoolExecutor(
             max_workers=min(self.parallelism, len(batches)),
             thread_name_prefix="rolo-operation-mapping",
-        ) as executor:
-            bundles = list(executor.map(self._propose_once, batches))
+        )
+        futures = {
+            executor.submit(self._propose_once, batch, deadline=deadline): index
+            for index, batch in enumerate(batches)
+        }
+        bundles: list[OperationProposalBundle | None] = [None] * len(batches)
+        pending = set(futures)
+        try:
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Operation mapping Agent total timeout exceeded")
+                done, pending = wait(pending, timeout=remaining)
+                if not done:
+                    raise TimeoutError("Operation mapping Agent total timeout exceeded")
+                for future in done:
+                    bundles[futures[future]] = future.result()
+        finally:
+            # Every child received the same absolute deadline.  Waiting here
+            # is therefore bounded and prevents orphaned provider workers from
+            # keeping the target process alive after fallback is selected.
+            executor.shutdown(wait=True, cancel_futures=True)
+        completed_bundles = [bundle for bundle in bundles if bundle is not None]
+        if len(completed_bundles) != len(batches):
+            raise TimeoutError("Operation mapping Agent total timeout exceeded")
         return self._merge_bundles(
             request,
-            bundles,
+            completed_bundles,
             elapsed_ms=max(0, int((time.monotonic() - started) * 1_000)),
         )
 
