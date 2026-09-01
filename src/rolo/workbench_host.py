@@ -18,6 +18,7 @@ from rolo.adapt_read_models import ADAPT_API_FEATURES
 from rolo.api import app as control_plane_app
 from rolo.approval_gate_read_models import APPROVAL_GATE_API_FEATURES
 from rolo.artifact_analysis import ARTIFACT_ANALYSIS_API_FEATURES
+from rolo.artifact_ingestion import ARTIFACT_INGESTION_API_FEATURES
 from rolo.core.config import get_settings
 from rolo.episode_read_models import EPISODE_API_FEATURES
 from rolo.target_readiness import TARGET_READINESS_API_FEATURES
@@ -37,6 +38,7 @@ SUPPORTED_API_FEATURES = frozenset(
         *TARGET_READINESS_API_FEATURES,
         *APPROVAL_GATE_API_FEATURES,
         *ARTIFACT_ANALYSIS_API_FEATURES,
+        *ARTIFACT_INGESTION_API_FEATURES,
     ]
 )
 SAFE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")

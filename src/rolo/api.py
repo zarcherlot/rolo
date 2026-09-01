@@ -50,6 +50,13 @@ from rolo.artifact_analysis import (
     get_artifact_analysis,
     get_job_artifact_analysis,
 )
+from rolo.artifact_ingestion import (
+    ARTIFACT_INGESTION_API_FEATURES,
+    ArtifactRegistrationConflict,
+    ArtifactRegistrationReceipt,
+    ArtifactRegistrationRequest,
+    register_artifact_analysis,
+)
 from rolo.capability_read_models import (
     CapabilityAvailability,
     CapabilityCollection,
@@ -59,7 +66,7 @@ from rolo.capability_read_models import (
     get_capability_detail,
 )
 from rolo.core.config import get_settings
-from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest
+from rolo.core.models import HealthResponse, HealthState, RobotCapability, RobotUseRequest, utc_now
 from rolo.discovery_history_read_models import (
     DiscoverySnapshotCollection,
     build_discovery_snapshot_collection,
@@ -204,6 +211,8 @@ def _required_scope(path: str, method: str) -> str | None:
         return "artifact-analysis:read"
     if method == "GET" and path.startswith("/v1/jobs/") and path.endswith("/artifact-analysis"):
         return "artifact-analysis:read"
+    if method == "POST" and path == "/v1/artifact-registrations":
+        return "artifact-analysis:write"
     if method == "GET" and path == "/v1/approval-gates":
         return "approval-gates:read"
     if method == "GET" and path.startswith("/v1/jobs/") and path.endswith("/approval-gate"):
@@ -411,6 +420,7 @@ async def health(request: Request) -> HealthResponse:
             *TARGET_READINESS_API_FEATURES,
             *APPROVAL_GATE_API_FEATURES,
             *ARTIFACT_ANALYSIS_API_FEATURES,
+            *ARTIFACT_INGESTION_API_FEATURES,
         ],
     )
 
@@ -576,6 +586,43 @@ def read_artifact_analysis(target_id: str) -> ArtifactAnalysisSummary:
             },
         )
     return summary
+
+
+@app.post(
+    "/v1/artifact-registrations",
+    response_model=ArtifactRegistrationReceipt,
+    status_code=201,
+)
+def register_artifact(payload: ArtifactRegistrationRequest) -> ArtifactRegistrationReceipt:
+    """Register one sanitized producer summary with explicit write scope and idempotency."""
+
+    try:
+        return register_artifact_analysis(
+            get_settings().rolo_config_dir,
+            payload,
+            now=utc_now(),
+        )
+    except ArtifactRegistrationConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ARTIFACT_REGISTRATION_CONFLICT", "message": str(exc)},
+        ) from exc
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ARTIFACT_REGISTRATION_CONFLICT",
+                "message": "artifact registration raced with another publisher",
+            },
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ARTIFACT_REGISTRATION_UNAVAILABLE",
+                "message": "artifact registration could not be persisted",
+            },
+        ) from exc
 
 
 @app.get("/v1/jobs", response_model=JobPage)
