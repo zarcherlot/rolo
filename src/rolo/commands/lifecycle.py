@@ -335,7 +335,10 @@ def adapt_stage_start(
             "--heuristic-agent-timeout",
             min=1,
             max=3_600,
-            help="Maximum time per semantic mapping Agent batch in seconds",
+            help=(
+                "Planning call and complete semantic mapping stage budget in seconds; "
+                "network/auth readiness is checked first"
+            ),
         ),
     ] = None,
     heuristic_agent_batch_operations: Annotated[

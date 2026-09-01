@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -38,9 +40,11 @@ from rolo.stages.adapt.proposal_orchestration import (
     ProposalFallbackReason,
     ProposalIssueCode,
     RegistrySnapshot,
+    _attach_deterministic_binding_receipts,
     _codex_event_usage,
     _evidence_aliases,
     _mapping_output_schema,
+    _provider_request_context,
     _resolve_provider_evidence_aliases,
     apply_validated_semantic_dispositions,
     build_discovery_skill_request,
@@ -80,16 +84,9 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         schema = Path(command[command.index("--output-schema") + 1])
         captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
         output = Path(command[command.index("--output-last-message") + 1])
-        payload = expected.model_dump(mode="json")
-        proposal_variant = captured["schema"]["properties"]["proposals"]["items"][
-            "anyOf"
-        ][0]
-        evidence_alias = proposal_variant["properties"]["evidence_refs"]["items"][
-            "enum"
-        ][0]
-        payload["proposals"][0]["evidence_refs"] = [evidence_alias, evidence_alias]
-        payload["proposals"][0]["counter_evidence_refs"] = [evidence_alias]
-        output.write_text(json.dumps(payload), encoding="utf-8")
+        output.write_text(
+            json.dumps(_decision_payload(expected.proposals)), encoding="utf-8"
+        )
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(
@@ -97,10 +94,15 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
         lambda _value: "codex",
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run",
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent",
         fake_run,
     )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.proposal_orchestration.preflight_codex_helper",
+        lambda **kwargs: captured.update({"preflight": kwargs}),
+    )
     monkeypatch.setenv("ALL_PROXY", "http://proxy.example:7897")
+    monkeypatch.setenv("all_proxy", "http://proxy.example:7897")
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
         mapping_skill_path=mapping_skill,
@@ -110,11 +112,18 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
 
     actual = provider.propose(request)
 
-    assert actual == expected
+    assert actual.proposals == expected.proposals
+    assert actual.robot_id == expected.robot_id
+    assert actual.registry_sha256 == expected.registry_sha256
+    assert actual.provenance.model_id == "fixture-model"
+    preflight = captured["preflight"]
+    assert isinstance(preflight, dict)
+    assert preflight["environment"]["ALL_PROXY"] == "http://proxy.example:7897"
     command = captured["command"]
     assert isinstance(command, list)
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert 'model_reasoning_effort="low"' in command
     assert "fixture-secret" not in json.dumps(command)
     assert "UNTRUSTED FROZEN DISCOVERY REQUEST" in str(captured["input"])
     schema = captured["schema"]
@@ -123,20 +132,14 @@ def test_codex_mapping_provider_is_read_only_bounded_and_schema_driven(
     assert proposal_schema["properties"]["operation"]["enum"] == [
         "app.camera.snapshot"
     ]
-    evidence_enums = proposal_schema["properties"]["evidence_refs"]["items"]["enum"]
-    assert len(evidence_enums) == 1
-    assert evidence_enums[0].startswith("ev:")
-    assert "runtime_probe:camera" not in evidence_enums
-    assert proposal_schema["properties"]["route_resource_ids"]["items"]["enum"] == [
-        "ros_topic:/camera/image_raw"
-    ]
-    assert proposal_schema["properties"]["executable_ids"]["items"]["enum"] == [
-        "exe-camera"
-    ]
-    assert proposal_schema["properties"]["hardware_resource_ids"]["maxItems"] == 0
+    assert proposal_schema["properties"]["route_dispositions"]["maxItems"] == 0
+    assert "evidence_refs" not in proposal_schema["properties"]
+    assert "provenance" not in schema["properties"]
+    assert "budget_usage" not in schema["properties"]
     prompt = str(captured["input"])
     assert '"evidence_catalog"' in prompt
-    assert f'"{evidence_enums[0]}":"runtime_probe:camera"' in prompt
+    evidence_alias = _evidence_aliases(request)["runtime_probe:camera"]
+    assert f'"{evidence_alias}":"runtime_probe:camera"' in prompt
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
@@ -161,7 +164,7 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
         captured["schema"] = json.loads(schema.read_text(encoding="utf-8"))
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(
-            json.dumps(_bundle(request, []).model_dump(mode="json")),
+            json.dumps(_decision_payload([])),
             encoding="utf-8",
         )
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -170,11 +173,12 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
         "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent", fake_run
     )
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
         mapping_skill_path=mapping_skill,
+        preflight_enabled=False,
     )
 
     provider.propose(request)
@@ -182,18 +186,10 @@ def test_mapping_schema_binds_each_operation_to_its_own_evidence(
     schema = captured["schema"]
     assert isinstance(schema, dict)
     variants = schema["properties"]["proposals"]["items"]["anyOf"]
-    by_operation = {
-        variant["properties"]["operation"]["enum"][0]: variant for variant in variants
-    }
-    assert by_operation["app.camera.snapshot"]["properties"]["route_resource_ids"][
-        "items"
-    ]["enum"] == ["ros_topic:/camera/image_raw"]
-    assert by_operation["app.localization.status"]["properties"]["route_resource_ids"][
-        "items"
-    ]["enum"] == ["ros_topic:/odom"]
-    assert by_operation["app.camera.snapshot"]["properties"]["counter_evidence_refs"][
-        "maxItems"
-    ] == 0
+    assert all(
+        variant["properties"]["route_dispositions"]["maxItems"] == 0
+        for variant in variants
+    )
 
 
 def test_codex_event_usage_reads_largest_cumulative_jsonl_record() -> None:
@@ -268,9 +264,10 @@ def test_windows_source_reference_round_trips_through_short_evidence_id() -> Non
 
     assert evidence_id.startswith("ev:")
     assert len(evidence_id) == 27
-    assert schema["properties"]["proposals"]["items"]["anyOf"][0]["properties"][
-        "evidence_refs"
-    ]["items"]["enum"] == [evidence_id]
+    assert evidence_id in _provider_request_context(request, aliases)
+    assert "evidence_refs" not in schema["properties"]["proposals"]["items"]["anyOf"][0][
+        "properties"
+    ]
     assert resolved["proposals"][0]["evidence_refs"] == [source_ref]
 
 
@@ -389,6 +386,34 @@ def _bundle(
     )
 
 
+def _decision_payload(proposals: list[AgentOperationProposal]) -> dict[str, object]:
+    return {
+        "proposals": [
+            {
+                "operation": proposal.operation,
+                "confidence": proposal.confidence.value,
+                "disposition": proposal.disposition.value,
+                "rationale": proposal.rationale,
+                "route_dispositions": [
+                    {
+                        "route_resource_id": item.route_resource_id,
+                        "disposition": item.disposition.value,
+                        "rationale": item.rationale,
+                    }
+                    for item in proposal.route_dispositions
+                ],
+                "requested_verification": [
+                    item.model_dump(mode="json")
+                    for item in proposal.requested_verification
+                ],
+            }
+            for proposal in proposals
+        ],
+        "unmapped_capabilities": [],
+        "unknowns": [],
+    }
+
+
 def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -421,7 +446,7 @@ def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
         )
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(
-            _bundle(child, [proposal]).model_dump_json(),
+            json.dumps(_decision_payload([proposal])),
             encoding="utf-8",
         )
         stdout = json.dumps(
@@ -436,13 +461,14 @@ def test_codex_mapping_provider_batches_operations_and_aggregates_usage(
         "rolo.stages.adapt.proposal_orchestration.shutil.which", lambda _value: "codex"
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.proposal_orchestration.subprocess.run", fake_run
+        "rolo.stages.adapt.proposal_orchestration.run_bounded_codex_agent", fake_run
     )
     provider = CodexOperationMappingProvider(
         discovery_skill_path=discovery_skill,
         mapping_skill_path=mapping_skill,
         batch_operations=1,
         parallelism=1,
+        preflight_enabled=False,
     )
 
     actual = provider.propose(request)
@@ -497,6 +523,7 @@ def test_codex_mapping_provider_uses_one_total_deadline_for_all_batches(
         parallelism=1,
         timeout_s=30,
         max_elapsed_s=0.5,
+        preflight_enabled=False,
     )
     monkeypatch.setattr(provider, "_propose_once", fake_propose_once)
 
@@ -505,6 +532,52 @@ def test_codex_mapping_provider_uses_one_total_deadline_for_all_batches(
     assert [item.operation for item in actual.proposals] == sorted(request.target_operations)
     assert len(deadlines) == 2
     assert max(deadlines) == min(deadlines)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_codex_mapping_timeout_reaps_descendants_and_executor_workers(
+    tmp_path: Path,
+) -> None:
+    discovery_skill = tmp_path / "discovery-SKILL.md"
+    mapping_skill = tmp_path / "mapping-SKILL.md"
+    discovery_skill.write_text("Read frozen evidence only.", encoding="utf-8")
+    mapping_skill.write_text("Return bounded mappings only.", encoding="utf-8")
+    executable = tmp_path / "blocking-agent"
+    descendant_marker = tmp_path / "descendant-survived"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        + repr(
+            "import pathlib, time; time.sleep(0.5); "
+            f"pathlib.Path({str(descendant_marker)!r}).write_text('alive')"
+        )
+        + "])\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    _report_value, _registry, request = _request(
+        targets=("app.camera.snapshot", "app.localization.status")
+    )
+    provider = CodexOperationMappingProvider(
+        discovery_skill_path=discovery_skill,
+        mapping_skill_path=mapping_skill,
+        executable=str(executable),
+        timeout_s=1,
+        max_elapsed_s=0.25,
+        batch_operations=1,
+        parallelism=2,
+        preflight_enabled=False,
+    )
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="timed out|total timeout"):
+        provider.propose(request)
+
+    assert time.monotonic() - started < 2.0
+    time.sleep(0.7)
+    assert not descendant_marker.exists()
 
 
 def test_registry_snapshot_and_request_use_full_294_registry_with_bounded_slice() -> None:
@@ -667,6 +740,50 @@ def test_semantic_accept_requires_and_validates_read_only_tool_receipt() -> None
     assert reviewed[0].route_review_dispositions == {
         candidate.route_evidence[0].resource_id: "ACCEPT"
     }
+
+
+def test_caller_attaches_deterministic_receipt_after_agent_disposition() -> None:
+    report, registry, _request_value = _request()
+    candidate = report.operation_candidates[0].model_copy(
+        update={"semantic_review_required": True}
+    )
+    report = report.model_copy(update={"operation_candidates": [candidate]})
+    request = build_discovery_skill_request(
+        report,
+        registry,
+        target_operations={candidate.operation},
+        target_fingerprint_sha256=TARGET_FINGERPRINT,
+    )
+    proposal = _proposal().model_copy(
+        update={
+            "disposition": AgentDisposition.ACCEPT,
+            "route_dispositions": [
+                AgentRouteDisposition(
+                    route_resource_id=candidate.route_evidence[0].resource_id,
+                    disposition=AgentDisposition.ACCEPT,
+                    rationale="The frozen route matches the requested operation.",
+                )
+            ],
+        }
+    )
+    payload = _bundle(request, [proposal]).model_dump(mode="json")
+
+    attached = OperationProposalBundle.model_validate(
+        _attach_deterministic_binding_receipts(payload, request)
+    )
+
+    assert len(attached.proposals[0].tool_receipts) == 1
+    receipt = attached.proposals[0].tool_receipts[0]
+    assert receipt.condition.value == "BINDING_MATCH"
+    assert receipt.satisfied is True
+    assert attached.proposals[0].route_dispositions[0].tool_receipt_ids == [
+        receipt.receipt_id
+    ]
+    _bundle_value, artifact = DiscoverySkillRunner(
+        registry,
+        FixtureProvider(lambda _request: attached),
+    ).run(request, deterministic_candidates=report.operation_candidates)
+    assert artifact.source == ProposalArtifactSource.AGENT
 
 
 def test_semantic_any_of_accept_slices_rejected_routes_from_candidate() -> None:
