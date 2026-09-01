@@ -139,6 +139,7 @@ def test_ssh_transport_uses_pinned_identity_file(tmp_path: Path) -> None:
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
     identity = tmp_path / "id_ed25519"
     identity.write_text("private-key-placeholder\n", encoding="utf-8")
+    identity.chmod(0o600)
 
     class CaptureRunner:
         def __init__(self) -> None:

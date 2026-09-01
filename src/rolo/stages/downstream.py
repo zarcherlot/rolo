@@ -78,12 +78,24 @@ class DownstreamStageService:
             from rolo.target_ref import LocalTargetRef
             from rolo.targets.profiles import TargetProfileStore
 
-            profile = TargetProfileStore(self.settings.rolo_config_dir).load(robot_id)
-            if isinstance(profile.target, LocalTargetRef):
+            config_root = getattr(self.settings, "rolo_config_dir", None)
+            # Keep lightweight settings doubles usable for the local-target path;
+            # real Settings always supplies rolo_config_dir and therefore retains
+            # the profile-backed local/SSH split below.
+            if config_root is None and selected_executor.strip().lower() == "local-target":
                 additional_input_refs["target_binding"] = publish_target_binding(
                     self.artifacts, self.settings, robot_id
                 )
+                profile = None
             else:
+                if config_root is None:
+                    raise ValueError("SSH target execution requires rolo_config_dir")
+                profile = TargetProfileStore(config_root).load(robot_id)
+            if profile is not None and isinstance(profile.target, LocalTargetRef):
+                additional_input_refs["target_binding"] = publish_target_binding(
+                    self.artifacts, self.settings, robot_id
+                )
+            elif profile is not None:
                 # SSH identity is collected only after authorization.  The profile
                 # itself is immutable and digest-bound into the Stage task.
                 from rolo.core.hashing import canonical_json_sha256

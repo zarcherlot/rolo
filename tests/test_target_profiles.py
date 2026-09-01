@@ -249,6 +249,7 @@ def test_ssh_profile_pins_optional_identity_file(tmp_path: Path) -> None:
     )
     identity = tmp_path / "id_ed25519"
     identity.write_text("private-key-placeholder\n", encoding="utf-8")
+    identity.chmod(0o600)
     profile = TargetProfileStore(tmp_path / "config").create(
         robot_id="ssh-robot",
         target=SshTargetRef(host="robot.example", workspace="/opt/rolo"),
