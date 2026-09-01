@@ -2034,6 +2034,8 @@ contracts:
       type: object
       properties:
         name: {type: string, minLength: 1, maxLength: 128}
+        # `nav2` remains accepted for backward compatibility. New callers
+        # should use `ros_yaml`; the target profile identifies the consumer.
         format: {type: string, enum: [ros_yaml, nav2, occupancy_grid, vendor]}
         artifact_ref: {type: string, minLength: 12}
         artifact_sha256: {type: string, minLength: 64, maxLength: 64}

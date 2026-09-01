@@ -1,0 +1,36 @@
+schema_version: rolo-platform-profile/v1
+profile_id: nav2
+provider: ros2_navigation
+semantics:
+  navigation_operations:
+    - app.navigation.status
+    - app.navigation.plan
+    - app.navigation.start
+    - app.navigation.pause
+    - app.navigation.resume
+    - app.navigation.cancel
+    - app.navigation.stop
+    - app.navigation.recover
+    - app.navigation.costmap.inspect
+    - app.navigation.path.inspect
+lifecycle_roles:
+  localization:
+    observed_node_names: [amcl]
+  map:
+    observed_node_names: [map_server]
+  controller:
+    observed_node_names: [controller_server]
+  planner:
+    observed_node_names: [planner_server]
+  local_costmap:
+    observed_node_names: [local_costmap]
+  global_costmap:
+    observed_node_names: [global_costmap]
+bindings:
+  navigate_to_pose:
+    operation: app.navigation.start
+    action_type: nav2_msgs/action/NavigateToPose
+    endpoint: /navigate_to_pose
+map_import:
+  accepted_legacy_formats: [nav2]
+  canonical_format: ros_yaml
