@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
+import time
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 from pydantic import ValidationError
@@ -10,10 +13,12 @@ from typer.testing import CliRunner
 
 from rolo.product_cli import app
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
+from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import (
     CommandResult,
     LocalTargetExecutor,
     SshTargetExecutor,
+    SubprocessCommandRunner,
     quote_remote_argv,
 )
 from rolo.targets.models import (
@@ -129,6 +134,32 @@ def test_ssh_executor_needs_no_mutation_when_companion_exists(tmp_path: Path) ->
     assert all(step.risk == TargetRisk.READ_ONLY for step in plan.steps)
 
 
+def test_ssh_transport_uses_pinned_identity_file(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("private-key-placeholder\n", encoding="utf-8")
+    identity.chmod(0o600)
+
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.argv: list[str] = []
+
+        def run(self, argv: list[str], *, timeout_s: float) -> CommandResult:
+            del timeout_s
+            self.argv = argv
+            return CommandResult(tuple(argv), 0)
+
+    runner = CaptureRunner()
+    transport = SubprocessBootstrapTransport(
+        _ssh_target(), known_hosts=known_hosts, identity_file=identity, runner=runner
+    )
+    transport.execute(["uname", "-a"], timeout_s=1)
+    assert "IdentitiesOnly=yes" in runner.argv
+    assert "-i" in runner.argv
+    assert str(identity.resolve()) in runner.argv
+
+
 def test_product_cli_exposes_local_target_inspection_and_plan(tmp_path: Path) -> None:
     runner = CliRunner()
 
@@ -189,3 +220,25 @@ def test_remote_argv_is_shell_safe_and_round_trips(remote_argv: list[str]) -> No
 def test_remote_argv_rejects_nul() -> None:
     with pytest.raises(ValueError, match="NUL"):
         quote_remote_argv(["printf", "bad\x00value"])
+
+
+def test_subprocess_command_runner_cancels_inflight_process() -> None:
+    cancel = Event()
+    result: list[CommandResult] = []
+
+    def run() -> None:
+        result.append(
+            SubprocessCommandRunner().run(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                timeout_s=60,
+                cancel_event=cancel,
+            )
+        )
+
+    thread = Thread(target=run)
+    thread.start()
+    time.sleep(0.1)
+    cancel.set()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert result and result[0].returncode == 130

@@ -16,6 +16,9 @@ from rolo.targets.profiles import (
     CredentialReference,
     HostKeyDecision,
     TargetProfileStore,
+    known_hosts_fingerprints,
+    validate_host_key_pin,
+    validate_ssh_credential,
 )
 from rolo.targets.signing import sign_companion_manifest, verify_companion_manifest
 
@@ -151,3 +154,108 @@ def test_product_cli_profile_init_and_show_do_not_connect(tmp_path: Path) -> Non
     approved_payload = json.loads(approved.output)
     assert approved_payload["status"] == "HOST_KEY_APPROVED"
     assert approved_payload["profile"]["host_key"]["status"] == "APPROVED"
+
+
+def test_ssh_profile_persists_pinned_known_hosts_and_rejects_local_option(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("robot.example ssh-ed25519 AAAA\n", encoding="utf-8")
+    runner = CliRunner()
+    env = {"ROLO_CONFIG_DIR": str(tmp_path / "config")}
+    created = runner.invoke(
+        app,
+        [
+            "target", "profile", "init",
+            "ssh://robot@robot.example/opt/rolo",
+            "--robot", "ssh-robot", "--known-hosts", str(known_hosts),
+        ],
+        env=env,
+    )
+    assert created.exit_code == 0, created.output
+    payload = json.loads(created.output)
+    assert payload["profile"]["known_hosts"] == str(known_hosts.resolve())
+    assert payload["profile"]["known_hosts_sha256"] == sha256_file(known_hosts)
+
+    rejected = runner.invoke(
+        app,
+        ["target", "profile", "init", str(tmp_path), "--robot", "local-robot",
+         "--known-hosts", str(known_hosts)],
+        env=env,
+    )
+    assert rejected.exit_code != 0
+    assert "only valid for SSH" in rejected.output
+
+
+def test_ssh_profile_rejects_known_hosts_tamper_and_wrong_fingerprint(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text(
+        "robot.example ssh-ed25519 ZmFrZS1rZXk=\n", encoding="utf-8"
+    )
+    target = SshTargetRef(host="robot.example", user="robot", workspace="/opt/rolo")
+    store = TargetProfileStore(tmp_path / "config")
+    profile = store.create(
+        robot_id="ssh-robot",
+        target=target,
+        credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+        known_hosts=known_hosts,
+    )
+    fingerprint = next(iter(known_hosts_fingerprints(known_hosts, target)))
+    approved = profile.model_copy(
+        update={
+            "host_key": profile.host_key.model_copy(
+                update={"status": "APPROVED", "fingerprint": fingerprint}
+            )
+        }
+    )
+    validate_host_key_pin(approved)
+    known_hosts.write_text(
+        "robot.example ssh-ed25519 ZmFrZS1vdGhlci1rZXk=\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="known_hosts content"):
+        validate_host_key_pin(approved)
+
+    known_hosts.write_text(
+        "robot.example ssh-ed25519 ZmFrZS1rZXk=\n", encoding="utf-8"
+    )
+    wrong = approved.model_copy(
+        update={
+            "host_key": approved.host_key.model_copy(
+                update={"fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="does not match"):
+        validate_host_key_pin(wrong)
+
+
+def test_ssh_profile_rejects_unresolved_credential_kind(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text(
+        "robot.example ssh-ed25519 ZmFrZS1rZXk=\n", encoding="utf-8"
+    )
+    profile = TargetProfileStore(tmp_path / "config").create(
+        robot_id="ssh-robot",
+        target=SshTargetRef(host="robot.example", workspace="/opt/rolo"),
+        credential=CredentialReference(kind="secret-store", reference="vault:robot"),
+        known_hosts=known_hosts,
+    )
+    with pytest.raises(ValueError, match="ssh-agent:default"):
+        validate_ssh_credential(profile)
+
+
+def test_ssh_profile_pins_optional_identity_file(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text(
+        "robot.example ssh-ed25519 ZmFrZS1rZXk=\n", encoding="utf-8"
+    )
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("private-key-placeholder\n", encoding="utf-8")
+    identity.chmod(0o600)
+    profile = TargetProfileStore(tmp_path / "config").create(
+        robot_id="ssh-robot",
+        target=SshTargetRef(host="robot.example", workspace="/opt/rolo"),
+        credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+        known_hosts=known_hosts,
+        ssh_identity_file=identity,
+    )
+    assert profile.ssh_identity_sha256 == sha256_file(identity)
+    assert validate_ssh_credential(profile) == identity.resolve()

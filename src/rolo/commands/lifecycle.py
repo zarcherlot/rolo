@@ -657,7 +657,7 @@ def verify_acceptance_plan(
     try:
         plan = VerificationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
         allowed_operations = None
-        if settings.coding_agent_executor.strip().lower() == "local-target":
+        if settings.coding_agent_executor.strip().lower() in {"local-target", "ssh-target"}:
             from rolo.stages.real_target import LocalTargetCommandRunner
 
             allowed_operations = LocalTargetCommandRunner.READ_ONLY_OPERATIONS

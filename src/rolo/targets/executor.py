@@ -6,8 +6,10 @@ import os
 import platform
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 from rolo.target_ref import LocalTargetRef, SshTargetRef, TargetRef
@@ -46,28 +48,61 @@ class CommandResult:
 
 
 class CommandRunner(Protocol):
-    def run(self, argv: list[str], *, timeout_s: float) -> CommandResult: ...
+    def run(
+        self,
+        argv: list[str],
+        *,
+        timeout_s: float,
+        cancel_event: Event | None = None,
+    ) -> CommandResult: ...
 
 
 class SubprocessCommandRunner:
     """Run fixed executor argv without a shell or interactive input."""
 
-    def run(self, argv: list[str], *, timeout_s: float) -> CommandResult:
-        completed = subprocess.run(
+    def run(
+        self,
+        argv: list[str],
+        *,
+        timeout_s: float,
+        cancel_event: Event | None = None,
+    ) -> CommandResult:
+        process = subprocess.Popen(
             argv,
             stdin=subprocess.DEVNULL,
-            capture_output=True,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout_s,
         )
+        started = time.monotonic()
+        while process.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                process.kill()
+                stdout, stderr = process.communicate()
+                return CommandResult(
+                    argv=tuple(argv),
+                    returncode=130,
+                    stdout=(stdout or "")[:MAX_DIAGNOSTIC_CHARS],
+                    stderr=(stderr or "")[:MAX_DIAGNOSTIC_CHARS] or "cancelled",
+                )
+            if time.monotonic() - started >= timeout_s:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise subprocess.TimeoutExpired(
+                    argv,
+                    timeout_s,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            time.sleep(0.02)
+        stdout, stderr = process.communicate()
         return CommandResult(
             argv=tuple(argv),
-            returncode=completed.returncode,
-            stdout=completed.stdout[:MAX_DIAGNOSTIC_CHARS],
-            stderr=completed.stderr[:MAX_DIAGNOSTIC_CHARS],
+            returncode=process.returncode,
+            stdout=(stdout or "")[:MAX_DIAGNOSTIC_CHARS],
+            stderr=(stderr or "")[:MAX_DIAGNOSTIC_CHARS],
         )
 
 

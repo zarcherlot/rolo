@@ -1,4 +1,4 @@
-"""Bounded real-target Diagnose/Verify provider for a local Linux/ROS target.
+"""Bounded real-target Diagnose/Verify provider for local or SSH Linux/ROS profiles.
 
 The provider intentionally supports only a fixed read-only command catalog.  It is
 the first production target slice for WSL2/Linux validation; actuator, power,
@@ -45,8 +45,14 @@ from rolo.stages.verify.acceptance import (
     run_verification_replay,
 )
 from rolo.stages.verify.service import validate_verification_plan_operations
-from rolo.target_ref import LocalTargetRef
-from rolo.targets.profiles import TargetProfileStore
+from rolo.target_ref import LocalTargetRef, SshTargetRef
+from rolo.targets.bootstrap import SubprocessBootstrapTransport
+from rolo.targets.profiles import (
+    TargetProfileStore,
+    validate_host_key_pin,
+    validate_known_hosts_file,
+    validate_ssh_credential,
+)
 
 Stage = Literal["diagnose", "verify"]
 _TOPIC = re.compile(r"^/[A-Za-z0-9_/~-]{1,255}$")
@@ -99,6 +105,8 @@ class TargetBinding(BaseModel):
     os_uid: int = Field(ge=0)
     ros_domain_id: str | None = None
     rmw_implementation: str | None = None
+    known_hosts_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    host_key_fingerprint: str | None = None
     captured_at: datetime
 
     @classmethod
@@ -166,6 +174,28 @@ def publish_target_binding(
         profile = TargetProfileStore(settings.rolo_config_dir).load(robot_id)
         if existing.profile_sha256 != canonical_json_sha256(profile.model_dump(mode="json")):
             raise ValueError("target profile changed after the target binding was published")
+        return reference
+    profile = TargetProfileStore(settings.rolo_config_dir).load(robot_id)
+    if isinstance(profile.target, SshTargetRef):
+        identity_file = validate_ssh_credential(profile)
+        validate_host_key_pin(profile)
+        assert profile.known_hosts is not None
+        transport = SubprocessBootstrapTransport(
+            profile.target,
+            known_hosts=profile.known_hosts,
+            identity_file=identity_file,
+        )
+        from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
+
+        _, reference, _ = SshTargetProvenanceCollector(
+            profile.target, transport
+        ).collect(
+            artifacts,
+            robot_id=robot_id,
+            profile_sha256=canonical_json_sha256(profile.model_dump(mode="json")),
+            known_hosts_sha256=profile.known_hosts_sha256,
+            host_key_fingerprint=profile.host_key.fingerprint if profile.host_key else None,
+        )
         return reference
     binding = TargetBinding.capture(settings=settings, robot_id=robot_id)
     written = artifacts.write_json(
@@ -280,6 +310,82 @@ class LocalTargetCommandRunner:
         return ["ros2", "topic", "echo", topic, "--once"]
 
 
+class SshTargetCommandRunner:
+    """Execute the same fixed read-only catalog through a pinned SSH transport."""
+
+    READ_ONLY_OPERATIONS = LocalTargetCommandRunner.READ_ONLY_OPERATIONS
+
+    def __init__(
+        self, transport: SubprocessBootstrapTransport, *, cancel_event: Event | None = None
+    ) -> None:
+        self.transport = transport
+        self.cancel_event = cancel_event
+
+    def run(
+        self, operation: str, payload: Mapping[str, JsonValue], *, timeout_s: float
+    ) -> dict[str, JsonValue]:
+        if operation not in self.READ_ONLY_OPERATIONS:
+            raise ValueError(f"operation is not in the read-only allowlist: {operation}")
+        remote_argv = self._command(operation, payload)
+        try:
+            if self.cancel_event is None:
+                outcome = self.transport.execute(remote_argv, timeout_s=timeout_s)
+            else:
+                outcome = self.transport.execute(
+                    remote_argv,
+                    timeout_s=timeout_s,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event.is_set() and outcome.returncode == 130:
+                    return CommandResult(
+                        operation=operation,
+                        status="TIMEOUT",
+                        output="cancelled",
+                        environment_limited=False,
+                        observed_at=datetime.now(timezone.utc),
+                    ).model_dump(mode="json")
+            output = _redact_output(
+                (outcome.stdout + outcome.stderr)[:_MAX_OUTPUT_BYTES]
+            )
+            lines = [line for line in output.splitlines() if line.strip()]
+            return CommandResult(
+                operation=operation,
+                status="READY" if outcome.returncode == 0 else "ERROR",
+                returncode=outcome.returncode,
+                output=output,
+                lines=lines[:4096],
+                count=len(lines),
+                environment_limited=(
+                    operation == "ros.topic.echo_once" and outcome.returncode != 0
+                ),
+                observed_at=datetime.now(timezone.utc),
+            ).model_dump(mode="json")
+        except subprocess.TimeoutExpired:
+            return CommandResult(
+                operation=operation,
+                status="TIMEOUT",
+                environment_limited=operation == "ros.topic.echo_once",
+                observed_at=datetime.now(timezone.utc),
+            ).model_dump(mode="json")
+
+    @staticmethod
+    def _command(operation: str, payload: Mapping[str, JsonValue]) -> list[str]:
+        if operation == "linux.uname":
+            return ["uname", "-a"]
+        if operation == "ros.doctor.report":
+            return ["ros2", "doctor", "--report"]
+        if operation == "ros.node.list":
+            return ["ros2", "node", "list"]
+        if operation == "ros.topic.list":
+            return ["ros2", "topic", "list"]
+        if operation == "ros.service.list":
+            return ["ros2", "service", "list"]
+        topic = payload.get("topic")
+        if not isinstance(topic, str) or not _TOPIC.fullmatch(topic):
+            raise ValueError("ros.topic.echo_once requires a safe absolute topic")
+        return ["ros2", "topic", "echo", topic, "--once"]
+
+
 class LocalTargetStageExecutor:
     """Real local target provider that materializes immutable Episode/evidence artifacts."""
 
@@ -290,6 +396,7 @@ class LocalTargetStageExecutor:
         self.settings = settings
         self.stage = stage
         self.runner = LocalTargetCommandRunner()
+        self.provenance_source = "local-target"
 
     def execute_stage(
         self,
@@ -300,9 +407,14 @@ class LocalTargetStageExecutor:
         run_id: str | None = None,
         cancel_event: Event | None = None,
     ) -> Mapping[str, str]:
-        del workspace
         if task.stage != self.stage:
             raise ValueError(f"local-target executor is bound to {self.stage}, got {task.stage}")
+        if "target_profile" in task.input_refs:
+            return self._execute_ssh_stage(
+                task, workspace=workspace, on_output=on_output, run_id=run_id,
+                cancel_event=cancel_event,
+            )
+        del workspace
         binding_ref = task.input_refs.get("target_binding")
         if not binding_ref:
             raise ValueError("local-target task is missing an authorization-bound target binding")
@@ -324,6 +436,73 @@ class LocalTargetStageExecutor:
                 on_output,
                 selected_run_id,
                 cancel_event,
+            )
+        )
+
+    def _execute_ssh_stage(
+        self,
+        task: StageAgentTask,
+        *,
+        workspace: Path,
+        on_output: OutputCallback | None,
+        run_id: str | None,
+        cancel_event: Event | None,
+    ) -> Mapping[str, str]:
+        del workspace
+        profile_path = resolve_artifact_ref(
+            self.artifacts.root, task.input_refs["target_profile"]
+        )
+        profile = TargetProfileStore(self.settings.rolo_config_dir).load(task.robot_id)
+        snapshot = json.loads(profile_path.read_text(encoding="utf-8"))
+        expected_digest = canonical_json_sha256(profile.model_dump(mode="json"))
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("profile_id") != profile.profile_id
+            or snapshot.get("profile_sha256") != expected_digest
+        ):
+            raise ValueError("SSH target profile changed after the task was planned")
+        if not isinstance(profile.target, SshTargetRef):
+            raise ValueError("target_profile input is not an SSH profile")
+        identity_file = validate_ssh_credential(profile)
+        if profile.host_key is None or profile.host_key.status != "APPROVED":
+            raise ValueError("SSH target profile host key is not approved")
+        validate_host_key_pin(profile)
+        assert profile.known_hosts is not None
+        validate_known_hosts_file(
+            profile.known_hosts, expected_sha256=profile.known_hosts_sha256
+        )
+        transport = SubprocessBootstrapTransport(
+            profile.target,
+            known_hosts=profile.known_hosts,
+            identity_file=identity_file,
+        )
+        from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
+
+        self.runner = SshTargetCommandRunner(transport, cancel_event=cancel_event)
+        self.provenance_source = "ssh-target"
+        selected_run_id = run_id or f"ssh-target-{uuid4().hex}"
+        if self._cancel_requested(task, selected_run_id, cancel_event):
+            raise ValueError("SSH target execution was cancelled before collection")
+        _, binding_ref, _ = SshTargetProvenanceCollector(
+            profile.target, transport
+        ).collect(
+            self.artifacts,
+            robot_id=task.robot_id,
+            profile_sha256=canonical_json_sha256(profile.model_dump(mode="json")),
+            known_hosts_sha256=profile.known_hosts_sha256,
+            host_key_fingerprint=profile.host_key.fingerprint if profile.host_key else None,
+            run_id=selected_run_id,
+        )
+        binding = TargetBinding.model_validate_json(
+            resolve_artifact_ref(self.artifacts.root, binding_ref).read_text(encoding="utf-8")
+        )
+        if on_output:
+            on_output("stdout", f"ssh-target {self.stage}: identity verified")
+        return (
+            self._diagnose(task, binding_ref, binding, on_output, selected_run_id)
+            if self.stage == "diagnose"
+            else self._verify(
+                task, binding_ref, binding, on_output, selected_run_id, cancel_event
             )
         )
 
@@ -350,7 +529,7 @@ class LocalTargetStageExecutor:
         provenance = TargetProvenance(
             schema_version="rolo-target-provenance/v2",
             target_id=robot_id,
-            source="local-target",
+            source=self.provenance_source,
             collector_version="0.1.0",
             collected_at=datetime.now(timezone.utc),
             clock_offset_ms=0,
@@ -359,7 +538,11 @@ class LocalTargetStageExecutor:
                 resolve_artifact_ref(self.artifacts.root, binding_ref)
             ),
             collector_session_id=run_id,
-            clock_source="local-monotonic",
+            clock_source=(
+                "remote-monotonic"
+                if self.provenance_source == "ssh-target"
+                else "local-monotonic"
+            ),
             monotonic_ns=time.monotonic_ns(),
         )
         path = self.artifacts.write_json(
@@ -495,9 +678,7 @@ class LocalTargetStageExecutor:
         )
         if plan.robot_id != task.robot_id:
             raise ValueError("verification plan robot identity mismatch")
-        validate_verification_plan_operations(
-            plan, LocalTargetCommandRunner.READ_ONLY_OPERATIONS
-        )
+        validate_verification_plan_operations(plan, self.runner.READ_ONLY_OPERATIONS)
         _, provenance_ref, provenance_sha256 = self._provenance(
             task.robot_id, run_id, binding_ref
         )
@@ -581,7 +762,7 @@ class LocalTargetStageExecutor:
             run_id=run_id,
         )
         if on_output:
-            on_output("stdout", f"local-target verify: {run.status}")
+            on_output("stdout", f"{self.provenance_source} verify: {run.status}")
         layout = ArtifactLayout(self.artifacts.root)
         return {
             "handoff": layout.ref(layout.stage_file("verify", task.robot_id, "handoff.json")),

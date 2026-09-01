@@ -31,7 +31,10 @@ class DiscoveryProducer(BaseModel):
 
 def _discovery_producer() -> DiscoveryProducer:
     try:
-        version = importlib_metadata.version("rolo")
+        # Some restricted/partially-installed environments expose a distribution
+        # record whose Version field is absent. Treat that the same as a missing
+        # distribution instead of emitting an invalid manifest.
+        version = importlib_metadata.version("rolo") or "0+unknown"
     except importlib_metadata.PackageNotFoundError:
         version = "0+unknown"
     revision = os.environ.get("ROLO_BUILD_REVISION", "").strip() or None
