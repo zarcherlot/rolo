@@ -80,6 +80,31 @@
       "default": null,
       "title": "Rmw Implementation"
     },
+    "known_hosts_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Known Hosts Sha256"
+    },
+    "host_key_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Host Key Fingerprint"
+    },
     "captured_at": {
       "format": "date-time",
       "title": "Captured At",

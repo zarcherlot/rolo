@@ -47,7 +47,12 @@ from rolo.stages.verify.acceptance import (
 from rolo.stages.verify.service import validate_verification_plan_operations
 from rolo.target_ref import LocalTargetRef, SshTargetRef
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
-from rolo.targets.profiles import TargetProfileStore
+from rolo.targets.profiles import (
+    TargetProfileStore,
+    validate_host_key_pin,
+    validate_known_hosts_file,
+    validate_ssh_credential,
+)
 
 Stage = Literal["diagnose", "verify"]
 _TOPIC = re.compile(r"^/[A-Za-z0-9_/~-]{1,255}$")
@@ -100,6 +105,8 @@ class TargetBinding(BaseModel):
     os_uid: int = Field(ge=0)
     ros_domain_id: str | None = None
     rmw_implementation: str | None = None
+    known_hosts_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    host_key_fingerprint: str | None = None
     captured_at: datetime
 
     @classmethod
@@ -170,17 +177,14 @@ def publish_target_binding(
         return reference
     profile = TargetProfileStore(settings.rolo_config_dir).load(robot_id)
     if isinstance(profile.target, SshTargetRef):
-        if profile.host_key is None or profile.host_key.status != "APPROVED":
-            raise ValueError("SSH target profile host key is not approved")
-        if profile.known_hosts is None:
-            raise ValueError("SSH target profile requires a pinned known_hosts file")
-        if (
-            profile.known_hosts.is_symlink()
-            or not profile.known_hosts.is_file()
-            or profile.known_hosts.stat().st_size == 0
-        ):
-            raise ValueError("SSH target profile known_hosts file is unavailable or empty")
-        transport = SubprocessBootstrapTransport(profile.target, known_hosts=profile.known_hosts)
+        identity_file = validate_ssh_credential(profile)
+        validate_host_key_pin(profile)
+        assert profile.known_hosts is not None
+        transport = SubprocessBootstrapTransport(
+            profile.target,
+            known_hosts=profile.known_hosts,
+            identity_file=identity_file,
+        )
         from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
 
         _, reference, _ = SshTargetProvenanceCollector(
@@ -189,6 +193,8 @@ def publish_target_binding(
             artifacts,
             robot_id=robot_id,
             profile_sha256=canonical_json_sha256(profile.model_dump(mode="json")),
+            known_hosts_sha256=profile.known_hosts_sha256,
+            host_key_fingerprint=profile.host_key.fingerprint if profile.host_key else None,
         )
         return reference
     binding = TargetBinding.capture(settings=settings, robot_id=robot_id)
@@ -309,8 +315,11 @@ class SshTargetCommandRunner:
 
     READ_ONLY_OPERATIONS = LocalTargetCommandRunner.READ_ONLY_OPERATIONS
 
-    def __init__(self, transport: SubprocessBootstrapTransport) -> None:
+    def __init__(
+        self, transport: SubprocessBootstrapTransport, *, cancel_event: Event | None = None
+    ) -> None:
         self.transport = transport
+        self.cancel_event = cancel_event
 
     def run(
         self, operation: str, payload: Mapping[str, JsonValue], *, timeout_s: float
@@ -319,7 +328,22 @@ class SshTargetCommandRunner:
             raise ValueError(f"operation is not in the read-only allowlist: {operation}")
         remote_argv = self._command(operation, payload)
         try:
-            outcome = self.transport.execute(remote_argv, timeout_s=timeout_s)
+            if self.cancel_event is None:
+                outcome = self.transport.execute(remote_argv, timeout_s=timeout_s)
+            else:
+                outcome = self.transport.execute(
+                    remote_argv,
+                    timeout_s=timeout_s,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event.is_set() and outcome.returncode == 130:
+                    return CommandResult(
+                        operation=operation,
+                        status="TIMEOUT",
+                        output="cancelled",
+                        environment_limited=False,
+                        observed_at=datetime.now(timezone.utc),
+                    ).model_dump(mode="json")
             output = _redact_output(
                 (outcome.stdout + outcome.stderr)[:_MAX_OUTPUT_BYTES]
             )
@@ -439,22 +463,22 @@ class LocalTargetStageExecutor:
             raise ValueError("SSH target profile changed after the task was planned")
         if not isinstance(profile.target, SshTargetRef):
             raise ValueError("target_profile input is not an SSH profile")
+        identity_file = validate_ssh_credential(profile)
         if profile.host_key is None or profile.host_key.status != "APPROVED":
             raise ValueError("SSH target profile host key is not approved")
-        if profile.known_hosts is None:
-            raise ValueError("SSH target profile requires a pinned known_hosts file")
-        if (
-            profile.known_hosts.is_symlink()
-            or not profile.known_hosts.is_file()
-            or profile.known_hosts.stat().st_size == 0
-        ):
-            raise ValueError("SSH target profile known_hosts file is unavailable or empty")
+        validate_host_key_pin(profile)
+        assert profile.known_hosts is not None
+        validate_known_hosts_file(
+            profile.known_hosts, expected_sha256=profile.known_hosts_sha256
+        )
         transport = SubprocessBootstrapTransport(
-            profile.target, known_hosts=profile.known_hosts
+            profile.target,
+            known_hosts=profile.known_hosts,
+            identity_file=identity_file,
         )
         from rolo.stages.verify.ssh_provenance import SshTargetProvenanceCollector
 
-        self.runner = SshTargetCommandRunner(transport)
+        self.runner = SshTargetCommandRunner(transport, cancel_event=cancel_event)
         self.provenance_source = "ssh-target"
         selected_run_id = run_id or f"ssh-target-{uuid4().hex}"
         if self._cancel_requested(task, selected_run_id, cancel_event):
@@ -465,6 +489,8 @@ class LocalTargetStageExecutor:
             self.artifacts,
             robot_id=task.robot_id,
             profile_sha256=canonical_json_sha256(profile.model_dump(mode="json")),
+            known_hosts_sha256=profile.known_hosts_sha256,
+            host_key_fingerprint=profile.host_key.fingerprint if profile.host_key else None,
             run_id=selected_run_id,
         )
         binding = TargetBinding.model_validate_json(

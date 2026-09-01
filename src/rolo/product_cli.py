@@ -41,7 +41,12 @@ from rolo.targets.bootstrap import SubprocessBootstrapTransport
 from rolo.targets.executor import create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.package import build_companion_package
-from rolo.targets.profiles import CredentialReference, TargetProfileStore
+from rolo.targets.profiles import (
+    CredentialReference,
+    TargetProfileStore,
+    validate_host_key_pin,
+    validate_ssh_credential,
+)
 from rolo.targets.security import validate_bootstrap_security
 from rolo.targets.signing import CompanionReleasePolicy, verify_companion_manifest
 from rolo.tui import run_tui
@@ -345,10 +350,20 @@ def target_verify_health(
                 raise ValueError("target verify-health does not match the stored target profile")
             if profile.host_key is None or profile.host_key.status != "APPROVED":
                 raise ValueError("target verify-health requires an approved SSH host key")
+            validate_host_key_pin(profile)
+            if (
+                profile.known_hosts is None
+                or profile.known_hosts.resolve() != known_hosts.resolve()
+            ):
+                raise ValueError("target verify-health known_hosts does not match the profile pin")
+            identity_file = validate_ssh_credential(profile)
             profile_sha256 = canonical_json_sha256(profile.model_dump(mode="json"))
+        else:
+            identity_file = None
         report = SshTargetHealthProvider(
             target_ref,
             known_hosts=known_hosts,
+            identity_file=identity_file,
             profile_sha256=profile_sha256,
             package_id=package_id,
             package_version=package_version,
@@ -652,6 +667,10 @@ def profile_init(
         Path | None,
         typer.Option("--known-hosts", help="Pinned SSH known_hosts file for remote stages"),
     ] = None,
+    ssh_identity_file: Annotated[
+        Path | None,
+        typer.Option("--ssh-identity-file", help="Optional pinned SSH private key file"),
+    ] = None,
 ) -> None:
     """Create or validate a target profile without connecting or mutating a host."""
     try:
@@ -661,13 +680,16 @@ def profile_init(
             reference=credential_ref,
         )
         store = TargetProfileStore(get_settings().rolo_config_dir)
-        if known_hosts is not None and not isinstance(target_ref, SshTargetRef):
-            raise ValueError("--known-hosts is only valid for SSH target profiles")
+        if not isinstance(target_ref, SshTargetRef) and (
+            known_hosts is not None or ssh_identity_file is not None
+        ):
+            raise ValueError("SSH profile options are only valid for SSH target profiles")
         profile = store.create(
             robot_id=robot_id,
             target=target_ref,
             credential=credential,
             known_hosts=known_hosts,
+            ssh_identity_file=ssh_identity_file,
         )
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

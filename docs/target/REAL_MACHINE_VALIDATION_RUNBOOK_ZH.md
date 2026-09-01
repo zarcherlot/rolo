@@ -118,14 +118,15 @@ uv run robotctl config show | tee "$DEBUG_DIR/config.txt"
 ## 2. 固定目标 profile 与身份
 
 `profile init` 只写控制面 profile，不会执行目标写操作。SSH profile 额外固定控制器侧
-`known_hosts`，随后必须独立批准 host key：
+`known_hosts` 内容摘要，随后必须独立批准并匹配 host/port entry 的 host key：
 
 ```bash
 uv run rolo target profile init "$PROJECT_ROOT" --robot "$ROBOT_ID"
 uv run rolo target profile show --robot "$ROBOT_ID" | tee "$DEBUG_DIR/profile.txt"
 # SSH target 示例：
 # uv run rolo target profile init "ssh://<user>@<host>:<port>/<absolute-workspace>" \
-#   --robot "$ROBOT_ID" --known-hosts "$KNOWN_HOSTS"
+#   --robot "$ROBOT_ID" --known-hosts "$KNOWN_HOSTS" \
+#   --ssh-identity-file "$SSH_IDENTITY_FILE"  # 可选；文件摘要会被 profile 固定
 # uv run rolo target profile approve-host-key --robot "$ROBOT_ID" \
 #   --fingerprint SHA256:<verified-fingerprint> --approver <operator>
 ```
@@ -142,7 +143,7 @@ uv run rolo target profile show --robot "$ROBOT_ID" | tee "$DEBUG_DIR/profile.tx
 } 2>&1 | tee "$DEBUG_DIR/target-identity.txt"
 ```
 
-如果 workspace、machine-id、用户、profile digest 或 ROS/RMW 与审核记录不一致，停止并
+如果 workspace、machine-id、用户、profile/known_hosts digest、host-key fingerprint 或 ROS/RMW 与审核记录不一致，停止并
 标记 `NO-GO`；不要通过删除 binding artifact 来绕过身份漂移。
 
 ## 3. 目标基线

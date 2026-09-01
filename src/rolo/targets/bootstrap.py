@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -22,6 +23,7 @@ from rolo.targets.executor import (
     quote_remote_argv,
 )
 from rolo.targets.models import BootstrapAction, BootstrapPlanStatus, TargetBootstrapPlan
+from rolo.targets.profiles import validate_identity_file
 from rolo.targets.signing import CompanionManifest, verify_companion_manifest
 
 
@@ -30,7 +32,13 @@ class BootstrapTransport(Protocol):
 
     def upload(self, local_path: Path, remote_path: str, *, timeout_s: float) -> CommandResult: ...
 
-    def execute(self, remote_argv: list[str], *, timeout_s: float) -> CommandResult: ...
+    def execute(
+        self,
+        remote_argv: list[str],
+        *,
+        timeout_s: float,
+        cancel_event: Event | None = None,
+    ) -> CommandResult: ...
 
 
 class SubprocessBootstrapTransport:
@@ -41,6 +49,7 @@ class SubprocessBootstrapTransport:
         target: SshTargetRef,
         *,
         known_hosts: Path,
+        identity_file: Path | None = None,
         runner: SubprocessCommandRunner | None = None,
     ) -> None:
         self.target = target
@@ -51,6 +60,11 @@ class SubprocessBootstrapTransport:
             available = False
         if not available:
             raise ValueError("bootstrap transport requires a non-empty pinned known_hosts file")
+        if identity_file is not None:
+            validate_identity_file(identity_file)
+            self.identity_file = identity_file.expanduser().resolve()
+        else:
+            self.identity_file = None
         self.runner = runner or SubprocessCommandRunner()
 
     def _options(self, command: str) -> list[str]:
@@ -80,6 +94,8 @@ class SubprocessBootstrapTransport:
         ]
         if self.target.port is not None:
             options.extend(["-P" if command == "scp" else "-p", str(self.target.port)])
+        if self.identity_file is not None and command in {"ssh", "scp"}:
+            options.extend(["-o", "IdentitiesOnly=yes", "-i", str(self.identity_file)])
         return [*options, "--", destination]
 
     def upload(self, local_path: Path, remote_path: str, *, timeout_s: float) -> CommandResult:
@@ -89,9 +105,17 @@ class SubprocessBootstrapTransport:
         argv = [*options[:-2], "--", str(local_path), remote_spec]
         return self.runner.run(argv, timeout_s=timeout_s)
 
-    def execute(self, remote_argv: list[str], *, timeout_s: float) -> CommandResult:
+    def execute(
+        self,
+        remote_argv: list[str],
+        *,
+        timeout_s: float,
+        cancel_event: Event | None = None,
+    ) -> CommandResult:
         argv = [*self._options("ssh"), *quote_remote_argv(remote_argv)]
-        return self.runner.run(argv, timeout_s=timeout_s)
+        if cancel_event is None:
+            return self.runner.run(argv, timeout_s=timeout_s)
+        return self.runner.run(argv, timeout_s=timeout_s, cancel_event=cancel_event)
 
 
 class LocalBootstrapTransport:
@@ -104,8 +128,14 @@ class LocalBootstrapTransport:
         del local_path, remote_path, timeout_s
         raise ValueError("local target bootstrap is not required")
 
-    def execute(self, remote_argv: list[str], *, timeout_s: float) -> CommandResult:
-        del remote_argv, timeout_s
+    def execute(
+        self,
+        remote_argv: list[str],
+        *,
+        timeout_s: float,
+        cancel_event: Event | None = None,
+    ) -> CommandResult:
+        del remote_argv, timeout_s, cancel_event
         raise ValueError("local target bootstrap is not required")
 
 

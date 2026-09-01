@@ -86,7 +86,8 @@ Adapt 的核心不变量是“Agent 提案 ≠ Rolo 权威”：Agent 不能写 
 - 只读工具会话：`stages/downstream_tools.py`；
 - Episode 发布与验证：`stages/diagnose/episode.py`、`episode_projection.py`；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，只允许绑定 local/SSH profile 的只读命令；
-  SSH profile 在授权后通过 pinned transport 采集 provenance。
+  SSH profile 在授权后通过 pinned transport 采集 provenance，并校验 known_hosts 内容摘要和
+  已批准 fingerprint 与 host/port entry 的一致性。
 - 授权身份：`user_identity.py` 生成当前用户和持久 session fingerprint；`agent_provider.py`
   拒绝声明了不同 stage 的插件，避免 provider/executor 越界。
 
@@ -102,6 +103,8 @@ authority。没有真实 Episode 时只能得出受限或 `INCONCLUSIVE` 的判�
 - 离线回放：`stages/verify/acceptance.py` 中的 replay/oracle 路径；
 - P1 v1 迁移边界：`stages/verify/legacy_adapter.py`，只接受匹配 plan digest 和 canonical provenance 的单向适配；
 - SSH canonical provenance：`stages/verify/ssh_provenance.py`，通过 pinned transport 采集只读目标身份并发布 binding artifact；
+- profile-bound SSH transport：`targets/profiles.py`、`targets/bootstrap.py`，固定 known_hosts 内容
+  摘要、host-key fingerprint 和可选 identity file；
 - SSH bounded Verify provider：`stages/verify/ssh_target_provider.py`，固定 platform/workspace/companion case 经 adapter 写入 v2 evidence；
 - Verify handoff materialization：`SshTargetHealthProvider.materialize_handoff()`，重新验证 v2 evidence 后交给 canonical handoff validator；
 - 固定 Linux/ROS 目标实现：`stages/real_target.py`，生成 provenance 绑定的 evidence package，

@@ -162,6 +162,11 @@ SSH provenance collector 已接入 `ssh_target_provider.py`（`src/rolo/stages/v
 在真实目标上仍须验证 pinned host-key、远端身份字段和中断恢复，不能把软件 fixture 证据升级
 为物理 E4。
 
+profile-bound Diagnose/Verify 现在会固定 known_hosts 内容摘要、核对 host/port 对应的批准
+fingerprint，并支持摘要校验过的 identity file；`secret-store`/`platform-keychain` credential
+仍需后续 resolver。默认 profile 端到端测试使用 fake transport，Linux 上的真实 sshd profile
+集成测试需显式开启 `ROLO_RUN_SSH_PROFILE_E2E=1`。
+
 SSH bounded provider execution 已在 `src/rolo/stages/verify/ssh_target_provider.py` 完成
 软件闭环：固定三个只读 case → legacy source artifact → canonical v2 evidence → handoff
 materializer。下一步是在 pinned SSH 目标上做真实 timeout/cancel/并发锁注入，并验证 CLI

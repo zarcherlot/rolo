@@ -51,6 +51,7 @@ class SshTargetHealthProvider:
         target: SshTargetRef,
         *,
         known_hosts: Path,
+        identity_file: Path | None = None,
         profile_sha256: str,
         package_id: str,
         package_version: str,
@@ -62,6 +63,7 @@ class SshTargetHealthProvider:
         self.transport = SubprocessBootstrapTransport(
             target,
             known_hosts=known_hosts,
+            identity_file=identity_file,
             runner=runner,
         )
 

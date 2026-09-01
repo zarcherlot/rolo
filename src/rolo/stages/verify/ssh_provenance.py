@@ -42,6 +42,8 @@ class SshTargetProvenanceCollector:
         *,
         robot_id: str,
         profile_sha256: str,
+        known_hosts_sha256: str | None = None,
+        host_key_fingerprint: str | None = None,
         run_id: str | None = None,
         timeout_s: float = 30.0,
         clock: Callable[[], datetime] | None = None,
@@ -80,6 +82,8 @@ class SshTargetProvenanceCollector:
             os_uid=int(os_uid_text),
             ros_domain_id=ros_domain_id,
             rmw_implementation=rmw_implementation,
+            known_hosts_sha256=known_hosts_sha256,
+            host_key_fingerprint=host_key_fingerprint,
             captured_at=now,
         )
         path = artifacts.write_json(

@@ -42,18 +42,23 @@ machine-id hash、OS user/uid、ROS domain 和 RMW。任一身份漂移都会在
 有界 TCP 连通性检测，不记录代理凭据。
 
 SSH profile 使用控制器侧 pinned `known_hosts`，并在 Stage 执行前要求人工批准 profile
-中的 host key；SSH 连接和远端身份采集只在授权通过后发生：
+中的 host key；profile 同时保存 `known_hosts` 内容 SHA256，并要求批准 fingerprint 与目标
+host/port 的精确 known_hosts entry 一致。SSH 连接和远端身份采集只在授权通过后发生：
 
 ```bash
 uv run rolo target profile init \
   "ssh://<user>@<host>:<port>/<absolute-workspace>" \
-  --robot <robot-id> --known-hosts /path/to/pinned/known_hosts
+  --robot <robot-id> --known-hosts /path/to/pinned/known_hosts \
+  --ssh-identity-file /path/to/pinned/id_ed25519  # 可选
 uv run rolo target profile approve-host-key --robot <robot-id> \
   --fingerprint SHA256:<independently-verified-fingerprint> --approver <operator>
 ```
 
-`known_hosts` 路径和 credential 仍不会写入 Agent prompt；缺失文件、未批准 host key、
-profile 摘要漂移或 SSH 身份采集失败均 fail-closed，不会退回控制器本地探针。
+`known_hosts` 路径和 credential 仍不会写入 Agent prompt；当前 profile credential 支持控制器
+环境中的 `ssh-agent:default`，也可额外绑定摘要校验过的 `--ssh-identity-file`；其他
+credential kind 必须先完成显式 resolver 接入。
+缺失文件、内容摘要漂移、fingerprint 不匹配、未批准 host key、profile 摘要漂移或 SSH
+身份采集失败均 fail-closed，不会退回控制器本地探针。
 
 ## 2. 采集目标机基线
 
