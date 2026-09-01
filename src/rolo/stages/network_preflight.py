@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -15,7 +16,12 @@ class AgentNetworkPreflight:
     via_proxy: bool
 
 
-def preflight_agent_network(url: str, *, timeout_s: float = 3.0) -> AgentNetworkPreflight:
+def preflight_agent_network(
+    url: str,
+    *,
+    timeout_s: float = 3.0,
+    environment: Mapping[str, str] | None = None,
+) -> AgentNetworkPreflight:
     """Prove that the configured endpoint or proxy accepts a bounded TCP connection."""
 
     if timeout_s <= 0 or timeout_s > 30:
@@ -23,11 +29,12 @@ def preflight_agent_network(url: str, *, timeout_s: float = 3.0) -> AgentNetwork
     target = urlsplit(url)
     if target.scheme not in {"http", "https"} or not target.hostname:
         raise ValueError("Agent network preflight URL must be http(s)")
+    source = environment if environment is not None else os.environ
     proxy_value = (
-        os.environ.get("HTTPS_PROXY")
-        or os.environ.get("https_proxy")
+        source.get("HTTPS_PROXY")
+        or source.get("https_proxy")
         if target.scheme == "https"
-        else os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+        else source.get("HTTP_PROXY") or source.get("http_proxy")
     )
     selected = urlsplit(proxy_value) if proxy_value else target
     if selected.scheme not in {"http", "https"} or not selected.hostname:

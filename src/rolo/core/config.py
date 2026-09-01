@@ -234,8 +234,9 @@ class Settings(BaseSettings):
     adapt_heuristic_agent_provider_enabled: bool = True
     # Planning/mapping is release-neutral; keep one bounded default for the
     # complete heuristic run (including all mapping batches).
-    adapt_heuristic_agent_timeout_s: int = Field(default=120, gt=0, le=3_600)
-    adapt_heuristic_agent_batch_operations: int = Field(default=4, gt=0, le=64)
+    adapt_heuristic_agent_timeout_s: int = Field(default=300, gt=0, le=3_600)
+    adapt_heuristic_agent_reasoning_effort: Literal["low", "medium", "high", "xhigh"] = "low"
+    adapt_heuristic_agent_batch_operations: int = Field(default=8, gt=0, le=64)
     adapt_heuristic_agent_parallelism: int = Field(default=2, gt=0, le=8)
     adapt_heuristic_agent_max_actions: int = Field(default=8, ge=0, le=32)
     adapt_heuristic_agent_max_operations: int = Field(default=20, gt=0, le=256)
@@ -248,7 +249,8 @@ class Settings(BaseSettings):
     wiki_polish_model: str | None = None
     wiki_polish_timeout_s: int = 60
     wiki_insights_agent_enabled: bool = True
-    wiki_insights_agent_timeout_s: int = 120
+    wiki_insights_agent_timeout_s: int = 300
+    wiki_insights_agent_reasoning_effort: Literal["low", "medium", "high", "xhigh"] = "low"
     wiki_insights_skill_path: Path = Path("skills/rolo-wiki-authoring/SKILL.md")
 
     @classmethod

@@ -33,6 +33,34 @@ installer. The Codex adapter uses the official Linux standalone installer docume
 <https://learn.chatgpt.com/docs/codex/cli>; provider Base URLs and model settings cannot change the
 installer source.
 
+## Remote deployment placement
+
+For `--evidence-mode remote` (or the product form with an `ssh://` target), apply this Codex setup
+only on the development/controller host. Run the complete Adapt flow there; the target host must
+run only its pinned read-only `target-evidence` collector and must not install Codex, store Codex
+credentials, or run `adapt start`/`adapt run`. By default the collector returns a bounded,
+text-only, HMAC-signed source snapshot (with a pinned target `source_root`); the controller
+materializes it only in a temporary directory for Discovery and removes it when the command
+returns. No controller-side ROS2 workspace copy is required. An optional `--project-root` can
+still be supplied when the controller intentionally has a local source checkout. See
+[`TARGET_EVIDENCE_DEPLOYMENT.md`](../target/TARGET_EVIDENCE_DEPLOYMENT.md) for the collector-only
+target setup.
+
+For example, this runs against the target workspace while all Adapt logic and Codex execution
+remain on the controller:
+
+```bash
+uv run rolo adapt \
+  ssh://pi@192.168.10.167/home/ubuntu/ros2_ws \
+  --robot mentorpi \
+  --urdf /home/ubuntu/ros2_ws/src/simulations/landerpi_description/urdf/landerpi-generated-normalized.urdf \
+  --discover-only
+```
+
+The source snapshot is deliberately bounded (file count, per-file/total bytes, text-only
+admission, secret-like filename denylist) and is not an execution authority. Its tree digest and
+target root are included in the signed evidence bundle and in the journey summary.
+
 ## Configuration inspection and readiness
 
 Inspect the effective secret-free configuration before running Adapt:

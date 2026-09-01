@@ -1,5 +1,7 @@
 import json
+import os
 import subprocess
+import time
 from hashlib import sha256
 from pathlib import Path
 
@@ -77,13 +79,15 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("rolo.stages.adapt.wiki_agent.shutil.which", lambda _: "codex")
-    monkeypatch.setattr("rolo.stages.adapt.wiki_agent.subprocess.run", fake_run)
+    monkeypatch.setattr("rolo.stages.adapt.wiki_agent.run_bounded_codex_agent", fake_run)
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:7897")
+    monkeypatch.setenv("https_proxy", "http://proxy.example:7897")
     report, active = _review_inputs()
     provider = CodexWikiInsightProvider(
         skill_path=skill,
         executable="codex",
         api_key="fixture-secret",
+        preflight_enabled=False,
     )
 
     bundle = provider.infer(report, active)
@@ -92,6 +96,7 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert isinstance(command, list)
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert 'model_reasoning_effort="low"' in command
     assert "workspace-write" not in command
     assert "fixture-secret" not in " ".join(command)
     assert bundle.findings[0].source == "ADAPT_AGENT_SKILL"
@@ -107,6 +112,41 @@ def test_codex_wiki_insight_provider_is_read_only_and_normalizes_source(
     assert isinstance(environment, dict)
     assert environment["CODEX_API_KEY"] == "fixture-secret"
     assert environment["HTTPS_PROXY"] == "http://proxy.example:7897"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_codex_wiki_timeout_reaps_descendants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("Return bounded JSON.", encoding="utf-8")
+    marker = tmp_path / "descendant-survived"
+    executable = tmp_path / "fake-codex"
+    executable.write_text(
+        "#!/bin/sh\n"
+        "python3 -c 'import time; time.sleep(1.5); "
+        f"open({str(marker)!r}, \"w\").write(\"alive\")' &\n"
+        "sleep 30\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    report, active = _review_inputs()
+    provider = CodexWikiInsightProvider(
+        skill_path=skill,
+        executable=str(executable),
+        timeout_s=1,
+        preflight_enabled=False,
+    )
+
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        provider.infer(report, active)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 2
+    time.sleep(0.7)
+    assert not marker.exists()
 
 
 def test_wiki_evidence_allowlist_is_bounded_and_prefers_addressable_parents() -> None:

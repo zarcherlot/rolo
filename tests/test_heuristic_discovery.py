@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.models import (
@@ -42,6 +46,7 @@ from rolo.stages.adapt.heuristic_discovery import (
     HeuristicDiscoveryOrchestrator,
     HeuristicDiscoveryStatus,
     WhitelistedR0ProbeDispatcher,
+    build_planning_context,
     derive_evidence_gaps,
     validate_and_evaluate_plan,
 )
@@ -356,7 +361,8 @@ def test_mapping_fallback_does_not_report_agent_completed(tmp_path: Path) -> Non
     )
 
     assert summary.status == HeuristicDiscoveryStatus.FALLBACK
-    assert summary.mapping_fallback_reason == "BUNDLE_INVALID"
+    assert summary.mapping_fallback_reason.startswith("BUNDLE_INVALID:")
+    assert "Registry identity" in summary.mapping_fallback_reason
 
 
 def test_heuristic_candidate_can_never_be_adapter_eligible_without_verification() -> None:
@@ -561,13 +567,60 @@ def test_codex_planning_provider_is_exposed_as_the_real_agent_boundary(
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("https_proxy", "http://proxy.example:7897")
     assert CodexDiscoveryPlanningProvider.provider.endswith("rolo-adapt-discovery")
-    provider = CodexDiscoveryPlanningProvider(skill_path=Path("skill.md"))
+    provider = CodexDiscoveryPlanningProvider(
+        skill_path=Path("skill.md"), preflight_enabled=False
+    )
     command = provider._command(Path("workspace"), Path("schema.json"), Path("output.json"))
     assert "--skip-git-repo-check" in command
     assert command[command.index("--sandbox") + 1] == "read-only"
+    assert 'model_reasoning_effort="low"' in command
     assert provider._environment()["HOME"] == str(tmp_path)
     assert provider._environment()["CODEX_HOME"] == str(codex_home)
     assert provider._environment()["HTTPS_PROXY"] == "http://proxy.example:7897"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_codex_planning_timeout_reaps_descendants(tmp_path: Path) -> None:
+    skill = tmp_path / "discovery-SKILL.md"
+    skill.write_text("Read frozen evidence only.", encoding="utf-8")
+    descendant_marker = tmp_path / "planning-descendant-survived"
+    executable = tmp_path / "blocking-planning-agent"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        + repr(
+            "import pathlib, time; time.sleep(1.5); "
+            f"pathlib.Path({str(descendant_marker)!r}).write_text('alive')"
+        )
+        + "])\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    report = _report()
+    active = _active()
+    context = build_planning_context(
+        report,
+        active,
+        target_fingerprint="a" * 64,
+        gaps=derive_evidence_gaps(report, active),
+        max_actions=4,
+    )
+    provider = CodexDiscoveryPlanningProvider(
+        skill_path=skill,
+        executable=str(executable),
+        timeout_s=1,
+        preflight_enabled=False,
+    )
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="planning Agent timed out"):
+        provider.plan(context)
+
+    assert time.monotonic() - started < 2.0
+    time.sleep(0.7)
+    assert not descendant_marker.exists()
 
 
 def test_discovery_service_wires_heuristic_artifacts_into_report_wiki_and_plan_inputs(

@@ -147,7 +147,9 @@ class AdaptExecutionService:
         run, artifact = executor.execute(
             robot_id=robot_id,
             workspace=workspace,
-            timeout_s=timeout_s or self.settings.coding_agent_timeout_s or 1800,
+            timeout_s=(
+                timeout_s if timeout_s is not None else self.settings.coding_agent_timeout_s
+            ),
             plan=plan,
             slice_canary=slice_canary,
             on_output=on_output,

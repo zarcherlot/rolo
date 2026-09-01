@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,7 @@ from rolo.stages.adapt.target_evidence import (
     collect_over_ssh,
     collect_target_evidence,
     load_collector_state,
+    materialize_source_snapshot,
     new_request,
     verify_evidence_bundle,
 )
@@ -86,6 +88,10 @@ class TargetEvidenceJourneySummary(BaseModel):
     bundle_payload_sha256: str
     bundle_path: str
     collected_at: str
+    source_snapshot_status: str | None = None
+    source_snapshot_files: int | None = None
+    source_snapshot_total_bytes: int | None = None
+    source_snapshot_tree_sha256: str | None = None
 
 
 class AdaptJourneyResult(BaseModel):
@@ -219,6 +225,55 @@ class AdaptJourneyService:
         self,
         *,
         robot_id: str,
+        evidence: ProjectEvidence | None,
+        urdf_path: Path | None,
+        active_probe: ActiveProbeMode,
+        run_agent: bool,
+        scratch_root: Path | None,
+        timeout_s: int | None,
+        evidence_deployment: EvidenceDeploymentConfig | None = None,
+        evidence_timeout_s: float = 45.0,
+        evidence_max_attempts: int = 2,
+        on_output: Callable[[str, str], None] | None = None,
+    ) -> AdaptJourneyResult:
+        if evidence is not None:
+            return self._start_with_evidence(
+                robot_id=robot_id,
+                evidence=evidence,
+                urdf_path=urdf_path,
+                active_probe=active_probe,
+                run_agent=run_agent,
+                scratch_root=scratch_root,
+                timeout_s=timeout_s,
+                evidence_deployment=evidence_deployment,
+                evidence_timeout_s=evidence_timeout_s,
+                evidence_max_attempts=evidence_max_attempts,
+                on_output=on_output,
+            )
+        # Remote mode can derive the controller-side discovery inputs from a
+        # bounded, signed target snapshot. Keep that materialization temporary;
+        # the controller never needs a second persistent ROS2 workspace.
+        with tempfile.TemporaryDirectory(prefix=f"rolo-{robot_id}-source-") as temporary:
+            placeholder = ProjectEvidence(project_root=Path(temporary))
+            return self._start_with_evidence(
+                robot_id=robot_id,
+                evidence=placeholder,
+                urdf_path=urdf_path,
+                active_probe=active_probe,
+                run_agent=run_agent,
+                scratch_root=scratch_root,
+                timeout_s=timeout_s,
+                evidence_deployment=evidence_deployment,
+                evidence_timeout_s=evidence_timeout_s,
+                evidence_max_attempts=evidence_max_attempts,
+                on_output=on_output,
+                source_snapshot_destination=Path(temporary),
+            )
+
+    def _start_with_evidence(
+        self,
+        *,
+        robot_id: str,
         evidence: ProjectEvidence,
         urdf_path: Path | None,
         active_probe: ActiveProbeMode,
@@ -229,6 +284,7 @@ class AdaptJourneyService:
         evidence_timeout_s: float = 45.0,
         evidence_max_attempts: int = 2,
         on_output: Callable[[str, str], None] | None = None,
+        source_snapshot_destination: Path | None = None,
     ) -> AdaptJourneyResult:
         enrollment = EnrollmentService(config_root=self.settings.rolo_config_dir).enroll(
             robot_id=robot_id
@@ -266,6 +322,7 @@ class AdaptJourneyService:
                     item.executable_id
                     for item in evidence_deployment.collector.help_executables
                 ],
+                include_source_snapshot=source_snapshot_destination is not None,
             )
             try:
                 if evidence_deployment.mode == EvidenceDeploymentMode.LOCAL:
@@ -288,6 +345,20 @@ class AdaptJourneyService:
                     deployment=evidence_deployment,
                     request=request,
                 )
+                if source_snapshot_destination is not None:
+                    if bundle.source_snapshot is None:
+                        raise ValueError("remote collector did not return source evidence")
+                    materialize_source_snapshot(bundle.source_snapshot, source_snapshot_destination)
+                    evidence = detect_project_evidence(source_snapshot_destination)
+                    if urdf_path is not None:
+                        try:
+                            relative_urdf = urdf_path.expanduser().resolve().relative_to(
+                                Path(bundle.source_snapshot.source_root).expanduser().resolve()
+                            )
+                        except ValueError:
+                            relative_urdf = None
+                        if relative_urdf is not None:
+                            urdf_path = source_snapshot_destination / relative_urdf
                 bundle_path = ArtifactStore(self.settings.rolo_artifact_dir).write_text(
                     f"target-evidence/{robot_id}/{request.nonce}.json",
                     bundle.model_dump_json(indent=2) + "\n",
@@ -299,6 +370,26 @@ class AdaptJourneyService:
                     bundle_payload_sha256=bundle.payload_sha256,
                     bundle_path=str(bundle_path),
                     collected_at=bundle.collected_at.isoformat(),
+                    source_snapshot_status=(
+                        bundle.source_snapshot.status
+                        if bundle.source_snapshot is not None
+                        else None
+                    ),
+                    source_snapshot_files=(
+                        len(bundle.source_snapshot.files)
+                        if bundle.source_snapshot is not None
+                        else None
+                    ),
+                    source_snapshot_total_bytes=(
+                        bundle.source_snapshot.total_bytes
+                        if bundle.source_snapshot is not None
+                        else None
+                    ),
+                    source_snapshot_tree_sha256=(
+                        bundle.source_snapshot.tree_sha256
+                        if bundle.source_snapshot is not None
+                        else None
+                    ),
                 )
             except (OSError, ValueError) as exc:
                 return AdaptJourneyResult(

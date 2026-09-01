@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from rolo.adapter_runner import BoundedAdapterRunner
 from rolo.core.artifacts import ArtifactStore
@@ -38,6 +39,11 @@ pytestmark = [
 ]
 
 
+def _manifest() -> dict:
+    path = Path(__file__).resolve().parents[1] / ".ci" / "integrations" / "lerobot.yaml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
 def _lerobot_root() -> Path:
     raw_root = os.environ.get("LEROBOT_ROOT")
     if not raw_root:
@@ -49,16 +55,18 @@ def _lerobot_root() -> Path:
 
 
 def _lerobot_info_executable() -> str:
-    executable = os.environ.get("LEROBOT_INFO") or shutil.which("lerobot-info")
+    name = _manifest()["entrypoints"]["info"]
+    executable = os.environ.get("LEROBOT_INFO") or shutil.which(name)
     if not executable:
-        pytest.fail("lerobot-info is not installed; install LeRobot in the integration environment")
+        pytest.fail(f"{name} is not installed; install LeRobot in the integration environment")
     return executable
 
 
 def _lerobot_find_cameras_executable() -> Path:
-    raw = os.environ.get("LEROBOT_FIND_CAMERAS") or shutil.which("lerobot-find-cameras")
+    name = _manifest()["entrypoints"]["find_cameras"]
+    raw = os.environ.get("LEROBOT_FIND_CAMERAS") or shutil.which(name)
     if not raw:
-        pytest.fail("lerobot-find-cameras is unavailable in the integration environment")
+        pytest.fail(f"{name} is unavailable in the integration environment")
     executable = Path(raw).expanduser().resolve()
     if not executable.is_file():
         pytest.fail(f"lerobot-find-cameras is not an executable file: {executable}")

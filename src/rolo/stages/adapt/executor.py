@@ -89,6 +89,49 @@ def _decode_process_output(value: str | bytes | None) -> str:
     return value
 
 
+def _recover_handoff_files_from_events(
+    stdout: str, outputs: dict[str, object] | None
+) -> list[dict[str, object]]:
+    """Recover handoff-pack files when Codex omits them from its final JSON.
+
+    The event stream may contain the authoritative response emitted by
+    ``adapt handoff pack`` even when the final structured message only repeats
+    the output paths. Recovery is narrow: the embedded JSON must carry the exact
+    same outputs map as the final message and a non-empty files list. The normal
+    schema and digest checks still run after this transport repair.
+    """
+    if not outputs:
+        return []
+    recovered: list[dict[str, object]] = []
+    decoder = json.JSONDecoder()
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        item = event.get("item") if isinstance(event, dict) else None
+        text = item.get("aggregated_output") if isinstance(item, dict) else None
+        if not isinstance(text, str) or '"files"' not in text:
+            continue
+        offset = 0
+        while offset < len(text):
+            start = text.find("{", offset)
+            if start < 0:
+                break
+            try:
+                candidate, end = decoder.raw_decode(text, start)
+            except ValueError:
+                offset = start + 1
+                continue
+            offset = end
+            if not isinstance(candidate, dict) or candidate.get("outputs") != outputs:
+                continue
+            files = candidate.get("files")
+            if isinstance(files, list) and files:
+                recovered = [file for file in files if isinstance(file, dict)]
+    return recovered
+
+
 def _direct_execution_parity(result: AgentNativeToolResult):
     """Re-run one deterministic baseline outside the broker for parity evidence."""
     resolved = shutil.which(result.argv[0])
@@ -204,6 +247,7 @@ def build_codex_command(
     final_message_path: Path,
     config: AdapterAgentConfig,
     api_key_configured: bool,
+    windows_sandbox: str | None = None,
 ) -> list[str]:
     """Build an argv-only Codex command; credentials are never command arguments."""
     command = [
@@ -223,6 +267,14 @@ def build_codex_command(
         "-c",
         "shell_environment_policy.ignore_default_excludes=false",
     ]
+    if windows_sandbox is not None:
+        mode = windows_sandbox.strip().lower()
+        if mode not in {"elevated", "unelevated"}:
+            raise ValueError("windows_sandbox must be elevated or unelevated")
+        # Keep this override scoped to the child Codex invocation.  In
+        # particular, a proxy-backed Adapt child must not contend with the
+        # desktop Codex process over the global elevated firewall state.
+        command.extend(["-c", f"windows.sandbox={_toml_string(mode)}"])
     if config.model:
         command.extend(["--model", config.model])
 
@@ -477,6 +529,22 @@ class CodexAdaptExecutor:
             final_message_path=final_message_path,
             config=plan.adapter_agent,
             api_key_configured=bool(self.api_key),
+            windows_sandbox=(
+                "unelevated"
+                if os.name == "nt"
+                and any(
+                    os.environ.get(name)
+                    for name in (
+                        "HTTP_PROXY",
+                        "HTTPS_PROXY",
+                        "ALL_PROXY",
+                        "http_proxy",
+                        "https_proxy",
+                        "all_proxy",
+                    )
+                )
+                else None
+            ),
         )
         native_catalog = reduced_agent_native_catalog()
         native_rollout = decide_native_tool_rollout(
@@ -514,7 +582,14 @@ class CodexAdaptExecutor:
                     max_result_bytes=self.native_tool_max_result_bytes,
                 ),
                 created_at=started_at,
-                expires_at=started_at + timedelta(seconds=max(60, timeout_s)),
+                expires_at=started_at
+                + timedelta(
+                    seconds=(
+                        timeout_s
+                        if timeout_s is not None
+                        else max(60.0, self.native_tool_max_elapsed_s)
+                    )
+                ),
             )
             native_session = NativeToolSession(
                 descriptor=native_session_descriptor,
@@ -570,9 +645,24 @@ class CodexAdaptExecutor:
                 error = "Codex did not write the required structured final message"
             else:
                 try:
-                    result = AdapterAgentResult.model_validate_json(
-                        final_message_path.read_text(encoding="utf-8")
-                    )
+                    final_payload = json.loads(final_message_path.read_text(encoding="utf-8"))
+                    if (
+                        isinstance(final_payload, dict)
+                        and final_payload.get("schema_version") == "robot-adapter-agent-result/v2"
+                        and final_payload.get("handoff_ready") is True
+                    ):
+                        # The final Agent message is subject to the model's response
+                        # budget, so a large base64 payload can be truncated even when
+                        # the preceding handoff-pack command emitted a complete JSON
+                        # response in the event stream. Prefer that exact pack payload
+                        # whenever it is available. The independent conformance gate
+                        # still performs all schema, base64, digest, and bundle checks.
+                        recovered_files = _recover_handoff_files_from_events(
+                            stdout, final_payload.get("outputs")
+                        )
+                        if recovered_files:
+                            final_payload["files"] = recovered_files
+                    result = AdapterAgentResult.model_validate(final_payload)
                 except ValueError as exc:
                     error = f"Codex final message failed schema validation: {exc}"
                 else:

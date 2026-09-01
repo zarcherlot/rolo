@@ -1,0 +1,17 @@
+name: Platform hardcoding guard
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev
+      - run: uv run python tools/check_platform_hardcoding.py
+      - run: uv run pytest -q tests/test_platform_hardcoding.py

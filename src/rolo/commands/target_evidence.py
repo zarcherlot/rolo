@@ -111,6 +111,7 @@ def collector_init(
             robot_id=robot_id,
             state_path=config,
             secret_path=secret_file,
+            source_root=project_root,
             help_executables=(
                 allow_executable
                 if allow_executable
@@ -174,6 +175,7 @@ def collector_rotate(
             expected_collector_id=expected_collector_id,
             new_state_path=config,
             new_secret_path=secret_file,
+            source_root=project_root,
             help_executables=(
                 allow_executable
                 if allow_executable
@@ -423,6 +425,13 @@ def collect(
             help="Collector allowlist ID to probe with bounded --help; repeatable",
         ),
     ] = None,
+    include_source_snapshot: Annotated[
+        bool,
+        typer.Option(
+            "--include-source-snapshot/--no-source-snapshot",
+            help="Request the bounded, signed source snapshot pinned during collector enrollment",
+        ),
+    ] = False,
 ) -> None:
     """Collect and verify one fresh target evidence bundle."""
     try:
@@ -432,7 +441,11 @@ def collect(
             if executable_help_id is not None
             else [item.executable_id for item in deployment.collector.help_executables]
         )
-        request = new_request(robot_id, executable_help_ids=requested_help_ids)
+        request = new_request(
+            robot_id,
+            executable_help_ids=requested_help_ids,
+            include_source_snapshot=include_source_snapshot,
+        )
         if deployment.mode == EvidenceDeploymentMode.LOCAL:
             state_path = collector_state or Path(deployment.local_collector_state_path or "")
             bundle = collect_target_evidence(request, load_collector_state(state_path))
@@ -467,6 +480,16 @@ def collect(
                 }
                 for item in bundle.executable_help
             ],
+            "source_snapshot": (
+                {
+                    "status": bundle.source_snapshot.status,
+                    "files": len(bundle.source_snapshot.files),
+                    "total_bytes": bundle.source_snapshot.total_bytes,
+                    "tree_sha256": bundle.source_snapshot.tree_sha256,
+                }
+                if bundle.source_snapshot is not None
+                else None
+            ),
             "next": (
                 f"robotctl adapt discover run --robot {robot_id} "
                 f"--target-evidence-bundle {destination}"

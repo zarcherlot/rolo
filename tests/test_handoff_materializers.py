@@ -19,6 +19,63 @@ from rolo.stages.adapt.models import (
 )
 
 
+def test_result_guards_cover_shape_markers_and_case_result_validation() -> None:
+    cases = [
+        (None, {"status": "PASS"}, "frozen_config"),
+        ({"x": 1}, None, "diagnosis_report"),
+        ({"x": 1}, {"nested": [{"release_approved": True}]}, "release"),
+    ]
+    for frozen, report, message in cases:
+        try:
+            handoffs.validate_diagnosis_result(frozen, report)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError("invalid diagnosis shape must fail")
+
+    invalid_reports = [
+        ({"notes": "only"}, "measurable result marker"),
+        ({"status": "PASS", "case_results": []}, "non-empty list"),
+        ({"status": "PASS", "case_results": [{}]}, "requires case_id"),
+        ({"status": "PASS", "case_results": [{"case_id": "c"}]}, "invalid status"),
+        ({"status": "PASS", "case_results": [{"case_id": "c", "status": "PASS"}]}, None),
+    ]
+    for report, message in invalid_reports:
+        try:
+            handoffs.validate_verification_result(report, {"artifacts": []})
+        except ValueError as exc:
+            if message:
+                assert message in str(exc)
+        else:
+            if message:
+                raise AssertionError("invalid verification shape must fail")
+
+
+def test_private_handoff_helpers_reject_bad_json_and_hash(tmp_path: Path) -> None:
+    payload = tmp_path / "payload.json"
+    payload.write_text("[]", encoding="utf-8")
+    reference = f"artifact://{payload.relative_to(tmp_path).as_posix()}"
+    try:
+        handoffs._load_mapping_ref(tmp_path, reference, label="payload")
+    except ValueError as exc:
+        assert "JSON object" in str(exc)
+    else:
+        raise AssertionError("array payload must be rejected")
+    payload.write_text("{bad", encoding="utf-8")
+    try:
+        handoffs._load_mapping_ref(tmp_path, reference, label="payload")
+    except ValueError as exc:
+        assert "valid JSON" in str(exc)
+    else:
+        raise AssertionError("invalid JSON must be rejected")
+    try:
+        handoffs._verify_refs(tmp_path, ((reference, "0" * 64),))
+    except ValueError as exc:
+        assert "hash mismatch" in str(exc)
+    else:
+        raise AssertionError("hash mismatch must be rejected")
+
+
 def test_result_guards_reject_release_claims_and_empty_evidence() -> None:
     try:
         handoffs.validate_diagnosis_result(

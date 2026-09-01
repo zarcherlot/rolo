@@ -47,6 +47,12 @@ adapt_stage_app = typer.Typer(
 diagnose_stage_app = typer.Typer(help="Stage 2: diagnose and tune within user constraints.")
 verify_stage_app = typer.Typer(help="Stage 3: optionally verify acceptance and regression.")
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")
+
+
+def _stream_agent_output(stream: str, line: str) -> None:
+    """Forward live Agent output while keeping the final JSON on stdout."""
+    if line:
+        typer.echo(f"[agent{' stderr' if stream != 'stdout' else ''}] {line[:8_000]}", err=True)
 adapt_stage_app.add_typer(enroll_app, name="enroll")
 
 
@@ -95,7 +101,18 @@ def run_adapt_start(
             {**settings.model_dump(), **heuristic_overrides}
         )
     prepare_runtime_directories(settings)
-    evidence = detect_project_evidence(project_root or Path.cwd())
+    if project_root is not None:
+        evidence = detect_project_evidence(project_root)
+    elif evidence_mode == EvidenceDeploymentMode.LOCAL:
+        evidence = detect_project_evidence(Path.cwd())
+    else:
+        if active_probe != ActiveProbeMode.RUNTIME_READONLY:
+            raise ValueError(
+                "remote Adapt without --project-root requires --active-probe runtime-readonly"
+            )
+        # Remote Adapt reconstructs only a bounded, signed source snapshot on
+        # the controller; no duplicate workspace is required here.
+        evidence = None
     evidence_deployment = None
     remote_options = (
         collector_descriptor,
@@ -200,7 +217,7 @@ def run_adapt_start(
         active_probe=active_probe,
         run_agent=run_agent,
         scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
-        timeout_s=timeout or settings.coding_agent_timeout_s,
+        timeout_s=(timeout if timeout is not None else settings.coding_agent_timeout_s),
         evidence_deployment=evidence_deployment,
         evidence_timeout_s=evidence_timeout,
         evidence_max_attempts=evidence_attempts,
@@ -245,13 +262,20 @@ def adapt_stage_start(
     ] = None,
     timeout: Annotated[
         int | None,
-        typer.Option("--timeout", min=1, help="Maximum Adapter Agent time in seconds"),
+        typer.Option(
+            "--timeout",
+            min=1,
+            help="Optional Adapter Agent time limit in seconds; omitted means no hard deadline",
+        ),
     ] = None,
     evidence_mode: Annotated[
         EvidenceDeploymentMode,
         typer.Option(
             "--evidence-mode",
-            help="local collects signed evidence here; remote uses a pinned SSH collector",
+            help=(
+                "local collects signed evidence here; remote uses a pinned SSH collector on "
+                "the target while this Adapt command runs on the controller"
+            ),
         ),
     ] = EvidenceDeploymentMode.LOCAL,
     allow_executable: Annotated[
@@ -311,7 +335,10 @@ def adapt_stage_start(
             "--heuristic-agent-timeout",
             min=1,
             max=3_600,
-            help="Maximum time per semantic mapping Agent batch in seconds",
+            help=(
+                "Planning call and complete semantic mapping stage budget in seconds; "
+                "network/auth readiness is checked first"
+            ),
         ),
     ] = None,
     heuristic_agent_batch_operations: Annotated[
@@ -333,7 +360,7 @@ def adapt_stage_start(
         ),
     ] = None,
 ) -> None:
-    """Run the shortest safe path from a robot project to an Adapt release."""
+    """Run Adapt on the controller; remote mode delegates only read-only probes to the target."""
     try:
         result = run_adapt_start(
             robot_id=robot_id,
@@ -359,6 +386,7 @@ def adapt_stage_start(
             heuristic_agent_timeout=heuristic_agent_timeout,
             heuristic_agent_batch_operations=heuristic_agent_batch_operations,
             heuristic_agent_parallelism=heuristic_agent_parallelism,
+            on_output=_stream_agent_output,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -389,7 +417,12 @@ def adapt_stage_run(
         ),
     ] = None,
     timeout: Annotated[
-        int | None, typer.Option("--timeout", min=1, help="Maximum Agent time in seconds")
+        int | None,
+        typer.Option(
+            "--timeout",
+            min=1,
+            help="Optional Agent time limit in seconds; omitted means no hard deadline",
+        ),
     ] = None,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show the derived plan without starting the Agent")
@@ -405,7 +438,7 @@ def adapt_stage_run(
         ),
     ] = False,
 ) -> None:
-    """Plan, execute, freeze outputs, independently gate, and publish one Adapt run."""
+    """Run the controller-side Adapter Agent, then freeze, gate, and publish one Adapt run."""
     settings = get_settings()
     service = AdaptRunService(ArtifactStore(settings.rolo_artifact_dir), settings)
     try:
@@ -415,8 +448,9 @@ def adapt_stage_run(
         summary, artifact = service.run(
             robot_id=robot,
             scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
-            timeout_s=timeout or settings.coding_agent_timeout_s,
+            timeout_s=(timeout if timeout is not None else settings.coding_agent_timeout_s),
             slice_canary=slice_canary,
+            on_output=_stream_agent_output,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

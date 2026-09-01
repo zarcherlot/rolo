@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import tempfile
 from collections import deque
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from rolo.core.hashing import sha256_bytes
 from rolo.core.models import DiscoveryReport
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryReport
-from rolo.stages.adapt.agent_environment import codex_helper_environment
+from rolo.stages.adapt.agent_environment import (
+    codex_helper_environment,
+    preflight_codex_helper,
+)
 from rolo.stages.adapt.codex_output_schema import codex_output_schema
+from rolo.stages.adapt.proposal_orchestration import run_bounded_codex_agent
 from rolo.stages.adapt.wiki_context import ros_evidence_relevant
 from rolo.stages.adapt.wiki_insights import (
     RoloWikiHeuristicFinding,
@@ -418,9 +421,15 @@ class CodexWikiInsightProvider:
         base_url: str | None = None,
         api_key: str | None = None,
         timeout_s: int = 120,
+        preflight_url: str | None = None,
+        connect_timeout_s: float = 3.0,
+        preflight_enabled: bool = True,
+        reasoning_effort: Literal["low", "medium", "high", "xhigh"] | None = "low",
     ) -> None:
         if timeout_s < 1:
             raise ValueError("Wiki insight Agent timeout must be at least one second")
+        if connect_timeout_s <= 0 or connect_timeout_s > 30:
+            raise ValueError("Wiki insight Agent connect timeout must be in (0, 30]")
         self.skill_path = skill_path.expanduser().resolve()
         self.executable = executable
         self.model = model
@@ -428,6 +437,10 @@ class CodexWikiInsightProvider:
         self.base_url = (base_url or "").strip() or None
         self.api_key = api_key
         self.timeout_s = timeout_s
+        self.preflight_url = preflight_url
+        self.connect_timeout_s = connect_timeout_s
+        self.preflight_enabled = preflight_enabled
+        self.reasoning_effort = reasoning_effort
 
     def _command(self, workspace: Path, schema: Path, output: Path) -> list[str]:
         command = [
@@ -449,6 +462,10 @@ class CodexWikiInsightProvider:
         ]
         if self.model:
             command.extend(["--model", self.model])
+        if self.reasoning_effort:
+            command.extend(
+                ["-c", f"model_reasoning_effort={_toml_string(self.reasoning_effort)}"]
+            )
         if self.agent_provider.casefold() != "codex" and not self.base_url:
             raise ValueError("Wiki insight Agent requires a base URL for a non-default provider")
         if self.base_url:
@@ -504,6 +521,16 @@ class CodexWikiInsightProvider:
             raise FileNotFoundError(f"Wiki heuristic skill not found: {self.skill_path}")
         if shutil.which(self.executable) is None:
             raise FileNotFoundError(f"Codex CLI executable not found: {self.executable}")
+        if self.preflight_enabled:
+            preflight_codex_helper(
+                executable=self.executable,
+                provider=self.agent_provider,
+                base_url=self.base_url,
+                api_key=self.api_key,
+                environment=self._environment(),
+                timeout_s=self.connect_timeout_s,
+                preflight_url=self.preflight_url,
+            )
         skill = self.skill_path.read_text(encoding="utf-8")
         selected, context = self._context_payload(report, active)
         validation_context = RoloWikiValidationContext(
@@ -560,17 +587,12 @@ class CodexWikiInsightProvider:
                 ),
                 encoding="utf-8",
             )
-            completed = subprocess.run(
+            completed = run_bounded_codex_agent(
                 self._command(workspace, schema, output),
                 input=prompt,
-                capture_output=True,
-                check=False,
                 cwd=workspace,
                 env=self._environment(),
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self.timeout_s,
+                timeout=float(self.timeout_s),
             )
             if completed.returncode != 0:
                 detail = (completed.stderr or completed.stdout).strip().splitlines()
