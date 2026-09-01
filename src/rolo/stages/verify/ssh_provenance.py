@@ -6,14 +6,16 @@ import hashlib
 import re
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.hashing import sha256_file
 from rolo.stages.artifact_paths import ArtifactLayout
-from rolo.stages.real_target import TargetBinding
 from rolo.target_ref import SshTargetRef
+
+if TYPE_CHECKING:
+    from rolo.stages.real_target import TargetBinding
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _INTS = re.compile(r"^(\d+)\s+(\d+)\s+(\d+)$")
@@ -44,6 +46,10 @@ class SshTargetProvenanceCollector:
         timeout_s: float = 30.0,
         clock: Callable[[], datetime] | None = None,
     ) -> tuple[TargetBinding, str, str]:
+        # Imported lazily because real_target imports the Verify acceptance
+        # package, whose public exports include this collector.
+        from rolo.stages.real_target import TargetBinding
+
         if not _SHA256.fullmatch(profile_sha256):
             raise ValueError("profile digest must be a lowercase SHA256")
         if not 1.0 <= timeout_s <= 600.0:

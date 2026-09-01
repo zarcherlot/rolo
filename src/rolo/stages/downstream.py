@@ -13,6 +13,7 @@ from rolo.agent_provider import create_stage_agent_executor
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import Settings
 from rolo.stages.agent_runner import StageAgentRun, StageAgentRunner, StageAgentTask
+from rolo.stages.artifact_paths import ArtifactLayout
 from rolo.stages.diagnose.service import build_diagnosis_task
 from rolo.stages.handoffs import validate_diagnosis_handoff, validate_verification_handoff
 from rolo.stages.verify.service import build_verification_task
@@ -72,12 +73,33 @@ class DownstreamStageService:
             "model": selected_model,
         }
         additional_input_refs: dict[str, str] = {}
-        if selected_executor.strip().lower() == "local-target":
+        if selected_executor.strip().lower() in {"local-target", "ssh-target"}:
             from rolo.stages.real_target import publish_target_binding
+            from rolo.target_ref import LocalTargetRef
+            from rolo.targets.profiles import TargetProfileStore
 
-            additional_input_refs["target_binding"] = publish_target_binding(
-                self.artifacts, self.settings, robot_id
-            )
+            profile = TargetProfileStore(self.settings.rolo_config_dir).load(robot_id)
+            if isinstance(profile.target, LocalTargetRef):
+                additional_input_refs["target_binding"] = publish_target_binding(
+                    self.artifacts, self.settings, robot_id
+                )
+            else:
+                # SSH identity is collected only after authorization.  The profile
+                # itself is immutable and digest-bound into the Stage task.
+                from rolo.core.hashing import canonical_json_sha256
+
+                profile_path = self.artifacts.write_json(
+                    f"targets/{robot_id}/profiles/{profile.profile_id}.json",
+                    {
+                        "profile_id": profile.profile_id,
+                        "profile_sha256": canonical_json_sha256(
+                            profile.model_dump(mode="json")
+                        ),
+                    },
+                )
+                additional_input_refs["target_profile"] = ArtifactLayout(
+                    self.artifacts.root
+                ).ref(profile_path)
         if self.stage == "diagnose":
             return build_diagnosis_task(
                 self.artifacts.root,

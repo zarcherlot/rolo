@@ -16,8 +16,8 @@ publish、导航、校准、reset、actuator、power、firmware 或任何会改�
 | 阶段 | provider / executor | 入口 | 说明 |
 |---|---|---|---|
 | Adapt shadow、Discovery、promotion | `codex` / `codex` | 本文第 4 节；Adapt 目标证据与 route 专项见 [Adapt 详细附录](TARGET_MACHINE_ADAPT_VALIDATION_ZH.md) | 只读、bounded，不执行 adapter `invoke` |
-| Diagnose | `local-target` / `local-target` | 本文第 5 节 | 未授权必须停在 `WAITING_FOR_AUTH` |
-| Verify | `local-target` / `local-target` | 本文第 6 节 | 只执行批准的 canonical v2 bounded case |
+| Diagnose | `local-target` / `local-target` | 本文第 5 节 | 支持 local/SSH profile；未授权必须停在 `WAITING_FOR_AUTH` |
+| Verify | `local-target` / `local-target` | 本文第 6 节 | 支持 local/SSH profile；只执行批准的 canonical v2 bounded case |
 | SSH health | `target verify-health` | 本文第 7 节 | 仅 health/evidence 预检，不等同物理 acceptance |
 
 控制器侧 SSH health 预检可使用：
@@ -117,11 +117,17 @@ uv run robotctl config show | tee "$DEBUG_DIR/config.txt"
 
 ## 2. 固定目标 profile 与身份
 
-`profile init` 只写控制面 profile，不会执行目标写操作：
+`profile init` 只写控制面 profile，不会执行目标写操作。SSH profile 额外固定控制器侧
+`known_hosts`，随后必须独立批准 host key：
 
 ```bash
 uv run rolo target profile init "$PROJECT_ROOT" --robot "$ROBOT_ID"
 uv run rolo target profile show --robot "$ROBOT_ID" | tee "$DEBUG_DIR/profile.txt"
+# SSH target 示例：
+# uv run rolo target profile init "ssh://<user>@<host>:<port>/<absolute-workspace>" \
+#   --robot "$ROBOT_ID" --known-hosts "$KNOWN_HOSTS"
+# uv run rolo target profile approve-host-key --robot "$ROBOT_ID" \
+#   --fingerprint SHA256:<verified-fingerprint> --approver <operator>
 ```
 
 保存以下只读身份事实：

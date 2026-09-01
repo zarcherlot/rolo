@@ -151,3 +151,31 @@ def test_product_cli_profile_init_and_show_do_not_connect(tmp_path: Path) -> Non
     approved_payload = json.loads(approved.output)
     assert approved_payload["status"] == "HOST_KEY_APPROVED"
     assert approved_payload["profile"]["host_key"]["status"] == "APPROVED"
+
+
+def test_ssh_profile_persists_pinned_known_hosts_and_rejects_local_option(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("robot.example ssh-ed25519 AAAA\n", encoding="utf-8")
+    runner = CliRunner()
+    env = {"ROLO_CONFIG_DIR": str(tmp_path / "config")}
+    created = runner.invoke(
+        app,
+        [
+            "target", "profile", "init",
+            "ssh://robot@robot.example/opt/rolo",
+            "--robot", "ssh-robot", "--known-hosts", str(known_hosts),
+        ],
+        env=env,
+    )
+    assert created.exit_code == 0, created.output
+    payload = json.loads(created.output)
+    assert payload["profile"]["known_hosts"] == str(known_hosts.resolve())
+
+    rejected = runner.invoke(
+        app,
+        ["target", "profile", "init", str(tmp_path), "--robot", "local-robot",
+         "--known-hosts", str(known_hosts)],
+        env=env,
+    )
+    assert rejected.exit_code != 0
+    assert "only valid for SSH" in rejected.output

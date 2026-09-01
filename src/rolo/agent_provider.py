@@ -70,7 +70,7 @@ def create_stage_agent_executor(name: str, **kwargs: Any) -> Any:
         return FakeStageAgentExecutor(
             artifacts=kwargs["artifacts"], settings=kwargs["settings"], stage=kwargs["stage"]
         )
-    if key == "local-target" and {"artifacts", "settings", "stage"} <= set(kwargs):
+    if key in {"local-target", "ssh-target"} and {"artifacts", "settings", "stage"} <= set(kwargs):
         from rolo.stages.real_target import LocalTargetStageExecutor
 
         return LocalTargetStageExecutor(

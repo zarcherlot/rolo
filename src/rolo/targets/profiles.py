@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rolo.core.persistence import atomic_write_text, interprocess_lock
 from rolo.target_ref import SshTargetRef, TargetRef
@@ -68,9 +68,19 @@ class TargetProfile(BaseModel):
     robot_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}$")
     target: TargetRef
     credential: CredentialReference
+    # Controller-side pinned host-key file used by read-only Diagnose/Verify.
+    # Keeping this in the profile makes the SSH transport reproducible while
+    # the credential itself remains an opaque reference.
+    known_hosts: Path | None = None
     host_key: HostKeyDecision | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_transport_fields(self) -> TargetProfile:
+        if not isinstance(self.target, SshTargetRef) and self.known_hosts is not None:
+            raise ValueError("known_hosts is only valid for SSH target profiles")
+        return self
 
     @field_validator("profile_id", "robot_id")
     @classmethod
@@ -143,6 +153,7 @@ class TargetProfileStore:
         robot_id: str,
         target: TargetRef,
         credential: CredentialReference,
+        known_hosts: Path | None = None,
         now: datetime | None = None,
     ) -> TargetProfile:
         timestamp = now or _utc_now()
@@ -154,6 +165,7 @@ class TargetProfileStore:
             robot_id=robot_id,
             target=target,
             credential=credential,
+            known_hosts=(known_hosts.expanduser().resolve() if known_hosts else None),
             host_key=host_key,
             created_at=timestamp,
             updated_at=timestamp,

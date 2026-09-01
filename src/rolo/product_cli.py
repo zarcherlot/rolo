@@ -648,6 +648,10 @@ def profile_init(
             help="Typed reference only, for example ssh-agent:default; never a secret",
         ),
     ] = "ssh-agent:default",
+    known_hosts: Annotated[
+        Path | None,
+        typer.Option("--known-hosts", help="Pinned SSH known_hosts file for remote stages"),
+    ] = None,
 ) -> None:
     """Create or validate a target profile without connecting or mutating a host."""
     try:
@@ -657,7 +661,14 @@ def profile_init(
             reference=credential_ref,
         )
         store = TargetProfileStore(get_settings().rolo_config_dir)
-        profile = store.create(robot_id=robot_id, target=target_ref, credential=credential)
+        if known_hosts is not None and not isinstance(target_ref, SshTargetRef):
+            raise ValueError("--known-hosts is only valid for SSH target profiles")
+        profile = store.create(
+            robot_id=robot_id,
+            target=target_ref,
+            credential=credential,
+            known_hosts=known_hosts,
+        )
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     emit(

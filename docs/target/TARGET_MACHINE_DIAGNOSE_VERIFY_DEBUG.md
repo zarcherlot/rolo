@@ -41,6 +41,20 @@ machine-id hash、OS user/uid、ROS domain 和 RMW。任一身份漂移都会在
 失败关闭。外部 Agent 如需网络预检，可显式设置 `CODING_AGENT_PREFLIGHT_URL`；Rolo 只做
 有界 TCP 连通性检测，不记录代理凭据。
 
+SSH profile 使用控制器侧 pinned `known_hosts`，并在 Stage 执行前要求人工批准 profile
+中的 host key；SSH 连接和远端身份采集只在授权通过后发生：
+
+```bash
+uv run rolo target profile init \
+  "ssh://<user>@<host>:<port>/<absolute-workspace>" \
+  --robot <robot-id> --known-hosts /path/to/pinned/known_hosts
+uv run rolo target profile approve-host-key --robot <robot-id> \
+  --fingerprint SHA256:<independently-verified-fingerprint> --approver <operator>
+```
+
+`known_hosts` 路径和 credential 仍不会写入 Agent prompt；缺失文件、未批准 host key、
+profile 摘要漂移或 SSH 身份采集失败均 fail-closed，不会退回控制器本地探针。
+
 ## 2. 采集目标机基线
 
 ```bash
