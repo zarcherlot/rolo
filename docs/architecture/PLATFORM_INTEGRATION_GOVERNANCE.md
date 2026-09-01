@@ -1,3 +1,5 @@
+<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-01 -->
+
 # Platform Integration Governance
 
 本文件定义平台集成（LeRobot、Nav2、LanderPi 等）的边界。目标是让核心
