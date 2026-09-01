@@ -30,7 +30,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -63,9 +63,80 @@ MAX_HELP_EXECUTABLES = 20
 MAX_HELP_EXECUTABLE_BYTES = 250_000_000
 MAX_HELP_DISCOVERY_CANDIDATES = 64
 MAX_SSH_STDERR_BYTES = 1_000_000
+# Remote source evidence is a bounded, signed static snapshot.  It is not a
+# workspace mirror: only small text files relevant to discovery are admitted.
+MAX_SOURCE_SNAPSHOT_FILES = 256
+MAX_SOURCE_FILE_BYTES = 256_000
+MAX_SOURCE_TOTAL_BYTES = 2_000_000
+MAX_SOURCE_OMITTED_PATHS = 256
+MAX_SOURCE_PATH_LENGTH = 4096
+_SOURCE_SKIP_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".tox",
+    ".venv",
+    "build",
+    "install",
+    "log",
+    "logs",
+    "output",
+    "dist",
+    "node_modules",
+    "__pycache__",
+    "vendor",
+    "third_party",
+    "third-party",
+}
+_SOURCE_DENY_TOKENS = {
+    "auth",
+    "credential",
+    "credentials",
+    "key",
+    "keys",
+    "password",
+    "passwords",
+    "secret",
+    "secrets",
+    "token",
+    "tokens",
+}
+_SOURCE_ALLOWED_NAMES = {
+    "CMakeLists.txt",
+    "package.xml",
+    "pyproject.toml",
+    "setup.cfg",
+    "setup.py",
+    "requirements.txt",
+}
+_SOURCE_ALLOWED_SUFFIXES = {
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".json",
+    ".launch.py",
+    ".launch.xml",
+    ".launch.yaml",
+    ".md",
+    ".rst",
+    ".txt",
+    ".urdf",
+    ".xacro",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".py",
+}
+_SOURCE_SENSITIVE_CONTENT_PATTERN = re.compile(
+    r"(?i)(?:api[_-]?key|password|secret|token|credential)\s*[:=]"
+)
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _SSH_TARGET_PATTERN = re.compile(r"^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$")
 _REMOTE_PATH_PATTERN = re.compile(r"^[/A-Za-z0-9_.-]+$")
+_WINDOWS_SOURCE_ROOT_PATTERN = re.compile(
+    r"^[A-Za-z]:[\\/][A-Za-z0-9_. -]+(?:[\\/][A-Za-z0-9_. -]+)*$"
+)
 _SSH_PUBLIC_KEY_TYPE_PATTERN = re.compile(
     r"^(?:ssh-(?:ed25519|rsa)|ecdsa-sha2-nistp(?:256|384|521)|"
     r"sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$"
@@ -137,6 +208,113 @@ class CollectorHelpExecutable(BaseModel):
     sha256: str = Field(pattern=_SHA256_PATTERN)
 
 
+def _source_tree_sha256(files: Sequence[Mapping[str, Any]]) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            [
+                {"path": item["path"], "size": item["size"], "sha256": item["sha256"]}
+                for item in files
+            ]
+        )
+    ).hexdigest()
+
+
+def _validate_source_relative_path(value: str) -> str:
+    if (
+        not value
+        or len(value) > MAX_SOURCE_PATH_LENGTH
+        or "\\" in value
+        or "\x00" in value
+        or value.startswith("/")
+        or ":" in value
+    ):
+        raise ValueError("source snapshot path must be a relative POSIX path")
+    path = PurePosixPath(value)
+    if not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("source snapshot path contains an unsafe component")
+    normalized = path.as_posix()
+    if normalized != value:
+        raise ValueError("source snapshot paths must be canonical")
+    return normalized
+
+
+def _safe_source_root(value: str) -> bool:
+    """Accept target POSIX roots and controller-local Windows roots."""
+    return bool(
+        _REMOTE_PATH_PATTERN.fullmatch(value)
+        or _WINDOWS_SOURCE_ROOT_PATTERN.fullmatch(value)
+    )
+
+
+class SourceSnapshotFile(BaseModel):
+    """One bounded, text-only file reconstructed on the controller."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=MAX_SOURCE_PATH_LENGTH)
+    size: int = Field(ge=0, le=MAX_SOURCE_FILE_BYTES)
+    sha256: str = Field(pattern=_SHA256_PATTERN)
+    content_base64: str = Field(max_length=MAX_SOURCE_FILE_BYTES * 2)
+
+    @model_validator(mode="after")
+    def validate_content(self) -> SourceSnapshotFile:
+        _validate_source_relative_path(self.path)
+        try:
+            content = base64.b64decode(self.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("source snapshot file content is not valid base64") from exc
+        if len(content) != self.size:
+            raise ValueError("source snapshot file size does not match content")
+        if hashlib.sha256(content).hexdigest() != self.sha256:
+            raise ValueError("source snapshot file hash does not match content")
+        return self
+
+
+class SourceSnapshot(BaseModel):
+    """Signed source evidence, never an authority for target runtime behavior."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["robot-source-evidence/v1"] = "robot-source-evidence/v1"
+    source_root: str = Field(min_length=1, max_length=MAX_SOURCE_PATH_LENGTH)
+    status: Literal["READY", "PARTIAL", "UNAVAILABLE"]
+    files: list[SourceSnapshotFile] = Field(
+        default_factory=list,
+        max_length=MAX_SOURCE_SNAPSHOT_FILES,
+    )
+    total_bytes: int = Field(ge=0, le=MAX_SOURCE_TOTAL_BYTES)
+    tree_sha256: str = Field(pattern=_SHA256_PATTERN)
+    omitted_paths: list[str] = Field(default_factory=list, max_length=MAX_SOURCE_OMITTED_PATHS)
+    error: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> SourceSnapshot:
+        if not _safe_source_root(self.source_root):
+            raise ValueError("source snapshot root must be an absolute target path")
+        paths = [item.path for item in self.files]
+        if paths != sorted(set(paths)):
+            raise ValueError("source snapshot files must be unique and sorted")
+        if sum(item.size for item in self.files) != self.total_bytes:
+            raise ValueError("source snapshot total_bytes does not match files")
+        if _source_tree_sha256([item.model_dump(mode="json") for item in self.files]) != (
+            self.tree_sha256
+        ):
+            raise ValueError("source snapshot tree hash does not match files")
+        if self.omitted_paths != sorted(set(self.omitted_paths)):
+            raise ValueError("source snapshot omitted paths must be unique and sorted")
+        for path in self.omitted_paths:
+            _validate_source_relative_path(path)
+        if self.status == "UNAVAILABLE" and self.files:
+            raise ValueError("unavailable source snapshot cannot contain files")
+        if self.status == "UNAVAILABLE" and not self.error:
+            raise ValueError("unavailable source snapshot must include an error")
+        if self.status == "READY" and self.omitted_paths:
+            raise ValueError("ready source snapshot cannot contain omitted paths")
+        if self.status == "PARTIAL" and not self.omitted_paths:
+            raise ValueError("partial source snapshot must include omitted paths")
+        return self
+
+
 class CollectorDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -148,6 +326,7 @@ class CollectorDescriptor(BaseModel):
     robot_id: str = Field(min_length=1, max_length=128)
     collector_id: str = Field(min_length=1, max_length=128)
     target_host_fingerprint: str = Field(pattern=_SHA256_PATTERN)
+    source_root: str | None = Field(default=None, max_length=MAX_SOURCE_PATH_LENGTH)
     help_executables: list[CollectorHelpExecutable] = Field(
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
@@ -164,6 +343,8 @@ class CollectorDescriptor(BaseModel):
         setup_paths = [item.path for item in self.ros_setup_files]
         if len(setup_paths) != len(setup_paths):
             raise ValueError("collector ROS setup file pins must be unique")
+        if self.source_root is not None and not _safe_source_root(self.source_root):
+            raise ValueError("collector source_root must be an absolute target path")
         return self
 
 
@@ -269,7 +450,9 @@ class TargetEvidenceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[
-        "robot-target-evidence-request/v1", "robot-target-evidence-request/v2"
+        "robot-target-evidence-request/v1",
+        "robot-target-evidence-request/v2",
+        "robot-target-evidence-request/v3",
     ] = "robot-target-evidence-request/v2"
     robot_id: str = Field(min_length=1, max_length=128)
     mode: Literal["READ_ONLY"] = "READ_ONLY"
@@ -281,11 +464,20 @@ class TargetEvidenceRequest(BaseModel):
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
     )
+    include_source_snapshot: bool = False
     issued_at: datetime
     expires_at: datetime
 
     @model_validator(mode="after")
     def validate_window_and_layers(self) -> TargetEvidenceRequest:
+        if self.include_source_snapshot and self.schema_version != (
+            "robot-target-evidence-request/v3"
+        ):
+            raise ValueError("source snapshot requests require request schema v3")
+        if not self.include_source_snapshot and self.schema_version == (
+            "robot-target-evidence-request/v3"
+        ):
+            raise ValueError("request schema v3 must request a source snapshot")
         if len(set(self.requested_layers)) != len(self.requested_layers):
             raise ValueError("requested_layers must be unique")
         if self.requested_executable_help_ids != sorted(set(self.requested_executable_help_ids)):
@@ -320,7 +512,9 @@ class TargetEvidenceBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[
-        "robot-target-evidence-bundle/v1", "robot-target-evidence-bundle/v2"
+        "robot-target-evidence-bundle/v1",
+        "robot-target-evidence-bundle/v2",
+        "robot-target-evidence-bundle/v3",
     ] = "robot-target-evidence-bundle/v2"
     robot_id: str
     collector_id: str
@@ -334,11 +528,20 @@ class TargetEvidenceBundle(BaseModel):
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
     )
+    source_snapshot: SourceSnapshot | None = None
     payload_sha256: str = Field(pattern=_SHA256_PATTERN)
     signature_hmac_sha256: str = Field(pattern=_SHA256_PATTERN)
 
     @model_validator(mode="after")
     def require_canonical_executable_help(self) -> TargetEvidenceBundle:
+        if self.source_snapshot is not None and self.schema_version != (
+            "robot-target-evidence-bundle/v3"
+        ):
+            raise ValueError("source snapshots require bundle schema v3")
+        if self.schema_version == "robot-target-evidence-bundle/v3" and (
+            self.source_snapshot is None
+        ):
+            raise ValueError("bundle schema v3 requires a source snapshot")
         identities = [item.executable_id for item in self.executable_help]
         if identities != sorted(set(identities)):
             raise ValueError("bundle executable help IDs must be unique and sorted")
@@ -408,6 +611,7 @@ def initialize_collector(
     secret_path: Path,
     help_executables: Sequence[Path] = (),
     ros_setup_files: Sequence[RosSetupFileRecord] = (),
+    source_root: Path | None = None,
 ) -> CollectorDescriptor:
     fingerprint = target_host_fingerprint()
     state_path = state_path.expanduser().resolve()
@@ -415,11 +619,18 @@ def initialize_collector(
         raise ValueError(f"collector state already exists: {state_path}")
     allowlist = _build_help_allowlist(help_executables)
     verify_pinned_setup_files(ros_setup_files)
+    resolved_source_root: str | None = None
+    if source_root is not None:
+        root = source_root.expanduser().resolve()
+        if not root.is_dir():
+            raise ValueError(f"collector source root is not a directory: {root}")
+        resolved_source_root = str(root)
     _write_private_secret(secret_path, secrets.token_bytes(32))
     descriptor = CollectorDescriptor(
         robot_id=robot_id,
         collector_id=f"collector-{uuid4().hex}",
         target_host_fingerprint=fingerprint,
+        source_root=resolved_source_root,
         help_executables=allowlist,
         ros_setup_files=list(ros_setup_files),
     )
@@ -554,6 +765,7 @@ def stage_collector_rotation(
     new_secret_path: Path,
     help_executables: Sequence[Path] = (),
     ros_setup_files: Sequence[RosSetupFileRecord] = (),
+    source_root: Path | None = None,
 ) -> CollectorDescriptor:
     """Stage parallel collector credentials while preserving the active collector."""
     previous = load_collector_state(previous_state_path)
@@ -565,6 +777,7 @@ def stage_collector_rotation(
         secret_path=new_secret_path,
         help_executables=help_executables,
         ros_setup_files=ros_setup_files,
+        source_root=source_root,
     )
     if descriptor.target_host_fingerprint != previous.target_host_fingerprint:
         raise ValueError("staged collector rotation changed target host identity")
@@ -1065,12 +1278,19 @@ def new_request(
     *,
     now: datetime | None = None,
     executable_help_ids: Sequence[str] = (),
+    include_source_snapshot: bool = False,
 ) -> TargetEvidenceRequest:
     issued_at = now or _utc_now()
     return TargetEvidenceRequest(
         robot_id=robot_id,
+        schema_version=(
+            "robot-target-evidence-request/v3"
+            if include_source_snapshot
+            else "robot-target-evidence-request/v2"
+        ),
         nonce=secrets.token_hex(16),
         requested_executable_help_ids=sorted(set(executable_help_ids)),
+        include_source_snapshot=include_source_snapshot,
         issued_at=issued_at,
         expires_at=issued_at + MAX_REQUEST_LIFETIME,
     )
@@ -1085,6 +1305,159 @@ def _validate_request(
         raise ValueError("evidence request was issued in the future")
     if request.expires_at < now:
         raise ValueError("evidence request expired")
+
+
+def _source_file_allowed(relative_path: str) -> bool:
+    name = PurePosixPath(relative_path).name
+    if name in {".env", ".env.local", ".env.production", ".env.development"}:
+        return False
+    tokens = {token for token in re.split(r"[^a-z0-9]+", name.casefold()) if token}
+    if tokens & _SOURCE_DENY_TOKENS:
+        return False
+    return name in _SOURCE_ALLOWED_NAMES or any(
+        name.casefold().endswith(suffix) for suffix in _SOURCE_ALLOWED_SUFFIXES
+    )
+
+
+def _unavailable_source_snapshot(root: str, error: str) -> SourceSnapshot:
+    return SourceSnapshot(
+        source_root=root,
+        status="UNAVAILABLE",
+        total_bytes=0,
+        tree_sha256=_source_tree_sha256([]),
+        error=error[:1000],
+    )
+
+
+def build_source_snapshot(source_root: Path) -> SourceSnapshot:
+    """Collect a deterministic, text-only source snapshot under strict bounds."""
+    root = source_root.expanduser().resolve()
+    root_text = str(root)
+    if not _safe_source_root(root_text):
+        return _unavailable_source_snapshot(
+            root_text, "source root path is not a safe absolute path"
+        )
+    if not root.is_dir():
+        return _unavailable_source_snapshot(root_text, "source root is not a directory")
+
+    candidates: list[tuple[str, Path, int]] = []
+    records: list[dict[str, Any]] = []
+    omitted: list[str] = []
+    total_bytes = 0
+
+    def omit(relative_path: str) -> None:
+        if len(omitted) < MAX_SOURCE_OMITTED_PATHS:
+            omitted.append(relative_path)
+
+    for current, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(
+            name
+            for name in directories
+            if name.casefold() not in _SOURCE_SKIP_DIRS
+            and not (Path(current) / name).is_symlink()
+        )
+        for name in sorted(filenames, key=str.casefold):
+            path = Path(current) / name
+            if path.is_symlink():
+                continue
+            try:
+                relative = path.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if not _source_file_allowed(relative):
+                continue
+            try:
+                _validate_source_relative_path(relative)
+            except ValueError:
+                omit(relative)
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                omit(relative)
+                continue
+            candidates.append((relative, path, size))
+
+    def priority(item: tuple[str, Path, int]) -> tuple[int, str]:
+        relative = item[0]
+        parts = {part.casefold() for part in relative.split("/")}
+        name = PurePosixPath(relative).name.casefold()
+        # URDF/xacro and simulation package metadata are the most useful
+        # inputs for remote Discovery, so retain them before broad source
+        # coverage when the strict file cap is reached.
+        if "urdf" in parts or "simulations" in parts or name.endswith((".urdf", ".xacro")):
+            rank = 0
+        elif name in {name.casefold() for name in _SOURCE_ALLOWED_NAMES}:
+            rank = 1
+        elif name.endswith((".launch.py", ".launch.xml", ".launch.yaml")):
+            rank = 2
+        else:
+            rank = 3
+        return rank, relative.casefold()
+
+    for relative, path, size in sorted(candidates, key=priority):
+        if size > MAX_SOURCE_FILE_BYTES or total_bytes + size > MAX_SOURCE_TOTAL_BYTES:
+            omit(relative)
+            continue
+        if len(records) >= MAX_SOURCE_SNAPSHOT_FILES:
+            omit(relative)
+            continue
+        try:
+            content = path.read_bytes()
+        except OSError:
+            omit(relative)
+            continue
+        if (
+            len(content) != size
+            or b"\x00" in content[:4096]
+            or _SOURCE_SENSITIVE_CONTENT_PATTERN.search(content.decode("utf-8", errors="ignore"))
+        ):
+            omit(relative)
+            continue
+        digest = hashlib.sha256(content).hexdigest()
+        records.append(
+            {
+                "path": relative,
+                "size": len(content),
+                "sha256": digest,
+                "content_base64": base64.b64encode(content).decode("ascii"),
+            }
+        )
+        total_bytes += len(content)
+
+    records.sort(key=lambda item: item["path"])
+    return SourceSnapshot(
+        source_root=root_text,
+        status="PARTIAL" if omitted else "READY",
+        files=records,
+        total_bytes=total_bytes,
+        tree_sha256=_source_tree_sha256(records),
+        omitted_paths=sorted(set(omitted)),
+    )
+
+
+def materialize_source_snapshot(snapshot: SourceSnapshot, destination: Path) -> Path:
+    """Rebuild source evidence into a fresh controller-local temporary directory."""
+    if snapshot.status == "UNAVAILABLE":
+        raise ValueError(snapshot.error or "remote source snapshot is unavailable")
+    root = destination.expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    for item in snapshot.files:
+        relative = PurePosixPath(_validate_source_relative_path(item.path))
+        target = (root.joinpath(*relative.parts)).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("source snapshot materialization escaped its root") from exc
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() or target.is_symlink():
+            raise ValueError(f"source snapshot destination already exists: {item.path}")
+        try:
+            content = base64.b64decode(item.content_base64, validate=True)
+            target.write_bytes(content)
+        except (OSError, binascii.Error, ValueError) as exc:
+            raise ValueError(f"could not materialize source snapshot file: {item.path}") from exc
+    return root
 
 
 def collect_target_evidence(
@@ -1115,6 +1488,15 @@ def collect_target_evidence(
             layer: persist_route_evidence(collectors[layer]()) for layer in request.requested_layers
         }
         help_evidence = _collect_executable_help(request, state)
+    source_snapshot = None
+    if request.include_source_snapshot:
+        if state.source_root is None:
+            source_snapshot = _unavailable_source_snapshot(
+                "/",
+                "collector source_root is not configured; re-enroll the target collector",
+            )
+        else:
+            source_snapshot = build_source_snapshot(Path(state.source_root))
     if ros_probe := probes.get("ros"):
         ros_probe.data["environment_bootstrap"] = ros_environment.model_dump(
             mode="json",
@@ -1122,7 +1504,11 @@ def collect_target_evidence(
         )
         ros_probe.warnings.extend(ros_environment.warnings)
     base = {
-        "schema_version": "robot-target-evidence-bundle/v2",
+        "schema_version": (
+            "robot-target-evidence-bundle/v3"
+            if request.include_source_snapshot
+            else "robot-target-evidence-bundle/v2"
+        ),
         "robot_id": state.robot_id,
         "collector_id": state.collector_id,
         "target_host_fingerprint": state.target_host_fingerprint,
@@ -1133,6 +1519,8 @@ def collect_target_evidence(
         "probes": {key: value.model_dump(mode="json") for key, value in probes.items()},
         "executable_help": [item.model_dump(mode="json") for item in help_evidence],
     }
+    if source_snapshot is not None:
+        base["source_snapshot"] = source_snapshot.model_dump(mode="json")
     payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
     signature = hmac.new(
         _load_secret(Path(state.secret_path)), payload_sha256.encode("ascii"), hashlib.sha256
@@ -1272,6 +1660,8 @@ def verify_evidence_bundle(
             raise ValueError("evidence bundle predates the issued request")
         if bundle.collected_at > request.expires_at + MAX_CLOCK_SKEW:
             raise ValueError("evidence bundle was collected after request expiry")
+        if request.include_source_snapshot and bundle.source_snapshot is None:
+            raise ValueError("evidence bundle omitted the requested source snapshot")
     if bundle.collected_at > observed_at + MAX_CLOCK_SKEW:
         raise ValueError("evidence bundle timestamp is in the future")
     if observed_at - bundle.collected_at > MAX_REQUEST_LIFETIME + MAX_CLOCK_SKEW:
@@ -1285,7 +1675,20 @@ def verify_evidence_bundle(
             raise ValueError("evidence bundle executable help is outside the pinned allowlist")
         if hashlib.sha256(item.output_text.encode("utf-8")).hexdigest() != (item.output_sha256):
             raise ValueError("evidence bundle executable help output hash mismatch")
+    if bundle.source_snapshot is not None:
+        if descriptor.source_root is None:
+            raise ValueError(
+                "evidence bundle contains source snapshot without a pinned source root"
+            )
+        if bundle.source_snapshot.source_root != descriptor.source_root:
+            raise ValueError("evidence bundle source root differs from the pinned collector root")
     base = bundle.model_dump(mode="json", exclude={"payload_sha256", "signature_hmac_sha256"})
+    if bundle.schema_version in {
+        "robot-target-evidence-bundle/v1",
+        "robot-target-evidence-bundle/v2",
+    } and bundle.source_snapshot is None:
+        # Preserve the v1/v2 canonical payload for existing deployments.
+        base.pop("source_snapshot", None)
     actual_payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
     if not hmac.compare_digest(actual_payload_sha256, bundle.payload_sha256):
         raise ValueError("evidence bundle payload hash mismatch")

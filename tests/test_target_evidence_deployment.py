@@ -35,6 +35,7 @@ from rolo.stages.adapt.target_evidence import (
     initialize_collector,
     load_collector_state,
     load_deployment,
+    materialize_source_snapshot,
     new_request,
     reenroll_deployment,
     refresh_local_deployment,
@@ -162,6 +163,70 @@ def test_local_bundle_is_target_bound_signed_and_read_only(
     assert probes["hw"].data["target_evidence"]["target_host_fingerprint"] == "a" * 64
     assert probes["hw"].data["target_evidence"]["deployment_mode"] == "local"
     assert probes["hw"].data["target_evidence"]["bundle_payload_sha256"] == (bundle.payload_sha256)
+
+
+def test_source_snapshot_is_bounded_signed_and_materializable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, state_path, secret_path = _collector(tmp_path, monkeypatch)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "CMakeLists.txt").write_text("project(demo)\n", encoding="utf-8")
+    (source / "driver.py").write_text("print('ok')\n", encoding="utf-8")
+    (source / "secrets.txt").write_text("do not include\n", encoding="utf-8")
+    (source / "ignored.bin").write_bytes(b"\x00\x01")
+    descriptor = initialize_collector(
+        robot_id="wheeltec",
+        state_path=tmp_path / "source-collector.json",
+        secret_path=tmp_path / "source-collector.key",
+        source_root=source,
+    )
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.LOCAL,
+        descriptor=descriptor,
+        verification_secret_path=tmp_path / "source-collector.key",
+        output_path=tmp_path / "source-deployment.json",
+        local_collector_state_path=tmp_path / "source-collector.json",
+    )
+    _stub_probes(monkeypatch)
+    request = new_request("wheeltec", include_source_snapshot=True)
+    bundle = collect_target_evidence(
+        request,
+        load_collector_state(tmp_path / "source-collector.json"),
+    )
+    verify_evidence_bundle(bundle, deployment=deployment, request=request)
+
+    assert bundle.schema_version == "robot-target-evidence-bundle/v3"
+    assert bundle.source_snapshot is not None
+    assert bundle.source_snapshot.status == "READY"
+    assert [item.path for item in bundle.source_snapshot.files] == [
+        "CMakeLists.txt",
+        "driver.py",
+    ]
+    restored = materialize_source_snapshot(bundle.source_snapshot, tmp_path / "restored")
+    assert (restored / "driver.py").read_text(encoding="utf-8") == "print('ok')\n"
+
+
+def test_source_snapshot_rejects_unsigned_or_missing_source_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    descriptor, state_path, secret_path = _collector(tmp_path, monkeypatch)
+    _stub_probes(monkeypatch)
+    deployment = configure_deployment(
+        robot_id="wheeltec",
+        mode=EvidenceDeploymentMode.LOCAL,
+        descriptor=descriptor,
+        verification_secret_path=secret_path,
+        output_path=tmp_path / "deployment.json",
+        local_collector_state_path=state_path,
+    )
+    request = new_request("wheeltec", include_source_snapshot=True)
+    bundle = collect_target_evidence(request, load_collector_state(state_path))
+    assert bundle.source_snapshot is not None
+    tampered = bundle.model_copy(update={"source_snapshot": None})
+    with pytest.raises(ValueError, match="omitted the requested source snapshot"):
+        verify_evidence_bundle(tampered, deployment=deployment, request=request)
 
 
 def test_collector_uses_bounded_enriched_ros_snapshot(

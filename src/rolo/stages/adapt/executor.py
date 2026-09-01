@@ -89,6 +89,49 @@ def _decode_process_output(value: str | bytes | None) -> str:
     return value
 
 
+def _recover_handoff_files_from_events(
+    stdout: str, outputs: dict[str, object] | None
+) -> list[dict[str, object]]:
+    """Recover handoff-pack files when Codex omits them from its final JSON.
+
+    The event stream may contain the authoritative response emitted by
+    ``adapt handoff pack`` even when the final structured message only repeats
+    the output paths. Recovery is narrow: the embedded JSON must carry the exact
+    same outputs map as the final message and a non-empty files list. The normal
+    schema and digest checks still run after this transport repair.
+    """
+    if not outputs:
+        return []
+    recovered: list[dict[str, object]] = []
+    decoder = json.JSONDecoder()
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        item = event.get("item") if isinstance(event, dict) else None
+        text = item.get("aggregated_output") if isinstance(item, dict) else None
+        if not isinstance(text, str) or '"files"' not in text:
+            continue
+        offset = 0
+        while offset < len(text):
+            start = text.find("{", offset)
+            if start < 0:
+                break
+            try:
+                candidate, end = decoder.raw_decode(text, start)
+            except ValueError:
+                offset = start + 1
+                continue
+            offset = end
+            if not isinstance(candidate, dict) or candidate.get("outputs") != outputs:
+                continue
+            files = candidate.get("files")
+            if isinstance(files, list) and files:
+                recovered = [file for file in files if isinstance(file, dict)]
+    return recovered
+
+
 def _direct_execution_parity(result: AgentNativeToolResult):
     """Re-run one deterministic baseline outside the broker for parity evidence."""
     resolved = shutil.which(result.argv[0])
@@ -514,7 +557,14 @@ class CodexAdaptExecutor:
                     max_result_bytes=self.native_tool_max_result_bytes,
                 ),
                 created_at=started_at,
-                expires_at=started_at + timedelta(seconds=max(60, timeout_s)),
+                expires_at=started_at
+                + timedelta(
+                    seconds=(
+                        timeout_s
+                        if timeout_s is not None
+                        else max(60.0, self.native_tool_max_elapsed_s)
+                    )
+                ),
             )
             native_session = NativeToolSession(
                 descriptor=native_session_descriptor,
@@ -570,9 +620,19 @@ class CodexAdaptExecutor:
                 error = "Codex did not write the required structured final message"
             else:
                 try:
-                    result = AdapterAgentResult.model_validate_json(
-                        final_message_path.read_text(encoding="utf-8")
-                    )
+                    final_payload = json.loads(final_message_path.read_text(encoding="utf-8"))
+                    if (
+                        isinstance(final_payload, dict)
+                        and final_payload.get("schema_version") == "robot-adapter-agent-result/v2"
+                        and final_payload.get("handoff_ready") is True
+                        and not final_payload.get("files")
+                    ):
+                        recovered_files = _recover_handoff_files_from_events(
+                            stdout, final_payload.get("outputs")
+                        )
+                        if recovered_files:
+                            final_payload["files"] = recovered_files
+                    result = AdapterAgentResult.model_validate(final_payload)
                 except ValueError as exc:
                     error = f"Codex final message failed schema validation: {exc}"
                 else:

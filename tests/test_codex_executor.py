@@ -15,11 +15,54 @@ from rolo.core.models import ProbeResult
 from rolo.core.registry import RobotRegistry
 from rolo.stages.adapt.active_discovery import ActiveDiscoveryInputs, ActiveProbeMode
 from rolo.stages.adapt.discovery import DiscoveryService
-from rolo.stages.adapt.executor import CodexAdaptExecutor, build_codex_command
+from rolo.stages.adapt.executor import (
+    CodexAdaptExecutor,
+    _recover_handoff_files_from_events,
+    build_codex_command,
+)
 from rolo.stages.adapt.models import AdapterAgentConfig, AdapterAgentResult, AdaptPlan
 from rolo.stages.adapt.operation_registry import canonical_operation_registry
 from rolo.stages.adapt.service import AdaptStageService
 from rolo.stages.adapt.workset import TargetOperationSlice
+
+
+def test_recovers_handoff_pack_files_from_codex_events() -> None:
+    outputs = {
+        "adapter_manifest": "manifest.json",
+        "adapter_package": "adapter.py",
+        "state_graph": "state_graph.json",
+        "conformance_report": "conformance.json",
+    }
+    payload = base64.b64encode(b"manifest").decode("ascii")
+    event = {
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "aggregated_output": "warning\\n"
+            + json.dumps(
+                {
+                    "outputs": outputs,
+                    "files": [
+                        {
+                            "path": "manifest.json",
+                            "encoding": "base64",
+                            "content": payload,
+                            "sha256": hashlib.sha256(b"manifest").hexdigest(),
+                        }
+                    ],
+                }
+            ),
+        },
+    }
+
+    assert _recover_handoff_files_from_events(json.dumps(event), outputs) == [
+        {
+            "path": "manifest.json",
+            "encoding": "base64",
+            "content": payload,
+            "sha256": hashlib.sha256(b"manifest").hexdigest(),
+        }
+    ]
 
 
 def test_adapter_agent_output_schema_is_strict_for_every_object() -> None:

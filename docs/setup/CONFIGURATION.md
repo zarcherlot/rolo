@@ -120,8 +120,15 @@ their resolved paths and SHA-256 digests. Collection verifies the pins, sources 
 `bash --noprofile --norc`, admits only the bounded ROS/RMW and runtime path environment, and writes
 the bootstrap record into the signed ROS probe. A changed or missing setup file fails closed.
 
-Remote mode performs the same process inside the target collector. The controller never substitutes
-its own ROS environment for failed target collection.
+Remote mode runs the controller-side Discovery, Wiki, Adapter Agent, Gate, and release flow on the
+development/controller host. The target host runs only the pinned, read-only collector over SSH;
+it does not need Codex, OpenAI credentials, an Agent workspace, or Tool Gateway access. The
+controller never substitutes its own ROS environment for failed target collection. When no local
+`--project-root` is supplied, the collector additionally returns a bounded, text-only source
+snapshot under its enrolled target root. The controller verifies its HMAC/tree digest, materializes
+it in a temporary directory for Discovery, and deletes it on return; this avoids maintaining a
+second full ROS2 workspace on the controller. Snapshot files are never treated as target runtime
+authority and secret-like names are excluded.
 
 ## Device-local Workbench plugin
 

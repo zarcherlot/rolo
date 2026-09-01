@@ -3,7 +3,8 @@
 # Target Evidence Deployment
 
 Rolo supports two explicit evidence deployment modes. Both produce the same signed,
-target-bound `robot-target-evidence-bundle/v2`, and both permit only the deterministic
+target-bound evidence bundle (`v2` for normal probe requests, `v3` when a bounded source
+snapshot is requested), and both permit only the deterministic
 `hw`, `linux`, and `ros` read-only probes. Selecting a mode changes where those probes run; it
 does not change verification or Operation eligibility.
 
@@ -66,9 +67,9 @@ collection.
 
 ## Mode B: controller plus target-side collector
 
-Clone the same commit and run `uv sync --frozen` on both systems. The target needs only
-`target-evidence`; it needs no Codex, OpenAI credentials, Agent workspace, or Tool Gateway access.
-The controller runs Discovery and the complete `rolo-adapt-discovery`,
+Install the locked Rolo collector runtime on the target and run `uv sync --frozen` there; the
+target needs only `target-evidence` and does not need a controller-side ROS2 workspace, Codex,
+OpenAI credentials, Agent workspace, or Tool Gateway access. The controller runs Discovery and the complete `rolo-adapt-discovery`,
 `rolo-operation-mapping`, and `rolo-wiki-authoring` chain.
 
 For a non-ROS application, omit ROS setup paths. When `--project-root` is supplied,
@@ -119,12 +120,13 @@ startup files. The generator validates the public key and permits no shell metac
 Collector path. It deliberately does not create users, edit `sshd_config`, or copy secrets.
 
 On the controller, the initial independent provisioning values can be supplied to the same product
-journey. Subsequent runs may omit them and reuse the pinned deployment:
+journey. Subsequent runs may omit them and reuse the pinned deployment. A local `--project-root`
+is optional: when omitted, the controller requests the target's bounded signed source snapshot,
+materializes it only for the current Discovery, and deletes it on return:
 
 ```bash
 uv run robotctl adapt start \
   --robot-id wheeltec \
-  --project-root /path/to/controller/source-copy \
   --evidence-mode remote \
   --collector-descriptor ./wheeltec-collector.json \
   --verification-secret /etc/rolo/secrets/wheeltec-collector.key \
@@ -136,6 +138,20 @@ uv run robotctl adapt start \
   --collector-config /etc/rolo/target-evidence-collector.json \
   --discover-only
 ```
+
+The no-copy form is:
+
+```bash
+uv run rolo adapt ssh://rolo-evidence@wheeltec-host/path/to/robot-workspace \
+  --robot-id wheeltec \
+  --urdf /path/to/robot-workspace/src/simulations/robot/urdf/generated.urdf \
+  --discover-only
+```
+
+`collector-init --project-root` pins the target source root in the collector descriptor. A source
+request admits only bounded text files (with secret-like filename exclusions), signs each file and
+the deterministic tree digest, and reports omitted files as `PARTIAL`. The snapshot is evidence,
+not an execution authority; it never causes the target to run Codex or any source file.
 
 `--collector-executable` pins the target-side CLI used by the fixed SSH command. Use the absolute
 path from the target checkout's locked virtual environment when `robotctl` is not installed in the

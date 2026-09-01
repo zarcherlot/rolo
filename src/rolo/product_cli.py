@@ -735,7 +735,12 @@ def profile_approve_host_key(
 def adapt(
     target: Annotated[
         str,
-        typer.Argument(help="Local workspace path or ssh:// target workspace URI"),
+        typer.Argument(
+            help=(
+                "Local workspace path or ssh:// target workspace URI; with ssh://, run this "
+                "controller command on the development host"
+            )
+        ),
     ],
     robot_id: Annotated[
         str,
@@ -749,7 +754,10 @@ def adapt(
         Path | None,
         typer.Option(
             "--project-root",
-            help="Local source/workspace root used with an ssh:// target",
+            help=(
+                "Optional local source root; when omitted with ssh://, use the target's "
+                "signed bounded source snapshot"
+            ),
         ),
     ] = None,
     active_probe: Annotated[
@@ -776,7 +784,11 @@ def adapt(
     ] = None,
     timeout: Annotated[
         int | None,
-        typer.Option("--timeout", min=1, help="Maximum Adapter Agent time in seconds"),
+        typer.Option(
+            "--timeout",
+            min=1,
+            help="Optional Adapter Agent time limit in seconds; omitted means no hard deadline",
+        ),
     ] = None,
     allow_executable: Annotated[
         list[Path] | None,
@@ -790,7 +802,7 @@ def adapt(
         typer.Option("--evidence-timeout", min=1.0, max=300.0),
     ] = 45.0,
 ) -> None:
-    """Run the shortest safe Adapt journey for TARGET."""
+    """Run Adapt on the controller; an ssh:// target supplies read-only remote evidence."""
     if run_agent and not confirm:
         if sys.stdin.isatty():
             confirm = typer.confirm(
@@ -819,10 +831,6 @@ def adapt(
             adapt_project_root = target_ref.workspace
             evidence_mode = EvidenceDeploymentMode.LOCAL
         else:
-            if project_root is None:
-                raise ValueError(
-                    "SSH Adapt requires --project-root for the local source workspace"
-                )
             deployment_path = (
                 get_settings().rolo_config_dir / "target-evidence" / f"{robot_id}.json"
             )
@@ -842,7 +850,9 @@ def adapt(
             expected_port = target_ref.port or 22
             if deployment.ssh_port != expected_port:
                 raise ValueError("SSH target port does not match the approved evidence deployment")
-            adapt_project_root = project_root.expanduser().resolve()
+            adapt_project_root = (
+                project_root.expanduser().resolve() if project_root is not None else None
+            )
             evidence_mode = EvidenceDeploymentMode.REMOTE
         result = run_adapt_start(
             robot_id=robot_id,
