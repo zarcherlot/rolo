@@ -659,13 +659,13 @@ def test_agent_inspection_tool_is_workspace_local_and_standard_library_only(
         "--robot",
         "demo_diff",
         "--adapter-manifest",
-        "manifest.json",
+        ".\\manifest.json",
         "--adapter-package",
-        "adapter.py",
+        ".\\adapter.py",
         "--state-graph",
-        "graph.json",
+        ".\\graph.json",
         "--conformance-report",
-        "conformance.json",
+        ".\\conformance.json",
     ]
     packed = subprocess.run(
         pack_command,
@@ -953,6 +953,35 @@ def test_custom_provider_is_configured_through_codex_without_key_in_argv(
     assert 'model_providers.rolo_configured.env_key="CODEX_API_KEY"' in joined
     assert "shell_environment_policy.ignore_default_excludes=false" in command
     assert "CODING_AGENT_API_KEY" not in joined
+
+
+def test_codex_command_can_scope_windows_sandbox_override_to_child(
+    tmp_path: Path,
+) -> None:
+    command = build_codex_command(
+        executable="codex",
+        workspace=tmp_path,
+        schema_path=tmp_path / "schema.json",
+        final_message_path=tmp_path / "result.json",
+        config=AdapterAgentConfig(),
+        api_key_configured=False,
+        windows_sandbox="unelevated",
+    )
+
+    assert command[command.index("-c", command.index("-c") + 1) + 1] == (
+        'windows.sandbox="unelevated"'
+    )
+
+    with pytest.raises(ValueError, match="windows_sandbox must be elevated or unelevated"):
+        build_codex_command(
+            executable="codex",
+            workspace=tmp_path,
+            schema_path=tmp_path / "schema.json",
+            final_message_path=tmp_path / "result.json",
+            config=AdapterAgentConfig(),
+            api_key_configured=False,
+            windows_sandbox="danger-full-access",
+        )
 
 
 def test_non_default_provider_requires_base_url(tmp_path: Path) -> None:

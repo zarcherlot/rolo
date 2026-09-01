@@ -187,11 +187,15 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
     bundle_files = manifest.get("files")
     if not isinstance(bundle_files, list):
         raise ValueError("bundle manifest must contain a v2 files list")
-    paths = [value for value in output_options.values() if value is not None]
+    # Normalize output paths before combining them with manifest-declared files.
+    # Agents commonly pass ``.\\adapter.py`` while the manifest uses
+    # ``adapter.py``; deduplicating the raw strings would otherwise emit two
+    # entries for the same file after workspace resolution.
+    paths = [Path(value).as_posix() for value in output_options.values() if value is not None]
     for item in bundle_files:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str):
             raise ValueError("bundle manifest contains an invalid file entry")
-        paths.append(item["path"])
+        paths.append(Path(item["path"]).as_posix())
     package_relative = output_options["adapter_package"] or ""
     if manifest.get("package_file") != Path(package_relative).as_posix():
         raise ValueError("bundle package_file does not match --adapter-package")

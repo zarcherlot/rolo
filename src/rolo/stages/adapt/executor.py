@@ -247,6 +247,7 @@ def build_codex_command(
     final_message_path: Path,
     config: AdapterAgentConfig,
     api_key_configured: bool,
+    windows_sandbox: str | None = None,
 ) -> list[str]:
     """Build an argv-only Codex command; credentials are never command arguments."""
     command = [
@@ -266,6 +267,14 @@ def build_codex_command(
         "-c",
         "shell_environment_policy.ignore_default_excludes=false",
     ]
+    if windows_sandbox is not None:
+        mode = windows_sandbox.strip().lower()
+        if mode not in {"elevated", "unelevated"}:
+            raise ValueError("windows_sandbox must be elevated or unelevated")
+        # Keep this override scoped to the child Codex invocation.  In
+        # particular, a proxy-backed Adapt child must not contend with the
+        # desktop Codex process over the global elevated firewall state.
+        command.extend(["-c", f"windows.sandbox={_toml_string(mode)}"])
     if config.model:
         command.extend(["--model", config.model])
 
@@ -520,6 +529,22 @@ class CodexAdaptExecutor:
             final_message_path=final_message_path,
             config=plan.adapter_agent,
             api_key_configured=bool(self.api_key),
+            windows_sandbox=(
+                "unelevated"
+                if os.name == "nt"
+                and any(
+                    os.environ.get(name)
+                    for name in (
+                        "HTTP_PROXY",
+                        "HTTPS_PROXY",
+                        "ALL_PROXY",
+                        "http_proxy",
+                        "https_proxy",
+                        "all_proxy",
+                    )
+                )
+                else None
+            ),
         )
         native_catalog = reduced_agent_native_catalog()
         native_rollout = decide_native_tool_rollout(
@@ -625,8 +650,13 @@ class CodexAdaptExecutor:
                         isinstance(final_payload, dict)
                         and final_payload.get("schema_version") == "robot-adapter-agent-result/v2"
                         and final_payload.get("handoff_ready") is True
-                        and not final_payload.get("files")
                     ):
+                        # The final Agent message is subject to the model's response
+                        # budget, so a large base64 payload can be truncated even when
+                        # the preceding handoff-pack command emitted a complete JSON
+                        # response in the event stream. Prefer that exact pack payload
+                        # whenever it is available. The independent conformance gate
+                        # still performs all schema, base64, digest, and bundle checks.
                         recovered_files = _recover_handoff_files_from_events(
                             stdout, final_payload.get("outputs")
                         )
