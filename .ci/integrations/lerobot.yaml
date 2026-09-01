@@ -1,0 +1,19 @@
+schema_version: rolo-integration/v1
+name: lerobot
+repository: https://github.com/huggingface/lerobot.git
+commit: 7427f31801f944f5ec9ce53cda02862ce7d1638b
+python: "3.12"
+entrypoints:
+  info: lerobot-info
+  find_cameras: lerobot-find-cameras
+dependencies:
+  torch:
+    package: torch==2.7.1
+    index_url: https://download.pytorch.org/whl/cpu
+  runtime:
+    - numpy>=2.0.0,<2.3.0
+    - opencv-python-headless>=4.9.0,<4.14.0
+    - Pillow>=10.0.0,<13.0.0
+    - draccus>=0.11.6,<0.12.0
+    - huggingface-hub>=1.6.0,<2.0.0
+    - packaging>=24.2,<26.0
