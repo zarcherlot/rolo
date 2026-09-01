@@ -55,6 +55,7 @@ evidence、严格多路由 selector、bounded CLI `--help` probe、目标 CLI sa
 | FEAT-ROLO-MCP | EXPERIMENTAL | E1 | MCP/Agent 控制面访问 | `src/rolo/mcp_server.py` | `tests/test_mcp_server.py` | 不得绕过 HTTP/Stage/Tool Gate |
 | FEAT-TARGET-BOOTSTRAP | EXPERIMENTAL | E1 | 目标机 bootstrap plan/request/approve/execute | `src/rolo/targets/bootstrap.py`; `src/rolo/product_cli.py`; `src/rolo/api.py` | `tests/test_bootstrap_cli.py`; `tests/test_bootstrap_api.py`; `tests/test_bootstrap_execution.py` | 依赖目标环境、授权和部署策略 |
 | FEAT-DEVICE-HARDENING-EVIDENCE | PARTIAL | E2 | 脱敏 device-hardening bundle、可重复 harness manifest、release ledger | `src/rolo/device_hardening_evidence.py`; `scripts/rolo-live-harness.py`; `src/rolo/product_cli.py` | `tests/test_device_hardening_evidence.py`; `tests/test_artifact_analysis.py` | 默认所有真实设备场景为 PENDING_EXTERNAL；真实 staging、人工 review 和 E4 证据尚未提供 |
+| FEAT-ARTIFACT-REGISTRATION | EXPERIMENTAL | E1 | 认证、幂等、target-bound 的 sanitized artifact-analysis registration | `src/rolo/artifact_ingestion.py`; `src/rolo/api.py` | `tests/test_artifact_ingestion.py`; `tests/test_artifact_analysis.py`; `tests/test_api.py` | 仅支持 analysis_summary；Job、gate、handoff 和 raw artifact bundle 仍由 producer/CLI 写入，未提供统一导入；不授予 release 或 physical-outcome authority |
 
 ## 3. 可信度边界
 

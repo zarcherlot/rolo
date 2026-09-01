@@ -67,6 +67,7 @@ def test_health_and_robot_registry() -> None:
         "workbench.target-readiness/v1",
         "workbench.approval-gate-read-model/v1",
         "workbench.artifact-analysis-read-model/v1",
+        "workbench.artifact-registration/v1",
     ]
     assert robots.status_code == 200
     assert {robot["robot_id"] for robot in robots.json()} == {"demo_diff", "demo_ackermann"}
