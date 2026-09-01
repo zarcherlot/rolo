@@ -39,6 +39,27 @@ def test_materialized_catalog_verifies_dispatchable_read_builtins() -> None:
     )
 
 
+def test_remote_catalog_only_verifies_target_evidence_projections() -> None:
+    base = _report()
+    probes = {
+        layer: probe.model_copy(
+            update={
+                "data": {
+                    "target_evidence": {"deployment_mode": "remote"},
+                }
+            }
+        )
+        for layer, probe in base.probes.items()
+    }
+    catalog = materialize_active_catalog(base.model_copy(update={"probes": probes}))
+    by_operation = {item.operation: item for item in catalog.tools}
+
+    assert by_operation["runtime.version"].availability == "VERIFIED"
+    assert by_operation["ros.topic.list"].availability == "VERIFIED"
+    assert by_operation["linux.host.inventory"].availability == "VERIFIED"
+    assert by_operation["linux.service.list"].availability == "AVAILABLE"
+
+
 def test_builtin_runtime_version_is_schema_ready() -> None:
     result = invoke_builtin(
         "runtime.version",

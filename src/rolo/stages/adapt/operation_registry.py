@@ -685,7 +685,10 @@ def materialize_active_catalog(
     """Trusted composition of product definitions, host evidence, and a gated bundle."""
     # Import lazily: the builtin dispatcher imports discovery probes, while
     # discovery itself uses this registry to score semantic candidates.
-    from rolo.builtin_runtime import supported_builtin_operations
+    from rolo.builtin_runtime import (
+        supported_builtin_operations,
+        target_verified_builtin_operations,
+    )
 
     registry = canonical_operation_registry()
     candidates = {item.operation: item for item in report.operation_candidates}
@@ -693,6 +696,16 @@ def materialize_active_catalog(
         {item.operation: item for item in bundle.operations} if bundle else {}
     )
     _, deferred = adapter_operation_eligibility(report)
+    remote_target_evidence = any(
+        isinstance(probe.data.get("target_evidence"), dict)
+        and probe.data["target_evidence"].get("deployment_mode") == "remote"
+        for probe in report.probes.values()
+    )
+    verified_builtins = (
+        target_verified_builtin_operations()
+        if remote_target_evidence
+        else supported_builtin_operations()
+    )
     tools: list[ToolDescriptor] = []
     for definition in registry.operations:
         candidate = candidates.get(definition.operation)
@@ -710,7 +723,7 @@ def materialize_active_catalog(
             # or mutating builtins.
             availability = (
                 "VERIFIED"
-                if definition.operation in supported_builtin_operations()
+                if definition.operation in verified_builtins
                 and definition.access == "read"
                 and definition.risk in {"R0", "R1"}
                 else "AVAILABLE"
