@@ -164,6 +164,8 @@ def _host_call(name: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 def _host_handler(name: str, *arg_names: str, **fixed: Any) -> BuiltinHandler:
+    operation_name = name
+
     def handler(
         payload: dict[str, Any],
         _robot_id: str,
@@ -172,14 +174,14 @@ def _host_handler(name: str, *arg_names: str, **fixed: Any) -> BuiltinHandler:
         _catalog: Any,
     ) -> dict[str, Any]:
         args = []
-        for name in arg_names:
-            value = payload[name]
-            if name in {"path", "binary"}:
+        for argument_name in arg_names:
+            value = payload[argument_name]
+            if argument_name in {"path", "binary"}:
                 value = Path(str(value))
-            elif name == "pid":
+            elif argument_name == "pid":
                 value = int(value)
             args.append(value)
-        return _host_call(name, *args, **fixed)
+        return _host_call(operation_name, *args, **fixed)
 
     return handler
 
