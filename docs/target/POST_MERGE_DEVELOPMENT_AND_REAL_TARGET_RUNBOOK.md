@@ -10,7 +10,7 @@
 
 ## 1. 当前结论与范围
 
-当前 `origin/main@ca079ca` 已具备：Registry v2、Agent-native 只读 shadow/canary
+当前 `origin/main@406cecb` 已具备：Registry v2、Agent-native 只读 shadow/canary
 通道、Stage Runner、真实 `DiagnosisEpisode`/`VerificationEvidencePackage v2` contract、
 profile 绑定的 `local-target` Linux/ROS provider、handoff materializer、插件 manifest，
 以及 Registry-aware route mapping、bounded CLI help probe、目标 CLI sandbox 可见性校验和显式多路由 selector。
