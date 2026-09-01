@@ -321,11 +321,31 @@ def _load_verified_release(
         ):
             raise ValueError(f"adapter catalog binding mismatch: {entry.operation}")
     bundled_operations = {entry.operation for entry in bundle.operations}
+    builtin_verified = [
+        descriptor
+        for descriptor in catalog.tools
+        if descriptor.availability == "VERIFIED"
+        and descriptor.operation not in bundled_operations
+        and descriptor.adapter.startswith("builtin.")
+    ]
+    if builtin_verified:
+        from rolo.builtin_runtime import supported_builtin_operations
+
+        unsupported = sorted(
+            descriptor.operation
+            for descriptor in builtin_verified
+            if descriptor.operation not in supported_builtin_operations()
+            or descriptor.access != "read"
+            or descriptor.risk not in {"R0", "R1"}
+        )
+        if unsupported:
+            raise ValueError(f"Tool Catalog contains unsupported verified builtins: {unsupported}")
     unexpected_verified = sorted(
         descriptor.operation
         for descriptor in catalog.tools
         if descriptor.availability == "VERIFIED"
         and descriptor.operation not in bundled_operations
+        and not descriptor.adapter.startswith("builtin.")
     )
     if unexpected_verified:
         raise ValueError(
@@ -450,17 +470,22 @@ def invoke_adapter(
         raise ValueError(f"operation is not in the active Tool Catalog: {operation}")
     if descriptor.availability != "VERIFIED":
         raise ValueError(f"operation is not verified for adapter invocation: {operation}")
+    # Builtins are product-owned dispatchers and intentionally do not carry a
+    # generated adapter bundle entry.  Generated target operations retain the
+    # strict bundle/entrypoint binding below.
+    builtin = descriptor.adapter.startswith("builtin.")
     entry = next((item for item in bundle.operations if item.operation == operation), None)
-    if entry is None:
-        raise ValueError(f"operation has no adapter bundle entrypoint: {operation}")
-    expected_adapter = f"bundle:{bundle.bundle_id}#{entry.entrypoint}"
-    if descriptor.adapter != expected_adapter:
-        raise ValueError(f"Tool Catalog adapter binding mismatch: {operation}")
-    if (
-        descriptor.contract_version != entry.contract_version
-        or descriptor.contract_sha256 != entry.contract_sha256
-    ):
-        raise ValueError(f"adapter contract binding mismatch: {operation}")
+    if not builtin:
+        if entry is None:
+            raise ValueError(f"operation has no adapter bundle entrypoint: {operation}")
+        expected_adapter = f"bundle:{bundle.bundle_id}#{entry.entrypoint}"
+        if descriptor.adapter != expected_adapter:
+            raise ValueError(f"Tool Catalog adapter binding mismatch: {operation}")
+        if (
+            descriptor.contract_version != entry.contract_version
+            or descriptor.contract_sha256 != entry.contract_sha256
+        ):
+            raise ValueError(f"adapter contract binding mismatch: {operation}")
     _validate_object_schema(payload, descriptor.input_schema, "adapter input")
     validate_config_mutation_input(
         descriptor,
@@ -512,6 +537,33 @@ def invoke_adapter(
     )
     started = time.monotonic()
     try:
+        if builtin:
+            from rolo.builtin_runtime import invoke_builtin
+
+            result = invoke_builtin(
+                operation,
+                payload,
+                robot_id=robot_id,
+                artifact_root=artifact_root,
+                release_root=release_root,
+                release=release,
+                catalog=catalog,
+            )
+            _validate_object_schema(result, descriptor.output_schema, "builtin output")
+            validate_content_result(descriptor, payload=payload, result=result)
+            validate_config_mutation_result(descriptor, result=result)
+            write_adapter_execution_audit(
+                effective_audit_path,
+                invocation_id=invocation_id,
+                robot_id=robot_id,
+                operation=operation,
+                release_id=release.release_id,
+                payload=payload,
+                outcome="SUCCEEDED",
+                result=result,
+                duration_s=time.monotonic() - started,
+            )
+            return result
         runtime_environment = release.runtime_environment.as_environment()
         if route_document is not None:
             runtime_environment["ROLO_TARGET_ROUTE_BINDINGS_JSON"] = json.dumps(

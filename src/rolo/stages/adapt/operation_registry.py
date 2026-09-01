@@ -683,6 +683,10 @@ def materialize_active_catalog(
     bundle: AdapterBundleManifest | None = None,
 ) -> ToolCatalog:
     """Trusted composition of product definitions, host evidence, and a gated bundle."""
+    # Import lazily: the builtin dispatcher imports discovery probes, while
+    # discovery itself uses this registry to score semantic candidates.
+    from rolo.builtin_runtime import supported_builtin_operations
+
     registry = canonical_operation_registry()
     candidates = {item.operation: item for item in report.operation_candidates}
     bundle_entries = (
@@ -699,7 +703,18 @@ def materialize_active_catalog(
             availability = "UNAVAILABLE"
             adapter = "unbound"
         elif definition.operation in _BUILTIN_CLI:
-            availability = "AVAILABLE"
+            # Product-owned read-only operations have a deterministic runtime
+            # implementation.  They do not require an Agent-generated bundle;
+            # marking only dispatcher-backed operations VERIFIED makes them
+            # visible to downstream Tool Sessions without admitting unknown
+            # or mutating builtins.
+            availability = (
+                "VERIFIED"
+                if definition.operation in supported_builtin_operations()
+                and definition.access == "read"
+                and definition.risk in {"R0", "R1"}
+                else "AVAILABLE"
+            )
             adapter = (
                 "builtin.host_introspection"
                 if definition.operation.startswith(("linux.", "middleware.", "ros.node."))
