@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import rolo.builtin_runtime as builtin_runtime
 from rolo.builtin_runtime import invoke_builtin, supported_builtin_operations
 from rolo.core.models import DiscoveryReport, DiscoveryStatus, ProbeResult
 from rolo.stages.adapt.operation_registry import _BUILTIN_CLI, materialize_active_catalog
@@ -50,3 +51,23 @@ def test_builtin_runtime_version_is_schema_ready() -> None:
     )
     assert result["status"] == "SUCCEEDED"
     assert result["operation_contract_schema"] == "robot-operation-contract/v1"
+
+
+def test_host_builtin_dispatch_preserves_operation_name(monkeypatch) -> None:
+    monkeypatch.setattr(
+        builtin_runtime.host_introspection,
+        "host_uptime",
+        lambda: {"status": "SUCCEEDED", "uptime_s": 42.0},
+    )
+
+    result = invoke_builtin(
+        "linux.host.uptime",
+        {},
+        robot_id="robot-test",
+        artifact_root=Path("."),
+        release_root=Path("."),
+        release=None,
+        catalog=None,
+    )
+
+    assert result == {"status": "SUCCEEDED", "uptime_s": 42.0}
