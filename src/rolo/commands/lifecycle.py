@@ -386,6 +386,7 @@ def adapt_stage_start(
             heuristic_agent_timeout=heuristic_agent_timeout,
             heuristic_agent_batch_operations=heuristic_agent_batch_operations,
             heuristic_agent_parallelism=heuristic_agent_parallelism,
+            on_output=_stream_agent_output,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

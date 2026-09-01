@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import zlib
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from rolo_agent_wiki import wiki_search_page, wiki_section_page
@@ -158,8 +158,25 @@ def _page(items: list[dict[str, Any]], *, cursor: int, limit: int) -> dict[str, 
     }
 
 
+def _normalize_relative_path(relative: str) -> str:
+    """Normalize agent-provided paths consistently on POSIX and Windows.
+
+    Agents may emit Windows-style separators even when the child process runs
+    on a Linux CI runner.  ``Path.as_posix()`` alone cannot normalize those
+    separators on POSIX, so translate them before applying the usual safety
+    checks.  Reject drive-qualified paths explicitly because POSIX ``Path``
+    does not treat ``C:/...`` as absolute.
+    """
+    normalized = relative.replace("\\", "/")
+    windows_path = PureWindowsPath(normalized)
+    if windows_path.drive or windows_path.root:
+        raise ValueError(f"handoff path is unsafe: {relative}")
+    return Path(normalized).as_posix()
+
+
 def _workspace_file(relative: str) -> Path:
-    candidate = Path(relative)
+    normalized = _normalize_relative_path(relative)
+    candidate = Path(normalized)
     if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
         raise ValueError(f"handoff path is unsafe: {relative}")
     root = Path(__file__).resolve().parent
@@ -187,13 +204,19 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
     bundle_files = manifest.get("files")
     if not isinstance(bundle_files, list):
         raise ValueError("bundle manifest must contain a v2 files list")
-    paths = [value for value in output_options.values() if value is not None]
+    # Normalize output paths before combining them with manifest-declared files.
+    # Agents commonly pass ``.\\adapter.py`` while the manifest uses
+    # ``adapter.py``; deduplicating the raw strings would otherwise emit two
+    # entries for the same file after workspace resolution.
+    paths = [
+        _normalize_relative_path(value) for value in output_options.values() if value is not None
+    ]
     for item in bundle_files:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str):
             raise ValueError("bundle manifest contains an invalid file entry")
-        paths.append(item["path"])
+        paths.append(_normalize_relative_path(item["path"]))
     package_relative = output_options["adapter_package"] or ""
-    if manifest.get("package_file") != Path(package_relative).as_posix():
+    if manifest.get("package_file") != _normalize_relative_path(package_relative):
         raise ValueError("bundle package_file does not match --adapter-package")
     operations = manifest.get("operations")
     if not isinstance(operations, list) or not operations:
@@ -222,7 +245,7 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
             raise ValueError("handoff pack exceeds the 8 MiB Agent response limit")
         files.append(
             {
-                "path": Path(relative).as_posix(),
+                "path": _normalize_relative_path(relative),
                 "encoding": "base64",
                 "content": base64.b64encode(payload).decode("ascii"),
                 "sha256": hashlib.sha256(payload).hexdigest(),
@@ -230,10 +253,10 @@ def _pack_handoff(rest: list[str]) -> dict[str, Any]:
         )
     actual_by_path = {item["path"]: item for item in files}
     for item in bundle_files:
-        actual = actual_by_path[Path(item["path"]).as_posix()]["sha256"]
+        actual = actual_by_path[_normalize_relative_path(item["path"])]["sha256"]
         if item.get("sha256") != actual:
             raise ValueError(f"bundle file digest mismatch: {item['path']}")
-    package_actual = actual_by_path[Path(package_relative).as_posix()]["sha256"]
+    package_actual = actual_by_path[_normalize_relative_path(package_relative)]["sha256"]
     if manifest.get("package_sha256") != package_actual:
         raise ValueError("bundle package_sha256 does not match the entrypoint payload")
     package_path = _workspace_file(package_relative)
