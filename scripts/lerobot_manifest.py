@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yaml
 
-
 MANIFEST = Path(__file__).resolve().parents[1] / ".ci" / "integrations" / "lerobot.yaml"
 
 

@@ -12,7 +12,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-
 DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "src" / "rolo"
 FORBIDDEN = (
     re.compile(r"\blerobot\b", re.IGNORECASE),
