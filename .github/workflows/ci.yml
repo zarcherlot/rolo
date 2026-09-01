@@ -195,28 +195,24 @@ jobs:
       - name: Prepare real editable LeRobot camera CLI with minimal runtime dependencies
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
-          LEROBOT_COMMIT: "7427f31801f944f5ec9ce53cda02862ce7d1638b"
         run: |
+          LEROBOT_COMMIT="$(uv run python scripts/lerobot_manifest.py get commit)"
+          LEROBOT_REPOSITORY="$(uv run python scripts/lerobot_manifest.py get repository)"
           git init .ci/lerobot
-          git -C .ci/lerobot remote add origin https://github.com/huggingface/lerobot.git
+          git -C .ci/lerobot remote add origin "$LEROBOT_REPOSITORY"
           git -C .ci/lerobot fetch --depth 1 origin "$LEROBOT_COMMIT"
           git -C .ci/lerobot checkout --detach FETCH_HEAD
           test "$(git -C .ci/lerobot rev-parse HEAD)" = "$LEROBOT_COMMIT"
           uv venv .ci/lerobot-venv --python 3.12
           uv pip install --python .ci/lerobot-venv/bin/python --no-deps -e .ci/lerobot
-          # The pinned LeRobot package imports torch unconditionally from
-          # lerobot.utils, even for lerobot-find-cameras --help. Use the CPU
-          # wheel index so this acceptance test does not pull a CUDA runtime.
+          # The integration manifest pins the CPU wheel because LeRobot imports
+          # torch even for the bounded --help probe.
+          TORCH_PACKAGE="$(uv run python scripts/lerobot_manifest.py torch | sed -n '1p')"
+          TORCH_INDEX="$(uv run python scripts/lerobot_manifest.py torch | sed -n '2p')"
           uv pip install --python .ci/lerobot-venv/bin/python \
-            --index-url https://download.pytorch.org/whl/cpu \
-            "torch==2.7.1"
-          uv pip install --python .ci/lerobot-venv/bin/python \
-            "numpy>=2.0.0,<2.3.0" \
-            "opencv-python-headless>=4.9.0,<4.14.0" \
-            "Pillow>=10.0.0,<13.0.0" \
-            "draccus>=0.11.6,<0.12.0" \
-            "huggingface-hub>=1.6.0,<2.0.0" \
-            "packaging>=24.2,<26.0"
+            --index-url "$TORCH_INDEX" "$TORCH_PACKAGE"
+          mapfile -t LEROBOT_RUNTIME_DEPS < <(uv run python scripts/lerobot_manifest.py runtime)
+          uv pip install --python .ci/lerobot-venv/bin/python "${LEROBOT_RUNTIME_DEPS[@]}"
       - name: Run real LeRobot discovery and production-sandbox acceptance
         env:
           ROLO_RUN_LEROBOT_E2E: "1"
