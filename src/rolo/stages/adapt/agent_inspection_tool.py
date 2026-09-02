@@ -559,7 +559,13 @@ def main() -> int:
         and "--limit" not in original_arguments
         and "--scope" not in original_arguments
     )
-    if response_bytes > MAX_QUERY_RESPONSE_BYTES and not legacy_full_list:
+    # Handoff packing has its own 8 MiB aggregate bound and must be able to
+    # return the bounded, base64-encoded artifact set.  Applying the generic
+    # 16 KiB query cap here makes valid bundles fail only after all validation
+    # has completed, forcing the agent to make otherwise unrelated artifacts
+    # artificially smaller.
+    handoff_pack = original_arguments[:2] == ["handoff", "pack"]
+    if response_bytes > MAX_QUERY_RESPONSE_BYTES and not legacy_full_list and not handoff_pack:
         print(
             json.dumps(
                 {"error": "query response exceeds 16 KiB; narrow the scope or use pagination"},

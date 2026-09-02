@@ -246,3 +246,18 @@ def test_pack_handoff_validates_manifest_and_describe(tool, tmp_path, monkeypatc
 
     with pytest.raises(ValueError, match="all four output"):
         tool._pack_handoff(["--adapter-manifest", "manifest.json"])
+
+
+def test_main_allows_bounded_handoff_response_above_query_limit(
+    tool, snapshot, tmp_path, monkeypatch, capsys
+):
+    snapshot_path = tmp_path / "agent_inspection_tool.py"
+    snapshot_path.with_name("rolo-agent-inspection.json").write_text(
+        json.dumps(snapshot), encoding="utf-8"
+    )
+    monkeypatch.setattr(tool, "__file__", str(snapshot_path))
+    monkeypatch.setattr(tool, "_query", lambda _snapshot, _arguments: {"blob": "x" * 17_000})
+    monkeypatch.setattr(tool.sys, "argv", ["tool", "handoff", "pack"])
+
+    assert tool.main() == 0
+    assert len(capsys.readouterr().out.encode("utf-8")) > tool.MAX_QUERY_RESPONSE_BYTES
