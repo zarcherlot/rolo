@@ -1133,7 +1133,16 @@ def collect_target_evidence(
         "probes": {key: value.model_dump(mode="json") for key, value in probes.items()},
         "executable_help": [item.model_dump(mode="json") for item in help_evidence],
     }
-    payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
+    # Hash the same Pydantic-normalized representation that the controller
+    # verifies after transport.  Hashing the pre-validation ``base`` dict can
+    # diverge for nested datetime/number values and would make a valid bundle
+    # unverifiable across Python/Pydantic versions.
+    normalized = TargetEvidenceBundle(
+        **base,
+        payload_sha256="0" * 64,
+        signature_hmac_sha256="0" * 64,
+    ).model_dump(mode="json", exclude={"payload_sha256", "signature_hmac_sha256"})
+    payload_sha256 = hashlib.sha256(_canonical_json(normalized)).hexdigest()
     signature = hmac.new(
         _load_secret(Path(state.secret_path)), payload_sha256.encode("ascii"), hashlib.sha256
     ).hexdigest()
