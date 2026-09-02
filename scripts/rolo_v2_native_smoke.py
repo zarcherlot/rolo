@@ -7,6 +7,7 @@ the full Rolo CLI dependency set just to validate the read-only tool path.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 
 
@@ -25,10 +26,15 @@ native_tools = _load(
     "rolo.agent_tools.native_tools", "/tmp/rolo/agent_tools/native_tools.py"
 )
 runner = native_tools.AgentNativeRunner(native_tools.reduced_agent_native_catalog())
+target_environment = {
+    key: os.environ[key]
+    for key in ("PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "AMENT_PREFIX_PATH")
+    if key in os.environ
+}
 
 for tool_id, arguments in (
     ("native.linux.host.inspect", {"mode": "inventory"}),
     ("native.ros.graph.inspect", {"mode": "nodes"}),
 ):
-    result = runner.run(tool_id, arguments)
+    result = runner.run(tool_id, arguments, environment=target_environment)
     print(result.model_dump_json())
