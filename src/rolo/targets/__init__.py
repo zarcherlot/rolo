@@ -37,6 +37,12 @@ from rolo.targets.profiles import (
     TargetProfile,
     TargetProfileStore,
 )
+from rolo.targets.credentials import (
+    CredentialBroker,
+    CredentialResolutionError,
+    PinnedCredentialBroker,
+    ResolvedCredential,
+)
 from rolo.targets.security import validate_bootstrap_file, validate_bootstrap_security
 from rolo.targets.signing import (
     CompanionManifest,
@@ -57,6 +63,8 @@ __all__ = [
     "CompanionManifest",
     "CompanionReleasePolicy",
     "CredentialReference",
+    "CredentialBroker",
+    "CredentialResolutionError",
     "HostKeyDecision",
     "LocalTargetExecutor",
     "LocalBootstrapTransport",
@@ -71,6 +79,8 @@ __all__ = [
     "TargetRisk",
     "TargetProfile",
     "TargetProfileStore",
+    "PinnedCredentialBroker",
+    "ResolvedCredential",
     "approve_bootstrap",
     "bootstrap_plan_digest",
     "create_target_executor",

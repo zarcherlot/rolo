@@ -130,6 +130,11 @@ SSH connector 的 v2 安全约束属于 Tool Surface 的一部分：连接必须
 `known_hosts`；enrollment 绑定 identity 后，必须使用该 identity 和
 `IdentitiesOnly=yes`，禁止密码回退或无界 agent 凭据选择。target inspection、
 episode capture 和 bootstrap planning 统一复用这条约束。
+
+Credential Broker 只解析 typed reference，不向 Agent 或普通 artifact 暴露
+密码、私钥正文或 keychain 内容。`ssh-agent:*` 在 Linux、macOS、Windows 上统一
+映射为 agent transport；`platform-keychain:*` / `secret-store:*` 由安装层解析
+为已 pin 的 identity 文件，Rolo 核验文件存在性和权限后才交给 connector。
 | 机器人 | 在目标环境执行受控 Probe/Tool；返回事实；执行最终授权调用；不决定是否可信或是否发布 |
 
 ## 5. v2 的范围收敛
