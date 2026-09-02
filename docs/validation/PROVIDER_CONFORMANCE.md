@@ -1,4 +1,4 @@
-<!-- status: archived; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/adapt/AGENT_NATIVE_TOOLS.md -->
+<!-- status: archived; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/probe/AGENT_NATIVE_TOOLS.md -->
 
 # Provider-neutral Conformance Kit
 

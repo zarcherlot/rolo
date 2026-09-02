@@ -13,7 +13,7 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 
 - [v2 architecture](architecture/ARCHITECTURE.md): user, Agent, Rolo, and robot responsibilities;
 - [engineering status](reference/ENGINEERING_STATUS.md): implementation maturity and evidence;
-- [Agent-native Tool standard](adapt/AGENT_NATIVE_TOOLS.md): the four small Tool Surface contracts;
+- [Agent-native Tool standard](probe/AGENT_NATIVE_TOOLS.md): the four small Tool Surface contracts;
 - [implementation map](reference/IMPLEMENTATION_MAP.md): code, schemas, artifacts, and tests;
 - [physical target enrollment record](validation/ROLO_V2_TARGET_ENROLLMENT_20260902.md): one real-target verification.
 

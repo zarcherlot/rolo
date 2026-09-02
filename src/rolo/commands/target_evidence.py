@@ -11,8 +11,8 @@ import typer
 
 from rolo.commands.common import emit
 from rolo.core.config import get_settings
-from rolo.stages.adapt.ros_environment import select_ros_setup_files
-from rolo.stages.adapt.target_evidence import (
+from rolo.stages.probe.ros_environment import select_ros_setup_files
+from rolo.stages.probe.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
     SSHTransportError,

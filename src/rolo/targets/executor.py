@@ -415,7 +415,7 @@ def create_profile_target_executor(
     identity ad hoc.
     """
 
-    from rolo.stages.adapt.target_evidence import load_deployment, verify_ssh_transport_pins
+    from rolo.stages.probe.target_evidence import load_deployment, verify_ssh_transport_pins
     from rolo.targets.credentials import PinnedCredentialBroker
     from rolo.targets.profiles import TargetProfileStore
 

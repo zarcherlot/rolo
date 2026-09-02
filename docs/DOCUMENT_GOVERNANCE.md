@@ -34,7 +34,7 @@ source_of_truth: optional/path
 
 - 当前文档导航：[README.md](README.md)
 - 工程状态台账：[reference/ENGINEERING_STATUS.md](reference/ENGINEERING_STATUS.md)
-- v2 Agent-native Tool 标准：[AGENT_NATIVE_TOOLS.md](adapt/AGENT_NATIVE_TOOLS.md)
+- v2 Agent-native Tool 标准：[AGENT_NATIVE_TOOLS.md](probe/AGENT_NATIVE_TOOLS.md)
 - v2 实现地图：[IMPLEMENTATION_MAP.md](reference/IMPLEMENTATION_MAP.md)
 - v2 工程状态：[ENGINEERING_STATUS.md](reference/ENGINEERING_STATUS.md)
 

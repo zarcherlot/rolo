@@ -70,20 +70,16 @@ ROLO 的默认产品承诺是：新开发者在具备明确列出的前置条件
 
 ## 五、阶段性硬要求
 
-### Adapt
+### Probe
 
-必须完成 Discovery → Adapter → 独立 Gate → Tool Catalog/State Graph → immutable release
-的可验证路径。Adapt 只证明契约、绑定和目标通路，不宣称物理行为正确或安全。
+必须完成 `TargetProfile → SSH Connector → TargetEvidenceBundle → NativeToolSession →
+ToolPlan → Conformance` 的可验证路径。Probe 只证明目标事实、工具边界和通路存在，
+不宣称物理行为正确或安全。
 
-### Diagnose
+### Trace / Certify
 
-必须最终形成 `baseline → observe → hypothesis → change → smoke/regression → commit/rollback`
-事务。诊断结论必须回指 Episode 证据，模型输出不能成为安全授权。
-
-### Verify
-
-必须有结构化用例、Oracle、超时/取消、回归结果和证据包。仅校验 handoff 文件存在不算
-完成 Verify。
+本轮只保留阶段契约和读取入口，不实现诊断、过程追踪、验收或回归业务。未来实现必须
+继续消费 Probe 的目标身份、Evidence、Session、allowlist 和 digest，不能绕过这些门禁。
 
 ### Episode
 

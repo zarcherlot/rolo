@@ -86,7 +86,7 @@ The authoritative implementation is concentrated in:
 
 - `src/rolo/targets/profiles.py`, `src/rolo/targets/credentials.py`,
   `src/rolo/targets/executor.py` — enrollment and connector assembly;
-- `src/rolo/stages/adapt/target_evidence.py` — signed target evidence;
+- `src/rolo/stages/probe/target_evidence.py` — signed target evidence;
 - `src/rolo/agent_tools/native_tools.py`, `src/rolo/agent_tools/session.py`,
   `src/rolo/agent_tools/planning.py` — Tool Surface, Session and ToolPlan;
 - `src/rolo/agent_tools/session_factory.py` — profile-bound session construction;

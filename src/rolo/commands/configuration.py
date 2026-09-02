@@ -33,12 +33,7 @@ def _effective(settings: Settings) -> dict[str, Any]:
                 str(settings.rolo_scratch_dir) if settings.rolo_scratch_dir is not None else None
             ),
         },
-        "agent": {
-            "provider": settings.coding_agent_provider,
-            "executable": settings.coding_agent_executable,
-            "timeout_s": settings.coding_agent_timeout_s,
-        },
-        "ros": {
+        "middleware": {
             "auto_source": settings.ros_auto_source,
             "setup_files": [str(path) for path in settings.ros_setup_files],
             "domain_id": settings.ros_domain_id,

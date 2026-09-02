@@ -16,9 +16,11 @@ from pydantic import BaseModel, Field
 
 from rolo.commands.common import emit
 from rolo.core.config import get_settings, prepare_runtime_directories
-from rolo.stages.adapt.active_discovery import ActiveProbeMode
-from rolo.stages.adapt.ros_environment import select_ros_setup_files
-from rolo.stages.adapt.target_evidence import (
+from rolo.stages.contracts import StageName
+from rolo.stages.pipeline import assess_pipeline, assess_stage
+from rolo.stages.probe.active_discovery import ActiveProbeMode
+from rolo.stages.probe.ros_environment import select_ros_setup_files
+from rolo.stages.probe.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
     TargetEvidenceBundle,
@@ -31,8 +33,6 @@ from rolo.stages.adapt.target_evidence import (
     new_request,
     verify_evidence_bundle,
 )
-from rolo.stages.contracts import StageName
-from rolo.stages.pipeline import assess_pipeline, assess_stage
 
 probe_stage_app = typer.Typer(help="Probe a robot target and publish its trusted Tool Surface.")
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")

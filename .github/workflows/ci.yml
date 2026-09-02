@@ -48,6 +48,7 @@ jobs:
           tests/test_tool_planning.py
           tests/test_tool_conformance.py
           tests/test_product_cli_v2.py
+          tests/test_probe_pipeline.py
 
   package:
     runs-on: ubuntu-latest

@@ -32,10 +32,13 @@ def test_profile_to_surface_and_plan_is_one_cli_chain(tmp_path: Path) -> None:
                 str(tmp_path),
                 "--robot",
                 "localbot",
+                "--provider-hint",
+                "os.provider=mvp",
             ],
             env=env,
         )
         assert initialized.exit_code == 0, initialized.output
+        assert json.loads(initialized.output)["profile"]["provider_hints"] == {"os.provider": "mvp"}
 
         surface = runner.invoke(
             app, ["target", "tool-surface", "--profile", "localbot"], env=env

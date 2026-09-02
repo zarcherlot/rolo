@@ -38,20 +38,20 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rolo.core.hashing import sha256_file
 from rolo.core.models import DiscoveryStatus, ProbeResult
-from rolo.stages.adapt.active_discovery import (
+from rolo.stages.probe.active_discovery import (
     HelpProbeResult,
     HelpProbeStatus,
     _extract_help_summary,
     run_bounded_help,
 )
-from rolo.stages.adapt.application_cli_mapping import ApplicationCliRouteProvider
-from rolo.stages.adapt.discovery import HardwareProbe, LinuxProbe, RosProbe
-from rolo.stages.adapt.ros_environment import (
+from rolo.stages.probe.application_cli_mapping import ApplicationCliRouteProvider
+from rolo.stages.probe.discovery import HardwareProbe, LinuxProbe, RosProbe
+from rolo.stages.probe.ros_environment import (
     RosSetupFileRecord,
     resolve_pinned_ros_environment,
     verify_pinned_setup_files,
 )
-from rolo.stages.adapt.routes import persist_route_evidence, probe_routes
+from rolo.stages.probe.routes import persist_route_evidence, probe_routes
 from rolo.targets.executor import quote_remote_argv
 
 MAX_BUNDLE_BYTES = 8_000_000
@@ -729,7 +729,7 @@ def refresh_local_deployment(
 ) -> tuple[EvidenceDeploymentConfig, EvidenceDeploymentTransition, Path, Path]:
     """Expand a local collector's pinned help allowlist through explicit rotation.
 
-    Existing deployments remain immutable during normal Adapt starts. This
+    Existing deployments remain immutable during normal Probe starts. This
     helper stages a new collector and secret, re-enrolls the deployment only
     after the expected collector pin matches, and preserves an immutable
     transition record.

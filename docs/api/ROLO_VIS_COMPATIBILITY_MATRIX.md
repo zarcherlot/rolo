@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: rolo maintainers; last_reviewed: 2026-08-31 -->
+<!-- status: archived; authority: reference; owner: rolo maintainers; last_reviewed: 2026-09-02; source_of_truth: ../reference/IMPLEMENTATION_MAP.md -->
 
 # rolo-vis Compatibility Matrix
 

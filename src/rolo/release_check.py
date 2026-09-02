@@ -18,7 +18,7 @@ from rolo.agent_tools import (
     ToolPlan,
     reduced_agent_native_catalog,
 )
-from rolo.stages.adapt.target_evidence import TargetEvidenceBundle
+from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
 
 class ReleaseCheckResult(BaseModel):
@@ -41,7 +41,7 @@ def run_release_check(
         "rolo.cli",
         "rolo.targets.executor",
         "rolo.agent_tools.session_factory",
-        "rolo.stages.adapt.target_evidence",
+        "rolo.stages.probe.target_evidence",
     ):
         try:
             importlib.import_module(module)

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from rolo.core.models import DiscoveryStatus, ProbeResult
-from rolo.stages.adapt.target_evidence import CollectorDescriptor, TargetEvidenceBundle
+from rolo.stages.probe.target_evidence import CollectorDescriptor, TargetEvidenceBundle
 
 
 def test_collector_descriptor_pins_target_workspace_context() -> None:

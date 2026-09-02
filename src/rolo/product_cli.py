@@ -18,8 +18,8 @@ from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_probe_start
 from rolo.core.config import get_settings
 from rolo.release_check import run_release_check
-from rolo.stages.adapt.active_discovery import ActiveProbeMode
-from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode
+from rolo.stages.probe.active_discovery import ActiveProbeMode
+from rolo.stages.probe.target_evidence import EvidenceDeploymentMode
 from rolo.target_ref import LocalTargetRef, parse_target_ref
 from rolo.targets.executor import create_profile_target_executor, create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetConnectionState
@@ -223,18 +223,32 @@ def profile_init(
         list[str] | None,
         typer.Option("--remote-command-prefix", help="Fixed target runtime prefix"),
     ] = None,
+    provider_hint: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--provider-hint",
+            help="Bounded provider hint as key=value; never put credentials here",
+        ),
+    ] = None,
 ) -> None:
     """Create a non-secret target profile without connecting or mutating a host."""
     try:
         target_ref = parse_target_ref(target)
         kind, _, _ = credential_ref.partition(":")
         credential = CredentialReference(kind=kind, reference=credential_ref)
+        provider_hints: dict[str, str] = {}
+        for item in provider_hint or []:
+            key, separator, value = item.partition("=")
+            if not separator or not key or not value:
+                raise ValueError("--provider-hint must use key=value")
+            provider_hints[key] = value
         store = TargetProfileStore(get_settings().rolo_config_dir)
         profile = store.create(
             robot_id=robot_id,
             target=target_ref,
             credential=credential,
             remote_command_prefix=remote_command_prefix,
+            provider_hints=provider_hints,
         )
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

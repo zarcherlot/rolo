@@ -14,8 +14,8 @@ from datetime import datetime
 from typing import Any
 
 from rolo.core.models import ProbeResult, RouteEvidence
-from rolo.stages.adapt.active_discovery import HelpProbeStatus
-from rolo.stages.adapt.routes import probe_routes
+from rolo.stages.probe.active_discovery import HelpProbeStatus
+from rolo.stages.probe.routes import probe_routes
 
 
 def canonical_executable_name(value: str) -> str:

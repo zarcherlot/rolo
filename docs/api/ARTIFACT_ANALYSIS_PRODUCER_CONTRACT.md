@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: rolo maintainers; last_reviewed: 2026-08-31 -->
+<!-- status: archived; authority: normative; owner: rolo maintainers; last_reviewed: 2026-09-02; source_of_truth: ../architecture/ROLO_V2_CORE_DESIGN_ZH.md -->
 
 # Artifact Analysis Producer Contract
 

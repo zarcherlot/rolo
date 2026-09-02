@@ -9,7 +9,7 @@
 发布和撤销；Agent 负责理解目标、选择工具、设计只读 Probe、解释结果和提出能力缺口；
 机器人只在目标环境执行受控请求。
 
-Adapt 是初始化阶段：
+Probe 是初始化阶段：
 
 ```text
 用户指定机器人
@@ -19,7 +19,7 @@ Adapt 是初始化阶段：
   -> Rolo 独立验证并固化 Tool
 ```
 
-Adapt 之后，Diagnose/Verify 由 Agent 主导，但只能消费已发布的 Tool Session。若用户已经
+Probe 之后，Trace/Certify 由 Agent 主导，但只能消费已发布的 Tool Session。若用户已经
 知道准确的 CLI、Provider 或 Tool，可通过 Agent 提交显式注册请求；Rolo 仍必须重新采集
 目标 Evidence 并完成 Conformance，不能因用户或 Agent 的声明直接注册。
 
@@ -95,7 +95,7 @@ Gate report
 
 ## 3. Agent 触发和调用协议
 
-Agent 不自行决定是否启动 Adapt。Rolo 在初始化后创建带 TTL、allowlist、调用次数和结果
+Agent 不自行决定是否启动 Probe。Rolo 在初始化后创建带 TTL、allowlist、调用次数和结果
 预算的 Tool Session，并发送 `ToolPlanningRequest`：
 
 ```text

@@ -15,5 +15,5 @@ The v2 standard has four platform-neutral semantic families:
 
 An Agent may use a target's native interfaces directly when it can do so safely. Rolo adds a
 Tool or Adapter only for a demonstrated gap, after bounded target evidence and independent
-Conformance. See [Agent-native Tools](../adapt/AGENT_NATIVE_TOOLS.md) and the
+Conformance. See [Agent-native Tools](../probe/AGENT_NATIVE_TOOLS.md) and the
 [implementation map](../reference/IMPLEMENTATION_MAP.md).

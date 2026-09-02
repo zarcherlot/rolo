@@ -665,7 +665,7 @@ def _family_tool(
 
 
 def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
-    """Return the curated family catalog used by v2 Adapt sessions.
+    """Return the curated family catalog used by v2 Probe sessions.
 
     The catalog deliberately exposes a small number of parameterized semantic families
     rather than one descriptor for every provider command.  Every mode remains a static

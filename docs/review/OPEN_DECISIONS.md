@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: product and platform maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: archived; authority: reference; owner: product and platform maintainers; last_reviewed: 2026-09-02; source_of_truth: ../reference/ENGINEERING_STATUS.md -->
 
 # 文档与产品开放评审队列
 

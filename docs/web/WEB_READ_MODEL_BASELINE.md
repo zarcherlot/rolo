@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: archived; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: ../architecture/ROLO_V2_CORE_DESIGN_ZH.md -->
 
 # Web read-model MVP baseline
 

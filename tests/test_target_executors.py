@@ -220,10 +220,10 @@ def test_profile_executor_auto_assembles_pinned_transport(
         ssh_identity_file=str(identity),
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.target_evidence.load_deployment", lambda _: deployment
+        "rolo.stages.probe.target_evidence.load_deployment", lambda _: deployment
     )
     monkeypatch.setattr(
-        "rolo.stages.adapt.target_evidence.verify_ssh_transport_pins", lambda _: None
+        "rolo.stages.probe.target_evidence.verify_ssh_transport_pins", lambda _: None
     )
     runner = FakeSshRunner()
 
