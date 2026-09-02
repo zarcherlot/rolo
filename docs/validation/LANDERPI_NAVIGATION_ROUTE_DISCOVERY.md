@@ -7,8 +7,9 @@
 
 ## 发现结果
 
-- `/home/ubuntu/ros2_ws/src/navigation/launch/navigation.launch.py` 存在，并使用
-  `map_01.yaml`、`nav2_params.yaml`，机器类型为 `LanderPi_Mecanum`。
+- `/home/ubuntu/ros2_ws/src/navigation/launch/navigation.launch.py` 存在，默认参数名为
+  `map_01`，并使用 `nav2_params.yaml`，机器类型为 `LanderPi_Mecanum`。这只是 launch
+  默认值，不是当前环境正在使用的地图证明。
 - 受控 bring-up 使用 `sim:=false`、`use_teb:=false` 后，Nav2 lifecycle 节点进入
   `active`：`amcl`、`map_server`、`controller_server`、`planner_server`、
   `bt_navigator`、`waypoint_follower`、`velocity_smoother` 等。
@@ -25,6 +26,15 @@
 藏在 workspace 源码和 `navigation.sh` 中，且还依赖 `.robotrc` 的环境变量。只扫描当前
 graph 会得到正确但不完整的 `NOT_FOUND`。本次补充了三层发现：文件系统入口、启动依赖、
 受控 bring-up 后的真实 action graph。
+
+## 地图身份纠正
+
+目标机同时存在多个地图候选：`install/slam/share/slam/maps/map_01.yaml`、
+`install/slam/share/slam/maps/map_02.yaml`，以及源码目录下的 `src/slam/maps/map_01.yaml`。
+其中 install 与 source 的 `map_01.yaml` 内容 hash 不同。baseline 运行态没有 `map_server`
+或 `/map` publisher，因此不能从静态文件或 launch 默认参数推断当前地图。后续定位启动
+必须先从实际 `map_server` 参数或启动命令取得 active map 路径，并将 YAML/PGM hash 写入
+TargetEvidence；若没有 active map 证据，D03 保持 `BLOCKED`，禁止加载任意候选地图。
 
 ## Probe 的自举边界
 
