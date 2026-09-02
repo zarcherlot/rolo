@@ -143,6 +143,7 @@ class SshTargetExecutor:
         target: SshTargetRef,
         *,
         known_hosts: Path | None,
+        identity_file: Path | None = None,
         timeout_s: float = 10.0,
         runner: CommandRunner | None = None,
     ) -> None:
@@ -150,6 +151,7 @@ class SshTargetExecutor:
             raise ValueError("SSH target timeout must be between 1 and 300 seconds")
         self.target = target
         self.known_hosts = known_hosts.expanduser().resolve() if known_hosts else None
+        self.identity_file = identity_file.expanduser().resolve() if identity_file else None
         self.timeout_s = timeout_s
         self.runner = runner or SubprocessCommandRunner()
 
@@ -183,6 +185,10 @@ class SshTargetExecutor:
             "-o",
             f"ConnectTimeout={max(1, min(int(self.timeout_s), 300))}",
         ]
+        if self.identity_file is not None:
+            if not self.identity_file.is_file():
+                raise ValueError("pinned SSH identity file is unavailable")
+            argv.extend(["-o", "IdentitiesOnly=yes", "-i", str(self.identity_file)])
         if self.target.port is not None:
             argv.extend(["-p", str(self.target.port)])
         return [*argv, "--", destination, *quote_remote_argv(remote_argv)]
@@ -343,16 +349,18 @@ def create_target_executor(
     target: TargetRef,
     *,
     known_hosts: Path | None = None,
+    identity_file: Path | None = None,
     timeout_s: float = 10.0,
     runner: CommandRunner | None = None,
 ) -> TargetExecutor:
     if isinstance(target, LocalTargetRef):
-        if known_hosts is not None:
-            raise ValueError("local target inspection does not accept --known-hosts")
+        if known_hosts is not None or identity_file is not None:
+            raise ValueError("local target inspection does not accept SSH transport options")
         return LocalTargetExecutor(target)
     return SshTargetExecutor(
         target,
         known_hosts=known_hosts,
+        identity_file=identity_file,
         timeout_s=timeout_s,
         runner=runner,
     )

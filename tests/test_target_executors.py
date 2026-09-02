@@ -113,6 +113,29 @@ def test_ssh_executor_uses_only_fixed_read_only_probes_and_types_mutation_plan(
         assert "bash" not in call
 
 
+def test_ssh_executor_uses_pinned_identity_without_agent_fallback(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("private-key-placeholder\n", encoding="utf-8")
+    runner = FakeSshRunner()
+    executor = SshTargetExecutor(
+        _ssh_target(),
+        known_hosts=known_hosts,
+        identity_file=identity,
+        runner=runner,
+    )
+
+    executor.inspect()
+
+    assert runner.calls
+    for call in runner.calls:
+        assert "IdentitiesOnly=yes" in call
+        assert "-i" in call
+        assert str(identity.resolve()) in call
+        assert "ForwardAgent=no" in call
+
+
 def test_ssh_executor_needs_no_mutation_when_companion_exists(tmp_path: Path) -> None:
     known_hosts = tmp_path / "known_hosts"
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")

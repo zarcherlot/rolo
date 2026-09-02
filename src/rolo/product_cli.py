@@ -86,10 +86,16 @@ def release_check(
         raise typer.Exit(code=2)
 
 
-def _target_executor(target: str, known_hosts: Path | None, timeout: float):
+def _target_executor(
+    target: str,
+    known_hosts: Path | None,
+    timeout: float,
+    identity_file: Path | None = None,
+):
     return create_target_executor(
         parse_target_ref(target),
         known_hosts=known_hosts,
+        identity_file=identity_file,
         timeout_s=timeout,
     )
 
@@ -241,6 +247,10 @@ def target_inspect(
         Path | None,
         typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
     ] = None,
+    identity_file: Annotated[
+        Path | None,
+        typer.Option("--identity-file", help="Pinned SSH private key; never a password"),
+    ] = None,
     timeout: Annotated[
         float,
         typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
@@ -257,7 +267,7 @@ def target_inspect(
             _job_store().append_event(
                 job.job_id, "JOB_STARTED", JobStatus.RUNNING, expected_revision=0
             )
-        assessment = _target_executor(target, known_hosts, timeout).inspect()
+        assessment = _target_executor(target, known_hosts, timeout, identity_file).inspect()
         if job:
             store = _job_store()
             store.save_checkpoint(
@@ -292,6 +302,10 @@ def target_episode_capture(
         Path | None,
         typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
     ] = None,
+    identity_file: Annotated[
+        Path | None,
+        typer.Option("--identity-file", help="Pinned SSH private key; never a password"),
+    ] = None,
     timeout: Annotated[
         float,
         typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
@@ -300,7 +314,7 @@ def target_episode_capture(
     """Capture a metadata-only immutable Episode from a read-only target inspection."""
 
     try:
-        assessment = _target_executor(target, known_hosts, timeout).inspect()
+        assessment = _target_executor(target, known_hosts, timeout, identity_file).inspect()
         record, episode_ref = capture_target_inspection_episode(
             get_settings().rolo_artifact_dir,
             assessment,
@@ -367,6 +381,10 @@ def target_bootstrap_plan(
         Path | None,
         typer.Option("--known-hosts", help="Explicit pinned SSH known_hosts file"),
     ] = None,
+    identity_file: Annotated[
+        Path | None,
+        typer.Option("--identity-file", help="Pinned SSH private key; never a password"),
+    ] = None,
     timeout: Annotated[
         float,
         typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
@@ -383,7 +401,7 @@ def target_bootstrap_plan(
             _job_store().append_event(
                 job.job_id, "JOB_STARTED", JobStatus.RUNNING, expected_revision=0
             )
-        plan = _target_executor(target, known_hosts, timeout).plan_bootstrap()
+        plan = _target_executor(target, known_hosts, timeout, identity_file).plan_bootstrap()
         if job:
             store = _job_store()
             store.save_checkpoint(
