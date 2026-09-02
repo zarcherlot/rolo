@@ -7,6 +7,8 @@
 
 - `/cmd_vel` 存在底盘订阅者，但没有经过 Rolo 验证的避障输出/仲裁链路；
 - `/enable` 的类型为 `std_srvs/srv/Empty`，不能被解释为急停证明；
+- 目标源码中的 `/ros_robot_controller/enable_reception` 只控制按钮、摇杆、IMU、SBUS、电量等
+  接收线程的发布开关，不能被解释为电机急停或速度仲裁；
 - 目标虽安装 `nav2_collision_monitor`，但当前没有对应配置或运行节点；
 - 因此没有发送任何非零速度，建图 session 已清理。
 
