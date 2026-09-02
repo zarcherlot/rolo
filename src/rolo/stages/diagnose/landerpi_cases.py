@@ -121,6 +121,7 @@ class LPD03Observation(BaseModel):
     localization_nodes: list[str] = Field(default_factory=list, max_length=64)
     localization_lifecycle: dict[str, str] = Field(default_factory=dict, max_length=16)
     initial_pose_observed: bool = False
+    configured_initial_pose: bool = False
     collection_errors: list[str] = Field(default_factory=list, max_length=16)
 
 
@@ -251,7 +252,7 @@ def evaluate_lp_d03(observation: LPD03Observation) -> DiagnoseFinding:
         and (observation.map_publisher_count is None or observation.map_publisher_count > 0)
         and bool(observation.localization_nodes)
         and localization_active
-        and observation.initial_pose_observed
+        and (observation.initial_pose_observed or observation.configured_initial_pose)
     )
     refs = ["tf_map_to_base_footprint", "map_topic", "localization", "initial_pose"]
     if map_ready:
@@ -284,7 +285,7 @@ def evaluate_lp_d03(observation: LPD03Observation) -> DiagnoseFinding:
         missing.append("localization node")
     if not localization_active:
         missing.append("active localization lifecycle")
-    if not observation.initial_pose_observed:
+    if not (observation.initial_pose_observed or observation.configured_initial_pose):
         missing.append("initial pose")
     return DiagnoseFinding(
         case_id="LP-D03",
@@ -416,6 +417,9 @@ class LanderPiDiagnoseCollector:
         pose = self._run(
             ["timeout", "4", "ros2", "topic", "echo", "--once", "/initialpose"]
         )
+        configured_pose = self._run(
+            ["timeout", "4", "ros2", "param", "get", "/amcl", "set_initial_pose"]
+        )
         tf = self._run(
             ["timeout", "4", "ros2", "run", "tf2_ros", "tf2_echo", "map", "base_footprint"]
         )
@@ -444,11 +448,16 @@ class LanderPiDiagnoseCollector:
                 ("node_list", nodes),
                 ("map_info", map_info),
                 ("initial_pose", pose),
+                ("configured_initial_pose", configured_pose),
                 ("tf_echo", tf),
                 ("relative_tf_echo", relative_tf),
             )
             if result.returncode != 0
-            and not (name in {"initial_pose", "tf_echo"} and result.returncode == 124 and result.stdout)
+            and not (
+                name in {"initial_pose", "configured_initial_pose", "tf_echo"}
+                and result.returncode == 124
+                and result.stdout
+            )
         ]
         return LPD03Observation(
             tf_frames=(
@@ -459,10 +468,16 @@ class LanderPiDiagnoseCollector:
             + (["odom", "base_footprint"] if "Translation:" in relative_tf.stdout else []),
             runtime_topics=topic_lines,
             map_to_base_footprint_available=("Translation:" in tf.stdout and "Rotation:" in tf.stdout),
-            map_topic_present="/map" in topic_lines,
+            # topic list is intentionally bounded and may truncate before
+            # /map; topic info is the authoritative presence check.
+            map_topic_present=map_info.returncode == 0,
             map_publisher_count=int(publisher.group(1)) if publisher else None,
             localization_nodes=localization,
             localization_lifecycle=lifecycle,
             initial_pose_observed=bool(pose.stdout.strip()),
+            configured_initial_pose=(
+                configured_pose.returncode == 0
+                and re.search(r"true", configured_pose.stdout, re.I) is not None
+            ),
             collection_errors=errors,
         )

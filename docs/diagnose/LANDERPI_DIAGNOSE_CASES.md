@@ -151,3 +151,14 @@ next_probe
 
 Agent 可以据此决定下一步 Probe 或请求用户授权；Rolo 负责证据完整性、目标绑定、超时、
 清理和 handoff，不负责替 Agent 猜测根因，也不把单次 canary 成功升级为产品级安全保证。
+
+## LanderPi 实测记录（2026-09-02）
+
+在临时、带 `120s` 超时的 Nav-only bring-up 后，`LP-D03` 观察到：`/map` 类型为
+`nav_msgs/msg/OccupancyGrid` 且 publisher=1，`/map_server` 与 `/amcl` lifecycle 为
+`active`，`map → base_footprint` TF 可读；`nav2_params.yaml` 的 `set_initial_pose=True`
+也被目标运行态参数确认。最终 finding 为 `HEALTHY`。临时 launch 已终止，基础
+`bringup.launch.py` 进程保持运行。
+
+该结果表示“全局定位前置条件已就绪”，不表示已经执行导航目标、验证地图匹配精度或
+证明物理安全。

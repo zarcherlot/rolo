@@ -78,6 +78,21 @@ def test_lp_d03_ready_requires_all_global_prerequisites() -> None:
     assert finding.decision == "HEALTHY"
 
 
+def test_lp_d03_accepts_target_configured_initial_pose_when_tf_is_live() -> None:
+    finding = evaluate_lp_d03(
+        LPD03Observation(
+            tf_frames=["map", "base_footprint"],
+            map_to_base_footprint_available=True,
+            map_topic_present=True,
+            map_publisher_count=1,
+            localization_nodes=["/amcl"],
+            localization_lifecycle={"/amcl": "ACTIVE"},
+            configured_initial_pose=True,
+        )
+    )
+    assert finding.decision == "HEALTHY"
+
+
 class _FakeTarget:
     workspace = "/home/ubuntu/ros2_ws"
 
