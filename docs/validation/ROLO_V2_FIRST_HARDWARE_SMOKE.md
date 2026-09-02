@@ -27,3 +27,16 @@ ROS Tool 首次运行暴露了一个真实环境差异：受控 runner 必须显
 成功）。补齐目标环境后，ROS graph 读取成功。
 
 本次只执行只读命令，没有启动、停止、发布 topic、写参数或修改机器人文件。
+
+## 当前 Codex Agent 计划回归
+
+当前 Codex 会话生成并校验了 `rolo-tool-plan/v1`：
+
+- `target_id=raspberrypi-192-168-10-167`
+- `session_id=hardware-smoke`
+- `surface_digest=d922f1a7ac9235a4199f89c7224c804a776013872fb23c4fac0f9179ff46b7b5`
+- `plan_sha256=23cb67e82010661bbfdd21eb5405b326c9e9fac25893a1016e7501ab50344a00`
+
+计划只包含两个 allowlisted、`readonly` 步骤；Rolo 校验通过后在目标容器执行，两个步骤
+均返回 `SUCCEEDED`。这证明当前 Codex 可以作为 Agent 消费 Rolo Tool Surface，而不需要
+启动第二个 Agent 进程。
