@@ -34,18 +34,12 @@ from rolo.stages.adapt.target_evidence import (
     ensure_local_deployment,
     load_deployment,
 )
-from rolo.stages.agent_runner import cancel_stage_run
 from rolo.stages.contracts import StageName
-from rolo.stages.downstream import DownstreamStageService
 from rolo.stages.pipeline import assess_pipeline, assess_stage
-from rolo.stages.verify.acceptance import VerificationPlan
-from rolo.stages.verify.service import publish_verification_plan
 
 adapt_stage_app = typer.Typer(
-    help="Stage 1: discover, adapt, conform, and publish the canonical control surface."
+    help="Probe a robot target and publish its smallest trusted Tool Surface."
 )
-diagnose_stage_app = typer.Typer(help="Stage 2: diagnose and tune within user constraints.")
-verify_stage_app = typer.Typer(help="Stage 3: optionally verify acceptance and regression.")
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")
 adapt_stage_app.add_typer(enroll_app, name="enroll")
 
@@ -501,190 +495,6 @@ def adapt_acceptance_pack(
     )
 
 
-@diagnose_stage_app.command("status")
-def diagnose_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show the closed-loop diagnosis and tuning gate."""
-    emit_stage_status(StageName.TRACE, robot)
-
-
-@diagnose_stage_app.command("plan")
-def diagnose_stage_plan(
-    robot: Annotated[str, typer.Option("--robot")],
-    provider: Annotated[str | None, typer.Option("--provider")] = None,
-    executor: Annotated[str | None, typer.Option("--executor")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-) -> None:
-    """Build a provider-neutral Diagnose Agent task without executing it."""
-    settings = get_settings()
-    try:
-        task = DownstreamStageService(settings, "diagnose").build_task(
-            robot,
-            provider=provider,
-            executor=executor,
-            model=model,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(task)
-
-
-@diagnose_stage_app.command("run")
-def diagnose_stage_run(
-    robot: Annotated[str, typer.Option("--robot")],
-    confirm: Annotated[
-        bool, typer.Option("--confirm", help="Explicitly authorize this Agent execution")
-    ] = False,
-    authorization_ref: Annotated[
-        str | None,
-        typer.Option("--authorization-ref", help="Resume a pending artifact authorization request"),
-    ] = None,
-) -> None:
-    """Execute a provider-neutral Diagnose Agent and validate its handoff."""
-    if sys.stdin.isatty() and not confirm:
-        confirm = typer.confirm(
-            "Diagnose may invoke the configured Agent and write frozen artifacts. Continue?",
-            default=False,
-        )
-    try:
-        run = DownstreamStageService(get_settings(), "diagnose").run(
-            robot,
-            confirmed=confirm,
-            authorization_ref=authorization_ref,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(run)
-    if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
-        raise typer.Exit(code=2)
-
-
-@diagnose_stage_app.command("cancel")
-def diagnose_stage_cancel(
-    robot: Annotated[str, typer.Option("--robot")],
-    run_id: Annotated[str, typer.Option("--run-id")],
-    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
-) -> None:
-    """Persist cancellation for one exact Diagnose run."""
-    try:
-        emit(
-            cancel_stage_run(
-                get_settings().rolo_artifact_dir, "diagnose", robot, run_id, reason=reason
-            )
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-
-@verify_stage_app.command("status")
-def verify_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show optional autonomous verification readiness."""
-    emit_stage_status(StageName.CERTIFY, robot)
-
-
-@verify_stage_app.command("plan")
-def verify_stage_plan(
-    robot: Annotated[str, typer.Option("--robot")],
-    provider: Annotated[str | None, typer.Option("--provider")] = None,
-    executor: Annotated[str | None, typer.Option("--executor")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-) -> None:
-    """Build a provider-neutral Verify Agent task without executing it."""
-    settings = get_settings()
-    try:
-        task = DownstreamStageService(settings, "verify").build_task(
-            robot,
-            provider=provider,
-            executor=executor,
-            model=model,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(task)
-
-
-@verify_stage_app.command("acceptance-plan")
-def verify_acceptance_plan(
-    robot: Annotated[str, typer.Option("--robot")],
-    plan_file: Annotated[Path, typer.Option("--plan-file", exists=True, readable=True)],
-    confirm: Annotated[
-        bool, typer.Option("--confirm", help="Explicitly publish this acceptance plan")
-    ] = False,
-) -> None:
-    """Validate and publish a bounded, read-only Verify acceptance plan."""
-    if sys.stdin.isatty() and not confirm:
-        confirm = typer.confirm(
-            "Publish this acceptance plan for Verify?",
-            default=False,
-        )
-    if not confirm:
-        emit({"status": "CANCELLED", "mutation_started": False})
-        return
-    settings = get_settings()
-    try:
-        plan = VerificationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
-        allowed_operations = None
-        if settings.coding_agent_executor.strip().lower() == "local-target":
-            from rolo.stages.real_target import LocalTargetCommandRunner
-
-            allowed_operations = LocalTargetCommandRunner.READ_ONLY_OPERATIONS
-        reference = publish_verification_plan(
-            settings.rolo_artifact_dir,
-            robot,
-            plan,
-            allowed_operations=allowed_operations,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit({"status": "PUBLISHED", "robot_id": robot, "plan_ref": reference})
-
-
-@verify_stage_app.command("run")
-def verify_stage_run(
-    robot: Annotated[str, typer.Option("--robot")],
-    confirm: Annotated[
-        bool, typer.Option("--confirm", help="Explicitly authorize this Agent execution")
-    ] = False,
-    authorization_ref: Annotated[
-        str | None,
-        typer.Option("--authorization-ref", help="Resume a pending artifact authorization request"),
-    ] = None,
-) -> None:
-    """Execute a provider-neutral Verify Agent and validate its handoff."""
-    if sys.stdin.isatty() and not confirm:
-        confirm = typer.confirm(
-            "Verify may run declared regression checks and write evidence. Continue?",
-            default=False,
-        )
-    try:
-        run = DownstreamStageService(get_settings(), "verify").run(
-            robot,
-            confirmed=confirm,
-            authorization_ref=authorization_ref,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(run)
-    if run.status in {"WAITING_FOR_AUTH", "FAILED"}:
-        raise typer.Exit(code=2)
-
-
-@verify_stage_app.command("cancel")
-def verify_stage_cancel(
-    robot: Annotated[str, typer.Option("--robot")],
-    run_id: Annotated[str, typer.Option("--run-id")],
-    reason: Annotated[str, typer.Option("--reason")] = "stage Agent cancellation requested by user",
-) -> None:
-    """Persist cancellation for one exact Verify run."""
-    try:
-        emit(
-            cancel_stage_run(
-                get_settings().rolo_artifact_dir, "verify", robot, run_id, reason=reason
-            )
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-
 @enroll_app.command("show")
 def enrollment_show() -> None:
     """Show the robot identity currently owned by this installed instance."""
@@ -693,11 +503,9 @@ def enrollment_show() -> None:
 
 
 def register_lifecycle_commands(root: typer.Typer) -> None:
-    # Probe/Trace/Certify are the v2 vocabulary. Trace and Certify remain
-    # structural namespaces only; Probe is the active product path.
+    # Probe is the only active v2 lifecycle. Trace and Certify are deliberately
+    # not registered until their contracts have an independent implementation.
     root.add_typer(adapt_stage_app, name="probe")
-    root.add_typer(diagnose_stage_app, name="trace")
-    root.add_typer(verify_stage_app, name="certify")
 
     @root.command("pipeline-status")
     def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:

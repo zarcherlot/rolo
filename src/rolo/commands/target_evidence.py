@@ -34,7 +34,7 @@ from rolo.stages.adapt.target_evidence import (
 )
 
 target_evidence_app = typer.Typer(
-    help="Configure and collect target-bound, read-only Adapt evidence."
+    help="Configure and collect target-bound, read-only Probe evidence."
 )
 
 
@@ -468,7 +468,7 @@ def collect(
                 for item in bundle.executable_help
             ],
             "next": (
-                f"robotctl adapt discover run --robot {robot_id} "
+                f"robotctl probe discover run --robot {robot_id} "
                 f"--target-evidence-bundle {destination}"
             ),
         }

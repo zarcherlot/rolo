@@ -16,10 +16,8 @@ from rolo.commands.configuration import config_app
 from rolo.commands.discovery import discover_app
 from rolo.commands.lifecycle import (
     adapt_stage_app,
-    diagnose_stage_app,
     register_lifecycle_commands,
 )
-from rolo.commands.robot_use import robot_use_app
 from rolo.commands.runtime import register_runtime_commands
 from rolo.commands.schema import schema_app
 from rolo.commands.target_evidence import target_evidence_app
@@ -30,7 +28,6 @@ register_runtime_commands(app)
 register_lifecycle_commands(app)
 adapt_stage_app.add_typer(discover_app, name="discover")
 register_adapt_query_commands(adapt_stage_app)
-diagnose_stage_app.add_typer(robot_use_app, name="robot-use")
 app.add_typer(schema_app, name="schema")
 app.add_typer(tool_app, name="tool")
 app.add_typer(hw_app, name="hw")

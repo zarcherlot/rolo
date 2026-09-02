@@ -14,7 +14,6 @@ from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_adapt_start
 from rolo.console import run_console
 from rolo.core.config import get_settings
-from rolo.core.hashing import canonical_json_sha256
 from rolo.device_hardening_evidence import (
     build_device_hardening_bundle,
     write_device_hardening_bundle,
@@ -29,7 +28,6 @@ from rolo.release_check import run_release_check
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
 from rolo.stages.adapt.service import coding_agent_config
 from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode, load_deployment
-from rolo.stages.verify.ssh_target_provider import SshTargetHealthProvider
 from rolo.target_ref import LocalTargetRef, SshTargetRef, parse_target_ref
 from rolo.targets.approvals import (
     BootstrapApprovalDecision,
@@ -48,12 +46,12 @@ from rolo.tui import run_tui
 from rolo.ui_models import JobUiAdapter
 
 app = typer.Typer(
-    help="Adapt a local or remote robot workspace.",
+    help="Probe a local or remote robot target.",
     no_args_is_help=False,
     invoke_without_command=True,
 )
 job_app = typer.Typer(
-    help="Inspect and recover persisted Adapt jobs without auto-resuming mutations."
+    help="Inspect and recover persisted Probe jobs without auto-resuming mutations."
 )
 app.add_typer(job_app, name="job")
 target_app = typer.Typer(help="Inspect targets and plan approved bootstrap changes.")
@@ -356,44 +354,6 @@ def target_episode_capture(
             "immutable": record.immutable,
         }
     )
-
-
-@target_app.command("verify-health")
-def target_verify_health(
-    target: Annotated[str, typer.Argument(help="ssh:// target workspace URI")],
-    robot_id: Annotated[str, typer.Option("--robot", "--robot-id")],
-    package_id: Annotated[str, typer.Option("--package-id")],
-    package_version: Annotated[str, typer.Option("--package-version")],
-    known_hosts: Annotated[Path, typer.Option("--known-hosts")],
-) -> None:
-    """Run the fixed, read-only canonical Verify health provider over SSH."""
-
-    try:
-        settings = get_settings()
-        target_ref = parse_target_ref(target)
-        if not isinstance(target_ref, SshTargetRef):
-            raise ValueError("target verify-health requires an ssh:// target")
-        profile_sha256 = canonical_json_sha256(target_ref.model_dump(mode="json"))
-        profile_path = TargetProfileStore(settings.rolo_config_dir).path_for(robot_id)
-        if profile_path.is_file():
-            profile = TargetProfileStore(settings.rolo_config_dir).load(robot_id)
-            if profile.target != target_ref:
-                raise ValueError("target verify-health does not match the stored target profile")
-            if profile.host_key is None or profile.host_key.status != "APPROVED":
-                raise ValueError("target verify-health requires an approved SSH host key")
-            profile_sha256 = canonical_json_sha256(profile.model_dump(mode="json"))
-        report = SshTargetHealthProvider(
-            target_ref,
-            known_hosts=known_hosts,
-            profile_sha256=profile_sha256,
-            package_id=package_id,
-            package_version=package_version,
-        ).run(settings.rolo_artifact_dir, robot_id=robot_id)
-    except (OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(report)
-    if report.status != "PASS":
-        raise typer.Exit(code=2)
 
 
 @target_app.command("bootstrap-plan")
