@@ -14,6 +14,13 @@ from rolo.agent_tools.native_tools import (
     native_variant_aliases,
     reduced_agent_native_catalog,
 )
+from rolo.agent_tools.planning import (
+    ToolPlan,
+    ToolPlanningRequest,
+    ToolPlanStep,
+    build_tool_plan,
+    validate_tool_plan,
+)
 from rolo.agent_tools.rollout import (
     NativeToolCanaryGateReport,
     NativeToolExecutionParity,
@@ -47,6 +54,11 @@ __all__ = [
     "native_operation_family_map",
     "native_variant_aliases",
     "reduced_agent_native_catalog",
+    "ToolPlan",
+    "ToolPlanningRequest",
+    "ToolPlanStep",
+    "build_tool_plan",
+    "validate_tool_plan",
     "NativeToolSession",
     "NativeToolSessionAuthorizationError",
     "NativeToolSessionBudget",
