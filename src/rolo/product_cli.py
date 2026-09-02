@@ -40,6 +40,10 @@ from rolo.stages.probe.application_mapping import (
     conform_map_create_dispatch,
     discover_map_create_candidate,
 )
+from rolo.stages.probe.application_safety import (
+    conform_motion_safety_candidate,
+    discover_motion_safety_candidate,
+)
 from rolo.stages.probe.application_write import (
     ApplicationWriteCanaryReport,
     discover_base_stop_write_candidate,
@@ -709,6 +713,82 @@ def target_application_map_create(
             "candidate": candidate.model_dump(mode="json"),
             "report": report.model_dump(mode="json"),
             "artifacts": {"candidate": str(candidate_path), "report": str(report_path)},
+        }
+    )
+    if report.status != "PASS":
+        raise typer.Exit(code=2)
+
+
+@target_app.command("safety-conformance")
+def target_safety_conformance(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    evidence: Annotated[
+        Path | None,
+        typer.Option(
+            "--evidence", help="Verified target evidence JSON; defaults to profile bundle"
+        ),
+    ] = None,
+) -> None:
+    """Check the independent motion-safety routes without publishing velocity."""
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        robot_id = target_profile.robot_id
+        deployment = load_deployment(
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+        )
+        evidence_path = evidence or (
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}-bundle.json"
+        )
+        target_bundle = TargetEvidenceBundle.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        verified_probes = verify_evidence_bundle(target_bundle, deployment=deployment)
+        verified_bundle = target_bundle.model_copy(update={"probes": verified_probes})
+        safety_executor = create_profile_target_executor(
+            profile,
+            config_root=settings.rolo_config_dir,
+            timeout_s=30,
+        )
+        topic_info: dict[str, str] = {}
+        for endpoint in (
+            "/scan",
+            "/cmd_vel",
+            "/cmd_vel_safe",
+            "/cmd_vel_out",
+            "/cmd_vel_smoothed",
+        ):
+            result = safety_executor.run_readonly(["ros2", "topic", "info", endpoint])
+            if result.returncode == 0:
+                topic_info[endpoint] = result.stdout
+        service_info: dict[str, str] = {}
+        for endpoint in ("/enable", "/emergency_stop", "/e_stop", "/protective_stop"):
+            result = safety_executor.run_readonly(["ros2", "service", "type", endpoint])
+            if result.returncode == 0:
+                service_info[endpoint] = f"Type: {result.stdout.strip()}"
+        candidate = discover_motion_safety_candidate(
+            verified_bundle,
+            runtime_topic_info=topic_info,
+            runtime_service_info=service_info,
+        )
+        report = conform_motion_safety_candidate(candidate)
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        root = f"application/{robot_id}/safety"
+        candidate_path = artifact_store.write_json(
+            f"{root}/candidate.json", candidate.model_dump(mode="json")
+        )
+        report_path = artifact_store.write_json(
+            f"{root}/conformance.json", report.model_dump(mode="json")
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "SAFETY_CONFORMANCE_READY",
+            "robot_id": robot_id,
+            "candidate": candidate.model_dump(mode="json"),
+            "conformance": report.model_dump(mode="json"),
+            "artifacts": {"candidate": str(candidate_path), "conformance": str(report_path)},
         }
     )
     if report.status != "PASS":

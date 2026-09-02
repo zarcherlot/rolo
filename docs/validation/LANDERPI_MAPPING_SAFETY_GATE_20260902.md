@@ -18,3 +18,9 @@
 要从“启动建图会话”继续到探索运动，仍必须提供另一个目标绑定的安全 adapter：固定输入
 测距 topic、输出速度 topic、停止行为、超时和故障时 zero-stop，并独立验证急停可达性。
 人在环声明可以作为额外 gate，但不能替代上述运行态证据。
+
+已落地 `rolo target safety-conformance --profile mentorpi`。它会在签名快照之外，对
+`/scan`、`/cmd_vel`、候选安全输出和急停服务逐个做有界运行态复核，并独立输出五项门：
+typed scan、typed command、distinct safe output、watchdog/zero-stop、independent
+emergency-stop。当前 LanderPi 结果为 **FAIL**：前两项 PASS，后三项 FAIL；所以仍不允许
+探索运动。
