@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: rolo maintainers; last_reviewed: 2026-09-02; last_synced_commit: 45a3563193c452892b0576952296170591d67a47 -->
+<!-- status: active; authority: reference; owner: rolo maintainers; last_reviewed: 2026-09-02; last_synced_commit: ac7a2b9b2a4cfdec3ca126225e84aad309381537 -->
 
 # Rolo v2 工程状态
 
@@ -12,17 +12,18 @@
 | FEAT-PROBE-EVIDENCE | STABLE | E3 | `robotctl probe target-evidence` | `src/rolo/stages/adapt/target_evidence.py` | `tests/test_probe_evidence_contract.py`; `tests/test_target_evidence_deployment.py`; `tests/test_ssh_target_e2e.py` | Evidence 是采集时刻事实；可携带签名 source snapshot，但不证明物理安全或行为正确性 |
 | FEAT-PROBE-NATIVE-SURFACE | STABLE | E2 | `rolo target tool-surface --profile` | `src/rolo/agent_tools/native_tools.py`; `src/rolo/agent_tools/session_factory.py` | `tests/test_agent_native_tools.py`; `tests/test_probe_session_factory.py` | 当前为四类 family 的只读 surface；缺失命令返回 UNAVAILABLE |
 | FEAT-PROBE-TOOL-PLAN | STABLE | E2 | `rolo target tool-plan --profile PLAN.json` | `src/rolo/agent_tools/planning.py`; `src/rolo/agent_tools/session.py` | `tests/test_tool_planning.py`; `tests/test_native_tool_session.py` | Agent 只能规划，Rolo 校验 digest、目标、allowlist、预算和只读模式 |
-| FEAT-PROBE-SSH-RUNNER | PARTIAL | E3 | profile-bound remote Native Tool execution | `src/rolo/targets/executor.py`; `src/rolo/agent_tools/native_tools.py` | `tests/test_target_executors.py`; `tests/test_agent_native_tools.py` | ROS 依赖目标 setup、Python site-packages 和动态库；环境不全时明确失败 |
+| FEAT-PROBE-SSH-RUNNER | PARTIAL | E3 | profile-bound remote Native Tool execution | `src/rolo/targets/executor.py`; `src/rolo/agent_tools/native_tools.py` | `tests/test_target_executors.py`; `tests/test_agent_native_tools.py` | Provider 可能依赖目标 OS/Middleware setup、Python packages 和 runtime libraries；环境不全时明确失败 |
 | FEAT-PROBE-CONFORMANCE | PARTIAL | E2 | Tool Surface / ToolPlan conformance artifacts | `src/rolo/agent_tools/session.py`; `src/rolo/stages/adapt/conformance.py` | `tests/test_native_tool_session.py`; `tests/test_conformance.py` | Native evidence 不授予 release authority；能力 gap 才进入 Adapter bundle |
 
 ## 可信度边界
 
 - Agent 的自然语言、候选工具和计划不是事实；Rolo 的 descriptor、session、digest、结果
   artifact 和 Conformance 才是可审计边界。
-- Codex 已知的 Linux/ROS CLI 不重复包装；Rolo 只负责固定 argv、目标绑定、环境边界和证据。
-- 非 Linux/非 ROS 或 Codex 无法稳定调用的中间件，才值得新增 Adapter bundle；新增能力必须
+- Codex 已知的目标 OS/Middleware CLI 不重复包装；Rolo 只负责固定 argv、目标绑定、环境边界和证据。
+- 当 Codex 无法稳定调用目标 OS/Middleware 或 application 的底层接口时，才值得新增 Adapter bundle；新增能力必须
   经过 bounded Probe、TargetEvidence、Adapter bundle 和独立 Conformance。
-- 真实目标机验证当前覆盖 landerPi/mentorpi 的 Linux/ROS 只读证据；写操作、驱动变更和
+- 真实目标机验证当前覆盖 mentorpi 的当前 OS/Middleware 只读证据；provider-specific coverage
+  仍不是产品级全平台承诺。写操作、驱动变更和
   物理行为验收仍需单独授权。
 
 ## 同步规则

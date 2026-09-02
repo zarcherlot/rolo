@@ -4,7 +4,7 @@
 
 Rolo 是一个给 Codex 类 Agent 使用的机器人目标工具层。v2 只承诺一条小而稳的
 Probe 链：把用户的机器人 profile 绑定到目标机，产生带签名的 TargetEvidenceBundle，
-再发布 Agent 可消费的四类只读 Tool Surface（hw、linux、ros、app）。Agent 负责理解目标、
+再发布 Agent 可消费的四类只读 Tool Surface（hardware、OS、Middleware、application）。Agent 负责理解目标、
 规划和解释；Rolo 负责连接安全、固定 argv、证据、预算和 Conformance。
 
 ## 用户旅程
@@ -17,13 +17,13 @@ Probe 链：把用户的机器人 profile 绑定到目标机，产生带签名�
 
 首次 enrollment 可能使用一次性密码置备密钥；日常使用只指定 profile。Rolo 会自动选择
 SSH agent 或已登记的 identity file，固定 known_hosts、host-key fingerprint 和 collector
-digest。Windows、Linux、WSL 或其他 POSIX 控制器都可以发起 SSH，只要提供 OpenSSH client。
+digest。只要控制器 OS 提供 OpenSSH client，就可以发起 SSH；目标 OS 和 Middleware 由目标证据决定。
 
 ## 快速开始
 
 ```bash
 uv sync --locked --dev
-uv run rolo target profile init ssh://user@robot.example/opt/ros_ws --robot my-robot
+uv run rolo target profile init ssh://user@robot.example/path/to/workspace --robot my-robot
 uv run rolo target inspect-profile --profile my-robot
 uv run rolo target tool-surface --profile my-robot > surface.json
 # Agent 根据 surface.json 生成 rolo-tool-plan/v1
@@ -44,8 +44,10 @@ uv run robotctl probe status --robot my-robot
 - `TargetEvidenceBundle` 是目标采集时刻的事实，不等价于物理行为正确或安全。
 - ToolPlan 必须带 target、session、surface digest 和 plan digest；Rolo 拒绝任意 shell、
   未登记 tool、过期 session 和 mutating step。
-- Linux/ROS CLI 若 Codex 已能可靠调用，不重复包装；只有非 Linux/非 ROS，或 Codex 无法
-  稳定理解的中间件/底层调用，才进入 Adapter bundle gap 流程。
+- 目标 OS/Middleware 的原生 CLI 若 Codex 已能可靠调用，不重复包装；只有 Codex 无法
+  稳定理解、边界不清或需要统一安全语义的底层调用，才进入 Adapter bundle gap 流程。
+- MVP 可以先用一个具体 OS provider 和一个具体 Middleware provider 验证链路；provider
+  不是产品边界，新增 provider 不改变 Profile、Evidence、Session、ToolPlan 和 Conformance 合约。
 - Trace、Certify、MCP 和 Web UI 不是本轮产品依赖，未来只能复用这些 authority。
 
 ## 代码与验证

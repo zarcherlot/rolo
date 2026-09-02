@@ -2,7 +2,7 @@
 
 # Agent-native Tool 运行边界（Rolo v2 Probe）
 
-Agent-native Tool 是 Linux、ROS 和部分 HW 的受控只读观测通道，不是 Canonical Operation。
+Agent-native Tool 是目标 OS、Middleware、hardware 和 application 的受控只读观测通道，不是 Canonical Operation。
 它们不进入 Active Tool Catalog，不参与产品 Contract，也不能生成 `VERIFIED` 或 Adapter
 Release。
 
@@ -18,13 +18,13 @@ Release。
 - `rolo-tool-plan/v1` 必须携带 session nonce；Rolo 拒绝只伪造 session id 的计划；
 - Session 的 `native_catalog_sha256` 必须与 Runner 的完整目录一致，防止 descriptor/catalog
   漂移。
-- v2 Probe 使用 22 个 family-level descriptor，而不是为每个 Linux/ROS/HW 命令建立一个
+- v2 Probe 使用 22 个 family-level descriptor，而不是为每个 OS/Middleware/hardware 命令建立一个
   descriptor；family 内的 `mode` 和参数都来自静态 allowlist，仍由 Runner 编译为固定 argv。
 - Agent 先读取 Tool Surface，再通过绑定的 ToolPlan 执行；Probe 不自动运行 native
   工具，也不把 native 结果变成 release authority。
-- 对具有外部网络依赖的 ROS middleware 调用（当前为 `native.middleware.snapshot`），结果在超时时保留
+- 对具有外部网络依赖的 Middleware 调用（当前为 `native.middleware.snapshot`），结果在超时时保留
   `TIMEOUT`，同时设置 `environment_limited=true` 并给出明确限制说明。这样可以区分真实
-  工具故障和 WSL/离线环境限制，不能把环境限制伪装成成功。
+  工具故障和控制器/目标运行环境限制，不能把环境限制伪装成成功。
 
 ## 与 Registry 的关系
 
@@ -52,7 +52,9 @@ digest 和 allowlist；Agent 生成 ToolPlan，Rolo 在 session 内校验 digest
 
 ## Family catalog
 
-当前 v2 family catalog 包含：
+当前 v2 family catalog 包含以下 MVP provider IDs。ID 体现实现 provider，不改变上面的
+hardware、OS、Middleware、application 四类稳定标准；其他 OS/Middleware 可复用相同 descriptor
+与 conformance 合约：
 
 ```text
 native.linux.host.inspect
@@ -68,7 +70,7 @@ native.linux.file.inspect
 native.linux.network.snapshot
 native.linux.log.query
 native.ros.graph.inspect / native.ros.observe / native.ros.tf.inspect / native.ros.bag.inspect
-native.middleware.snapshot (ros family)
+native.middleware.snapshot (Middleware provider)
 native.hw.inventory / native.hw.status
 ```
 
