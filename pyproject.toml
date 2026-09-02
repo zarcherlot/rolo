@@ -41,6 +41,7 @@ packages = ["src/rolo"]
 [tool.hatch.build.targets.wheel.force-include]
 "skills/rolo-adapt-discovery" = "rolo/bundled_skills/rolo-adapt-discovery"
 "skills/rolo-operation-mapping" = "rolo/bundled_skills/rolo-operation-mapping"
+"skills/rolo-tool-planning" = "rolo/bundled_skills/rolo-tool-planning"
 "skills/rolo-wiki-authoring" = "rolo/bundled_skills/rolo-wiki-authoring"
 "skills/rolo" = "rolo/bundled_skills/rolo"
 
