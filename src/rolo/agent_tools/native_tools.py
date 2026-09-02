@@ -276,6 +276,8 @@ class AgentNativeRunner:
         self,
         tool_id: str,
         arguments: Mapping[str, str] | None = None,
+        *,
+        environment: Mapping[str, str] | None = None,
     ) -> AgentNativeToolResult:
         descriptor = self._descriptors.get(tool_id)
         if descriptor is None:
@@ -283,7 +285,8 @@ class AgentNativeRunner:
         supplied = {str(key): str(value) for key, value in (arguments or {}).items()}
         requested_arguments = dict(supplied)
         invocation, argv = self._resolve_invocation(descriptor, supplied)
-        resolved = shutil.which(invocation.executable)
+        source_environment = dict(os.environ if environment is None else environment)
+        resolved = shutil.which(invocation.executable, path=source_environment.get("PATH"))
         if resolved is None:
             return self._result(
                 descriptor,
@@ -296,16 +299,16 @@ class AgentNativeRunner:
                 arguments=requested_arguments,
             )
         env = {
-            key: os.environ[key]
+            key: source_environment[key]
             for key in _PROCESS_ENV_KEYS
-            if key in os.environ
+            if key in source_environment
         }
         env.update(
             admitted_runtime_environment(
                 {
-                    key: os.environ[key]
+                    key: source_environment[key]
                     for key in descriptor.allowed_env_keys
-                    if key in os.environ
+                    if key in source_environment
                 }
             )
         )

@@ -5,7 +5,7 @@ import json
 import os
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -139,6 +139,8 @@ class NativeToolSession:
         self,
         tool_id: str,
         arguments: dict[str, str] | None = None,
+        *,
+        environment: Mapping[str, str] | None = None,
     ) -> AgentNativeToolResult:
         with self._lock:
             self._preflight()
@@ -154,7 +156,7 @@ class NativeToolSession:
                     "native tool session result-byte budget is exhausted"
                 )
             self._calls += 1
-            result = self.runner.run(tool_id, arguments)
+            result = self.runner.run(tool_id, arguments, environment=environment)
             encoded = json.dumps(
                 result.model_dump(mode="json"),
                 ensure_ascii=False,

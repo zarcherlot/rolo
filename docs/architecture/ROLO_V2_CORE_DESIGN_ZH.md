@@ -55,6 +55,11 @@ Probe，但不能提交任意 shell 或自造运行时事实。
 - 原始结果的 artifact ref、SHA-256 和限制说明；
 - 失败、截断和环境限制也必须被记录。
 
+ROS Tool 的执行环境必须来自同一份目标 Evidence：至少绑定目标的 `PATH`、ROS Python
+site-packages、`LD_LIBRARY_PATH` 以及 setup 文件 digest。Native runner/session 通过显式
+`environment` 参数接收这份上下文，不依赖控制器自身的全局环境；环境缺失时返回结构化
+失败或 `environment_limited`，不得用控制器环境补齐后宣称目标可用。
+
 静态源码、文档、模拟和 Agent 自述只能形成候选或待验证缺口，不能单独证明目标工具
 存在。目标证据可以来自本地 Collector 或固定的远程 Collector，但控制器不得把自身环境
 冒充为目标环境。

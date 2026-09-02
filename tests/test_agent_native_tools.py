@@ -187,6 +187,37 @@ def test_non_ros_family_does_not_inherit_ros_runtime_paths(
     assert "PYTHONPATH" not in captured_env
 
 
+def test_runner_accepts_explicit_target_runtime_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_executor(command: list[str], **kwargs: object):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    target_bin = tmp_path / "bin"
+    target_bin.mkdir()
+    monkeypatch.setattr(
+        "rolo.agent_tools.native_tools.shutil.which",
+        lambda value, path=None: value if path and str(target_bin) in path else None,
+    )
+    runner = AgentNativeRunner([_descriptor("-c", "print('ok')")], executor=fake_executor)
+
+    result = runner.run(
+        "test.echo",
+        environment={"PATH": str(target_bin), "PYTHONPATH": "/opt/ros/target/python"},
+    )
+
+    assert result.status.value == "SUCCEEDED"
+    assert captured["command"] == [sys.executable, "-c", "print('ok')"]
+    assert captured["env"] == {
+        "PATH": str(target_bin),
+        "PYTHONPATH": "/opt/ros/target/python",
+    }
+
+
 def test_ros_runner_uses_an_ephemeral_log_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

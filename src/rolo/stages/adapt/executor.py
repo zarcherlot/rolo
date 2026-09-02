@@ -62,6 +62,7 @@ from rolo.stages.adapt.slice_activation import (
     decide_slice_activation,
     parse_slice_selectors,
 )
+from rolo.stages.adapt.target_fingerprint import runtime_environment_from_report
 from rolo.stages.adapt.wiki_retrieval import build_wiki_index
 from rolo.stages.adapt.workset import (
     TargetOperationSlice,
@@ -373,6 +374,15 @@ class CodexAdaptExecutor:
             plan.robot_id,
             plan.source_discovery_id,
         )
+        target_runtime_environment: dict[str, str] = {}
+        for layer in ("ros", "linux"):
+            probe = report.probes.get(layer)
+            raw_environment = probe.data.get("runtime_environment", {}) if probe else {}
+            if isinstance(raw_environment, dict) and raw_environment:
+                target_runtime_environment = {
+                    str(name): str(value) for name, value in raw_environment.items()
+                }
+                break
         platform_profile, capability_shadow = build_capability_shadow(report, target_slice)
         slice_shadow = build_slice_shadow_report(target_slice, plan.eligible_operations)
         self.artifacts.write_json(
@@ -522,7 +532,9 @@ class CodexAdaptExecutor:
                 artifacts=self.artifacts,
             )
             baseline_result = native_session.invoke(
-                "native.linux.host.inspect", {"mode": "status"}
+                "native.linux.host.inspect",
+                {"mode": "status"},
+                environment=target_runtime_environment or None,
             )
             native_execution_parity = _direct_execution_parity(baseline_result)
             self.artifacts.write_json(
