@@ -26,6 +26,10 @@ from rolo.stages.probe.application import (
     ApplicationOperationCandidate,
     ApplicationOperationConformanceReport,
 )
+from rolo.stages.probe.application_write import (
+    ApplicationWriteCanaryCandidate,
+    ApplicationWriteCanaryReport,
+)
 from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
 
@@ -86,6 +90,8 @@ def run_release_check(
             (ApplicationOperationCandidate, "application-operation-candidate"),
             (ApplicationOperationAdapterBundle, "application-operation-adapter-bundle"),
             (ApplicationOperationConformanceReport, "application-operation-conformance"),
+            (ApplicationWriteCanaryCandidate, "application-write-canary-candidate"),
+            (ApplicationWriteCanaryReport, "application-write-canary-report"),
         ):
             model.model_json_schema()
             checks.append(f"schema:{label}")

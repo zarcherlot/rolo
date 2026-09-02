@@ -261,6 +261,45 @@ class SshTargetExecutor:
             remote_argv = ["env", *assignments, *remote_argv]
         return self._run(remote_argv)
 
+    def run_base_stop_canary(self, *, confirmation: str) -> CommandResult:
+        """Send one fixed zero-Twist stop canary through the enrolled target.
+
+        This is intentionally not a general mutation runner.  The operation,
+        topic, message type, payload, and one-shot semantics are all fixed in
+        code; a human must provide the exact confirmation phrase.  The caller
+        must separately bind this call to fresh runtime route evidence.
+        """
+        if confirmation != "I CONFIRM APP.BASE.STOP CANARY":
+            raise ValueError("base stop canary requires the exact human confirmation phrase")
+        remote_argv = [
+            "ros2",
+            "topic",
+            "pub",
+            "--once",
+            "/cmd_vel",
+            "geometry_msgs/msg/Twist",
+            "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}",
+        ]
+        setup_files = self.ros_setup_files
+        if setup_files:
+            if any(
+                not path
+                or "\x00" in path
+                or not path.startswith("/")
+                or any(character in path for character in "'\";$`\\")
+                for path in setup_files
+            ):
+                raise ValueError("ROS setup paths must be absolute and shell-safe")
+            command = "; ".join(
+                [
+                    "set -eo pipefail",
+                    *[f". {quote_remote_arg(path)}" for path in setup_files],
+                    f"exec {' '.join(quote_remote_argv(remote_argv))}",
+                ]
+            )
+            return self._run(["bash", "--noprofile", "--norc", "-c", command])
+        return self._run(remote_argv)
+
     @staticmethod
     def _failure_detail(result: CommandResult) -> str:
         return result.stderr.strip() or result.stdout.strip() or f"SSH exited {result.returncode}"

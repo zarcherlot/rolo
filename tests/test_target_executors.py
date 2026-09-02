@@ -162,6 +162,29 @@ def test_ssh_executor_sources_only_pinned_ros_setup_for_native_tools(tmp_path: P
     assert "StrictHostKeyChecking=yes" in call
 
 
+def test_ssh_executor_base_stop_canary_is_fixed_and_human_confirmed(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    runner = FakeSshRunner()
+    executor = SshTargetExecutor(
+        _ssh_target(),
+        known_hosts=known_hosts,
+        ros_setup_files=("/opt/ros/humble/setup.bash",),
+        runner=runner,
+    )
+
+    with pytest.raises(ValueError, match="exact human confirmation"):
+        executor.run_base_stop_canary(confirmation="no")
+
+    result = executor.run_base_stop_canary(
+        confirmation="I CONFIRM APP.BASE.STOP CANARY"
+    )
+    assert result.returncode == 0
+    command = runner.calls[-1][-1]
+    assert "ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist" in command
+    assert "linear:" in command and "angular:" in command
+
+
 def test_ssh_executor_rejects_unsafe_native_environment(tmp_path: Path) -> None:
     known_hosts = tmp_path / "known_hosts"
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")

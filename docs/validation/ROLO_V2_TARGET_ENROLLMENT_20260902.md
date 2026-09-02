@@ -73,6 +73,24 @@ observed and the adapter is safe to expose to an Agent. It does not yet prove
 normalized operation output or physical behavior; that is the next conformance
 stage after the Agent consumes the bound native Tool.
 
+## First write canary
+
+After the read-only operation slice, Rolo ran one human-confirmed write canary for
+`app.base.stop`. The preflight used the fresh evidence bundle collected at
+`2026-09-02T08:53:46Z` (`payload_sha256=d06f03e476f27e7e9a27fc035cb9c72e5ce4ff66745aa5e57bc2733a255492e1`)
+and a separate `native.middleware.graph.inspect` call. It found `/cmd_vel` with
+type `geometry_msgs/msg/Twist` and `Subscription count: 1`.
+
+The fixed canary then sent exactly one zero-Twist `ros2 topic pub --once` request
+through the pinned SSH connector. The target returned exit code `0`, and the
+route was rechecked successfully. This is a `PASS` for request acceptance and
+route continuity only; it is not proof of physical stop state or a safety
+certificate. No navigation, actuator, arm, gripper, map, or parameter operation
+was invoked.
+
+The canary candidate and report are retained in the ignored runtime artifact
+tree at `.rolo/artifacts/application/mentorpi/operations/app_base_stop/write-canary/`.
+
 The first bundle produced by the pre-v2 target installation was deliberately
 not accepted: its declared hash did not match the v2 verifier after model
 normalization. Rolo v2 now hashes the normalized `TargetEvidenceBundle` form

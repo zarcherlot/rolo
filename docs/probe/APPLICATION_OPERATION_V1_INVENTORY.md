@@ -80,6 +80,20 @@ then consume the bound observation Tool and interpret its result. A later operat
 Conformance must be added before claiming normalized application behavior. A `NOT_FOUND` result
 creates a documented gap and never becomes a callable Tool.
 
+## First write canary: `app.base.stop`
+
+The first write validation is intentionally a single, fixed canary rather than a general write Tool.
+Rolo requires fresh target evidence plus a read-only `native.middleware.graph.inspect` result proving
+that `/cmd_vel` has type `geometry_msgs/msg/Twist` and at least one subscriber. Only then does the
+enrolled SSH connector accept the exact human confirmation phrase and send one fixed zero-Twist
+`ros2 topic pub --once` request. Endpoint, message type, payload, and one-shot semantics are not
+Agent parameters.
+
+On LanderPi, the 2026-09-02 08:53:46Z evidence bound `/cmd_vel` to one subscriber. The canary
+returned exit code `0`, and the route was rechecked afterwards. This proves request acceptance and
+route continuity only; it does not prove that the physical base has stopped. The artifact is retained
+under `.rolo/artifacts/application/mentorpi/operations/app_base_stop/write-canary/`.
+
 The historical source is `src/rolo/operation_contracts/app.yaml` at the pre-v2 registry commit;
 the v2 implementation deliberately keeps that source out of the runtime package and evolves this
 backlog one verified operation at a time.

@@ -65,5 +65,18 @@ operation 级 bundle 目前发布的是通过 route-binding Conformance 的只�
 已经被验证；Agent 仍需消费其中绑定的 native observation Tool。未映射的 read operation 返回
 `UNSUPPORTED`，R2/R3 operation 返回 `DEFERRED`；两者都不会成为可调用 Tool。
 
+首个写入验证仅提供固定的 `app.base.stop` canary：
+
+```bash
+rolo target application-write-canary \
+  --profile my-robot \
+  --operation app.base.stop \
+  --confirmation "I CONFIRM APP.BASE.STOP CANARY"
+```
+
+Rolo 会先用只读 graph Tool 证明 `/cmd_vel` 的类型和 subscriber，再通过 pinned SSH connector
+发送一次固定 zero-Twist 请求。它不是通用写 Tool；`PASS` 只表示请求被目标 CLI 接受并完成路由复查，
+不表示底盘已经停止或具备安全认证。
+
 实现位于 `src/rolo/stages/probe/application.py`，CLI 入口位于 `src/rolo/product_cli.py`，
 测试位于 `tests/test_application_bundles.py`。

@@ -12,6 +12,7 @@ from rolo.stages.probe.application import (
     discover_application_candidate,
     discover_application_operation,
 )
+from rolo.stages.probe.application_write import discover_base_stop_write_candidate
 from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
 
@@ -161,3 +162,29 @@ def test_operation_slice_reports_unmapped_read_as_not_callable() -> None:
         target_evidence_sha256=evidence.payload_sha256,
     )
     assert adapter.access == "UNSUPPORTED"
+
+
+def test_base_stop_write_candidate_requires_typed_subscribed_route() -> None:
+    evidence = _bundle(
+        _route("ros_topic:/cmd_vel", "ros_topic", "/cmd_vel", "geometry_msgs/msg/Twist"),
+    )
+    candidate = discover_base_stop_write_candidate(
+        evidence,
+        graph_stdout=(
+            "Type: geometry_msgs/msg/Twist\n"
+            "Publisher count: 0\n"
+            "Subscription count: 1\n"
+        ),
+    )
+    assert candidate.status == "CANDIDATE"
+    assert candidate.subscription_count == 1
+
+    rejected = discover_base_stop_write_candidate(
+        evidence,
+        graph_stdout=(
+            "Type: geometry_msgs/msg/Twist\n"
+            "Publisher count: 0\n"
+            "Subscription count: 0\n"
+        ),
+    )
+    assert rejected.status == "REJECTED"
