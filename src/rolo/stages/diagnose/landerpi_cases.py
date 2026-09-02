@@ -8,6 +8,7 @@ deterministic and remains auditable in the resulting finding.
 from __future__ import annotations
 
 import re
+import subprocess
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -227,6 +228,13 @@ class LanderPiDiagnoseCollector:
     def __init__(self, executor: SshTargetExecutor) -> None:
         self.executor = executor
 
+    def _run(self, argv: list[str]) -> CommandResult:
+        """Turn one bounded probe timeout into evidence instead of crashing the case."""
+        try:
+            return self.executor.run_readonly(argv)
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            return CommandResult(argv=tuple(argv), returncode=124, stderr=str(exc)[:1000])
+
     @staticmethod
     def _lines(result: CommandResult) -> list[str]:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -237,7 +245,7 @@ class LanderPiDiagnoseCollector:
         # executor bounds stdout, so a broad scan could hide the only useful
         # navigation entrypoint behind unrelated files.
         static_results = [
-            self.executor.run_readonly(
+            self._run(
                 [
                     "find",
                     f"{workspace}/src",
@@ -252,9 +260,9 @@ class LanderPiDiagnoseCollector:
             )
             for pattern in ("*navigation*", "*nav2*", "*map*.yaml")
         ]
-        nodes = self.executor.run_readonly(["ros2", "node", "list"])
-        topics = self.executor.run_readonly(["ros2", "topic", "list"])
-        actions = self.executor.run_readonly(["ros2", "action", "list"])
+        nodes = self._run(["ros2", "node", "list"])
+        topics = self._run(["ros2", "topic", "list"])
+        actions = self._run(["ros2", "action", "list"])
         errors = [
             f"{name}: exit {result.returncode}"
             for name, result in (
@@ -272,18 +280,23 @@ class LanderPiDiagnoseCollector:
         )
 
     def collect_lp_d02(self) -> LPD02Observation:
-        logs = self.executor.run_readonly(["docker", "logs", "--tail", "200", "MentorPi"])
+        logs = self._run(["docker", "logs", "--tail", "200", "MentorPi"])
         if logs.returncode != 0:
-            logs = self.executor.run_readonly(["journalctl", "-n", "200", "--no-pager"])
-        info = self.executor.run_readonly(["ros2", "topic", "info", "/scan"])
-        hz = self.executor.run_readonly(
+            logs = self._run(["journalctl", "-n", "200", "--no-pager"])
+        info = self._run(["ros2", "topic", "info", "/scan"])
+        hz = self._run(
             ["timeout", "6", "ros2", "topic", "hz", "/scan", "--window", "5"]
         )
-        sample = self.executor.run_readonly(
-            ["ros2", "topic", "echo", "--once", "/scan", "--field", "ranges"]
-        )
+        sample_results = [
+            self._run(["ros2", "topic", "echo", "--once", "/scan", "--field", "ranges"])
+            for _ in range(3)
+        ]
         lines = self._lines(logs)
-        values = [token.casefold() for token in _FLOAT.findall(sample.stdout)]
+        values = [
+            token.casefold()
+            for sample in sample_results
+            for token in _FLOAT.findall(sample.stdout)
+        ]
         nan_count = sum(value == "nan" for value in values)
         inf_count = sum(value in {"inf", "+inf", "-inf"} for value in values)
         valid_count = len(values) - nan_count - inf_count
@@ -295,15 +308,16 @@ class LanderPiDiagnoseCollector:
                 ("logs", logs),
                 ("topic_info", info),
                 ("topic_hz", hz),
-                ("topic_sample", sample),
+                *[(f"topic_sample_{index}", sample) for index, sample in enumerate(sample_results, 1)],
             )
             if result.returncode != 0
+            and not (name == "topic_hz" and result.returncode == 124 and result.stdout)
         ]
         type_match = re.search(r"Type:\s*([^\s]+)", info.stdout, re.I)
         return LPD02Observation(
             topic_type=type_match.group(1) if type_match else None,
             publisher_count=int(publisher.group(1)) if publisher else None,
-            sample_count=1 if values else 0,
+            sample_count=sum(1 for sample in sample_results if sample.stdout.strip()),
             valid_range_count=valid_count,
             total_range_count=len(values),
             nan_count=nan_count,
