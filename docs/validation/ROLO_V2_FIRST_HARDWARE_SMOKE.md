@@ -32,10 +32,11 @@ Middleware Tool 首次运行暴露了一个真实环境差异：受控 runner �
 
 当前 Codex 会话生成并校验了 `rolo-tool-plan/v1`：
 
-- `target_id=raspberrypi-192-168-10-167`
-- `session_id=hardware-smoke`
-- `surface_digest=d922f1a7ac9235a4199f89c7224c804a776013872fb23c4fac0f9179ff46b7b5`
-- `plan_sha256=23cb67e82010661bbfdd21eb5405b326c9e9fac25893a1016e7501ab50344a00`
+- `target_id=mentorpi`
+- `session_id=native-02b2b112075d459191550b7d9e98370b`
+- `surface_digest=bf4b3402604bddd46a1f9bdb659e0a8e857d3849007f274d17d554432f296ced`
+- `plan_sha256 (OS)=905abe32c4c2739ba32d6929bdb07286e92c2bf19137c13f2943720f285f2d83`
+- `plan_sha256 (Middleware)=de8db9715c6a938b0f336a4d6ca5368d84ae59e9b3a8418ae433705bf24019e7`
 
 计划只包含两个 allowlisted、`readonly` 步骤；Rolo 校验通过后在目标容器执行，两个步骤
 均返回 `SUCCEEDED`。这证明当前 Codex 可以作为 Agent 消费 Rolo Tool Surface，而不需要
