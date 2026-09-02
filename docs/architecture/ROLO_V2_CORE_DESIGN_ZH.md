@@ -111,6 +111,10 @@ Agent 返回只包含 Tool ID 和 typed arguments 的 `ToolPlan`。Rolo 校验�
 次调用。发现 Tool 不足时，Agent 返回 `CAPABILITY_GAP`；只有此时才进入窄的 Adapter/Provider
 扩展流程。
 
+正式执行入口是 session 内的 `execute_plan`（Broker action=`plan`），而不是 Agent 直接调用
+runner。Rolo 会再次校验 `target_id`、`session_id`、`surface_digest` 和 allowlist；任一步骤
+失败即停止后续步骤并保留已完成调用的审计记录。
+
 推荐的 Skill 边界是一个必需的 `rolo-tool-planning` 核心 Skill，加上按需的 provider/domain
 Skill。Skill 负责规划和解释，不拥有执行、注册、Gate 或 release 权限。
 

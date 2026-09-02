@@ -7,6 +7,7 @@ import threading
 from contextlib import closing
 
 from rolo.agent_tools.session import NativeToolSession
+from rolo.agent_tools.planning import ToolPlan
 
 _MAX_REQUEST_BYTES = 16 * 1024
 _MAX_RESPONSE_BYTES = 512 * 1024
@@ -126,6 +127,14 @@ class NativeToolBroker:
                     "result": self.session.invoke(request["tool_id"], raw_arguments).model_dump(
                         mode="json"
                     ),
+                }
+            if action == "plan" and isinstance(request.get("plan"), dict):
+                plan = ToolPlan.model_validate(request["plan"])
+                return {
+                    "status": "SUCCEEDED",
+                    "results": [
+                        item.model_dump(mode="json") for item in self.session.execute_plan(plan)
+                    ],
                 }
             return {"status": "ERROR", "message": "invalid native broker request"}
         except Exception as exc:

@@ -13,6 +13,8 @@ from rolo.agent_tools import (
     default_agent_native_catalog,
     native_broker_request,
     native_catalog_sha256,
+    ToolPlanStep,
+    build_tool_plan,
 )
 from rolo.core.artifacts import ArtifactStore
 
@@ -99,6 +101,27 @@ def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
             artifacts=ArtifactStore(tmp_path / "artifacts"),
             clock=lambda: now,
         )
+
+
+def test_native_session_executes_validated_tool_plan(tmp_path) -> None:
+    session = _session(tmp_path)
+    plan = build_tool_plan(
+        goal="inspect hardware",
+        target_id="demo",
+        session_id="native-session-1",
+        surface_digest=native_catalog_sha256(default_agent_native_catalog()),
+        steps=[
+            ToolPlanStep(
+                tool_id="native.hw.inventory.scan",
+                expected_observation="hardware inventory",
+            )
+        ],
+    )
+
+    results = session.execute_plan(plan)
+
+    assert len(results) == 1
+    assert results[0].evidence_refs
 
 
 def test_native_session_close_is_idempotent_and_audits_once(tmp_path) -> None:

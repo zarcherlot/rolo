@@ -16,6 +16,7 @@ from rolo.agent_tools.native_tools import (
     AgentNativeToolDescriptor,
     AgentNativeToolResult,
 )
+from rolo.agent_tools.planning import ToolPlan, validate_tool_plan
 from rolo.core.artifacts import ArtifactStore
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -136,6 +137,21 @@ class NativeToolSession:
         self._preflight()
         allowed = set(self.descriptor.allowed_tools)
         return [item for item in self.runner.list_tools() if item.tool_id in allowed]
+
+    def execute_plan(self, plan: ToolPlan) -> list[AgentNativeToolResult]:
+        """Validate and execute one Agent plan through this frozen session."""
+        if plan.target_id != self.descriptor.robot_id:
+            raise NativeToolSessionAuthorizationError("tool plan target does not match session")
+        if plan.session_id != self.descriptor.session_id:
+            raise NativeToolSessionAuthorizationError("tool plan session does not match session")
+        if plan.surface_digest != self.descriptor.native_catalog_sha256:
+            raise NativeToolSessionAuthorizationError("tool plan surface digest does not match session")
+        validate_tool_plan(
+            plan,
+            allowed_tool_ids=self.descriptor.allowed_tools,
+            catalog=self.runner.list_tools(),
+        )
+        return [self.invoke(step.tool_id, step.arguments) for step in plan.steps]
 
     def invoke(
         self,
