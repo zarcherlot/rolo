@@ -11,7 +11,7 @@ import typer
 
 from rolo.agent_provider import available_agent_executors
 from rolo.commands.common import emit
-from rolo.commands.lifecycle import run_adapt_start
+from rolo.commands.lifecycle import run_probe_start
 from rolo.console import run_console
 from rolo.core.config import get_settings
 from rolo.device_hardening_evidence import (
@@ -168,7 +168,7 @@ def run(
 
     ``rolo`` without arguments already opens this console on a TTY.  The explicit
     spelling is useful in launchers and makes the two supported entry modes clear:
-    canonical subcommands (for example ``rolo adapt ...``) and conversational
+    canonical subcommands (for example ``rolo probe ...``) and conversational
     interaction (``rolo run``).
     """
     if once:
@@ -824,12 +824,12 @@ def probe(
             emit(
                 {
                     "status": "AUTHORIZATION_REQUIRED",
-                    "scope": "adapt.run",
+                    "scope": "probe.run",
                     "reason": (
                         "Agent execution and artifact publication require explicit confirmation"
                     ),
                     "mutation_started": False,
-                    "resume": "rolo adapt ... --confirm",
+                    "resume": "rolo probe ... --confirm",
                 }
             )
             raise typer.Exit(code=2)
@@ -866,7 +866,7 @@ def probe(
                 raise ValueError("SSH target port does not match the approved evidence deployment")
             adapt_project_root = project_root.expanduser().resolve()
             evidence_mode = EvidenceDeploymentMode.REMOTE
-        result = run_adapt_start(
+        result = run_probe_start(
             robot_id=robot_id,
             project_root=adapt_project_root,
             urdf=urdf,

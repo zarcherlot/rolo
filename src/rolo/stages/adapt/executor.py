@@ -341,7 +341,7 @@ class CodexAdaptExecutor:
         started_at = utc_now()
         run_id = f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{uuid4().hex[:8]}"
         layout = ArtifactLayout(self.artifacts.root)
-        run_root = layout.stage_run("adapt", robot_id, run_id)
+        run_root = layout.stage_run("probe", robot_id, run_id)
         relative_run_root = layout.relative(run_root)
         run_root.mkdir(parents=True, exist_ok=False)
         prompt_path = run_root / "prompt.txt"
@@ -514,7 +514,7 @@ class CodexAdaptExecutor:
                 session_id=f"native-{run_id}",
                 nonce=uuid4().hex,
                 robot_id=robot_id,
-                stage="adapt",
+                stage="probe",
                 native_catalog_sha256=native_catalog_sha256(native_catalog),
                 allowed_tools=[item.tool_id for item in native_catalog],
                 policy_version="native-policy-v2-family",

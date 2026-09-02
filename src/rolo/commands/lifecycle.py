@@ -37,14 +37,14 @@ from rolo.stages.adapt.target_evidence import (
 from rolo.stages.contracts import StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
-adapt_stage_app = typer.Typer(
+probe_stage_app = typer.Typer(
     help="Probe a robot target and publish its smallest trusted Tool Surface."
 )
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")
-adapt_stage_app.add_typer(enroll_app, name="enroll")
+probe_stage_app.add_typer(enroll_app, name="enroll")
 
 
-def run_adapt_start(
+def run_probe_start(
     *,
     robot_id: str,
     project_root: Path | None,
@@ -71,7 +71,7 @@ def run_adapt_start(
     heuristic_agent_parallelism: int | None = None,
     on_output: Callable[[str, str], None] | None = None,
 ) -> AdaptJourneyResult:
-    """Run the shared Adapt start application service used by product and expert CLIs."""
+    """Run the shared Probe start service used by product and expert CLIs."""
     settings = get_settings()
     heuristic_overrides: dict[str, object] = {}
     if heuristic_agent_mode is not None:
@@ -202,8 +202,8 @@ def run_adapt_start(
     )
 
 
-@adapt_stage_app.command("start")
-def adapt_stage_start(
+@probe_stage_app.command("start")
+def probe_stage_start(
     robot_id: Annotated[
         str,
         typer.Option("--robot-id", "--robot", help="Stable identity for this robot"),
@@ -329,7 +329,7 @@ def adapt_stage_start(
 ) -> None:
     """Run the shortest safe path from a robot project to an Adapt release."""
     try:
-        result = run_adapt_start(
+        result = run_probe_start(
             robot_id=robot_id,
             project_root=project_root,
             urdf=urdf,
@@ -366,14 +366,14 @@ def emit_stage_status(stage: StageName, robot: str) -> None:
     emit(assess_stage(stage, settings.rolo_artifact_dir, robot))
 
 
-@adapt_stage_app.command("status")
-def adapt_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
+@probe_stage_app.command("status")
+def probe_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show discovery, Adapter Agent, conformance, and handoff readiness."""
     emit_stage_status(StageName.PROBE, robot)
 
 
-@adapt_stage_app.command("run")
-def adapt_stage_run(
+@probe_stage_app.command("run")
+def probe_stage_run(
     robot: Annotated[str, typer.Option("--robot")],
     scratch_root: Annotated[
         Path | None,
@@ -417,13 +417,13 @@ def adapt_stage_run(
     emit({"run": summary.model_dump(mode="json"), "artifact": str(artifact)})
 
 
-@adapt_stage_app.command("agent-config")
+@probe_stage_app.command("agent-config")
 def adapt_agent_config() -> None:
     """Show the effective secret-free Adapter Agent provider and model selection."""
     emit(coding_agent_config(get_settings()))
 
 
-@adapt_stage_app.command("slice-observability")
+@probe_stage_app.command("slice-observability")
 def adapt_slice_observability(
     robot: Annotated[str, typer.Option("--robot")],
     max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
@@ -446,7 +446,7 @@ def adapt_slice_observability(
     emit(report)
 
 
-@adapt_stage_app.command("capability-observability")
+@probe_stage_app.command("capability-observability")
 def adapt_capability_observability(
     robot: Annotated[str, typer.Option("--robot")],
     max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
@@ -464,7 +464,7 @@ def adapt_capability_observability(
     emit(report)
 
 
-@adapt_stage_app.command("acceptance-pack")
+@probe_stage_app.command("acceptance-pack")
 def adapt_acceptance_pack(
     robot: Annotated[str, typer.Option("--robot")],
     output: Annotated[
@@ -505,7 +505,7 @@ def enrollment_show() -> None:
 def register_lifecycle_commands(root: typer.Typer) -> None:
     # Probe is the only active v2 lifecycle. Trace and Certify are deliberately
     # not registered until their contracts have an independent implementation.
-    root.add_typer(adapt_stage_app, name="probe")
+    root.add_typer(probe_stage_app, name="probe")
 
     @root.command("pipeline-status")
     def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:

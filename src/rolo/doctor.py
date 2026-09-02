@@ -88,7 +88,7 @@ def build_doctor_report(
         if not optional_tools[name]:
             warnings.append(f"{name} is optional for mock mode and is not installed")
     if not optional_tools["codex"]:
-        warnings.append("codex is not installed; adapt run will attempt installation")
+        warnings.append("codex is not installed; probe run will attempt installation")
 
     sandbox_launcher = settings.rolo_adapter_sandbox_launcher
     if settings.rolo_adapter_unsandboxed_dev:

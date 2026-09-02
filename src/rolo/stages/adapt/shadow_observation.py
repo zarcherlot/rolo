@@ -188,7 +188,7 @@ def build_capability_shadow_stability_report(
     if max_runs < 1:
         raise ValueError("max_runs must be positive")
     layout = ArtifactLayout(artifact_root)
-    runs_root = layout.stage_latest("adapt", robot_id).parent / "runs"
+    runs_root = layout.stage_latest("probe", robot_id).parent / "runs"
     run_paths = (
         sorted(
             (path for path in runs_root.iterdir() if path.is_dir()),

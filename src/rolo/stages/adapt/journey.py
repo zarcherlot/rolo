@@ -128,7 +128,7 @@ def _authorization_request(
         "plan_sha256": plan_sha256,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=15)).isoformat(),
-        "resume_command": f"rolo adapt {project_root} --robot-id {robot_id}",
+        "resume_command": f"rolo probe {project_root} --robot-id {robot_id}",
     }
 
 
@@ -350,7 +350,7 @@ class AdaptJourneyService:
         if not run_agent:
             return AdaptJourneyResult(
                 status="DISCOVERY_COMPLETE",
-                next_steps=[f"robotctl adapt run --robot {robot_id}", "robotctl serve"],
+                next_steps=[f"robotctl probe run --robot {robot_id}", "robotctl serve"],
                 **base,
             )
 
@@ -410,7 +410,7 @@ class AdaptJourneyService:
                         "Confirm this request as the current user, then run "
                         "`codex login --device-auth`."
                     ),
-                    f"Resume with: rolo adapt {evidence.project_root} --robot-id {robot_id}",
+                    f"Resume with: rolo probe {evidence.project_root} --robot-id {robot_id}",
                 ],
                 **{key: value for key, value in base.items() if key != "adapt_status"},
             )

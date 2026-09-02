@@ -214,7 +214,7 @@ def _discover_verified_snapshots(
 ) -> tuple[list[_VerifiedSnapshot], int]:
     runs_root = (
         artifact_root
-        / "adapt"
+        / "probe"
         / _safe_segment(robot.robot_id, "robot_id")
         / "runs"
     )

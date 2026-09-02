@@ -56,7 +56,7 @@ class AdaptInputs(BaseModel):
     schema_version: Literal["robot-adapt-inputs/v1", "robot-adapt-inputs/v2"] = (
         "robot-adapt-inputs/v2"
     )
-    stage: str = "adapt"
+    stage: str = "probe"
     robot_id: str
     discovery_id: str
     semantic_context_ref: str

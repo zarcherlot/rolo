@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from rolo.commands.lifecycle import run_adapt_start
+from rolo.commands.lifecycle import run_probe_start
 from rolo.core.config import get_settings
 from rolo.job_service import JobService
 from rolo.natural_service import NaturalLanguageService
@@ -286,7 +286,7 @@ def _call(name: str, args: dict[str, Any]) -> Any:
             }
         settings = get_settings()
         return _jsonable(
-            run_adapt_start(
+            run_probe_start(
                 robot_id=robot_id,
                 project_root=target.workspace,
                 urdf=Path(args["urdf"]) if args.get("urdf") else None,

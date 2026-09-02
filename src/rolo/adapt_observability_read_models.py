@@ -314,7 +314,7 @@ def build_slice_run_detail(
     run_id: str,
 ) -> SliceRunDetail:
     layout = ArtifactLayout(artifact_root)
-    run_path = layout.stage_run("adapt", robot_id, run_id)
+    run_path = layout.stage_run("probe", robot_id, run_id)
     decision_path = run_path / "slice-activation-decision.json"
     if not decision_path.is_file():
         raise FileNotFoundError(decision_path)

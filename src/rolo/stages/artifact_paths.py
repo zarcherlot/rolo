@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_STAGES = {"adapt", "diagnose", "verify"}
+_STAGES = {"probe", "trace", "certify"}
 
 
 def _segment(value: str, label: str) -> str:
@@ -129,7 +129,7 @@ class ArtifactLayout:
     def verify_readiness(self, robot_id: str) -> Path:
         """Canonical optional Verify readiness report for one robot."""
 
-        return self.stage_file("verify", robot_id, "readiness.json")
+        return self.stage_file("certify", robot_id, "readiness.json")
 
 
 def resolve_artifact_ref(root: Path, reference: str) -> Path:

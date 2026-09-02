@@ -419,7 +419,7 @@ class AdaptGateReport(BaseModel):
 class AdaptRunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["robot-adapt-run-summary/v1"] = "robot-adapt-run-summary/v1"
+    schema_version: Literal["robot-probe-run-summary/v1"] = "robot-probe-run-summary/v1"
     robot_id: str
     run_id: str
     status: Literal["COMPLETE"] = "COMPLETE"
@@ -483,7 +483,7 @@ class AdaptPlan(BaseModel):
     schema_version: Literal["robot-adapt-plan/v2", "robot-adapt-plan/v3"] = (
         "robot-adapt-plan/v3"
     )
-    stage: str = "adapt"
+    stage: str = "probe"
     robot_id: str
     source_discovery_id: str
     status: AdaptPlanStatus

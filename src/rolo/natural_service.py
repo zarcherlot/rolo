@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from rolo.commands.lifecycle import run_adapt_start
+from rolo.commands.lifecycle import run_probe_start
 from rolo.core.config import get_settings
 from rolo.job_service import JobService
 from rolo.jobs import run_bootstrap_job
@@ -52,7 +52,7 @@ class NaturalLanguageService:
                 raise ValueError(
                     "natural-language Adapt currently supports local workspaces only"
                 )
-            return run_adapt_start(
+            return run_probe_start(
                 robot_id=intent.robot_id,
                 project_root=target.workspace,
                 urdf=Path(intent.urdf) if intent.urdf else None,

@@ -129,7 +129,7 @@ def build_adapt_acceptance_pack(
     eligible, deferred = adapter_operation_eligibility(report)
     blockers = list(assessment.blockers)
     release = None
-    handoff_path = ArtifactLayout(artifact_root).stage_latest_index("adapt", robot_id)
+    handoff_path = ArtifactLayout(artifact_root).stage_latest_index("probe", robot_id)
     if handoff_path.is_file():
         try:
             handoff = validate_adapter_handoff(

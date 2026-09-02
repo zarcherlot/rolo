@@ -105,7 +105,7 @@ def build_slice_stability_report(
     if min_successful_canary_runs < 1:
         raise ValueError("min_successful_canary_runs must be positive")
     layout = ArtifactLayout(artifact_root)
-    runs_root = layout.stage_latest("adapt", robot_id).parent / "runs"
+    runs_root = layout.stage_latest("probe", robot_id).parent / "runs"
     run_paths = (
         sorted(
             (path for path in runs_root.iterdir() if path.is_dir()),
@@ -152,7 +152,7 @@ def build_slice_run_observation(
     """Read one immutable Slice decision and its bounded run/gate metrics."""
 
     layout = ArtifactLayout(artifact_root)
-    run_path = layout.stage_run("adapt", robot_id, run_id)
+    run_path = layout.stage_run("probe", robot_id, run_id)
     decision_path = run_path / "slice-activation-decision.json"
     if not decision_path.is_file():
         raise FileNotFoundError(decision_path)

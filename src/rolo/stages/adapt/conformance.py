@@ -196,7 +196,7 @@ def _payload(decoded: dict[str, bytes], relative: str) -> bytes:
 
 def latest_adapter_handoff_path(artifact_root: Path, robot_id: str) -> Path:
     layout = ArtifactLayout(artifact_root)
-    index_path = layout.stage_latest_index("adapt", robot_id)
+    index_path = layout.stage_latest_index("probe", robot_id)
     index = AdaptLatestIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
     if index.robot_id != robot_id:
         raise ValueError("adapt latest index robot identity mismatch")
@@ -304,7 +304,7 @@ def _validate_native_tool_bindings(
     # Comparing the persisted run prevents a handoff from attaching an
     # unrelated but otherwise valid native session after the fact.
     layout = ArtifactLayout(artifact_root)
-    run_path = layout.stage_run("adapt", handoff.robot_id, handoff.source_agent_run_id) / "run.json"
+    run_path = layout.stage_run("probe", handoff.robot_id, handoff.source_agent_run_id) / "run.json"
     if not run_path.is_file():
         raise ValueError("native tool handoff source AdapterAgentRun is missing")
     run = AdapterAgentRun.model_validate_json(run_path.read_text(encoding="utf-8"))
@@ -465,7 +465,7 @@ class AdapterPromotionService:
             if value.robot_id != run.robot_id or value.discovery_id != run.source_discovery_id:
                 raise ValueError(f"{label} identity does not match the Adapter Agent run")
 
-        snapshot_root = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "output-snapshot"
+        snapshot_root = self.layout.stage_run("probe", run.robot_id, run.run_id) / "output-snapshot"
         bundle_manifest_out = snapshot_root / "adapter-manifest.json"
         snapshot_root.mkdir(parents=True, exist_ok=True)
         if bundle_manifest_payload is not None:
@@ -572,7 +572,7 @@ class AdapterPromotionService:
         run: AdapterAgentRun,
         snapshot: AdapterOutputSnapshot,
     ) -> tuple[AdapterHandoff, Path, AdaptGateReport, Path]:
-        promotion_lock = self.layout.stage_latest_index("adapt", run.robot_id).with_name(
+        promotion_lock = self.layout.stage_latest_index("probe", run.robot_id).with_name(
             "promotion"
         )
         with interprocess_lock(promotion_lock, timeout_s=30.0):
@@ -585,9 +585,9 @@ class AdapterPromotionService:
     ) -> tuple[AdapterHandoff, Path, AdaptGateReport, Path]:
         checks: list[str] = []
         published_release_root: Path | None = None
-        gate_path = self.layout.stage_run("adapt", run.robot_id, run.run_id) / "gate.json"
+        gate_path = self.layout.stage_run("probe", run.robot_id, run.run_id) / "gate.json"
         runtime_index = AdapterOutputLayout(self.output_root).current(run.robot_id)
-        adapt_index = self.layout.stage_latest_index("adapt", run.robot_id)
+        adapt_index = self.layout.stage_latest_index("probe", run.robot_id)
         previous_runtime_index = runtime_index.read_bytes() if runtime_index.is_file() else None
         expected_current_release_id = (
             AdapterReleaseIndex.model_validate_json(previous_runtime_index).release_id
@@ -797,7 +797,7 @@ class AdapterPromotionService:
                     raise ValueError(f"Tool Catalog contract differs from Registry: {operation}")
             if any(tool.availability == "DISCOVERED_UNVERIFIED" for tool in catalog.tools):
                 raise ValueError("gated Tool Catalog still contains unverified operations")
-            run_root = self.layout.stage_run("adapt", run.robot_id, run.run_id)
+            run_root = self.layout.stage_run("probe", run.robot_id, run.run_id)
             catalog_out = self.artifacts.write_json(
                 self.layout.relative(run_root / "gated-output" / "tool-catalog.json"),
                 catalog.model_dump(mode="json"),

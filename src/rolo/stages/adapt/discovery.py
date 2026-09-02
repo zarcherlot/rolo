@@ -2839,7 +2839,7 @@ class DiscoveryService:
         inputs_payload["discovery_manifest_sha256"] = sha256_file(manifest_path)
         # Publish only small mutable stage indexes; immutable evidence remains in discovery/.
         self.artifacts.write_json(
-            layout.relative(layout.stage_latest("adapt", robot.robot_id) / "inputs.json"),
+            layout.relative(layout.stage_latest("probe", robot.robot_id) / "inputs.json"),
             inputs_payload,
         )
         for stage, stage_inputs in stage_payloads.items():

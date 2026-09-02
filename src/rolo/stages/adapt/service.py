@@ -236,7 +236,7 @@ class AdaptRunService:
         )
         summary_path = self.artifacts.write_json(
             self.layout.relative(
-                self.layout.stage_run("adapt", robot_id, agent_run.run_id) / "summary.json"
+                self.layout.stage_run("probe", robot_id, agent_run.run_id) / "summary.json"
             ),
             summary.model_dump(mode="json"),
         )
@@ -253,7 +253,7 @@ class AdaptStageService:
 
     def derive_plan(self, robot_id: str) -> AdaptPlan:
         layout = ArtifactLayout(self.artifacts.root)
-        adapt_inputs = layout.stage_file("adapt", robot_id, "inputs.json")
+        adapt_inputs = layout.stage_file("probe", robot_id, "inputs.json")
         if not adapt_inputs.is_file():
             raise FileNotFoundError(f"No adapt inputs for {robot_id}; run adapt discovery first")
         inputs = AdaptInputs.model_validate_json(adapt_inputs.read_text(encoding="utf-8"))
@@ -309,8 +309,8 @@ class AdaptStageService:
 
 def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
     layout = ArtifactLayout(artifact_root)
-    adapt_inputs = layout.stage_file("adapt", robot_id, "inputs.json")
-    handoff_index = layout.stage_latest_index("adapt", robot_id)
+    adapt_inputs = layout.stage_file("probe", robot_id, "inputs.json")
+    handoff_index = layout.stage_latest_index("probe", robot_id)
     discovery_report = layout.discovery_latest(robot_id)
     if not adapt_inputs.is_file():
         return StageAssessment(
