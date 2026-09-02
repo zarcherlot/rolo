@@ -14,6 +14,7 @@ from rolo.target_ref import SshTargetRef, TargetRef
 
 _PROFILE_ID = re.compile(r"^[a-z][a-z0-9_-]{2,63}$")
 _CREDENTIAL_REF = re.compile(r"^[a-z][a-z0-9_-]{0,31}:[A-Za-z0-9._/-]{1,127}$")
+_PROVIDER_HINT_KEY = re.compile(r"^[a-z][a-z0-9_.-]{1,63}$")
 _SSH_FINGERPRINT = re.compile(r"^SHA256:[A-Za-z0-9+/]+={0,2}$")
 
 
@@ -69,6 +70,7 @@ class TargetProfile(BaseModel):
     target: TargetRef
     credential: CredentialReference
     remote_command_prefix: list[str] = Field(default_factory=list, max_length=8)
+    provider_hints: dict[str, str] = Field(default_factory=dict, max_length=8)
     host_key: HostKeyDecision | None = None
     created_at: datetime
     updated_at: datetime
@@ -93,6 +95,19 @@ class TargetProfile(BaseModel):
         if len(value) != len(set(value)):
             raise ValueError("remote command prefix tokens must be unique")
         return value
+
+    @field_validator("provider_hints")
+    @classmethod
+    def validate_provider_hints(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(
+            not _PROVIDER_HINT_KEY.fullmatch(key)
+            or not item
+            or len(item) > 256
+            or "\x00" in item
+            for key, item in value.items()
+        ):
+            raise ValueError("provider hints must use bounded, NUL-free values")
+        return dict(sorted(value.items()))
 
 
 class TargetProfileStore:
@@ -159,6 +174,7 @@ class TargetProfileStore:
         target: TargetRef,
         credential: CredentialReference,
         remote_command_prefix: list[str] | None = None,
+        provider_hints: dict[str, str] | None = None,
         now: datetime | None = None,
     ) -> TargetProfile:
         timestamp = now or _utc_now()
@@ -171,6 +187,7 @@ class TargetProfileStore:
             target=target,
             credential=credential,
             remote_command_prefix=remote_command_prefix or [],
+            provider_hints=provider_hints or {},
             host_key=host_key,
             created_at=timestamp,
             updated_at=timestamp,

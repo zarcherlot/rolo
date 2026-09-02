@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-31; source_of_truth: docs/target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md -->
+<!-- status: archived; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/getting-started/ADAPT_SHORT_JOURNEY.md -->
 
 # 目标机 Adapt 真机验证手册
 

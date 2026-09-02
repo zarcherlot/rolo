@@ -37,7 +37,9 @@ The current Native catalog is family-level, read-only and static-argv. It is int
 second 197-item Canonical Registry. Commands that Codex already understands remain native tools;
 a new Adapter bundle is justified only when the target OS, Middleware or application cannot be
 safely and consistently invoked by the Agent without Rolo-owned translation. MVP provider IDs may
-be implementation-specific, while the four family contracts remain platform-neutral.
+be implementation-specific, while the four family contracts remain platform-neutral. The Agent
+receives only the public family names and tool IDs; concrete provider executable names are kept
+inside the descriptor and may be replaced by a future provider implementation.
 
 ## Trust boundaries
 
@@ -89,7 +91,8 @@ The authoritative implementation is concentrated in:
   `src/rolo/agent_tools/planning.py` — Tool Surface, Session and ToolPlan;
 - `src/rolo/agent_tools/session_factory.py` — profile-bound session construction;
 - `tests/test_probe_session_factory.py`, `tests/test_target_executors.py`,
-  `tests/test_target_evidence_deployment.py` — the retained v2 contract slice.
+  `tests/test_probe_evidence_contract.py`, `tests/test_product_cli_v2.py` — the retained
+  v2 contract slice.
 
 No MCP or web dashboard is required for this chain. Those integrations may be added later around
 the same CLI and artifact contracts; they cannot become an alternate authority path.

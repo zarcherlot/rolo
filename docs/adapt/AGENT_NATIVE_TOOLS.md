@@ -20,6 +20,8 @@ Release。
   漂移。
 - v2 Probe 使用 22 个 family-level descriptor，而不是为每个 OS/Middleware/hardware 命令建立一个
   descriptor；family 内的 `mode` 和参数都来自静态 allowlist，仍由 Runner 编译为固定 argv。
+- Surface 返回的 `family` 和 `tool_id` 只使用 `hardware`、`OS`、`Middleware` 等公共语义；
+  当前 provider 的 executable、setup 和环境变量只存在于 descriptor 的实现细节中。
 - Agent 先读取 Tool Surface，再通过绑定的 ToolPlan 执行；Probe 不自动运行 native
   工具，也不把 native 结果变成 release authority。
 - 对具有外部网络依赖的 Middleware 调用（当前为 `native.middleware.snapshot`），结果在超时时保留

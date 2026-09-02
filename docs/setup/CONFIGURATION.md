@@ -1,146 +1,49 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: active; authority: guide; owner: rolo maintainers; last_reviewed: 2026-09-02 -->
 
-# Rolo configuration and optional ROS bootstrap
+# Rolo v2 configuration
 
-Rolo runs without a configuration file. Linux defaults follow XDG and remain outside the Git
-checkout:
+Rolo v2 keeps normal operation profile-driven. The user names a target profile; Rolo resolves
+the approved connector, evidence and Tool Surface without exposing private-key or password
+contents to the Agent.
 
-```text
-~/.config/rolo/config.yaml           optional operator settings
-~/.local/state/rolo/config/          identity and collector state
-~/.local/share/rolo/artifacts/       Discovery, Wiki, Journey, Gate and audit artifacts
-~/.local/share/rolo/output/          immutable Adapter releases
-system temporary directory           deleted Agent workspaces
-```
+## Local state
 
-The runtime creates required directories for the current user. Environment variables and existing
-`.env` deployments remain compatible. Precedence is CLI, environment, user YAML, `.env`, then
-built-in defaults.
+Configuration and artifacts live outside the checkout in the platform's user configuration and
+state directories. A project-local `.rolo/config` is also supported for an explicitly isolated
+enrollment. Private identities, host-key files and collector secrets are ignored runtime state;
+they must never be committed or copied into plans and logs.
 
-## Coding Agent selection
-
-The `agent` section is deliberately split into two independent choices:
-
-```yaml
-agent:
-  provider: anthropic       # model endpoint/vendor or an internal relay
-  executor: claude-code    # local Agent product/harness adapter
-  base_url: https://gateway.example/v1
-  model: claude-sonnet
-  api_key_env: ANTHROPIC_API_KEY
-  executable: claude
-  timeout_s: 1800
-  auto_install: false
-  require_auth: true
-```
-
-Rolo ships the Codex Adapt and downstream executors and exposes an executor SPI (`rolo.agent_provider`). Other
-products can register an adapter through the `rolo.agent_executors` Python entry-point group;
-plugins may also provide their own dependency adapter for installation and authentication. The
-lifecycle, evidence, approval, and release contracts do not change. Rolo never persists the
-secret itself in plans or artifacts: only the environment-variable name and a boolean
-`api_key_configured` flag are recorded.
-
-The interactive chat transport uses the same split through the harness registry. Codex is built in;
-Claude Code or another product can register a `settings=...` harness factory through the
-`rolo.harnesses` entry-point group. Harnesses receive the configured provider/model/base URL and
-resolved key at runtime, stream output through the console callback, and do not receive lifecycle
-authority. This lets a product plugin change the model transport without changing Rolo's
-authorization or artifact contracts.
-
-Executor factories receive the immutable `AdapterAgentConfig` as `agent_config`, so a plugin can
-choose its own invocation protocol while preserving the same provider/model/key contract.
-
-Downstream plugins additionally implement `execute_stage(task, workspace, on_output)` and return
-only artifact references. The canonical `diagnose run`/`verify run` commands wrap that method with
-Rolo authorization, stream persistence, output-root checks, and the stage handoff validator; a
-plugin cannot publish `latest/handoff.json` directly through the CLI contract.
-
-If `coding_agent_api_key` is omitted, Rolo resolves the key from the configured
-`coding_agent_api_key_env` variable at runtime. This permits the same checked-in YAML to be
-used with OpenAI, Anthropic, or a relay by changing only the provider-specific environment.
-
-## Manage the user file
+## Target profile
 
 ```bash
-uv run robotctl config show
-uv run robotctl config init
-uv run robotctl config validate
+rolo target profile init ssh://user@target.example/path/to/workspace --robot my-robot
+rolo target profile show --profile my-robot
+rolo target inspect-profile --profile my-robot
 ```
 
-`init` never overwrites an existing file. `show` and `validate` emit only the supported non-secret
-settings. A complete template is checked in at [`../config/rolo.default.yaml`](../../config/rolo.default.yaml).
+The profile stores the target address, workspace, credential reference, host-key decision and
+optional runtime/provider hints. It does not store secret material. The credential broker first
+tries the configured SSH agent and then the explicitly pinned identity reference. Passwords are
+enrollment-only and are never accepted by a Tool invocation.
 
-## Agent-native rollout
+## Runtime/provider hints
 
-The family-level Linux/ROS/HW observation catalog is disabled by default:
+Provider setup is target-owned and optional. A profile may point to a bounded setup descriptor
+for the selected OS or Middleware provider; Rolo pins each resolved file and digest in the
+TargetEvidenceBundle. Rolo never sources interactive shell profiles or Agent-selected paths, and
+it never fills a missing target dependency from the controller environment. Missing executables,
+packages, runtime libraries or Middleware context produce an explicit bounded failure.
 
-```yaml
-agent_native:
-  mode: off       # off | shadow | canary | active
-  robot_ids: ""
-  run_ids: ""
-  max_calls: 64
-  max_elapsed_s: 600
-  max_result_bytes: 8000000
+The MVP ships one concrete OS provider and one concrete Middleware provider. Adding another
+provider reuses the same profile, evidence, session, ToolPlan and Conformance contracts; it does
+not change this configuration interface.
+
+## Agent entry point
+
+```bash
+rolo target tool-surface --profile my-robot
+rolo target tool-plan --profile my-robot PLAN.json
 ```
 
-`shadow` enables bounded observations for comparison, while `canary` requires an exact robot or
-run selector. Neither mode changes eligibility or release authority. `active` should only be used
-after native parity and artifact/evidence review; writes, calibration, reset, actuator, power and
-firmware operations remain Canonical.
-
-## ROS setup resolution
-
-Non-ROS projects need no ROS setup and continue with host, Application/CLI, protocol, process, and
-device-interface evidence. When the target or project is ROS-relevant, before signed target evidence
-collection local mode resolves setup files in this order:
-
-1. explicitly configured `ros.setup_files`;
-2. the single `/opt/ros/<distro>/setup.bash`, using inherited `ROS_DISTRO` when available;
-3. `<project-root>/install/local_setup.bash`, or `setup.bash` when no local setup exists.
-
-Rolo does not source `.bashrc`, `.profile`, or Agent-selected files. Multiple base distributions or
-multiple project overlays are an error. Resolve ambiguity explicitly:
-
-```yaml
-schema_version: rolo-config/v1
-
-ros:
-  auto_source: true
-  setup_files:
-    - /opt/ros/humble/setup.bash
-    - /home/robot/wheeltec_ws/install/local_setup.bash
-  domain_id: "0"
-  rmw_implementation: rmw_fastrtps_cpp
-```
-
-Setup scripts are executable code and remain an operator trust boundary. Collector enrollment pins
-their resolved paths and SHA-256 digests. Collection verifies the pins, sources the files through
-`bash --noprofile --norc`, admits only the bounded ROS/RMW and runtime path environment, and writes
-the bootstrap record into the signed ROS probe. A changed or missing setup file fails closed.
-
-Remote mode performs the same process inside the target collector. The controller never substitutes
-its own ROS environment for failed target collection.
-
-## Device-local Workbench plugin
-
-Leave the Workbench disabled for API-only installations. To serve a validated
-`rolo-plugin/v2` package on the same loopback listener, configure the extracted package
-root explicitly:
-
-```yaml
-schema_version: rolo-config/v1
-
-workbench:
-  plugin_dir: /opt/rolo/plugins/rolo-vis-0.38.0
-```
-
-Then `robotctl runtime serve` exposes the UI at `/workbench/` and the same API at
-`/rolo-api`, while preserving `/health` and `/v1/*` for existing clients. The package
-must contain `rolo.plugin.json`, `SHA256SUMS`, and `dist/client/index.html`; validation
-failure leaves the API running and keeps the Workbench unavailable.
-
-Workbench hosting requires a loopback rolo binding. Remote browsers must use a trusted,
-robot-owned reverse proxy that protects and forwards both route families. Do not place
-an API token in the browser or bind the Workbench directly to a non-loopback interface.
+The returned surface is the only Tool vocabulary the Agent may use. Rolo enforces fixed argv,
+read-only access, TTL, nonce, catalog digest, allowlist, output limits and per-call evidence.

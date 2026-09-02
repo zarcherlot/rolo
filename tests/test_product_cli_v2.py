@@ -47,7 +47,7 @@ def test_profile_to_surface_and_plan_is_one_cli_chain(tmp_path: Path) -> None:
         descriptor = next(
             item
             for item in surface_payload["tools"]
-            if item["tool_id"] == "native.linux.host.inspect"
+            if item["tool_id"] == "native.os.host.inspect"
         )
         session = surface_payload["session"]
         plan = build_tool_plan(

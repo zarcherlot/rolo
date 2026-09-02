@@ -54,15 +54,18 @@ def _session(tmp_path, *, max_calls: int = 2) -> NativeToolSession:
 def test_native_session_writes_evidence_artifact_and_audit(tmp_path) -> None:
     session = _session(tmp_path)
 
-    result = session.invoke("native.hw.inventory", {"mode": "usb"})
+    result = session.invoke("native.hardware.inventory", {"mode": "usb"})
 
     assert result.status.value in {"SUCCEEDED", "UNAVAILABLE"}
     assert result.evidence_refs == [
-        "artifact://native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.json"
+        "artifact://native/demo/sessions/native-session-1/calls/0001-native.hardware.inventory.json"
     ]
     assert (
         tmp_path
-        / "artifacts/native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.json"
+        / (
+            "artifacts/native/demo/sessions/native-session-1/calls/"
+            "0001-native.hardware.inventory.json"
+        )
     ).is_file()
     assert (
         tmp_path / "artifacts/native/demo/sessions/native-session-1/audit.jsonl"
@@ -73,10 +76,10 @@ def test_native_session_rejects_unknown_tool_and_enforces_budget(tmp_path) -> No
     session = _session(tmp_path, max_calls=1)
 
     with pytest.raises(NativeToolSessionAuthorizationError):
-        session.invoke("native.ros.graph.inspect", {"mode": "nodes"})
-    session.invoke("native.hw.inventory", {"mode": "usb"})
+        session.invoke("native.middleware.graph.inspect", {"mode": "nodes"})
+    session.invoke("native.hardware.inventory", {"mode": "usb"})
     with pytest.raises(ValueError, match="call budget"):
-        session.invoke("native.hw.inventory", {"mode": "usb"})
+        session.invoke("native.hardware.inventory", {"mode": "usb"})
 
 
 def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
@@ -113,7 +116,7 @@ def test_native_session_executes_validated_tool_plan(tmp_path) -> None:
         surface_digest=native_catalog_sha256(reduced_agent_native_catalog()),
         steps=[
             ToolPlanStep(
-                tool_id="native.hw.inventory",
+                tool_id="native.hardware.inventory",
                 expected_observation="hardware inventory",
             )
         ],
@@ -135,7 +138,7 @@ def test_native_session_rejects_a_plan_from_another_nonce(tmp_path) -> None:
         surface_digest=native_catalog_sha256(reduced_agent_native_catalog()),
         steps=[
             ToolPlanStep(
-                tool_id="native.hw.inventory",
+                tool_id="native.hardware.inventory",
                 expected_observation="hardware inventory",
             )
         ],
@@ -172,9 +175,9 @@ def test_native_broker_keeps_runner_outside_agent_workspace(tmp_path) -> None:
             host,
             port,
             broker.token,
-            {"action": "run", "tool_id": "native.hw.inventory", "arguments": {"mode": "usb"}},
+            {"action": "run", "tool_id": "native.hardware.inventory", "arguments": {"mode": "usb"}},
         )
-        assert result["result"]["tool_id"] == "native.hw.inventory"
+        assert result["result"]["tool_id"] == "native.hardware.inventory"
         with pytest.raises(ValueError, match="authorization"):
             native_broker_request(host, port, "wrong-token", {"action": "list"})
     finally:

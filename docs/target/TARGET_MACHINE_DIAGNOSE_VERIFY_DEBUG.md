@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: archived; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/architecture/ARCHITECTURE.md -->
 
 # 目标机 Diagnose / Verify 调试手册
 

@@ -36,6 +36,12 @@ _SAFE_ENV_KEYS = {
     if field.alias and field.alias != "PATH"
 }
 _PROCESS_ENV_KEYS = {"COMSPEC", "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR"}
+_PUBLIC_FAMILY_BY_PROVIDER = {"hw": "hardware", "linux": "OS", "ros": "Middleware"}
+_PUBLIC_TOOL_PREFIX_BY_PROVIDER = {
+    "native.hw.": "native.hardware.",
+    "native.linux.": "native.os.",
+    "native.ros.": "native.middleware.",
+}
 
 
 def _utc_now() -> datetime:
@@ -633,9 +639,14 @@ def _family_tool(
     allowed_env_keys: list[str] | None = None,
 ) -> AgentNativeToolDescriptor:
     first = variants[sorted(variants)[0]]
+    public_family = _PUBLIC_FAMILY_BY_PROVIDER.get(family, family)
+    for private_prefix, public_prefix in _PUBLIC_TOOL_PREFIX_BY_PROVIDER.items():
+        if tool_id.startswith(private_prefix):
+            tool_id = public_prefix + tool_id[len(private_prefix) :]
+            break
     return AgentNativeToolDescriptor(
         tool_id=tool_id,
-        family=family,
+        family=public_family,
         execution_path="MIDDLEWARE_CLI" if family == "ros" else "DIRECT_RUNNER",
         executable=first.executable,
         # The legacy fixed-argv fields remain populated for schema compatibility;
@@ -656,9 +667,10 @@ def _family_tool(
 def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
     """Return the curated family catalog used by v2 Adapt sessions.
 
-    The catalog deliberately exposes a small number of parameterized families rather
-    than one descriptor for every Linux/ROS command.  Every mode remains a static argv
-    shape and is validated before it reaches the host runner.
+    The catalog deliberately exposes a small number of parameterized semantic families
+    rather than one descriptor for every provider command.  Every mode remains a static
+    argv shape and is validated before it reaches the host runner.  The concrete provider
+    names used below are implementation details; the returned surface is platform-neutral.
     """
 
     token = NativeToolParameter(name="name", kind="token", pattern=r"[A-Za-z0-9_./:@+-]{1,128}")

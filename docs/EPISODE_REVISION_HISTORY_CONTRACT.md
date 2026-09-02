@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-29 -->
+<!-- status: archived; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/README.md -->
 
 # Episode revision history contract
 

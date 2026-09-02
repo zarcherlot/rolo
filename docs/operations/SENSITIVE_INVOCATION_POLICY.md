@@ -1,4 +1,4 @@
-<!-- status: active; authority: normative; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: archived; authority: normative; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/adapt/AGENT_NATIVE_TOOLS.md -->
 
 # SENSITIVE operation 调用策略
 

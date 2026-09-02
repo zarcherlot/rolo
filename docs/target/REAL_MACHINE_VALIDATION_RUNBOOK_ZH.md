@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-31; supersedes: docs/validation/REAL_MACHINE_P1_RUNBOOK_ZH.md; source_of_truth: docs/target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md -->
+<!-- status: archived; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-09-02; supersedes: docs/validation/REAL_MACHINE_P1_RUNBOOK_ZH.md; source_of_truth: docs/getting-started/ADAPT_SHORT_JOURNEY.md -->
 
 # ROLO 真机只读验证 RUNBOOK
 

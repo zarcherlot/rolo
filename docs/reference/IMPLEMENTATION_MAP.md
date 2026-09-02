@@ -22,10 +22,10 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 
 | Component | Code | Boundary |
 |---|---|---|
-| Target profile | `src/rolo/targets/profiles.py`, `credentials.py` | Stores target address, identity reference, host-key pin and provider hints; no secret material |
+| Target profile | `src/rolo/targets/profiles.py`, `credentials.py` | Stores target address, identity reference, host-key pin and bounded provider hints; no secret material |
 | SSH connector | `src/rolo/targets/executor.py`, `src/rolo/agent_tools/session_factory.py` | Resolves a profile to a pinned local or SSH executor; fail-closed on host-key or identity mismatch |
 | Target evidence | `src/rolo/stages/adapt/target_evidence.py`, `active_discovery.py`, `discovery.py` | Runs bounded OS/Middleware/hardware probes and writes signed, target-bound evidence |
-| Native Tool Surface | `src/rolo/agent_tools/native_tools.py` | Curated read-only family descriptors; missing OS/Middleware commands return explicit `UNAVAILABLE` |
+| Native Tool Surface | `src/rolo/agent_tools/native_tools.py` | Curated read-only family descriptors; Agent sees `hardware`/`OS`/`Middleware` names while provider commands remain implementation details |
 | Tool session | `src/rolo/agent_tools/session.py`, `broker.py` | Binds target, catalog digest, nonce, allowlist and budgets; emits result artifacts and audit records |
 | Agent planning | `src/rolo/agent_tools/planning.py` | Validates an Agent-produced plan against the session, digest, target and read-only policy |
 | Conformance | `src/rolo/agent_tools/conformance.py` | Independently checks descriptor uniqueness, catalog identity, allowlist and fixed-argv/read-only bounds |

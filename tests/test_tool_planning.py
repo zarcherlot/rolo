@@ -14,7 +14,7 @@ def test_current_agent_can_build_and_validate_readonly_plan() -> None:
     catalog = reduced_agent_native_catalog()
     surface_digest = native_catalog_sha256(catalog)
     step = ToolPlanStep(
-        tool_id="native.ros.graph.inspect",
+        tool_id="native.middleware.graph.inspect",
         arguments={"mode": "nodes"},
         expected_observation="当前 ROS 节点列表",
     )
@@ -45,7 +45,7 @@ def test_plan_digest_and_allowlist_are_authoritative() -> None:
         surface_digest=native_catalog_sha256(catalog),
         steps=[
             ToolPlanStep(
-                tool_id="native.linux.host.inspect",
+                tool_id="native.os.host.inspect",
                 arguments={"mode": "status"},
                 expected_observation="host status",
             )
@@ -67,7 +67,7 @@ def test_mutating_step_requires_approval() -> None:
         surface_digest=native_catalog_sha256(catalog),
         steps=[
             ToolPlanStep(
-                tool_id="native.linux.host.inspect",
+                tool_id="native.os.host.inspect",
                 expected_observation="test",
                 mode="mutating",
             )

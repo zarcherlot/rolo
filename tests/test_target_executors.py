@@ -244,6 +244,34 @@ def test_profile_executor_auto_assembles_pinned_transport(
     )
 
 
+def test_profile_persists_bounded_provider_hints_without_secret_material(tmp_path: Path) -> None:
+    store = TargetProfileStore(tmp_path / "config")
+    profile = store.create(
+        robot_id="robot",
+        target=LocalTargetRef(workspace=tmp_path),
+        credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+        provider_hints={"os.provider": "mvp", "middleware.provider": "mvp"},
+    )
+
+    loaded = store.load("robot")
+
+    assert loaded.provider_hints == {
+        "middleware.provider": "mvp",
+        "os.provider": "mvp",
+    }
+    assert "secret" not in profile.model_dump_json().lower()
+
+
+def test_profile_rejects_unbounded_provider_hint(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="provider hints"):
+        TargetProfileStore(tmp_path / "config").create(
+            robot_id="robot",
+            target=LocalTargetRef(workspace=tmp_path),
+            credential=CredentialReference(kind="ssh-agent", reference="ssh-agent:default"),
+            provider_hints={"os.provider": "x\x00bad"},
+        )
+
+
 def test_product_cli_exposes_local_target_inspection_and_plan(tmp_path: Path) -> None:
     runner = CliRunner()
 

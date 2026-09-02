@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-31; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
+<!-- status: archived; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/reference/ENGINEERING_STATUS.md -->
 
 # 后续开发整合与真机验证 RUNBOOK
 

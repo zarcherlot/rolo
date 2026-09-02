@@ -19,16 +19,16 @@ pinned `known_hosts` file, and no password fallback.
 
 ## Current evidence and conformance
 
-The current collector was run inside the target's ROS container with the v2
+The current collector was run inside the target's Middleware container with the v2
 collector implementation. The resulting bundle is retained locally as the
 ignored runtime artifact `.rolo/target-evidence-bundle.json` and covers
-`hw`, `linux`, and `ros` in read-only mode.
+hardware, OS, and Middleware in read-only mode.
 
 - Collector: `collector-6c07d8c4c07844a0af54db60012d1810`
 - Target fingerprint: `70c798f35729aec4e4ca083b561f37dd45cf70c8dcbecfbe7ecc1110bd1d74c9`
 - Bundle payload SHA-256: `a38636533a77eb5222237494dc893bcef2de72aeb65d639a7eac5ca2ac4384f6`
 - Independent verification: `PASSED` for payload hash, HMAC signature, target
-  identity, and all three layers (`hw,linux,ros`).
+  identity, and all three current provider layers.
 
 The first bundle produced by the pre-v2 target installation was deliberately
 not accepted: its declared hash did not match the v2 verifier after model

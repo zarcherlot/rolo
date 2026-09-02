@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: archived; authority: reference; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/reference/IMPLEMENTATION_MAP.md -->
 
 # Capability Provider Host 开发说明
 

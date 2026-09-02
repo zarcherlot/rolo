@@ -29,7 +29,7 @@ def test_profile_session_factory_builds_a_bounded_local_surface(tmp_path: Path) 
     )
     try:
         tools = session.list_tools()
-        result = session.invoke("native.linux.host.inspect", {"mode": "status"})
+        result = session.invoke("native.os.host.inspect", {"mode": "status"})
     finally:
         session.close()
 

@@ -1,5 +1,3 @@
-<!-- status: draft-v2; authority: design baseline; owner: rolo maintainers -->
-
 <!-- status: active; authority: normative; owner: rolo maintainers; last_reviewed: 2026-09-02 -->
 
 # Rolo v2 核心设计：四类小而稳的标准
@@ -40,7 +38,7 @@ Tool 是 Agent 可以发现和调用的最小稳定能力。每个 Tool 必须�
 - 对应的 target evidence 引用和 digest；
 - 是否允许进入长期 release、State Graph 和审计链。
 
-不为每个 Linux/ROS 命令建立一个产品 Operation。常规只读观察优先使用 family-level
+不为每个 OS/Middleware 命令建立一个产品 Operation。常规只读观察优先使用 family-level
 native Tool；只有需要稳定产品语义、跨平台统一、硬件/应用绑定、写授权或长期审计时，
 才升级为 Canonical Tool。
 
@@ -57,8 +55,8 @@ Probe，但不能提交任意 shell 或自造运行时事实。
 - 原始结果的 artifact ref、SHA-256 和限制说明；
 - 失败、截断和环境限制也必须被记录。
 
-ROS Tool 的执行环境必须来自同一份目标 Evidence：至少绑定目标的 `PATH`、ROS Python
-site-packages、`LD_LIBRARY_PATH` 以及 setup 文件 digest。Native runner/session 通过显式
+Middleware Tool 的执行环境必须来自同一份目标 Evidence：至少绑定目标的 runtime path、
+依赖包、动态库路径以及 setup 文件 digest。Native runner/session 通过显式
 `environment` 参数接收这份上下文，不依赖控制器自身的全局环境；环境缺失时返回结构化
 失败或 `environment_limited`，不得用控制器环境补齐后宣称目标可用。
 
@@ -134,7 +132,7 @@ SSH connector 的 v2 安全约束属于 Tool Surface 的一部分：连接必须
 episode capture 和 bootstrap planning 统一复用这条约束。
 
 Credential Broker 只解析 typed reference，不向 Agent 或普通 artifact 暴露
-密码、私钥正文或 keychain 内容。`ssh-agent:*` 在 Linux、macOS、Windows 上统一
+密码、私钥正文或 keychain 内容。`ssh-agent:*` 在控制器支持的 OpenSSH 平台上统一
 映射为 agent transport；`platform-keychain:*` / `secret-store:*` 由安装层解析
 为已 pin 的 identity 文件，Rolo 核验文件存在性和权限后才交给 connector。
 | 机器人 | 在目标环境执行受控 Probe/Tool；返回事实；执行最终授权调用；不决定是否可信或是否发布 |
@@ -149,7 +147,7 @@ Canonical Registry 不以 197 或 294 为目标数量。保留标准的依据是
 - 是否需要硬件/应用绑定、敏感数据保护、长期 State Graph 或 immutable release；
 - 是否是 Codex/native Tool 无法可靠表达的跨平台或 vendor/provider 缺口。
 
-Linux/ROS/HW 的通用只读观察进入 Agent-native family Tool；机器人应用语义、动作、安全、
+OS/Middleware/hardware 的通用只读观察进入 Agent-native family Tool；机器人应用语义、动作、安全、
 配置事务、Provider 适配和 Rolo 控制面继续保留为 Canonical。v1 Registry 及旧 release 只
 作为兼容和审计基线，不应阻塞 v2 的小工具闭环。
 
@@ -162,5 +160,5 @@ enroll -> target evidence -> inspect Tool Session -> Agent ToolPlan
        -> 只读调用 -> evidence/audit -> Rolo Conformance -> release
 ```
 
-首轮优先选择一个只读、低风险、目标明确的 Tool（例如主机状态、ROS graph 或一个明确的
+首轮优先选择一个只读、低风险、目标明确的 Tool（例如主机状态、Middleware graph 或一个明确的
 设备 inspect）。写操作、运动、安全和复杂 vendor adapter 在只读闭环稳定后再增加。

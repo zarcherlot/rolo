@@ -57,10 +57,7 @@ uv run robotctl probe status --robot my-robot
 [`docs/reference/ENGINEERING_STATUS.md`](docs/reference/ENGINEERING_STATUS.md)。提交前运行：
 
 ```bash
-uv run pytest -q tests/test_target_credentials.py tests/test_target_executors.py \
-  tests/test_target_evidence_deployment.py tests/test_agent_native_tools.py \
-  tests/test_probe_session_factory.py tests/test_native_tool_session.py \
-  tests/test_tool_planning.py
+uv run pytest -q
 uv run ruff check .
 python scripts/check_docs.py
 ```

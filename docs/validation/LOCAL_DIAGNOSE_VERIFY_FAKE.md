@@ -1,4 +1,4 @@
-<!-- status: active; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-08-29 -->
+<!-- status: archived; authority: guide; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/getting-started/ADAPT_SHORT_JOURNEY.md -->
 
 # 本地 Diagnose/Verify contract 与 fake provider 开发
 

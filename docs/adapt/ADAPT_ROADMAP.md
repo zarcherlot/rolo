@@ -1,4 +1,4 @@
-<!-- status: active; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: archived; authority: plan; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/reference/IMPLEMENTATION_MAP.md -->
 
 # Adapt 路线图
 

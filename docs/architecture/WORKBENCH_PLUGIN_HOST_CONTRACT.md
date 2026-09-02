@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: archived; authority: reference; owner: ROLO maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/README.md -->
 
 # E23 robot-hosted Workbench plugin contract
 

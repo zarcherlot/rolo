@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: archived; authority: reference; owner: docs maintainers; last_reviewed: 2026-09-02; source_of_truth: docs/adapt/AGENT_NATIVE_TOOLS.md -->
 
 # 非 ROS 工程适配设计
 

@@ -61,7 +61,7 @@ def test_runner_classifies_empty_usb_inventory_as_unavailable(
     )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
-    result = runner.run("native.hw.inventory", {"mode": "usb"})
+    result = runner.run("native.hardware.inventory", {"mode": "usb"})
 
     assert result.status == NativeToolStatus.UNAVAILABLE
     assert result.limitations == [
@@ -169,7 +169,7 @@ def test_non_ros_family_does_not_inherit_ros_runtime_paths(
     )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
-    runner.run("native.linux.host.inspect", {"mode": "status"})
+    runner.run("native.os.host.inspect", {"mode": "status"})
 
     captured_env = captured["env"]
     assert isinstance(captured_env, dict)
@@ -222,7 +222,7 @@ def test_remote_runner_does_not_require_controller_executable(
         executor=remote_executor,
     )
 
-    result = runner.run("native.linux.host.inspect", {"mode": "status"})
+    result = runner.run("native.os.host.inspect", {"mode": "status"})
 
     assert result.status == NativeToolStatus.SUCCEEDED
     assert captured["command"] == ["uname", "-a"]
@@ -247,7 +247,7 @@ def test_ros_runner_uses_an_ephemeral_log_directory(
     )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
-    runner.run("native.ros.graph.inspect", {"mode": "nodes"})
+    runner.run("native.middleware.graph.inspect", {"mode": "nodes"})
 
     assert captured_log_dir is not None
     assert not captured_log_dir.exists()
@@ -258,12 +258,14 @@ def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
 
     assert len(catalog) == 22
     assert len({item.tool_id for item in catalog}) == len(catalog)
-    assert "native.linux.host.status" not in {item.tool_id for item in catalog}
-    host = next(item for item in catalog if item.tool_id == "native.linux.host.inspect")
-    ros = next(item for item in catalog if item.tool_id == "native.ros.graph.inspect")
+    assert "native.os.host.status" not in {item.tool_id for item in catalog}
+    host = next(item for item in catalog if item.tool_id == "native.os.host.inspect")
+    middleware = next(
+        item for item in catalog if item.tool_id == "native.middleware.graph.inspect"
+    )
     assert set(host.variants) == {"inventory", "status", "time", "uptime"}
     assert host.variants["status"].argv_template == ["uname", "-a"]
-    assert {"PYTHONPATH", "LD_LIBRARY_PATH"}.issubset(ros.allowed_env_keys)
+    assert {"PYTHONPATH", "LD_LIBRARY_PATH"}.issubset(middleware.allowed_env_keys)
 
 
 def test_family_runner_resolves_only_allowlisted_arguments(
@@ -279,18 +281,20 @@ def test_family_runner_resolves_only_allowlisted_arguments(
         "rolo.agent_tools.native_tools.shutil.which", lambda value, path=None: value
     )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
-    result = runner.run("native.linux.process.inspect", {"mode": "inspect", "pid": "42"})
+    result = runner.run("native.os.process.inspect", {"mode": "inspect", "pid": "42"})
 
     assert captured["command"] == ["ps", "-p", "42", "-o", "pid,ppid,stat,comm,args"]
     assert result.arguments == {"mode": "inspect", "pid": "42"}
     with pytest.raises(ValueError, match="positive integer"):
-        runner.run("native.linux.process.inspect", {"mode": "inspect", "pid": "4;2"})
+        runner.run("native.os.process.inspect", {"mode": "inspect", "pid": "4;2"})
     with pytest.raises(ValueError, match="bounded relative path"):
-        runner.run("native.linux.file.inspect", {"mode": "read", "path": "../secret"})
+        runner.run("native.os.file.inspect", {"mode": "read", "path": "../secret"})
 
 
 def test_reduced_catalog_exposes_only_the_curated_native_surface() -> None:
     catalog = reduced_agent_native_catalog()
     assert len(catalog) == 22
-    assert {item.family for item in catalog} == {"hw", "linux", "ros"}
+    assert {item.family for item in catalog} == {"hardware", "OS", "Middleware"}
+    assert all("native.linux." not in item.tool_id for item in catalog)
+    assert all("native.ros." not in item.tool_id for item in catalog)
     assert all(item.access == "read" for item in catalog)
