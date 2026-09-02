@@ -256,6 +256,50 @@ def test_agent_accept_cannot_bypass_high_risk_review() -> None:
     }
 
 
+def test_complete_runtime_evidence_gates_unambiguous_read_only_r0() -> None:
+    route = RouteEvidence(
+        resource_id="ros_topic:/ros_robot_controller/battery",
+        kind="ros_topic",
+        endpoint="/ros_robot_controller/battery",
+        interface_type="std_msgs/msg/UInt16",
+        interface_schema_sha256="a" * 64,
+        provider_id="ros_node:ros_robot_controller",
+        runtime_revision="humble",
+        evidence_origin="OBSERVED_RUNTIME",
+        source="live_ros_graph",
+    )
+    report = DiscoveryReport(
+        discovery_id="disc-battery-runtime",
+        robot_id="demo",
+        status=DiscoveryStatus.SUCCEEDED,
+        platform={},
+        capability_manifest={},
+        probes={
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [route.model_dump(mode="json")],
+                    "route_enrichment": {"provider_ids": {route.resource_id: route.provider_id}},
+                },
+            )
+        },
+        operation_candidates=[
+            OperationCandidate(
+                operation="hw.power.battery.status",
+                route_evidence=[route],
+                route_binding_mode="ANY_OF",
+                semantic_review_required=True,
+            )
+        ],
+    )
+
+    eligible, deferred = adapter_operation_eligibility(report)
+
+    assert eligible == {"hw.power.battery.status"}
+    assert deferred == {}
+
+
 def test_legacy_cli_candidate_without_v2_flag_still_fails_closed() -> None:
     route = RouteEvidence(
         resource_id="cli:vendor-find-cameras",

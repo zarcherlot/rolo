@@ -519,6 +519,41 @@ def required_adapter_agent_conformance_operations(report: DiscoveryReport) -> se
     return eligible
 
 
+def _runtime_evidence_clears_read_only_semantic_review(
+    candidate: OperationCandidate,
+    definition: CanonicalOperationDefinition,
+    report: DiscoveryReport,
+) -> bool:
+    """Allow high-fidelity runtime evidence to gate deterministic read-only R0 routes.
+
+    Heuristic semantic mappings are normally held for review.  A single observed
+    route with complete ROS identity is already sufficient to gate a bounded R0
+    observation when the mapping is not marked ambiguous.  This keeps basic
+    health/telemetry operations usable while retaining the review requirement for
+    writes, elevated reads, multi-route fan-out, and ambiguous mappings.
+    """
+
+    return bool(
+        candidate.semantic_review_required
+        and candidate.origin == "DETERMINISTIC"
+        and definition.access == "read"
+        and definition.risk == "R0"
+        and candidate.route_binding_mode == "ANY_OF"
+        and len(candidate.route_evidence) == 1
+        and not any(
+            "Heuristic mapping is ambiguous" in limitation
+            for limitation in candidate.limitations
+        )
+        and not any(
+            "Heuristic mapping is ambiguous" in limitation
+            for route in candidate.route_evidence
+            for limitation in route.limitations
+        )
+        and candidate_routes_fully_observed(candidate, report.probes)
+        and candidate_runtime_evidence_complete(candidate, report.probes)
+    )
+
+
 def adapter_operation_eligibility(
     report: DiscoveryReport,
 ) -> tuple[set[str], dict[str, str]]:
@@ -529,9 +564,18 @@ def adapter_operation_eligibility(
     for candidate in report.operation_candidates:
         definition = definitions[candidate.operation]
         semantic_review_required = candidate.requires_semantic_review
+        runtime_review_clear = _runtime_evidence_clears_read_only_semantic_review(
+            candidate,
+            definition,
+            report,
+        )
         if candidate.origin == "HEURISTIC_AGENT":
             deferred[candidate.operation] = "HEURISTIC_MAPPING_REQUIRES_VERIFICATION"
-        elif semantic_review_required and candidate.semantic_review_disposition == "NOT_REVIEWED":
+        elif (
+            semantic_review_required
+            and candidate.semantic_review_disposition == "NOT_REVIEWED"
+            and not runtime_review_clear
+        ):
             deferred[candidate.operation] = "AGENT_SEMANTIC_REVIEW_REQUIRED"
         elif semantic_review_required and candidate.semantic_review_disposition == "DEFER":
             deferred[candidate.operation] = "AGENT_SEMANTIC_MAPPING_DEFERRED"
@@ -541,7 +585,7 @@ def adapter_operation_eligibility(
             set(candidate.route_review_dispositions)
             != {route.resource_id for route in candidate.route_evidence}
             or set(candidate.route_review_dispositions.values()) != {"ACCEPT"}
-        ):
+        ) and not runtime_review_clear:
             deferred[candidate.operation] = "AGENT_ROUTE_REVIEW_INCOMPLETE"
         elif semantic_review_required and (
             definition.access != "read" or definition.risk in {"R2", "R3"}
