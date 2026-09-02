@@ -1,54 +1,42 @@
-<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: active; authority: guide; owner: docs maintainers; last_reviewed: 2026-09-02 -->
 
-# ROLO 文档入口
+# Rolo v2 文档入口
 
-本目录不再提供全部文档的逐项导航。专题文档、草案、验收记录和生成型参考由仓库搜索、相关正文链接及 Git 历史发现，避免把临时材料与规范性内容放在同一层级。
+Rolo v2 是一个给 Codex 类 Agent 使用的小而稳的目标工具层。当前产品链只有一条：
 
-## 核心入口
+```text
+TargetProfile → SSH Connector → TargetEvidenceBundle
+             → NativeToolSession → Agent ToolPlan → Conformance
+```
 
-- [最高开发准则](architecture/DEVELOPMENT_PRINCIPLES.md)：所有代码、测试、文档和发布的最高验收规则；
-- [10 分钟 Quickstart](getting-started/QUICKSTART_10_MIN.md)：从干净 checkout 安装并跑通离线 Demo；
-- [目标机部署与 Adapt 操作手册](target/TARGET_DEVICE_OPERATION_MANUAL_ZH.md)：固定版本部署、本地或远程证据采集、完整 Adapt、验收与故障处理；
-- [ROLO 白皮书](architecture/ROLO_WHITEPAPER.md)：开发原则、软件架构、证据与安全模型、行业标准化路线和词汇表；
-- [三阶段架构](architecture/ARCHITECTURE.md)：当前参考实现的 `adapt -> diagnose -> verify` 架构与制品流；
-- [实现地图](reference/IMPLEMENTATION_MAP.md)：代码入口、阶段服务、产物、Schema 与测试的对应关系；
-- [工程状态与可信度台账](reference/ENGINEERING_STATUS.md)：功能成熟度、证据等级、已知边界和合入同步规则；
-- [归档文档](archive/README.md)：已完成或被替代的计划、评审样本和一次性验证材料；
-- [Adapt 路线图](adapt/ADAPT_ROADMAP.md)：当前阶段、下一阶段门槛和历史计划索引；
-- [文档治理规则](DOCUMENT_GOVERNANCE.md)：状态、权威级别、去重和归档约定；
-- [开放评审队列](review/OPEN_DECISIONS.md)：当前仍需产品、平台或安全负责人确认的事项；
-- [Registry Operation 指南](operations/REGISTRY_OPERATION_GUIDE.md)：Canonical Operation、Contract 和门禁的使用与治理；
-- [Registry Operation 重设计计划](operations/REGISTRY_OPERATION_REDESIGN_PLAN.md)：Canonical Registry 与 Agent-native Tool 双轨边界、迁移阶段和验收标准；
-- [Agent-native Tool 运行边界](adapt/AGENT_NATIVE_TOOLS.md)：受控 Linux/ROS/HW 观测、Native Session 和 v2 Registry 使用方式；
-- [R5 WSL 验证](validation/R5_WSL_VALIDATION_README.md)：拉取分支、离线校验和 shadow 灰度步骤；
-- [目标机 / WSL P2 历史验证](target/TARGET_MACHINE_P2_VALIDATION.md)：R5 目标机证据采集、产物自检和 canary 前置条件；当前主线请以新的真实目标机运行手册为准；
-- [后续开发与真机验证 RUNBOOK](target/POST_MERGE_DEVELOPMENT_AND_REAL_TARGET_RUNBOOK.md)：分支整合、开发切片、WSL/真机闭环、canary 与回退的统一执行顺序；
-- [真机只读验证 RUNBOOK](target/REAL_MACHINE_VALIDATION_RUNBOOK_ZH.md)：唯一目标机执行入口，统一 Adapt、Diagnose/Verify、SSH health、取消恢复和证据回收；
-- [目标机 Adapt 详细附录](target/TARGET_MACHINE_ADAPT_VALIDATION_ZH.md)：目标证据刷新、Discovery、route selector、CLI help 和 sandbox 专项步骤；
-- [目标机 Diagnose/Verify 调试](target/TARGET_MACHINE_DIAGNOSE_VERIFY_DEBUG.md)：RMW、Adapt shadow、Stage handoff 和真实阶段验收步骤；
-- [P0 Adapt 验收](validation/P0_ADAPT_ACCEPTANCE.md)：当前实现边界与可执行验证基线。
-- [本地 Diagnose/Verify fake 流程](validation/LOCAL_DIAGNOSE_VERIFY_FAKE.md)：不依赖目标机的 contract、授权和 handoff 开发回归。
-- [Stage Agent Plugin Kit](adapt/STAGE_AGENT_PLUGIN_KIT.md)：外部 executor/harness 的 manifest、版本兼容和 conformance 边界。
+## 核心文档
 
-中文项目入口位于仓库根目录 [README](../README.md)，英文项目介绍见 [README.en.md](README.en.md)。
-面向用户的本地 Adapt 首选入口是 `rolo adapt <本地工作区> --robot <机器人 ID>`；需要
-远程证据或专家参数时使用 `robotctl adapt start`。
+- [v2 架构](architecture/ARCHITECTURE.md)：用户、Agent、Rolo、机器人之间的职责和信任边界；
+- [工程状态台账](reference/ENGINEERING_STATUS.md)：当前实现、证据等级、已知限制；
+- [Agent-native Tool 标准](adapt/AGENT_NATIVE_TOOLS.md)：四类小而稳的 Tool Surface、Session 和调用约束；
+- [实现地图](reference/IMPLEMENTATION_MAP.md)：代码入口、Schema、产物与测试的对应关系；
+- [真实目标机 enrollment 记录](validation/ROLO_V2_TARGET_ENROLLMENT_20260902.md)：一次物理目标的验证证据。
 
-## 文档权威顺序
+## 四类稳定标准
 
-1. 最高开发准则、版本化 Schema、Operation Contract、运行时门禁与对应测试；
-2. 白皮书、架构与安全规范；
-3. 操作指南和验收清单；
-4. Proposal、Plan、Draft、评审样本与生成型参考。
+产品只定义四类稳定语义：hardware、OS、Middleware、application。MVP 可以先实现其中
+某个具体 provider；provider ID、命令和运行时依赖属于实现细节，不能改变四类标准或把
+目标机未观测到的能力写成事实。
 
-低优先级材料不能覆盖高优先级事实。新增专题文档无需登记到本页；只有成为长期核心入口时才加入导航。
+## 用户入口
 
-计划、草案和历史审计不再与当前规范并列；请先查看文档头部的 `status` 和 `authority`，再决定
-是否可作为实现依据。`OPERATION_CONTRACTS.md` 与 `CANONICAL_OPERATIONS.md` 是由源码契约生成的
-参考输出，修改应回到 `src/rolo/operation_contracts/*.yaml`。
+```bash
+rolo target profile init ssh://user@target.example/path/to/workspace --robot my-robot
+rolo target inspect-profile --profile my-robot
+rolo target tool-surface --profile my-robot
+rolo target tool-plan --profile my-robot PLAN.json
+robotctl probe target-evidence --help
+```
 
-## 目录约定
+正常使用只指定 profile。Rolo 自动选择已批准的 host key、SSH agent 或 pinned identity；
+Agent 负责理解目标和生成计划，Rolo 负责固定 argv、目标绑定、预算、证据和 Conformance。
 
-当前专题文档位于 `getting-started/`、`architecture/`、`adapt/`、`operations/`、`setup/`、
-`target/`、`web/`、`validation/` 和 `reference/`。`archive/` 只保存历史材料；根目录仅保留
-导航、生成契约、Episode 兼容契约以及旧链接跳转页。
+## 文档治理
+
+本目录的 active 文档只描述 v2。旧的 Registry、Adapt、Diagnose、Verify 和平台专用计划
+保留在 `archive/`，仅用于历史追溯，不是当前实现依据。

@@ -52,26 +52,19 @@ digest 和 allowlist；Agent 生成 ToolPlan，Rolo 在 session 内校验 digest
 
 ## Family catalog
 
-当前 v2 family catalog 包含以下 MVP provider IDs。ID 体现实现 provider，不改变上面的
-hardware、OS、Middleware、application 四类稳定标准；其他 OS/Middleware 可复用相同 descriptor
-与 conformance 合约：
+当前 v2 family catalog 包含 22 个 MVP provider descriptor。实际 `tool_id` 由目标的
+Tool Surface 返回；下面只列出稳定的语义模式，不把任何 OS 或 Middleware 名称写入产品标准。
+其他 provider 可复用相同 descriptor 与 conformance 合约：
 
 ```text
-native.linux.host.inspect
-native.linux.resource.snapshot
-native.linux.process.inspect / native.linux.process.logs
-native.linux.service.inspect / native.linux.service.logs
-native.linux.container.inspect / native.linux.container.logs
-native.linux.schedule.inspect
-native.linux.binary.inspect
-native.linux.package.inspect
-native.linux.config.inspect
-native.linux.file.inspect
-native.linux.network.snapshot
-native.linux.log.query
-native.ros.graph.inspect / native.ros.observe / native.ros.tf.inspect / native.ros.bag.inspect
-native.middleware.snapshot (Middleware provider)
-native.hw.inventory / native.hw.status
+OS host.inspect / resource.snapshot
+OS process.inspect / process.logs
+OS service.inspect / service.logs
+OS container.inspect / container.logs
+OS schedule.inspect / binary.inspect / package.inspect
+OS config.inspect / file.inspect / network.snapshot / log.query
+Middleware graph.inspect / observe / transform.inspect / bag.inspect / snapshot
+hardware inventory / status
 ```
 
 `logs`、`observe`、`tf` monitor 类能力保留独立风险和时间预算；写操作、校准、reset、
