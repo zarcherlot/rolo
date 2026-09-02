@@ -474,6 +474,11 @@ def invoke_adapter(
     # generated adapter bundle entry.  Generated target operations retain the
     # strict bundle/entrypoint binding below.
     builtin = descriptor.adapter.startswith("builtin.")
+    remote_sensor_dispatch = False
+    if operation in {"app.camera.snapshot", "app.lidar.snapshot", "app.imu.sample"}:
+        from rolo.builtin_runtime import remote_sensor_dispatch_available
+
+        remote_sensor_dispatch = remote_sensor_dispatch_available(robot_id)
     entry = next((item for item in bundle.operations if item.operation == operation), None)
     if not builtin:
         if entry is None:
@@ -537,7 +542,7 @@ def invoke_adapter(
     )
     started = time.monotonic()
     try:
-        if builtin:
+        if builtin or remote_sensor_dispatch:
             from rolo.builtin_runtime import invoke_builtin
 
             result = invoke_builtin(
@@ -548,6 +553,7 @@ def invoke_adapter(
                 release_root=release_root,
                 release=release,
                 catalog=catalog,
+                route_document=route_document,
             )
             _validate_object_schema(result, descriptor.output_schema, "builtin output")
             validate_content_result(descriptor, payload=payload, result=result)

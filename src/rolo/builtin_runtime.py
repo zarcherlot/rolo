@@ -10,10 +10,17 @@ validation remain in the normal adapter runtime.
 
 from __future__ import annotations
 
+import base64
 import json
+import os
+import socket
+import struct
+import urllib.parse
 from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from rolo import __version__, host_introspection
 from rolo.runtime import create_runtime
@@ -53,6 +60,19 @@ _TARGET_EVIDENCE_BUILTINS = {
     "ros.parameter.list",
 }
 
+# These are Rolo-owned network read paths for the remote LanderPI runtime.
+# They use the target's already-running web_video_server/rosbridge endpoints;
+# no shell, SSH command, or target-side Codex installation is required.
+_TARGET_REMOTE_SENSOR_BUILTINS = {
+    "app.camera.snapshot",
+    "app.lidar.snapshot",
+    "app.imu.sample",
+}
+_REMOTE_WEB_VIDEO_PORT = 8080
+_REMOTE_ROSBRIDGE_PORT = 9090
+_REMOTE_SENSOR_MAX_BYTES = 8 * 1024 * 1024
+_REMOTE_SENSOR_TIMEOUT_S = 15.0
+
 
 def _runtime_health(
     _payload: dict[str, Any],
@@ -86,6 +106,265 @@ def _runtime_version(
         "operation_contract_schema": "robot-operation-contract/v1",
         "adapter_protocol": "robot-adapter-rpc/v1",
         "tool_catalog_schema": "robot-tool-catalog/v1",
+    }
+
+
+def _remote_target_host(robot_id: str) -> str:
+    """Resolve the pinned remote deployment host for one robot identity."""
+    from rolo.core.config import get_settings
+    from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode, load_deployment
+
+    path = get_settings().rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+    deployment = load_deployment(path)
+    if deployment.mode != EvidenceDeploymentMode.REMOTE or not deployment.ssh_target:
+        raise ValueError("remote sensor route requires a remote target-evidence deployment")
+    target = deployment.ssh_target.rsplit("@", 1)[-1]
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
+    if not target or any(character not in allowed for character in target):
+        raise ValueError("remote target host is invalid")
+    return target
+
+
+def remote_sensor_dispatch_available(robot_id: str) -> bool:
+    """Return whether this robot has a configured remote target transport.
+
+    Local adapter fixtures (and local-mode robots) must continue through their
+    generated entrypoint.  The network sensor dispatcher is selected only for
+    a robot with an existing, valid remote target-evidence deployment.
+    """
+    from rolo.core.config import get_settings
+    from rolo.stages.adapt.target_evidence import EvidenceDeploymentMode, load_deployment
+
+    path = get_settings().rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+    if not path.is_file():
+        return False
+    deployment = load_deployment(path)
+    return deployment.mode == EvidenceDeploymentMode.REMOTE and bool(deployment.ssh_target)
+
+
+def _selected_route(context: Any) -> dict[str, Any]:
+    if isinstance(context, tuple) and len(context) >= 3 and isinstance(context[2], Mapping):
+        document = context[2]
+        route = document.get("selected_route")
+        selected_id = document.get("selected_route_id")
+        if route is None and isinstance(selected_id, str):
+            route = next(
+                (
+                    item
+                    for item in document.get("bindings", [])
+                    if isinstance(item, Mapping) and item.get("route_id") == selected_id
+                ),
+                None,
+            )
+        if isinstance(route, Mapping):
+            return dict(route)
+    raise ValueError("remote sensor invocation has no selected route")
+
+
+def _artifact_ref(artifact_root: Path, robot_id: str, suffix: str, payload: bytes) -> str:
+    if len(payload) > _REMOTE_SENSOR_MAX_BYTES:
+        raise ValueError("remote sensor payload exceeds its byte limit")
+    relative = Path("runtime") / robot_id / "sensors" / f"{uuid4().hex}.{suffix}"
+    path = artifact_root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+    return f"artifact://{relative.as_posix()}"
+
+
+def _read_bounded(stream: Any, limit: int) -> bytes:
+    payload = bytearray()
+    while True:
+        chunk = stream.read(min(64 * 1024, limit - len(payload) + 1))
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > limit:
+            raise ValueError("remote sensor payload exceeds its byte limit")
+    return bytes(payload)
+
+
+def _http_get_bounded(host: str, path: str) -> tuple[str, bytes]:
+    request = (
+        f"GET {path} HTTP/1.0\r\nHost: {host}:{_REMOTE_WEB_VIDEO_PORT}\r\n"
+        "Connection: close\r\nUser-Agent: rolo-runtime/1\r\n\r\n"
+    ).encode("ascii")
+    with socket.create_connection(
+        (host, _REMOTE_WEB_VIDEO_PORT), timeout=_REMOTE_SENSOR_TIMEOUT_S
+    ) as sock:
+        sock.settimeout(_REMOTE_SENSOR_TIMEOUT_S)
+        sock.sendall(request)
+        response = bytearray()
+        while len(response) <= _REMOTE_SENSOR_MAX_BYTES + 16 * 1024:
+            chunk = sock.recv(min(64 * 1024, _REMOTE_SENSOR_MAX_BYTES + 16 * 1024 - len(response)))
+            if not chunk:
+                break
+            response.extend(chunk)
+    header, separator, body = bytes(response).partition(b"\r\n\r\n")
+    status_line = header.split(b"\r\n", 1)[0] if header else b""
+    if not separator or not header.startswith(b"HTTP/1.") or b" 200 " not in status_line:
+        raise ValueError("remote camera endpoint returned a non-success response")
+    content_type = ""
+    for line in header.split(b"\r\n")[1:]:
+        if line.lower().startswith(b"content-type:"):
+            content_type = line.split(b":", 1)[1].strip().decode("ascii", errors="replace")
+            break
+    return content_type, body
+
+
+def _camera_snapshot(
+    payload: dict[str, Any], robot_id: str, artifact_root: Path, context: Any, _catalog: Any
+) -> dict[str, Any]:
+    route = _selected_route(context)
+    endpoint = str(route.get("endpoint", "")).strip()
+    if not endpoint.startswith("/"):
+        raise ValueError("camera route endpoint is invalid")
+    host = _remote_target_host(robot_id)
+    # web_video_server expects the ROS topic slashes to remain unescaped in
+    # the query value (its HTTP/1.0 parser rejects ``%2F`` here).
+    query = "topic=" + urllib.parse.quote(endpoint, safe="/")
+    try:
+        media_type, image = _http_get_bounded(
+            host, f"/snapshot?{query}"
+        )
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"remote camera snapshot failed: {exc}") from exc
+    if not image or not media_type.startswith("image/"):
+        raise ValueError("remote camera snapshot returned no image payload")
+    return {
+        "status": "SUCCEEDED",
+        "camera": str(payload.get("camera") or endpoint),
+        "artifact_ref": _artifact_ref(artifact_root, robot_id, "jpg", image),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _websocket_frame(payload: bytes) -> bytes:
+    mask = os.urandom(4)
+    masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+    length = len(payload)
+    if length < 126:
+        header = bytes([0x81, 0x80 | length])
+    elif length <= 0xFFFF:
+        header = bytes([0x81, 0x80 | 126]) + struct.pack(">H", length)
+    else:
+        header = bytes([0x81, 0x80 | 127]) + struct.pack(">Q", length)
+    return header + mask + masked
+
+
+def _recv_websocket_message(sock: socket.socket, limit: int) -> bytes:
+    def recv_exact(size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = sock.recv(size - len(data))
+            if not chunk:
+                raise ValueError("rosbridge closed before a message was received")
+            data.extend(chunk)
+        return bytes(data)
+
+    first = recv_exact(2)
+    opcode = first[0] & 0x0F
+    length = first[1] & 0x7F
+    if length == 126:
+        length = struct.unpack(">H", recv_exact(2))[0]
+    elif length == 127:
+        length = struct.unpack(">Q", recv_exact(8))[0]
+    if length > limit:
+        raise ValueError("rosbridge message exceeds its byte limit")
+    payload = bytearray()
+    while len(payload) < length:
+        chunk = sock.recv(length - len(payload))
+        if not chunk:
+            raise ValueError("rosbridge closed during a message")
+        payload.extend(chunk)
+    if opcode == 0x8:
+        raise ValueError("rosbridge closed the session")
+    if opcode != 0x1:
+        return b""
+    return bytes(payload)
+
+
+def _rosbridge_once(host: str, endpoint: str, interface_type: str) -> dict[str, Any]:
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
+    request = (
+        "GET / HTTP/1.1\r\n"
+        f"Host: {host}:{_REMOTE_ROSBRIDGE_PORT}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n\r\n"
+    ).encode("ascii")
+    subscribe = json.dumps(
+        {
+            "op": "subscribe",
+            "id": "rolo-sensor",
+            "topic": endpoint,
+            "type": interface_type,
+            "queue_length": 1,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    with socket.create_connection(
+        (host, _REMOTE_ROSBRIDGE_PORT), timeout=_REMOTE_SENSOR_TIMEOUT_S
+    ) as sock:
+        sock.settimeout(_REMOTE_SENSOR_TIMEOUT_S)
+        sock.sendall(request)
+        headers = bytearray()
+        while b"\r\n\r\n" not in headers and len(headers) <= 16 * 1024:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ValueError("rosbridge closed during websocket handshake")
+            headers.extend(chunk)
+        if b" 101 " not in bytes(headers.split(b"\r\n", 1)[0]):
+            raise ValueError("rosbridge websocket handshake failed")
+        sock.sendall(_websocket_frame(subscribe))
+        deadline = datetime.now(timezone.utc).timestamp() + _REMOTE_SENSOR_TIMEOUT_S
+        while datetime.now(timezone.utc).timestamp() < deadline:
+            message = _recv_websocket_message(sock, _REMOTE_SENSOR_MAX_BYTES)
+            if not message:
+                continue
+            value = json.loads(message.decode("utf-8"))
+            if (
+                isinstance(value, dict)
+                and value.get("op") == "publish"
+                and isinstance(value.get("msg"), dict)
+            ):
+                return value["msg"]
+            if isinstance(value, dict) and value.get("op") == "error":
+                raise ValueError(str(value.get("msg") or "rosbridge rejected subscription"))
+    raise ValueError("rosbridge did not publish a bounded sensor sample")
+
+
+def _lidar_snapshot(
+    payload: dict[str, Any], robot_id: str, artifact_root: Path, context: Any, _catalog: Any
+) -> dict[str, Any]:
+    route = _selected_route(context)
+    endpoint = str(route.get("endpoint", "")).strip()
+    interface_type = str(route.get("interface_type", "sensor_msgs/msg/PointCloud2"))
+    message = _rosbridge_once(_remote_target_host(robot_id), endpoint, interface_type)
+    encoded = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    frame_id = str(message.get("header", {}).get("frame_id", ""))
+    return {
+        "status": "SUCCEEDED",
+        "id": str(payload["id"]),
+        "artifact_ref": _artifact_ref(artifact_root, robot_id, "json", encoded),
+        "media_type": "application/json",
+        "frame_id": frame_id,
+        "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _imu_sample(
+    payload: dict[str, Any], robot_id: str, _artifact_root: Path, context: Any, _catalog: Any
+) -> dict[str, Any]:
+    route = _selected_route(context)
+    endpoint = str(route.get("endpoint", "")).strip()
+    interface_type = str(route.get("interface_type", "sensor_msgs/msg/Imu"))
+    message = _rosbridge_once(_remote_target_host(robot_id), endpoint, interface_type)
+    return {
+        "status": "SUCCEEDED",
+        "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "truncated": False,
+        "items": [message][: int(payload["max_items"])],
     }
 
 
@@ -723,13 +1002,16 @@ _HANDLERS: dict[str, BuiltinHandler] = {
     "ros.parameter.describe": _ros_parameter_describe,
     "ros.clock.status": _host_handler("ros_clock_status"),
     "ros.bag.inspect": _ros_bag_inspect,
+    "app.camera.snapshot": _camera_snapshot,
+    "app.lidar.snapshot": _lidar_snapshot,
+    "app.imu.sample": _imu_sample,
     "app.robot.discover": _discover,
 }
 
 
 def supported_builtin_operations() -> set[str]:
     """Return builtins with a deterministic, schema-compatible dispatcher."""
-    return set(_HANDLERS)
+    return set(_HANDLERS) - _TARGET_REMOTE_SENSOR_BUILTINS
 
 
 def target_verified_builtin_operations() -> set[str]:
@@ -747,10 +1029,11 @@ def invoke_builtin(
     release_root: Path,
     release: Any,
     catalog: Any,
+    route_document: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         handler = _HANDLERS[operation]
     except KeyError as exc:
         raise ValueError(f"builtin operation has no dispatcher: {operation}") from exc
-    context = (release_root, release)
+    context = (release_root, release, route_document or {})
     return handler(payload, robot_id, artifact_root, context, catalog)
