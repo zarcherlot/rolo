@@ -26,6 +26,17 @@
 graph 会得到正确但不完整的 `NOT_FOUND`。本次补充了三层发现：文件系统入口、启动依赖、
 受控 bring-up 后的真实 action graph。
 
+## Probe 的自举边界
+
+Probe 不要求用户预先提供 robot workspace。Target enrollment 成功后，Rolo 可以在目标机
+执行有界的全盘 inventory：先只读取文件名、权限、大小、时间和可执行文件元数据，再对
+命中的 launch/package/config/服务文件做定向读取。扫描必须有目录、文件数、字节数、耗时、
+敏感路径和输出 digest 限制；它发现的是候选入口，不把静态文件当成运行时事实。随后由
+Agent 选择最小 Probe，Rolo 负责受控 bring-up 和新鲜 Runtime Evidence。
+
+这样用户只需完成 enrollment，并可声明“设备处于安全位置”；不再需要手工寻找 workspace
+或编写 shell。安全位置声明降低交互负担，但不替代 Rolo 的速度、超时、取消和停车证据。
+
 ## 候选映射
 
 ### 1. 启动导航栈（bring-up，不发送 goal）
@@ -51,9 +62,14 @@ ros2 action send_goal /navigate_to_pose \
   "{pose: {header: {frame_id: map}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
 ```
 
-这条命令会产生真实运动，当前仅用于说明 `app.navigation.start` 的可能 route
+这条命令会产生真实运动，当前仅用于说明全局导航 `app.navigation.start` 的可能 route
 binding，禁止由 discovery/conformance 自动执行。真正发布前还必须有新鲜 TF、定位、
 地图、测距、静止状态、速度上限、取消/停车和人在环授权。
+
+如果没有 `map → base_footprint`，Probe 不应直接判定“导航不可用”，而应先尝试目标机
+实际暴露的相对运动接口，例如 `/drive_on_heading` 或 `/spin`。它们不依赖全局地图，
+适合先验证底盘控制、取消和停车；只有发现地图与重定位入口后，才把候选升级为
+`/navigate_to_pose` 全局导航。
 
 ### 无运动写入 conformance（已在真机执行）
 
@@ -75,6 +91,19 @@ result_status=5 (CANCELED)
 当前配置文件仍声明 velocity smoother 的上限为 `0.26 m/s`、`3.0 rad/s`；其中角速度
 上限与底盘 launch 的 `0.45 rad/s` 约束不一致。因此速度边界只能被发现，尚未被允许
 自动放行，必须先由 Rolo Tool 在运行时读取并校验最终生效参数。
+
+## 统一的写入 canary 分级
+
+所有 OS/Middleware provider 统一使用同一套分级，不把 ROS CLI 细节暴露给 Agent：
+
+1. **Level 1 — zero-stop**：重复发布零速度并观察实际速度，自动执行，验证写入、路由和停车。
+2. **Level 2 — bounded motion**：统一为小角度旋转或极短距离/航向动作；由 adapter 映射到
+   `/spin`、`/drive_on_heading` 或等价接口，固定角度、速度、时限、cancel 和 zero-stop。
+3. **Level 3 — task motion**：真实目标导航，必须具备地图/定位/测距/速度边界等完整 evidence，
+   不由 discovery 自动执行。
+
+用户的安全位置声明可使 Level 1/2 尽量 hands-off，但每一级仍必须由 Rolo 采集可审计的
+   执行结果，而不是只记录“命令返回成功”。
 
 ## Rolo v2 结论
 
