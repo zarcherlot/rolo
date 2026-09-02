@@ -68,6 +68,7 @@ class TargetProfile(BaseModel):
     robot_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}$")
     target: TargetRef
     credential: CredentialReference
+    remote_command_prefix: list[str] = Field(default_factory=list, max_length=8)
     host_key: HostKeyDecision | None = None
     created_at: datetime
     updated_at: datetime
@@ -77,6 +78,20 @@ class TargetProfile(BaseModel):
     def validate_identifier(cls, value: str) -> str:
         if not _PROFILE_ID.fullmatch(value):
             raise ValueError("profile and robot identifiers must match ^[a-z][a-z0-9_-]{2,63}$")
+        return value
+
+    @field_validator("remote_command_prefix")
+    @classmethod
+    def validate_remote_command_prefix(cls, value: list[str]) -> list[str]:
+        if any(
+            not item
+            or "\x00" in item
+            or any(character in item for character in "'\";$`\\")
+            for item in value
+        ):
+            raise ValueError("remote command prefix must contain shell-free, NUL-free tokens")
+        if len(value) != len(set(value)):
+            raise ValueError("remote command prefix tokens must be unique")
         return value
 
 
@@ -143,6 +158,7 @@ class TargetProfileStore:
         robot_id: str,
         target: TargetRef,
         credential: CredentialReference,
+        remote_command_prefix: list[str] | None = None,
         now: datetime | None = None,
     ) -> TargetProfile:
         timestamp = now or _utc_now()
@@ -154,6 +170,7 @@ class TargetProfileStore:
             robot_id=robot_id,
             target=target,
             credential=credential,
+            remote_command_prefix=remote_command_prefix or [],
             host_key=host_key,
             created_at=timestamp,
             updated_at=timestamp,

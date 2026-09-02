@@ -10,6 +10,7 @@ from rolo.agent_tools.native_tools import (
     AgentNativeToolDescriptor,
     NativeToolInvocation,
     NativeToolStatus,
+    RemoteAgentNativeRunner,
     default_agent_native_catalog,
     native_operation_family_map,
     native_variant_aliases,
@@ -71,7 +72,9 @@ def test_runner_classifies_empty_usb_inventory_as_unavailable(
     def fake_executor(command: list[str], **kwargs: object):
         return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": ""})()
 
-    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        "rolo.agent_tools.native_tools.shutil.which", lambda value, path=None: value
+    )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
     result = runner.run("native.hw.inventory", {"mode": "usb"})
@@ -177,7 +180,9 @@ def test_non_ros_family_does_not_inherit_ros_runtime_paths(
     python_root = tmp_path / "ros-python"
     python_root.mkdir()
     monkeypatch.setenv("PYTHONPATH", str(python_root))
-    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        "rolo.agent_tools.native_tools.shutil.which", lambda value, path=None: value
+    )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
     runner.run("native.linux.host.inspect", {"mode": "status"})
@@ -214,8 +219,30 @@ def test_runner_accepts_explicit_target_runtime_environment(
     assert captured["command"] == [sys.executable, "-c", "print('ok')"]
     assert captured["env"] == {
         "PATH": str(target_bin),
-        "PYTHONPATH": "/opt/ros/target/python",
     }
+
+
+def test_remote_runner_does_not_require_controller_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def remote_executor(command: list[str], **kwargs: object):
+        captured["command"] = command
+        captured["environment"] = kwargs["environment"]
+        return type("Completed", (), {"returncode": 0, "stdout": "Linux target\n", "stderr": ""})()
+
+    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda *_: None)
+    runner = RemoteAgentNativeRunner(
+        reduced_agent_native_catalog(),
+        executor=remote_executor,
+    )
+
+    result = runner.run("native.linux.host.inspect", {"mode": "status"})
+
+    assert result.status == NativeToolStatus.SUCCEEDED
+    assert captured["command"] == ["uname", "-a"]
+    assert captured["environment"] == {}
 
 
 def test_ros_runner_uses_an_ephemeral_log_directory(
@@ -231,7 +258,9 @@ def test_ros_runner_uses_an_ephemeral_log_directory(
         assert captured_log_dir.is_dir()
         return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
 
-    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        "rolo.agent_tools.native_tools.shutil.which", lambda value, path=None: value
+    )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
 
     runner.run("native.ros.graph.inspect", {"mode": "nodes"})
@@ -272,7 +301,9 @@ def test_family_runner_resolves_only_allowlisted_arguments(
         captured["command"] = command
         return type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
 
-    monkeypatch.setattr("rolo.agent_tools.native_tools.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        "rolo.agent_tools.native_tools.shutil.which", lambda value, path=None: value
+    )
     runner = AgentNativeRunner(reduced_agent_native_catalog(), executor=fake_executor)
     result = runner.run("native.linux.process.inspect", {"mode": "inspect", "pid": "42"})
 

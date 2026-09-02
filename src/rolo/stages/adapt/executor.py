@@ -62,7 +62,6 @@ from rolo.stages.adapt.slice_activation import (
     decide_slice_activation,
     parse_slice_selectors,
 )
-from rolo.stages.adapt.target_fingerprint import runtime_environment_from_report
 from rolo.stages.adapt.wiki_retrieval import build_wiki_index
 from rolo.stages.adapt.workset import (
     TargetOperationSlice,

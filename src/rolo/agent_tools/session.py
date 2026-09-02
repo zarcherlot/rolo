@@ -42,7 +42,7 @@ class NativeToolSessionDescriptor(BaseModel):
     session_id: str = Field(pattern=_SESSION_PATTERN)
     nonce: str = Field(pattern=_NONCE_PATTERN)
     robot_id: str = Field(min_length=1, max_length=128)
-    stage: Literal["adapt", "diagnose", "verify"]
+    stage: Literal["probe"]
     native_catalog_sha256: str = Field(pattern=_SHA256_PATTERN)
     allowed_tools: list[str] = Field(min_length=1, max_length=256)
     policy_version: str = Field(min_length=1, max_length=128)
@@ -145,8 +145,12 @@ class NativeToolSession:
             raise NativeToolSessionAuthorizationError("tool plan target does not match session")
         if plan.session_id != self.descriptor.session_id:
             raise NativeToolSessionAuthorizationError("tool plan session does not match session")
+        if plan.session_nonce != self.descriptor.nonce:
+            raise NativeToolSessionAuthorizationError("tool plan nonce does not match session")
         if plan.surface_digest != self.descriptor.native_catalog_sha256:
-            raise NativeToolSessionAuthorizationError("tool plan surface digest does not match session")
+            raise NativeToolSessionAuthorizationError(
+                "tool plan surface digest does not match session"
+            )
         validate_tool_plan(
             plan,
             allowed_tool_ids=self.descriptor.allowed_tools,

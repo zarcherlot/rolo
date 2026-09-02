@@ -1,47 +1,68 @@
+"""Small Probe command surface for Rolo v2.
+
+The Agent owns planning. This module only enrolls/collects target evidence and
+exposes a read model; it does not start an Adapter, Trace or Certify workflow.
+"""
+
 from __future__ import annotations
 
-import sys
+import hashlib
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
+from pydantic import BaseModel, Field
 
 from rolo.commands.common import emit
-from rolo.commands.discovery import configured_discovery_service
-from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings, prepare_runtime_directories
-from rolo.runtime import create_runtime
-from rolo.stages.adapt.acceptance import write_adapt_acceptance_pack
 from rolo.stages.adapt.active_discovery import ActiveProbeMode
-from rolo.stages.adapt.heuristic_discovery import HeuristicAdaptMode
-from rolo.stages.adapt.journey import (
-    AdaptJourneyResult,
-    AdaptJourneyService,
-    detect_project_evidence,
-)
 from rolo.stages.adapt.ros_environment import select_ros_setup_files
-from rolo.stages.adapt.service import (
-    AdaptRunService,
-    coding_agent_config,
-)
-from rolo.stages.adapt.shadow_observation import build_capability_shadow_stability_report
-from rolo.stages.adapt.slice_observability import build_slice_stability_report
 from rolo.stages.adapt.target_evidence import (
     CollectorDescriptor,
     EvidenceDeploymentMode,
+    TargetEvidenceBundle,
+    collect_over_ssh,
+    collect_target_evidence,
     configure_deployment,
     ensure_local_deployment,
+    load_collector_state,
     load_deployment,
+    new_request,
+    verify_evidence_bundle,
 )
 from rolo.stages.contracts import StageName
 from rolo.stages.pipeline import assess_pipeline, assess_stage
 
-probe_stage_app = typer.Typer(
-    help="Probe a robot target and publish its smallest trusted Tool Surface."
-)
+probe_stage_app = typer.Typer(help="Probe a robot target and publish its trusted Tool Surface.")
 enroll_app = typer.Typer(help="Inspect the robot identity owned by this installation.")
 probe_stage_app.add_typer(enroll_app, name="enroll")
+
+
+class ProbeStartResult(BaseModel):
+    schema_version: Literal["rolo-probe-start/v1"] = "rolo-probe-start/v1"
+    status: Literal["READY", "BLOCKED"]
+    robot_id: str = Field(min_length=1, max_length=128)
+    evidence_ref: str | None = None
+    evidence_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    next_step: str
+    limitations: list[str] = Field(default_factory=list)
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+def _bundle_path(robot_id: str) -> Path:
+    return get_settings().rolo_config_dir / "target-evidence" / f"{robot_id}-bundle.json"
+
+
+def _write_bundle(bundle: TargetEvidenceBundle) -> Path:
+    path = _bundle_path(bundle.robot_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    if path.stat().st_size > 8_000_000:
+        path.unlink(missing_ok=True)
+        raise ValueError("target evidence bundle exceeds the configured size limit")
+    return path
 
 
 def run_probe_start(
@@ -65,278 +86,143 @@ def run_probe_start(
     ssh_port: int | None = None,
     ssh_identity_file: Path | None = None,
     evidence_attempts: int = 2,
-    heuristic_agent_mode: HeuristicAdaptMode | None = None,
+    heuristic_agent_mode: object | None = None,
     heuristic_agent_timeout: int | None = None,
     heuristic_agent_batch_operations: int | None = None,
     heuristic_agent_parallelism: int | None = None,
     on_output: Callable[[str, str], None] | None = None,
-) -> AdaptJourneyResult:
-    """Run the shared Probe start service used by product and expert CLIs."""
+) -> ProbeStartResult:
+    """Collect fresh signed evidence; return the next Agent-owned step.
+
+    Legacy Adapter-Agent knobs are accepted only so callers fail with a stable
+    message during the v2 transition; they never trigger an Agent subprocess.
+    """
+    del urdf, run_agent, scratch_root, timeout, heuristic_agent_mode
+    del heuristic_agent_timeout, heuristic_agent_batch_operations, heuristic_agent_parallelism
+    del on_output
     settings = get_settings()
-    heuristic_overrides: dict[str, object] = {}
-    if heuristic_agent_mode is not None:
-        heuristic_overrides["adapt_heuristic_agent_mode"] = heuristic_agent_mode.value
-    if heuristic_agent_timeout is not None:
-        heuristic_overrides["adapt_heuristic_agent_timeout_s"] = heuristic_agent_timeout
-    if heuristic_agent_batch_operations is not None:
-        heuristic_overrides["adapt_heuristic_agent_batch_operations"] = (
-            heuristic_agent_batch_operations
-        )
-    if heuristic_agent_parallelism is not None:
-        heuristic_overrides["adapt_heuristic_agent_parallelism"] = heuristic_agent_parallelism
-    if heuristic_overrides:
-        settings = settings.__class__.model_validate(
-            {**settings.model_dump(), **heuristic_overrides}
-        )
     prepare_runtime_directories(settings)
-    evidence = detect_project_evidence(project_root or Path.cwd())
-    evidence_deployment = None
-    remote_options = (
-        collector_descriptor,
-        verification_secret,
-        ssh_target,
-        known_hosts,
-    )
-    if active_probe == ActiveProbeMode.RUNTIME_READONLY:
-        if evidence_mode == EvidenceDeploymentMode.LOCAL:
-            if (
-                collector_executable is not None
-                or ssh_port is not None
-                or ssh_identity_file is not None
-                or any(value is not None for value in remote_options)
-            ):
-                raise ValueError("local evidence mode does not accept remote collector options")
-            _, ros_setup_files = select_ros_setup_files(
-                auto_source=settings.ros_auto_source,
-                configured=settings.ros_setup_files,
-                project_root=evidence.project_root,
-                install_roots=evidence.install_roots,
-            )
-            evidence_deployment, _ = ensure_local_deployment(
-                robot_id=robot_id,
-                config_root=settings.rolo_config_dir,
-                project_root=evidence.project_root,
-                help_executables=allow_executable or (),
-                ros_setup_files=ros_setup_files,
-            )
+    if active_probe != ActiveProbeMode.RUNTIME_READONLY:
+        return ProbeStartResult(
+            status="BLOCKED",
+            robot_id=robot_id,
+            next_step="use --active-probe runtime-readonly for the v2 Probe chain",
+        )
+    deployment_path = settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+    if evidence_mode == EvidenceDeploymentMode.LOCAL:
+        remote_options = (
+            collector_descriptor,
+            verification_secret,
+            ssh_target,
+            known_hosts,
+            ssh_port,
+            ssh_identity_file,
+            collector_executable,
+        )
+        if any(value is not None for value in remote_options):
+            raise ValueError("local evidence mode does not accept remote collector options")
+        if project_root is None:
+            raise ValueError("local evidence mode requires a project root")
+        _, ros_setup_files = select_ros_setup_files(
+            auto_source=settings.ros_auto_source,
+            configured=settings.ros_setup_files,
+            project_root=project_root,
+            install_roots=(),
+        )
+        deployment, state_path = ensure_local_deployment(
+            robot_id=robot_id,
+            config_root=settings.rolo_config_dir,
+            project_root=project_root,
+            help_executables=allow_executable or (),
+            ros_setup_files=ros_setup_files,
+        )
+        state = load_collector_state(state_path)
+        request = new_request(robot_id)
+        bundle = collect_target_evidence(request, state)
+    else:
+        if allow_executable:
+            raise ValueError("remote executable allowlists belong to the target collector")
+        enrollment_options = (collector_descriptor, verification_secret, ssh_target, known_hosts)
+        if deployment_path.is_file() and not any(value is not None for value in enrollment_options):
+            deployment = load_deployment(deployment_path)
         else:
-            if allow_executable:
+            if not all(value is not None for value in enrollment_options):
                 raise ValueError(
-                    "remote executable allowlists must be established on the target collector"
+                    "remote evidence mode requires an enrolled deployment or all collector options"
                 )
-            deployment_path = settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
-            if deployment_path.is_file() and not any(
-                value is not None for value in remote_options
-            ):
-                evidence_deployment = load_deployment(deployment_path)
-                if evidence_deployment.mode != EvidenceDeploymentMode.REMOTE:
-                    raise ValueError("existing target evidence deployment is not remote")
-                if (
-                    collector_executable is not None
-                    and collector_executable != evidence_deployment.collector_executable
-                ):
-                    raise ValueError(
-                        "target collector executable is already pinned; use explicit "
-                        "re-enrollment to change it"
-                    )
-                if ssh_port is not None and ssh_port != evidence_deployment.ssh_port:
-                    raise ValueError(
-                        "SSH port is already pinned; use explicit re-enrollment to change it"
-                    )
-                if ssh_identity_file is not None and str(
-                    ssh_identity_file.expanduser().resolve()
-                ) != evidence_deployment.ssh_identity_file:
-                    raise ValueError(
-                        "SSH identity is already pinned; use explicit re-enrollment to change it"
-                    )
-            else:
-                if not all(value is not None for value in remote_options):
-                    raise ValueError(
-                        "remote evidence mode requires an existing deployment or "
-                        "--collector-descriptor, --verification-secret, --ssh-target, "
-                        "and --known-hosts"
-                    )
-                descriptor = CollectorDescriptor.model_validate_json(
-                    collector_descriptor.read_text(encoding="utf-8")
-                )
-                evidence_deployment = configure_deployment(
-                    robot_id=robot_id,
-                    mode=EvidenceDeploymentMode.REMOTE,
-                    descriptor=descriptor,
-                    verification_secret_path=verification_secret,
-                    output_path=deployment_path,
-                    ssh_target=ssh_target,
-                    known_hosts_path=known_hosts,
-                    ssh_port=ssh_port,
-                    ssh_identity_file=ssh_identity_file,
-                    collector_config=collector_config,
-                    collector_executable=collector_executable or "robotctl",
-                )
-    elif (
-        evidence_mode == EvidenceDeploymentMode.REMOTE
-        or allow_executable
-        or collector_executable is not None
-        or ssh_port is not None
-        or ssh_identity_file is not None
-        or any(value is not None for value in remote_options)
-    ):
-        raise ValueError("target evidence options require --active-probe runtime-readonly")
-    return AdaptJourneyService(
-        settings,
-        configured_discovery_service(
-            settings,
-            ArtifactStore(settings.rolo_artifact_dir),
-        ),
-    ).start(
+            descriptor = CollectorDescriptor.model_validate_json(
+                collector_descriptor.read_text(encoding="utf-8")
+            )
+            deployment = configure_deployment(
+                robot_id=robot_id,
+                mode=EvidenceDeploymentMode.REMOTE,
+                descriptor=descriptor,
+                verification_secret_path=verification_secret,
+                output_path=deployment_path,
+                ssh_target=ssh_target,
+                known_hosts_path=known_hosts,
+                ssh_port=ssh_port,
+                ssh_identity_file=ssh_identity_file,
+                collector_config=collector_config,
+                collector_executable=collector_executable or "robotctl",
+            )
+        request = new_request(robot_id)
+        bundle = collect_over_ssh(
+            deployment,
+            request,
+            timeout_s=evidence_timeout,
+            max_attempts=evidence_attempts,
+        )
+    verify_evidence_bundle(bundle, deployment=deployment, request=request)
+    path = _write_bundle(bundle)
+    return ProbeStartResult(
+        status="READY",
         robot_id=robot_id,
-        evidence=evidence,
-        urdf_path=urdf,
-        active_probe=active_probe,
-        run_agent=run_agent,
-        scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
-        timeout_s=timeout or settings.coding_agent_timeout_s,
-        evidence_deployment=evidence_deployment,
-        evidence_timeout_s=evidence_timeout,
-        evidence_max_attempts=evidence_attempts,
-        on_output=on_output,
+        evidence_ref=str(path),
+        evidence_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        next_step=(
+            f"agent reads `rolo target tool-surface --profile {robot_id}` and emits a ToolPlan"
+        ),
+        limitations=[
+            "target evidence is a read-only snapshot, not a physical safety certificate"
+        ],
     )
 
 
 @probe_stage_app.command("start")
 def probe_stage_start(
-    robot_id: Annotated[
-        str,
-        typer.Option("--robot-id", "--robot", help="Stable identity for this robot"),
-    ],
-    project_root: Annotated[
-        Path | None,
-        typer.Option(
-            "--project-root",
-            help="Robot application/workspace root used to find build, install, docs, and launch",
-        ),
-    ] = None,
-    urdf: Annotated[
-        Path | None,
-        typer.Option("--urdf", help="Optional explicit URDF; never guessed when omitted"),
-    ] = None,
+    robot_id: Annotated[str, typer.Option("--robot-id", "--robot")],
+    project_root: Annotated[Path | None, typer.Option("--project-root")] = None,
     active_probe: Annotated[
-        ActiveProbeMode,
-        typer.Option("--active-probe", help="none, help, or runtime-readonly"),
+        ActiveProbeMode, typer.Option("--active-probe")
     ] = ActiveProbeMode.RUNTIME_READONLY,
-    run_agent: Annotated[
-        bool,
-        typer.Option(
-            "--run-agent/--discover-only",
-            help="Continue through Adapter Agent, independent gate, and release",
-        ),
-    ] = True,
-    scratch_root: Annotated[
-        Path | None,
-        typer.Option(
-            "--scratch-root",
-            help="Optional parent for the automatically deleted Agent workspace",
-        ),
-    ] = None,
-    timeout: Annotated[
-        int | None,
-        typer.Option("--timeout", min=1, help="Maximum Adapter Agent time in seconds"),
-    ] = None,
     evidence_mode: Annotated[
-        EvidenceDeploymentMode,
-        typer.Option(
-            "--evidence-mode",
-            help="local collects signed evidence here; remote uses a pinned SSH collector",
-        ),
+        EvidenceDeploymentMode, typer.Option("--evidence-mode")
     ] = EvidenceDeploymentMode.LOCAL,
-    allow_executable: Annotated[
-        list[Path] | None,
-        typer.Option(
-            "--allow-executable",
-            help="Local target executable permitted for bounded --help evidence; repeatable",
-        ),
-    ] = None,
-    collector_descriptor: Annotated[
-        Path | None,
-        typer.Option("--collector-descriptor", help="Remote collector descriptor JSON"),
-    ] = None,
-    verification_secret: Annotated[
-        Path | None,
-        typer.Option("--verification-secret", help="Remotely provisioned collector secret"),
-    ] = None,
+    allow_executable: Annotated[list[Path] | None, typer.Option("--allow-executable")] = None,
+    collector_descriptor: Annotated[Path | None, typer.Option("--collector-descriptor")] = None,
+    verification_secret: Annotated[Path | None, typer.Option("--verification-secret")] = None,
     ssh_target: Annotated[str | None, typer.Option("--ssh-target")] = None,
-    known_hosts: Annotated[
-        Path | None,
-        typer.Option("--known-hosts", help="Pinned SSH known_hosts file"),
-    ] = None,
+    known_hosts: Annotated[Path | None, typer.Option("--known-hosts")] = None,
     ssh_port: Annotated[int | None, typer.Option("--ssh-port", min=1, max=65535)] = None,
-    ssh_identity_file: Annotated[
-        Path | None,
-        typer.Option("--ssh-identity-file", help="Pinned controller-side SSH private key"),
-    ] = None,
+    ssh_identity_file: Annotated[Path | None, typer.Option("--ssh-identity-file")] = None,
     collector_config: Annotated[
-        str,
-        typer.Option("--collector-config", help="Collector state path on the remote target"),
+        str, typer.Option("--collector-config")
     ] = ".rolo/config/target-evidence-collector.json",
-    collector_executable: Annotated[
-        str | None,
-        typer.Option(
-            "--collector-executable",
-            help="Pinned robotctl executable name or absolute path on the remote target",
-        ),
-    ] = None,
     evidence_timeout: Annotated[
-        float,
-        typer.Option("--evidence-timeout", min=1.0, max=300.0),
+        float, typer.Option("--evidence-timeout", min=1.0, max=300.0)
     ] = 45.0,
-    evidence_attempts: Annotated[
-        int,
-        typer.Option("--evidence-attempts", min=1, max=3),
-    ] = 2,
-    heuristic_agent_mode: Annotated[
-        HeuristicAdaptMode | None,
-        typer.Option(
-            "--heuristic-agent-mode",
-            help="Override semantic mapping mode: disabled, shadow, or enabled",
-        ),
-    ] = None,
-    heuristic_agent_timeout: Annotated[
-        int | None,
-        typer.Option(
-            "--heuristic-agent-timeout",
-            min=1,
-            max=3_600,
-            help="Maximum time per semantic mapping Agent batch in seconds",
-        ),
-    ] = None,
-    heuristic_agent_batch_operations: Annotated[
-        int | None,
-        typer.Option(
-            "--heuristic-agent-batch-operations",
-            min=1,
-            max=64,
-            help="Maximum Operations per semantic mapping Agent batch",
-        ),
-    ] = None,
-    heuristic_agent_parallelism: Annotated[
-        int | None,
-        typer.Option(
-            "--heuristic-agent-parallelism",
-            min=1,
-            max=8,
-            help="Maximum concurrent semantic mapping Agent batches",
-        ),
-    ] = None,
 ) -> None:
-    """Run the shortest safe path from a robot project to an Adapt release."""
+    """Collect target evidence; Agent planning starts after this command returns."""
     try:
-        result = run_probe_start(
+        emit(run_probe_start(
             robot_id=robot_id,
             project_root=project_root,
-            urdf=urdf,
+            urdf=None,
             active_probe=active_probe,
-            run_agent=run_agent,
-            scratch_root=scratch_root,
-            timeout=timeout,
+            run_agent=False,
+            scratch_root=None,
+            timeout=None,
             evidence_mode=evidence_mode,
             allow_executable=allow_executable,
             collector_descriptor=collector_descriptor,
@@ -345,170 +231,32 @@ def probe_stage_start(
             known_hosts=known_hosts,
             collector_config=collector_config,
             evidence_timeout=evidence_timeout,
-            collector_executable=collector_executable,
             ssh_port=ssh_port,
             ssh_identity_file=ssh_identity_file,
-            evidence_attempts=evidence_attempts,
-            heuristic_agent_mode=heuristic_agent_mode,
-            heuristic_agent_timeout=heuristic_agent_timeout,
-            heuristic_agent_batch_operations=heuristic_agent_batch_operations,
-            heuristic_agent_parallelism=heuristic_agent_parallelism,
-        )
+        ))
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    emit(result)
-    if result.status in {"BLOCKED", "WAITING_FOR_AUTH"}:
-        raise typer.Exit(code=2)
-
-
-def emit_stage_status(stage: StageName, robot: str) -> None:
-    settings = get_settings()
-    emit(assess_stage(stage, settings.rolo_artifact_dir, robot))
 
 
 @probe_stage_app.command("status")
 def probe_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-    """Show discovery, Adapter Agent, conformance, and handoff readiness."""
-    emit_stage_status(StageName.PROBE, robot)
-
-
-@probe_stage_app.command("run")
-def probe_stage_run(
-    robot: Annotated[str, typer.Option("--robot")],
-    scratch_root: Annotated[
-        Path | None,
-        typer.Option(
-            "--scratch-root",
-            help="Optional parent for an automatically deleted Agent workspace outside rolo",
-        ),
-    ] = None,
-    timeout: Annotated[
-        int | None, typer.Option("--timeout", min=1, help="Maximum Agent time in seconds")
-    ] = None,
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Show the derived plan without starting the Agent")
-    ] = False,
-    slice_canary: Annotated[
-        bool,
-        typer.Option(
-            "--slice-canary",
-            help=(
-                "Canary the bounded Slice for this run's Agent context only; "
-                "Bundle/release authority remains unchanged"
-            ),
-        ),
-    ] = False,
-) -> None:
-    """Plan, execute, freeze outputs, independently gate, and publish one Adapt run."""
+    """Show the evidence readiness of one enrolled robot."""
     settings = get_settings()
-    service = AdaptRunService(ArtifactStore(settings.rolo_artifact_dir), settings)
-    try:
-        if dry_run:
-            emit(service.dry_run(robot))
-            return
-        summary, artifact = service.run(
-            robot_id=robot,
-            scratch_root=scratch_root if scratch_root is not None else settings.rolo_scratch_dir,
-            timeout_s=timeout or settings.coding_agent_timeout_s,
-            slice_canary=slice_canary,
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit({"run": summary.model_dump(mode="json"), "artifact": str(artifact)})
-
-
-@probe_stage_app.command("agent-config")
-def adapt_agent_config() -> None:
-    """Show the effective secret-free Adapter Agent provider and model selection."""
-    emit(coding_agent_config(get_settings()))
-
-
-@probe_stage_app.command("slice-observability")
-def adapt_slice_observability(
-    robot: Annotated[str, typer.Option("--robot")],
-    max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
-    min_successful_canary_runs: Annotated[
-        int,
-        typer.Option("--min-successful-canary-runs", min=1, max=500),
-    ] = 10,
-) -> None:
-    """Read Shadow/Canary stability metrics without changing activation settings."""
-    settings = get_settings()
-    try:
-        report = build_slice_stability_report(
-            settings.rolo_artifact_dir,
-            robot,
-            max_runs=max_runs,
-            min_successful_canary_runs=min_successful_canary_runs,
-        )
-    except (OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(report)
-
-
-@probe_stage_app.command("capability-observability")
-def adapt_capability_observability(
-    robot: Annotated[str, typer.Option("--robot")],
-    max_runs: Annotated[int, typer.Option("--max-runs", min=1, max=500)] = 50,
-) -> None:
-    """Read capability-resolution shadow stability without changing release authority."""
-    settings = get_settings()
-    try:
-        report = build_capability_shadow_stability_report(
-            settings.rolo_artifact_dir,
-            robot,
-            max_runs=max_runs,
-        )
-    except (OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(report)
-
-
-@probe_stage_app.command("acceptance-pack")
-def adapt_acceptance_pack(
-    robot: Annotated[str, typer.Option("--robot")],
-    output: Annotated[
-        Path | None,
-        typer.Option(
-            "--output",
-            help="Optional destination for the secret-free Adapt acceptance JSON",
-        ),
-    ] = None,
-) -> None:
-    """Export a secret-free, digest-bound snapshot for real-device Adapt review."""
-    settings = get_settings()
-    try:
-        pack, path, digest = write_adapt_acceptance_pack(
-            settings.rolo_artifact_dir,
-            settings.rolo_output_dir,
-            robot,
-            output,
-        )
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    emit(
-        {
-            "pack": pack.model_dump(mode="json"),
-            "artifact": str(path),
-            "sha256": digest,
-        }
-    )
+    emit(assess_stage(StageName.PROBE, settings.rolo_artifact_dir, robot))
 
 
 @enroll_app.command("show")
 def enrollment_show() -> None:
-    """Show the robot identity currently owned by this installed instance."""
-    robots = create_runtime().registry.list()
-    emit([robot.model_dump(mode="json") for robot in robots])
+    """Show the profiles owned by this installation."""
+    from rolo.targets.profiles import TargetProfileStore
+
+    profiles = TargetProfileStore(get_settings().rolo_config_dir).list_profiles()
+    emit([item.model_dump(mode="json") for item in profiles])
 
 
 def register_lifecycle_commands(root: typer.Typer) -> None:
-    # Probe is the only active v2 lifecycle. Trace and Certify are deliberately
-    # not registered until their contracts have an independent implementation.
     root.add_typer(probe_stage_app, name="probe")
 
     @root.command("pipeline-status")
     def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
-        """Show all three lifecycle stages for one robot."""
-        settings = get_settings()
-        emit(assess_pipeline(settings.rolo_artifact_dir, robot))
+        emit(assess_pipeline(get_settings().rolo_artifact_dir, robot))

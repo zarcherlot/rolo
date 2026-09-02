@@ -252,6 +252,7 @@ class AgentNativeToolResult(BaseModel):
 
 
 CommandExecutor = Callable[..., subprocess.CompletedProcess[str]]
+RemoteCommandExecutor = Callable[..., object]
 
 
 class AgentNativeRunner:
@@ -504,6 +505,117 @@ class AgentNativeRunner:
             sensitive=descriptor.sensitive,
             limitations=limitations,
             arguments=arguments or {},
+        )
+
+
+class RemoteAgentNativeRunner(AgentNativeRunner):
+    """Run the same bounded descriptor catalog through a pinned remote executor.
+
+    The controller never resolves or executes the target executable locally.  The
+    supplied executor owns SSH host-key, identity and command quoting; this class
+    only performs descriptor/mode/argument validation and result normalization.
+    """
+
+    def __init__(
+        self,
+        descriptors: Sequence[AgentNativeToolDescriptor],
+        *,
+        executor: RemoteCommandExecutor,
+    ) -> None:
+        super().__init__(descriptors)
+        self._remote_executor = executor
+
+    def run(
+        self,
+        tool_id: str,
+        arguments: Mapping[str, str] | None = None,
+        *,
+        environment: Mapping[str, str] | None = None,
+    ) -> AgentNativeToolResult:
+        descriptor = self._descriptors.get(tool_id)
+        if descriptor is None:
+            raise ValueError(f"unknown agent-native tool: {tool_id}")
+        supplied = {str(key): str(value) for key, value in (arguments or {}).items()}
+        requested_arguments = dict(supplied)
+        invocation, argv = self._resolve_invocation(descriptor, supplied)
+        started = time.monotonic()
+        try:
+            completed = self._remote_executor(
+                argv,
+                timeout_s=descriptor.max_duration_s,
+                environment=dict(environment or {}),
+            )
+            returncode = int(completed.returncode)
+            stdout = str(getattr(completed, "stdout", "") or "")
+            stderr = str(getattr(completed, "stderr", "") or "")
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+            stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+            return self._result(
+                descriptor,
+                argv,
+                NativeToolStatus.TIMEOUT,
+                stdout,
+                stderr,
+                (time.monotonic() - started) * 1000,
+                [
+                    "tool execution timed out",
+                    *(
+                        [
+                            "network-dependent check may be unavailable in the current environment"
+                        ]
+                        if invocation.environment_dependency != "NONE"
+                        else []
+                    ),
+                ],
+                arguments=requested_arguments,
+                environment_limited=invocation.environment_dependency != "NONE",
+            )
+        except OSError as exc:
+            return self._result(
+                descriptor,
+                argv,
+                NativeToolStatus.FAILED,
+                "",
+                str(exc),
+                (time.monotonic() - started) * 1000,
+                ["remote tool execution failed"],
+                arguments=requested_arguments,
+            )
+        no_output = not stdout.strip() and not stderr.strip()
+        unavailable = returncode in invocation.unavailable_return_codes and no_output
+        status = (
+            NativeToolStatus.SUCCEEDED
+            if returncode == 0
+            else NativeToolStatus.UNAVAILABLE
+            if unavailable
+            else NativeToolStatus.FAILED
+        )
+        limitations = (
+            []
+            if status == NativeToolStatus.SUCCEEDED
+            else [
+                (
+                    f"remote command exited with return code {returncode}; "
+                    "environment resource is unavailable"
+                    if status == NativeToolStatus.UNAVAILABLE
+                    else f"remote command exited with return code {returncode}"
+                )
+            ]
+        )
+        return self._result(
+            descriptor,
+            argv,
+            status,
+            stdout,
+            stderr,
+            (time.monotonic() - started) * 1000,
+            limitations,
+            arguments=requested_arguments,
+            environment_limited=(
+                invocation.environment_dependency != "NONE"
+                and status != NativeToolStatus.SUCCEEDED
+            ),
         )
 
 
@@ -930,7 +1042,7 @@ def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
         ),
         _family_tool(
             "native.middleware.snapshot",
-            "middleware",
+            "ros",
             "MIDDLEWARE_STATUS",
             {
                 "status": NativeToolInvocation(

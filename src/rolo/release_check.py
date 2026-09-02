@@ -12,7 +12,12 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10 only
 
 from pydantic import BaseModel, Field
 
-from rolo.device_hardening_evidence import DEVICE_HARDENING_SCHEMA, DeviceHardeningEvidenceBundle
+from rolo.agent_tools import (
+    NativeToolSessionDescriptor,
+    ToolPlan,
+    reduced_agent_native_catalog,
+)
+from rolo.stages.adapt.target_evidence import TargetEvidenceBundle
 
 
 class ReleaseCheckResult(BaseModel):
@@ -32,39 +37,21 @@ def run_release_check(
     failures: list[str] = []
     for module in (
         "rolo.product_cli",
-        "rolo.api",
-        "rolo.console",
-        "rolo.natural_service",
-        "rolo.query_adapter",
-        "rolo.tui",
-        "rolo.vis",
+        "rolo.cli",
+        "rolo.targets.executor",
+        "rolo.agent_tools.session_factory",
+        "rolo.stages.adapt.target_evidence",
     ):
         try:
             importlib.import_module(module)
             checks.append(f"import:{module}")
         except Exception as exc:  # pragma: no cover - defensive release boundary
             failures.append(f"import:{module}: {exc}")
-    try:
-        api = importlib.import_module("rolo.api").app
-        route_paths = {route.path for route in api.routes}
-        for path in (
-            "/v1/jobs",
-            "/v1/jobs/{job_id}",
-            "/v1/jobs/{job_id}/events",
-            "/v1/targets/{target_id}/artifact-analysis",
-            "/v1/jobs/{job_id}/artifact-analysis",
-        ):
-            if path not in route_paths:
-                failures.append(f"missing API route: {path}")
-            else:
-                checks.append(f"api-route:{path}")
-    except Exception as exc:  # pragma: no cover - defensive release boundary
-        failures.append(f"api-routes: {exc}")
     path = pyproject_path or Path(__file__).resolve().parents[2] / "pyproject.toml"
     if path.is_file():
         try:
             scripts = tomllib.loads(path.read_text(encoding="utf-8"))["project"]["scripts"]
-            for name in ("rolo", "robotctl", "rolo-mcp", "rolo-vis"):
+            for name in ("rolo", "robotctl"):
                 if name not in scripts:
                     failures.append(f"missing console script: {name}")
                 else:
@@ -74,13 +61,19 @@ def run_release_check(
     else:
         failures.append(f"missing pyproject: {path}")
     try:
-        schema = DeviceHardeningEvidenceBundle.model_json_schema()
-        if schema["properties"]["schema_version"]["const"] != DEVICE_HARDENING_SCHEMA:
-            failures.append("device hardening schema version drift")
+        if not reduced_agent_native_catalog():
+            failures.append("native catalog is empty")
         else:
-            checks.append("device-hardening-schema:registered")
+            checks.append("native-catalog:registered")
+        for model, label in (
+            (TargetEvidenceBundle, "target-evidence-bundle"),
+            (NativeToolSessionDescriptor, "native-tool-session"),
+            (ToolPlan, "tool-plan"),
+        ):
+            model.model_json_schema()
+            checks.append(f"schema:{label}")
     except (KeyError, TypeError, ValueError) as exc:
-        failures.append(f"device-hardening-schema: {exc}")
+        failures.append(f"v2-schemas: {exc}")
     if require_artifacts:
         artifact_root = dist_path or path.parent / "dist"
         artifacts = [

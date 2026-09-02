@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -144,6 +145,8 @@ class SshTargetExecutor:
         *,
         known_hosts: Path | None,
         identity_file: Path | None = None,
+        ros_setup_files: tuple[str, ...] = (),
+        remote_command_prefix: tuple[str, ...] = (),
         timeout_s: float = 10.0,
         runner: CommandRunner | None = None,
     ) -> None:
@@ -152,6 +155,15 @@ class SshTargetExecutor:
         self.target = target
         self.known_hosts = known_hosts.expanduser().resolve() if known_hosts else None
         self.identity_file = identity_file.expanduser().resolve() if identity_file else None
+        self.ros_setup_files = tuple(ros_setup_files)
+        if any(
+            not item
+            or "\x00" in item
+            or any(character in item for character in "'\";$`\\")
+            for item in remote_command_prefix
+        ):
+            raise ValueError("remote command prefix must contain shell-free, NUL-free tokens")
+        self.remote_command_prefix = tuple(remote_command_prefix)
         self.timeout_s = timeout_s
         self.runner = runner or SubprocessCommandRunner()
 
@@ -191,10 +203,63 @@ class SshTargetExecutor:
             argv.extend(["-o", "IdentitiesOnly=yes", "-i", str(self.identity_file)])
         if self.target.port is not None:
             argv.extend(["-p", str(self.target.port)])
-        return [*argv, "--", destination, *quote_remote_argv(remote_argv)]
+        return [
+            *argv,
+            "--",
+            destination,
+            *quote_remote_argv([*self.remote_command_prefix, *remote_argv]),
+        ]
 
     def _run(self, remote_argv: list[str]) -> CommandResult:
         return self.runner.run(self._ssh_argv(remote_argv), timeout_s=self.timeout_s)
+
+    def run_readonly(
+        self,
+        remote_argv: list[str],
+        *,
+        environment: dict[str, str] | None = None,
+        ros_setup_files: tuple[str, ...] = (),
+    ) -> CommandResult:
+        """Run one fixed read-only argv on the pinned remote target.
+
+        Native tools are descriptors, never shell text.  The only shell syntax
+        assembled here is the bounded ROS bootstrap needed to source pinned setup
+        files before invoking a static argv.  Every component is shell-quoted and
+        SSH still enforces the pinned host key, identity and forwarding policy.
+        """
+        if not remote_argv or any(not value or "\x00" in value for value in remote_argv):
+            raise ValueError("remote native argv must be non-empty and NUL-free")
+        setup_files = tuple(ros_setup_files or self.ros_setup_files)
+        if setup_files:
+            if any(
+                not path
+                or "\x00" in path
+                or not path.startswith("/")
+                or any(character in path for character in "'\";$`\\")
+                for path in setup_files
+            ):
+                raise ValueError("ROS setup paths must be absolute and shell-safe")
+            command = "; ".join(
+                [
+                    "set -eo pipefail",
+                    *[f". {quote_remote_arg(path)}" for path in setup_files],
+                    f"exec {' '.join(quote_remote_argv(remote_argv))}",
+                ]
+            )
+            return self._run(["bash", "--noprofile", "--norc", "-c", command])
+        if environment:
+            if any(
+                not key
+                or "=" in key
+                or "\x00" in key
+                or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+                or "\x00" in value
+                for key, value in environment.items()
+            ):
+                raise ValueError("remote native environment contains an unsafe key or value")
+            assignments = [f"{key}={value}" for key, value in sorted(environment.items())]
+            remote_argv = ["env", *assignments, *remote_argv]
+        return self._run(remote_argv)
 
     @staticmethod
     def _failure_detail(result: CommandResult) -> str:
@@ -257,7 +322,6 @@ class SshTargetExecutor:
                     blockers=["the first remote Target Executor supports Linux only"],
                 )
             workspace = self._run(["test", "-d", str(self.target.workspace)])
-            companion = self._run(["command", "-v", "rolo-target"])
         except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
             return TargetConnectionAssessment(
                 target=self.target,
@@ -281,11 +345,7 @@ class SshTargetExecutor:
             platform=platform_name,
             architecture=architecture.stdout.strip(),
             workspace_accessible=workspace_accessible,
-            companion=(
-                CompanionStatus.AVAILABLE
-                if companion.returncode == 0
-                else CompanionStatus.MISSING
-            ),
+            companion=CompanionStatus.NOT_REQUIRED,
             blockers=([] if workspace_accessible else ["remote workspace is unavailable"]),
         )
 
@@ -307,36 +367,6 @@ class SshTargetExecutor:
                 description="Verify that the remote workspace is readable.",
             ),
         ]
-        if assessment.companion == CompanionStatus.MISSING:
-            steps.extend(
-                [
-                    TargetBootstrapStep(
-                        action=BootstrapAction.INSTALL_COMPANION,
-                        risk=TargetRisk.HOST_MUTATION,
-                        approval_required=True,
-                        description="Install the signed minimal rolo-target companion.",
-                    ),
-                    TargetBootstrapStep(
-                        action=BootstrapAction.HEALTH_CHECK,
-                        risk=TargetRisk.READ_ONLY,
-                        description="Verify the installed companion before enrollment.",
-                    ),
-                ]
-            )
-            return TargetBootstrapPlan(
-                target=self.target,
-                assessment_state=assessment.state,
-                status=BootstrapPlanStatus.APPROVAL_REQUIRED,
-                steps=steps,
-                required_approvals=["target.bootstrap.execute"],
-            )
-        steps.append(
-            TargetBootstrapStep(
-                action=BootstrapAction.HEALTH_CHECK,
-                risk=TargetRisk.READ_ONLY,
-                description="Verify the existing rolo-target companion before enrollment.",
-            )
-        )
         return TargetBootstrapPlan(
             target=self.target,
             assessment_state=assessment.state,
@@ -350,6 +380,8 @@ def create_target_executor(
     *,
     known_hosts: Path | None = None,
     identity_file: Path | None = None,
+    ros_setup_files: tuple[str, ...] = (),
+    remote_command_prefix: tuple[str, ...] = (),
     timeout_s: float = 10.0,
     runner: CommandRunner | None = None,
 ) -> TargetExecutor:
@@ -361,6 +393,8 @@ def create_target_executor(
         target,
         known_hosts=known_hosts,
         identity_file=identity_file,
+        ros_setup_files=ros_setup_files,
+        remote_command_prefix=remote_command_prefix,
         timeout_s=timeout_s,
         runner=runner,
     )
@@ -413,6 +447,8 @@ def create_profile_target_executor(
         profile.target,
         known_hosts=Path(deployment.known_hosts_path or ""),
         identity_file=credential.identity_file,
+        ros_setup_files=tuple(item.path for item in deployment.collector.ros_setup_files),
+        remote_command_prefix=tuple(profile.remote_command_prefix),
         timeout_s=timeout_s,
         runner=runner,
     )

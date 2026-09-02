@@ -6,8 +6,8 @@ the full Rolo CLI dependency set just to validate the read-only tool path.
 
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import os
 import sys
@@ -47,6 +47,7 @@ plan = planning.build_tool_plan(
     goal="确认目标机器人主机与 ROS graph 在线",
     target_id="raspberrypi-192-168-10-167",
     session_id="hardware-smoke",
+    session_nonce="hardware-smoke-session-nonce",
     surface_digest=surface_digest,
     steps=[
         planning.ToolPlanStep(

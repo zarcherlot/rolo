@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Sequence
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +22,7 @@ class ToolPlanningRequest(BaseModel):
     goal: str = Field(min_length=1, max_length=4_000)
     target_id: str = Field(min_length=1, max_length=128)
     session_id: str = Field(min_length=1, max_length=128)
+    session_nonce: str = Field(pattern=r"^[A-Za-z0-9_-]{16,128}$")
     surface_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     allowed_tool_ids: list[str] = Field(min_length=1, max_length=256)
     expires_at: datetime
@@ -42,6 +44,7 @@ class ToolPlan(BaseModel):
     goal: str = Field(min_length=1, max_length=4_000)
     target_id: str = Field(min_length=1, max_length=128)
     session_id: str = Field(min_length=1, max_length=128)
+    session_nonce: str = Field(pattern=r"^[A-Za-z0-9_-]{16,128}$")
     surface_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     steps: list[ToolPlanStep] = Field(min_length=1, max_length=32)
     plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -62,6 +65,7 @@ def build_tool_plan(
     goal: str,
     target_id: str,
     session_id: str,
+    session_nonce: str,
     surface_digest: str,
     steps: Sequence[ToolPlanStep],
 ) -> ToolPlan:
@@ -70,6 +74,7 @@ def build_tool_plan(
         "goal": goal,
         "target_id": target_id,
         "session_id": session_id,
+        "session_nonce": session_nonce,
         "surface_digest": surface_digest,
         "steps": [step.model_dump(mode="json") for step in steps],
     }

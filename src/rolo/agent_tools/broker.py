@@ -6,8 +6,8 @@ import socket
 import threading
 from contextlib import closing
 
-from rolo.agent_tools.session import NativeToolSession
 from rolo.agent_tools.planning import ToolPlan
+from rolo.agent_tools.session import NativeToolSession
 
 _MAX_REQUEST_BYTES = 16 * 1024
 _MAX_RESPONSE_BYTES = 512 * 1024

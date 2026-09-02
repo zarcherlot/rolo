@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 import shlex
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -19,18 +19,17 @@ from rolo.targets.executor import (
     create_profile_target_executor,
     quote_remote_argv,
 )
-from rolo.targets.profiles import CredentialReference, TargetProfileStore
 from rolo.targets.models import (
     BootstrapPlanStatus,
     CompanionStatus,
     TargetConnectionState,
     TargetRisk,
 )
+from rolo.targets.profiles import CredentialReference, TargetProfileStore
 
 
 class FakeSshRunner:
-    def __init__(self, *, companion_installed: bool = False) -> None:
-        self.companion_installed = companion_installed
+    def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
 
     def run(self, argv: list[str], *, timeout_s: float) -> CommandResult:
@@ -43,8 +42,8 @@ class FakeSshRunner:
             return CommandResult(call, 0, "aarch64\n", "")
         if call[-3:-1] == ("test", "-d"):
             return CommandResult(call, 0, "", "")
-        if call[-3:] == ("command", "-v", "rolo-target"):
-            return CommandResult(call, 0 if self.companion_installed else 1, "", "")
+        if "bash" in call and "--noprofile" in call and "--norc" in call:
+            return CommandResult(call, 0, "", "")
         raise AssertionError(f"unexpected SSH probe: {call}")
 
 
@@ -81,7 +80,7 @@ def test_ssh_executor_does_not_connect_without_a_pinned_host_key() -> None:
     assert runner.calls == []
 
 
-def test_ssh_executor_uses_only_fixed_read_only_probes_and_types_mutation_plan(
+def test_ssh_executor_uses_only_fixed_read_only_probes_and_read_only_plan(
     tmp_path: Path,
 ) -> None:
     known_hosts = tmp_path / "known_hosts"
@@ -99,10 +98,10 @@ def test_ssh_executor_uses_only_fixed_read_only_probes_and_types_mutation_plan(
     assert assessment.state == TargetConnectionState.READY
     assert assessment.platform == "Linux"
     assert assessment.architecture == "aarch64"
-    assert assessment.companion == CompanionStatus.MISSING
-    assert plan.status == BootstrapPlanStatus.APPROVAL_REQUIRED
-    assert plan.required_approvals == ["target.bootstrap.execute"]
-    assert [step.risk for step in plan.steps].count(TargetRisk.HOST_MUTATION) == 1
+    assert assessment.companion == CompanionStatus.NOT_REQUIRED
+    assert plan.status == BootstrapPlanStatus.READY
+    assert plan.required_approvals == []
+    assert all(step.risk == TargetRisk.READ_ONLY for step in plan.steps)
     dumped = plan.model_dump(mode="json")
     assert "command" not in json.dumps(dumped)
     for call in runner.calls:
@@ -140,13 +139,45 @@ def test_ssh_executor_uses_pinned_identity_without_agent_fallback(tmp_path: Path
         assert "ForwardAgent=no" in call
 
 
-def test_ssh_executor_needs_no_mutation_when_companion_exists(tmp_path: Path) -> None:
+def test_ssh_executor_sources_only_pinned_ros_setup_for_native_tools(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    runner = FakeSshRunner()
+    executor = SshTargetExecutor(
+        _ssh_target(),
+        known_hosts=known_hosts,
+        ros_setup_files=("/opt/ros/humble/setup.bash",),
+        runner=runner,
+    )
+
+    result = executor.run_readonly(["ros2", "node", "list"])
+
+    assert result.returncode == 0
+    call = runner.calls[-1]
+    assert call[-5] == "bash"
+    assert "source" not in call
+    command = call[-1]
+    assert "/opt/ros/humble/setup.bash" in command
+    assert "ros2 node list" in command
+    assert "StrictHostKeyChecking=yes" in call
+
+
+def test_ssh_executor_rejects_unsafe_native_environment(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    executor = SshTargetExecutor(_ssh_target(), known_hosts=known_hosts, runner=FakeSshRunner())
+
+    with pytest.raises(ValueError, match="unsafe key or value"):
+        executor.run_readonly(["uname", "-a"], environment={"BAD=KEY": "x"})
+
+
+def test_ssh_executor_needs_no_mutation_for_probe(tmp_path: Path) -> None:
     known_hosts = tmp_path / "known_hosts"
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
     executor = SshTargetExecutor(
         _ssh_target(),
         known_hosts=known_hosts,
-        runner=FakeSshRunner(companion_installed=True),
+        runner=FakeSshRunner(),
     )
 
     plan = executor.plan_bootstrap()
@@ -167,13 +198,14 @@ def test_profile_executor_auto_assembles_pinned_transport(
         credential=CredentialReference(
             kind="platform-keychain", reference="platform-keychain:robot"
         ),
+        remote_command_prefix=["docker", "exec", "MentorPi"],
     )
     host_key = profile.host_key.model_copy(
         update={"status": "APPROVED", "fingerprint": "SHA256:abc"}
     )
     store.save(profile.model_copy(update={"host_key": host_key}))
     known_hosts = config_root / "known_hosts"
-    known_hosts.parent.mkdir(parents=True)
+    known_hosts.parent.mkdir(parents=True, exist_ok=True)
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
     identity = config_root / "id_ed25519"
     identity.write_text("private-key\n", encoding="utf-8")
@@ -181,6 +213,7 @@ def test_profile_executor_auto_assembles_pinned_transport(
         identity.chmod(0o600)
     deployment = SimpleNamespace(
         mode=SimpleNamespace(value="remote"),
+        collector=SimpleNamespace(ros_setup_files=[]),
         ssh_target="robot@example.test",
         ssh_port=2222,
         known_hosts_path=str(known_hosts),
@@ -203,6 +236,12 @@ def test_profile_executor_auto_assembles_pinned_transport(
     assert runner.calls
     assert all("IdentitiesOnly=yes" in call for call in runner.calls)
     assert all(str(identity.resolve()) in call for call in runner.calls)
+    assert all(
+        ("docker", "exec", "MentorPi")
+        == call[call.index("docker") : call.index("docker") + 3]
+        for call in runner.calls
+        if "docker" in call
+    )
 
 
 def test_product_cli_exposes_local_target_inspection_and_plan(tmp_path: Path) -> None:

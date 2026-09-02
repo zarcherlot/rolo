@@ -14,13 +14,19 @@ from rolo.targets.bootstrap import (
     SubprocessBootstrapTransport,
     execute_bootstrap,
 )
+from rolo.targets.credentials import (
+    CredentialBroker,
+    CredentialResolutionError,
+    PinnedCredentialBroker,
+    ResolvedCredential,
+)
 from rolo.targets.executor import (
     LocalTargetExecutor,
     SshTargetExecutor,
     SubprocessCommandRunner,
     TargetExecutor,
-    create_target_executor,
     create_profile_target_executor,
+    create_target_executor,
 )
 from rolo.targets.models import (
     BootstrapAction,
@@ -37,12 +43,6 @@ from rolo.targets.profiles import (
     HostKeyDecision,
     TargetProfile,
     TargetProfileStore,
-)
-from rolo.targets.credentials import (
-    CredentialBroker,
-    CredentialResolutionError,
-    PinnedCredentialBroker,
-    ResolvedCredential,
 )
 from rolo.targets.security import validate_bootstrap_file, validate_bootstrap_security
 from rolo.targets.signing import (

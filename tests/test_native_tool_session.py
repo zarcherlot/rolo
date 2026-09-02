@@ -10,11 +10,11 @@ from rolo.agent_tools import (
     NativeToolSessionAuthorizationError,
     NativeToolSessionBudget,
     NativeToolSessionDescriptor,
+    ToolPlanStep,
+    build_tool_plan,
     default_agent_native_catalog,
     native_broker_request,
     native_catalog_sha256,
-    ToolPlanStep,
-    build_tool_plan,
 )
 from rolo.core.artifacts import ArtifactStore
 
@@ -26,7 +26,7 @@ def _session(tmp_path, *, max_calls: int = 2) -> NativeToolSession:
         session_id="native-session-1",
         nonce="native_nonce_123456",
         robot_id="demo",
-        stage="adapt",
+        stage="probe",
         native_catalog_sha256=native_catalog_sha256(default_agent_native_catalog()),
         allowed_tools=[catalog[0].tool_id],
         policy_version="native-policy-v1",
@@ -86,7 +86,7 @@ def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
         session_id="native-session-2",
         nonce="native_nonce_123456",
         robot_id="demo",
-        stage="adapt",
+        stage="probe",
         native_catalog_sha256="0" * 64,
         allowed_tools=[catalog[0].tool_id],
         policy_version="native-policy-v1",
@@ -109,6 +109,7 @@ def test_native_session_executes_validated_tool_plan(tmp_path) -> None:
         goal="inspect hardware",
         target_id="demo",
         session_id="native-session-1",
+        session_nonce="native_nonce_123456",
         surface_digest=native_catalog_sha256(default_agent_native_catalog()),
         steps=[
             ToolPlanStep(
@@ -122,6 +123,26 @@ def test_native_session_executes_validated_tool_plan(tmp_path) -> None:
 
     assert len(results) == 1
     assert results[0].evidence_refs
+
+
+def test_native_session_rejects_a_plan_from_another_nonce(tmp_path) -> None:
+    session = _session(tmp_path)
+    plan = build_tool_plan(
+        goal="inspect hardware",
+        target_id="demo",
+        session_id="native-session-1",
+        session_nonce="other_nonce_123456",
+        surface_digest=native_catalog_sha256(default_agent_native_catalog()),
+        steps=[
+            ToolPlanStep(
+                tool_id="native.hw.inventory.scan",
+                expected_observation="hardware inventory",
+            )
+        ],
+    )
+
+    with pytest.raises(NativeToolSessionAuthorizationError, match="nonce"):
+        session.execute_plan(plan)
 
 
 def test_native_session_close_is_idempotent_and_audits_once(tmp_path) -> None:

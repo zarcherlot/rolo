@@ -22,8 +22,9 @@ Emit a bounded `rolo-tool-plan/v1` containing:
 - each step's exact `tool_id`, typed `arguments`, and expected observation;
 - `mode` (`readonly` or `mutating`), with mutating steps requiring explicit user approval;
 - `surface_digest`, `target_id`, `session_id`, and a deterministic `plan_sha256`.
+- `session_nonce` copied from the Tool Surface; it binds the plan to the exact session issuance.
 
 Never emit shell text, free-form argv, guessed tool IDs, or a route that is not present in the
 surface. A capability gap is a typed result (`CAPABILITY_GAP`) that points back to the missing
 semantic contract; it is not permission to improvise a command. The orchestrator may then start
-the Adapt gap path, where Rolo probes, verifies, conforms, and publishes a new tool.
+a bounded Probe gap path, where Rolo probes, verifies, conforms, and publishes only the new tool.

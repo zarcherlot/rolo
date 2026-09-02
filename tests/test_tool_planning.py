@@ -9,6 +9,7 @@ from rolo.agent_tools import (
     validate_tool_plan,
 )
 
+
 def test_current_agent_can_build_and_validate_readonly_plan() -> None:
     catalog = reduced_agent_native_catalog()
     surface_digest = native_catalog_sha256(catalog)
@@ -21,6 +22,7 @@ def test_current_agent_can_build_and_validate_readonly_plan() -> None:
         goal="确认机器人 ROS graph 是否在线",
         target_id="raspberrypi-192-168-10-167",
         session_id="smoke-session",
+        session_nonce="smoke_nonce_123456",
         surface_digest=surface_digest,
         steps=[step],
     )
@@ -39,6 +41,7 @@ def test_plan_digest_and_allowlist_are_authoritative() -> None:
         goal="inspect host",
         target_id="robot",
         session_id="session",
+        session_nonce="session_nonce_123456",
         surface_digest=native_catalog_sha256(catalog),
         steps=[
             ToolPlanStep(
@@ -60,6 +63,7 @@ def test_mutating_step_requires_approval() -> None:
         goal="test",
         target_id="robot",
         session_id="session",
+        session_nonce="session_nonce_123456",
         surface_digest=native_catalog_sha256(catalog),
         steps=[
             ToolPlanStep(

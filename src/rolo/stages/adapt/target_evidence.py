@@ -66,6 +66,7 @@ MAX_SSH_STDERR_BYTES = 1_000_000
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _SSH_TARGET_PATTERN = re.compile(r"^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$")
 _REMOTE_PATH_PATTERN = re.compile(r"^[/A-Za-z0-9_.-]+$")
+_SOURCE_ROOT_PATTERN = re.compile(r"^(?:[/A-Za-z0-9_.-]+|[A-Za-z]:[/A-Za-z0-9_.-]+)$")
 _SSH_PUBLIC_KEY_TYPE_PATTERN = re.compile(
     r"^(?:ssh-(?:ed25519|rsa)|ecdsa-sha2-nistp(?:256|384|521)|"
     r"sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$"
@@ -148,6 +149,9 @@ class CollectorDescriptor(BaseModel):
     robot_id: str = Field(min_length=1, max_length=128)
     collector_id: str = Field(min_length=1, max_length=128)
     target_host_fingerprint: str = Field(pattern=_SHA256_PATTERN)
+    # Target-side workspace used by the collector for ROS overlay/source
+    # context.  This is descriptive evidence, not a controller-local path.
+    source_root: str | None = Field(default=None, max_length=4096)
     help_executables: list[CollectorHelpExecutable] = Field(
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
@@ -157,6 +161,8 @@ class CollectorDescriptor(BaseModel):
 
     @model_validator(mode="after")
     def require_canonical_help_allowlist(self) -> CollectorDescriptor:
+        if self.source_root is not None and not _SOURCE_ROOT_PATTERN.fullmatch(self.source_root):
+            raise ValueError("collector source_root contains unsupported characters")
         identities = [item.executable_id for item in self.help_executables]
         paths = [item.path for item in self.help_executables]
         if identities != sorted(set(identities)) or len(paths) != len(set(paths)):
@@ -320,7 +326,7 @@ class TargetEvidenceBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[
-        "robot-target-evidence-bundle/v1", "robot-target-evidence-bundle/v2"
+        "robot-target-evidence-bundle/v2", "robot-target-evidence-bundle/v3"
     ] = "robot-target-evidence-bundle/v2"
     robot_id: str
     collector_id: str
@@ -334,6 +340,11 @@ class TargetEvidenceBundle(BaseModel):
         default_factory=list,
         max_length=MAX_HELP_EXECUTABLES,
     )
+    # Optional signed source snapshot emitted by newer target collectors.  It
+    # is intentionally opaque to the Probe controller: the collector's
+    # signature and bundle size limits provide integrity and resource bounds,
+    # while later products may add a dedicated source-evidence schema.
+    source_snapshot: dict[str, Any] | None = None
     payload_sha256: str = Field(pattern=_SHA256_PATTERN)
     signature_hmac_sha256: str = Field(pattern=_SHA256_PATTERN)
 
@@ -1141,7 +1152,11 @@ def collect_target_evidence(
         **base,
         payload_sha256="0" * 64,
         signature_hmac_sha256="0" * 64,
-    ).model_dump(mode="json", exclude={"payload_sha256", "signature_hmac_sha256"})
+    ).model_dump(
+        mode="json",
+        exclude={"payload_sha256", "signature_hmac_sha256"},
+        exclude_none=True,
+    )
     payload_sha256 = hashlib.sha256(_canonical_json(normalized)).hexdigest()
     signature = hmac.new(
         _load_secret(Path(state.secret_path)), payload_sha256.encode("ascii"), hashlib.sha256
@@ -1294,7 +1309,11 @@ def verify_evidence_bundle(
             raise ValueError("evidence bundle executable help is outside the pinned allowlist")
         if hashlib.sha256(item.output_text.encode("utf-8")).hexdigest() != (item.output_sha256):
             raise ValueError("evidence bundle executable help output hash mismatch")
-    base = bundle.model_dump(mode="json", exclude={"payload_sha256", "signature_hmac_sha256"})
+    base = bundle.model_dump(
+        mode="json",
+        exclude={"payload_sha256", "signature_hmac_sha256"},
+        exclude_none=True,
+    )
     actual_payload_sha256 = hashlib.sha256(_canonical_json(base)).hexdigest()
     if not hmac.compare_digest(actual_payload_sha256, bundle.payload_sha256):
         raise ValueError("evidence bundle payload hash mismatch")

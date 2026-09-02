@@ -8,6 +8,7 @@ from rolo.agent_tools.native_tools import (
     NativeToolInvocation,
     NativeToolParameter,
     NativeToolStatus,
+    RemoteAgentNativeRunner,
     default_agent_native_catalog,
     load_agent_native_catalog,
     native_operation_family_map,
@@ -41,9 +42,11 @@ from rolo.agent_tools.session import (
     NativeToolSessionDescriptor,
     native_catalog_sha256,
 )
+from rolo.agent_tools.session_factory import create_profile_native_tool_session
 
 __all__ = [
     "AgentNativeRunner",
+    "RemoteAgentNativeRunner",
     "AgentNativeToolDescriptor",
     "AgentNativeToolResult",
     "NativeToolStatus",
@@ -65,6 +68,7 @@ __all__ = [
     "NativeToolSessionBudgetError",
     "NativeToolSessionDescriptor",
     "native_catalog_sha256",
+    "create_profile_native_tool_session",
     "NativeToolBroker",
     "native_broker_request",
     "NativeToolRolloutDecision",
