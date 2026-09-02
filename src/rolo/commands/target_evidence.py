@@ -468,8 +468,9 @@ def collect(
                 for item in bundle.executable_help
             ],
             "next": (
-                f"robotctl probe discover run --robot {robot_id} "
-                f"--target-evidence-bundle {destination}"
+                "rolo target application-bundle "
+                f"--profile {robot_id} --application <startup|navigation|mapping|manipulation> "
+                f"--evidence {destination}"
             ),
         }
     )

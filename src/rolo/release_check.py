@@ -18,6 +18,11 @@ from rolo.agent_tools import (
     ToolPlan,
     reduced_agent_native_catalog,
 )
+from rolo.stages.probe.application import (
+    ApplicationAdapterBundle,
+    ApplicationCandidate,
+    ApplicationConformanceReport,
+)
 from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
 
@@ -41,6 +46,7 @@ def run_release_check(
         "rolo.cli",
         "rolo.targets.executor",
         "rolo.agent_tools.session_factory",
+        "rolo.stages.probe.application",
         "rolo.stages.probe.target_evidence",
     ):
         try:
@@ -71,6 +77,9 @@ def run_release_check(
             (NativeToolSessionDescriptor, "native-tool-session"),
             (ToolPlan, "tool-plan"),
             (ToolConformanceReport, "tool-conformance"),
+            (ApplicationCandidate, "application-candidate"),
+            (ApplicationAdapterBundle, "application-adapter-bundle"),
+            (ApplicationConformanceReport, "application-conformance"),
         ):
             model.model_json_schema()
             checks.append(f"schema:{label}")

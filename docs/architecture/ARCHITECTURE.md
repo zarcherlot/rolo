@@ -31,12 +31,14 @@ accepted by a tool invocation.
 | `hardware` | physical inventory and device presence | device inventory and presence snapshot |
 | `OS` | host, process, service, resource and file observation | host/process/service/resource inspection |
 | `Middleware` | graph, channel, topology and runtime observation | middleware graph/channel/topology snapshot |
-| `application` | explicitly allowlisted application CLI self-description | bounded executable help or version query |
+| `application` | one named, narrow application gap | route-backed startup/navigation/mapping/manipulation bundle |
 
 The current Native catalog is family-level, read-only and static-argv. It is intentionally not a
 second 197-item Canonical Registry. Commands that Codex already understands remain native tools;
 a new Adapter bundle is justified only when the target OS, Middleware or application cannot be
-safely and consistently invoked by the Agent without Rolo-owned translation. MVP provider IDs may
+safely and consistently invoked by the Agent without Rolo-owned translation. For application gaps,
+Rolo derives a candidate from target-observed routes, emits a minimal route-presence bundle, and
+independently conforms it; a missing signal remains a rejected bundle. MVP provider IDs may
 be implementation-specific, while the four family contracts remain platform-neutral. The Agent
 receives only the public family names and tool IDs; concrete provider executable names are kept
 inside the descriptor and may be replaced by a future provider implementation.
@@ -61,6 +63,7 @@ rolo target profile init/show/approve-host-key
 rolo target inspect-profile --profile <id>
 rolo target tool-surface --profile <id>
 rolo target tool-plan --profile <id> <plan.json>
+rolo target application-bundle --profile <id> --application <startup|navigation|mapping|manipulation>
 robotctl probe target-evidence ...
 robotctl probe start/status ...
 ```
@@ -89,6 +92,8 @@ The authoritative implementation is concentrated in:
 - `src/rolo/stages/probe/target_evidence.py` — signed target evidence;
 - `src/rolo/agent_tools/native_tools.py`, `src/rolo/agent_tools/session.py`,
   `src/rolo/agent_tools/planning.py` — Tool Surface, Session and ToolPlan;
+- `src/rolo/stages/probe/application.py` — narrow application candidates, adapter bundles and
+  independent application Conformance;
 - `src/rolo/agent_tools/session_factory.py` — profile-bound session construction;
 - `tests/test_probe_session_factory.py`, `tests/test_target_executors.py`,
   `tests/test_probe_evidence_contract.py`, `tests/test_product_cli_v2.py` — the retained

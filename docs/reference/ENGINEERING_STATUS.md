@@ -14,6 +14,7 @@
 | FEAT-PROBE-TOOL-PLAN | STABLE | E4 | `rolo target tool-plan --profile PLAN.json` | `src/rolo/agent_tools/planning.py`; `src/rolo/agent_tools/session.py` | `tests/test_tool_planning.py`; `tests/test_native_tool_session.py`; `tests/test_product_cli_v2.py` | Agent 只能规划，Rolo 校验 digest、目标、allowlist、预算和只读模式 |
 | FEAT-PROBE-SSH-RUNNER | STABLE | E4 | profile-bound remote Native Tool execution | `src/rolo/targets/executor.py`; `src/rolo/agent_tools/native_tools.py` | `tests/test_target_executors.py`; `tests/test_agent_native_tools.py`; `tests/test_product_cli_v2.py` | Provider 可能依赖目标 OS/Middleware setup、Python packages 和 runtime libraries；环境不全时明确失败 |
 | FEAT-PROBE-CONFORMANCE | STABLE | E4 | Tool Surface / ToolPlan conformance artifacts | `src/rolo/agent_tools/conformance.py`; `src/rolo/product_cli.py` | `tests/test_tool_conformance.py`; `tests/test_native_tool_session.py`; `tests/test_product_cli_v2.py` | Conformance 只固化当前 Tool Surface；不声明 Trace/Certify 或 release authority |
+| FEAT-APPLICATION-GAP-BUNDLE | STABLE | E4 | `rolo target application-bundle --profile --application` | `src/rolo/stages/probe/application.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | MVP 只覆盖 startup/navigation/mapping/manipulation；当前目标未观测到 map route；route presence 不证明应用行为正确；无证据时 Conformance 明确失败 |
 
 ## 可信度边界
 

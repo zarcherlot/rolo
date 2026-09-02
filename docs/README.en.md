@@ -7,6 +7,7 @@ Rolo v2 is a small, evidence-backed target tool layer for Codex-like Agents. The
 ```text
 TargetProfile → SSH Connector → TargetEvidenceBundle
              → NativeToolSession → Agent ToolPlan → Conformance
+             ↘ application Candidate → Adapter bundle → application Conformance (named gaps only)
 ```
 
 ## Core documents
@@ -14,6 +15,7 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 - [v2 architecture](architecture/ARCHITECTURE.md): user, Agent, Rolo, and robot responsibilities;
 - [engineering status](reference/ENGINEERING_STATUS.md): implementation maturity and evidence;
 - [Agent-native Tool standard](probe/AGENT_NATIVE_TOOLS.md): the four small Tool Surface contracts;
+- [Application gap bundles](probe/APPLICATION_GAP_BUNDLES.md): narrow startup/navigation/mapping/manipulation loops;
 - [implementation map](reference/IMPLEMENTATION_MAP.md): code, schemas, artifacts, and tests;
 - [physical target enrollment record](validation/ROLO_V2_TARGET_ENROLLMENT_20260902.md): one real-target verification.
 

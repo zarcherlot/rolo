@@ -16,10 +16,22 @@ import typer
 from rolo.agent_tools import ToolPlan, conform_tool_surface, create_profile_native_tool_session
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_probe_start
+from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.release_check import run_release_check
 from rolo.stages.probe.active_discovery import ActiveProbeMode
-from rolo.stages.probe.target_evidence import EvidenceDeploymentMode
+from rolo.stages.probe.application import (
+    APPLICATION_IDS,
+    build_application_adapter_bundle,
+    conform_application_bundle,
+    discover_application_candidate,
+)
+from rolo.stages.probe.target_evidence import (
+    EvidenceDeploymentMode,
+    TargetEvidenceBundle,
+    load_deployment,
+    verify_evidence_bundle,
+)
 from rolo.target_ref import LocalTargetRef, parse_target_ref
 from rolo.targets.executor import create_profile_target_executor, create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetConnectionState
@@ -209,6 +221,85 @@ def target_tool_plan(
     finally:
         if session is not None:
             session.close()
+
+
+@target_app.command("application-bundle")
+def target_application_bundle(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    application: Annotated[
+        str,
+        typer.Option(
+            "--application",
+            help="Small application family: startup, navigation, mapping, or manipulation",
+        ),
+    ],
+    evidence: Annotated[
+        Path | None,
+        typer.Option(
+            "--evidence", help="Verified target evidence JSON; defaults to profile bundle"
+        ),
+    ] = None,
+) -> None:
+    """Discover one application gap and emit its minimal adapter/conformance artifacts."""
+    try:
+        if application not in APPLICATION_IDS:
+            raise ValueError(
+                f"unsupported application: {application}; choose one of {APPLICATION_IDS}"
+            )
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        robot_id = target_profile.robot_id
+        deployment = load_deployment(
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+        )
+        evidence_path = evidence or (
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}-bundle.json"
+        )
+        target_bundle = TargetEvidenceBundle.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        verified_probes = verify_evidence_bundle(target_bundle, deployment=deployment)
+        verified_bundle = target_bundle.model_copy(update={"probes": verified_probes})
+        candidate = discover_application_candidate(verified_bundle, application)  # type: ignore[arg-type]
+        adapter = build_application_adapter_bundle(
+            candidate,
+            target_evidence_sha256=verified_bundle.payload_sha256,
+        )
+        report = conform_application_bundle(adapter, candidate, verified_bundle)
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        root = f"application/{robot_id}/{application}/{adapter.bundle_id}"
+        candidate_path = artifact_store.write_json(
+            f"{root}/candidate.json", candidate.model_dump(mode="json")
+        )
+        bundle_path = artifact_store.write_json(
+            f"{root}/adapter-bundle.json", adapter.model_dump(mode="json")
+        )
+        conformance_path = artifact_store.write_json(
+            f"{root}/conformance.json", report.model_dump(mode="json")
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": (
+                "APPLICATION_BUNDLE_READY"
+                if report.status == "PASS"
+                else "APPLICATION_BUNDLE_REJECTED"
+            ),
+            "robot_id": robot_id,
+            "application": application,
+            "candidate": candidate.model_dump(mode="json"),
+            "adapter_bundle": adapter.model_dump(mode="json"),
+            "conformance": report.model_dump(mode="json"),
+            "artifacts": {
+                "candidate": str(candidate_path),
+                "adapter_bundle": str(bundle_path),
+                "conformance": str(conformance_path),
+            },
+        }
+    )
+    if report.status != "PASS":
+        raise typer.Exit(code=2)
 
 
 @profile_app.command("init")

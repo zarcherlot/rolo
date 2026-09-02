@@ -8,6 +8,7 @@ architecture specification. The product boundary is:
 ```text
 TargetProfile → SSH Connector → TargetEvidenceBundle
              → NativeToolSession → Agent ToolPlan → Conformance
+             ↘ application Candidate → Adapter bundle → application Conformance (named gaps only)
 ```
 
 ## Entry points
@@ -25,6 +26,7 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 | Target profile | `src/rolo/targets/profiles.py`, `credentials.py` | Stores target address, identity reference, host-key pin and bounded provider hints; no secret material |
 | SSH connector | `src/rolo/targets/executor.py`, `src/rolo/agent_tools/session_factory.py` | Resolves a profile to a pinned local or SSH executor; fail-closed on host-key or identity mismatch |
 | Target evidence | `src/rolo/stages/probe/target_evidence.py`, `active_discovery.py`, `discovery.py` | Runs bounded OS/Middleware/hardware probes and writes signed, target-bound evidence |
+| Application gap bundle | `src/rolo/stages/probe/application.py` | Derives four small-car application candidates from observed routes, emits a minimal read-only adapter and independently conforms it |
 | Native Tool Surface | `src/rolo/agent_tools/native_tools.py` | Curated read-only family descriptors; Agent sees `hardware`/`OS`/`Middleware` names while provider commands remain implementation details |
 | Tool session | `src/rolo/agent_tools/session.py`, `broker.py` | Binds target, catalog digest, nonce, allowlist and budgets; emits result artifacts and audit records |
 | Agent planning | `src/rolo/agent_tools/planning.py` | Validates an Agent-produced plan against the session, digest, target and read-only policy |
