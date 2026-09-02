@@ -125,6 +125,11 @@ Skill。Skill 负责规划和解释，不拥有执行、注册、Gate 或 releas
 | 用户 | 指定机器人和目标；提供/确认权限；批准写操作；可显式指出待注册 Tool；判断业务和物理结果 |
 | Rolo | 定义四类标准；提供 inspect CLI/Probe；建立 Session；验证 Evidence；执行 Conformance；发布、撤销和审计 |
 | Agent | 使用已提供 Tool；设计有限 Probe；规划调用；解释 Evidence；提出 gap 或显式注册请求 |
+
+SSH connector 的 v2 安全约束属于 Tool Surface 的一部分：连接必须使用 pinned
+`known_hosts`；enrollment 绑定 identity 后，必须使用该 identity 和
+`IdentitiesOnly=yes`，禁止密码回退或无界 agent 凭据选择。target inspection、
+episode capture 和 bootstrap planning 统一复用这条约束。
 | 机器人 | 在目标环境执行受控 Probe/Tool；返回事实；执行最终授权调用；不决定是否可信或是否发布 |
 
 ## 5. v2 的范围收敛
