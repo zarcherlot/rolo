@@ -34,9 +34,9 @@ source_of_truth: optional/path
 
 - 当前文档导航：[README.md](README.md)
 - 工程状态台账：[reference/ENGINEERING_STATUS.md](reference/ENGINEERING_STATUS.md)
-- Adapt 计划：[ADAPT_ROADMAP.md](adapt/ADAPT_ROADMAP.md)
-- Registry 规范：[REGISTRY_OPERATION_GUIDE.md](operations/REGISTRY_OPERATION_GUIDE.md)
-- 生成契约：[OPERATION_CONTRACTS.md](OPERATION_CONTRACTS.md)
+- v2 Agent-native Tool 标准：[AGENT_NATIVE_TOOLS.md](adapt/AGENT_NATIVE_TOOLS.md)
+- v2 实现地图：[IMPLEMENTATION_MAP.md](reference/IMPLEMENTATION_MAP.md)
+- v2 工程状态：[ENGINEERING_STATUS.md](reference/ENGINEERING_STATUS.md)
 
 ## 审查清单
 

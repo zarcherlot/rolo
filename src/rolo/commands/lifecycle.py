@@ -7,7 +7,6 @@ exposes a read model; it does not start an Adapter, Trace or Certify workflow.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
@@ -69,11 +68,7 @@ def run_probe_start(
     *,
     robot_id: str,
     project_root: Path | None,
-    urdf: Path | None,
     active_probe: ActiveProbeMode,
-    run_agent: bool,
-    scratch_root: Path | None,
-    timeout: int | None,
     evidence_mode: EvidenceDeploymentMode,
     allow_executable: list[Path] | None,
     collector_descriptor: Path | None,
@@ -86,20 +81,8 @@ def run_probe_start(
     ssh_port: int | None = None,
     ssh_identity_file: Path | None = None,
     evidence_attempts: int = 2,
-    heuristic_agent_mode: object | None = None,
-    heuristic_agent_timeout: int | None = None,
-    heuristic_agent_batch_operations: int | None = None,
-    heuristic_agent_parallelism: int | None = None,
-    on_output: Callable[[str, str], None] | None = None,
 ) -> ProbeStartResult:
-    """Collect fresh signed evidence; return the next Agent-owned step.
-
-    Legacy Adapter-Agent knobs are accepted only so callers fail with a stable
-    message during the v2 transition; they never trigger an Agent subprocess.
-    """
-    del urdf, run_agent, scratch_root, timeout, heuristic_agent_mode
-    del heuristic_agent_timeout, heuristic_agent_batch_operations, heuristic_agent_parallelism
-    del on_output
+    """Collect fresh signed evidence; return the next Agent-owned step."""
     settings = get_settings()
     prepare_runtime_directories(settings)
     if active_probe != ActiveProbeMode.RUNTIME_READONLY:
@@ -218,11 +201,7 @@ def probe_stage_start(
         emit(run_probe_start(
             robot_id=robot_id,
             project_root=project_root,
-            urdf=None,
             active_probe=active_probe,
-            run_agent=False,
-            scratch_root=None,
-            timeout=None,
             evidence_mode=evidence_mode,
             allow_executable=allow_executable,
             collector_descriptor=collector_descriptor,

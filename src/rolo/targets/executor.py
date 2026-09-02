@@ -311,7 +311,7 @@ class SshTargetExecutor:
                     blockers=["SSH target architecture inspection failed"],
                     diagnostics=[self._failure_detail(architecture)],
                 )
-            if platform_name.casefold() != "linux":
+            if not platform_name.strip():
                 return TargetConnectionAssessment(
                     target=self.target,
                     state=TargetConnectionState.UNSUPPORTED,
@@ -319,7 +319,7 @@ class SshTargetExecutor:
                     host_key_pinned=True,
                     platform=platform_name,
                     architecture=architecture.stdout.strip(),
-                    blockers=["the first remote Target Executor supports Linux only"],
+                    blockers=["target OS identity could not be determined by the current provider"],
                 )
             workspace = self._run(["test", "-d", str(self.target.workspace)])
         except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
@@ -359,7 +359,7 @@ class SshTargetExecutor:
             TargetBootstrapStep(
                 action=BootstrapAction.VERIFY_PLATFORM,
                 risk=TargetRisk.READ_ONLY,
-                description="Verify the pinned Linux target platform and architecture.",
+                description="Verify the pinned target OS platform and architecture.",
             ),
             TargetBootstrapStep(
                 action=BootstrapAction.VERIFY_WORKSPACE,

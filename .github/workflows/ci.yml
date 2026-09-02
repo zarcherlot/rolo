@@ -42,11 +42,12 @@ jobs:
           tests/test_target_credentials.py
           tests/test_target_executors.py
           tests/test_probe_evidence_contract.py
-          tests/test_target_evidence_deployment.py -k "not allowlisted_target_help_is_signed_verified_and_merged_into_discovery and not target_help_cli_enrollment_and_collection_handoff and not remote_transport_rejects_in_place_known_hosts_change and not rotation_and_reenrollment_cli_preserve_explicit_handoff and not init_exposes_local_mode_as_install_time_choice and not local_init_is_idempotent_and_preserves_collector_pin and not discovery_uses_bound_target_probes_not_controller_host and not source_only_discovery_never_attributes_controller_probes and not legacy_remote_deployment_migrates_to_content_pins"
           tests/test_agent_native_tools.py
           tests/test_probe_session_factory.py
           tests/test_native_tool_session.py
           tests/test_tool_planning.py
+          tests/test_tool_conformance.py
+          tests/test_product_cli_v2.py
 
   package:
     runs-on: ubuntu-latest

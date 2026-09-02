@@ -11,9 +11,6 @@ from rolo.agent_tools.native_tools import (
     NativeToolInvocation,
     NativeToolStatus,
     RemoteAgentNativeRunner,
-    default_agent_native_catalog,
-    native_operation_family_map,
-    native_variant_aliases,
     reduced_agent_native_catalog,
 )
 
@@ -32,19 +29,6 @@ def _descriptor(*args: str, **kwargs: object) -> AgentNativeToolDescriptor:
         evidence_kind="TEST",
         **kwargs,
     )
-
-
-def test_default_catalog_is_fixed_and_read_only() -> None:
-    catalog = default_agent_native_catalog()
-
-    assert [item.tool_id for item in catalog] == [
-        "native.hw.inventory.scan",
-        "native.linux.host.status",
-        "native.linux.process.list",
-        "native.ros.node.list",
-    ]
-    assert all(item.access == "read" for item in catalog)
-    assert all(item.argv_template[0] == item.executable for item in catalog)
 
 
 def test_runner_executes_fixed_argv_and_bounds_output() -> None:
@@ -282,16 +266,6 @@ def test_reduced_catalog_uses_family_tools_with_structured_modes() -> None:
     assert {"PYTHONPATH", "LD_LIBRARY_PATH"}.issubset(ros.allowed_env_keys)
 
 
-def test_variant_alias_report_is_informational_and_finds_duplicate_ros_modes() -> None:
-    aliases = native_variant_aliases(reduced_agent_native_catalog())
-
-    assert "native.ros.tf.inspect" in aliases
-    assert any(
-        set(modes) >= {"monitor", "snapshot", "tree"}
-        for modes in aliases["native.ros.tf.inspect"].values()
-    )
-
-
 def test_family_runner_resolves_only_allowlisted_arguments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -315,12 +289,8 @@ def test_family_runner_resolves_only_allowlisted_arguments(
         runner.run("native.linux.file.inspect", {"mode": "read", "path": "../secret"})
 
 
-def test_governance_native_operations_have_family_replacements() -> None:
-    from rolo.stages.adapt.operation_registry_v2 import RegistryView, build_registry_projection
-
-    operations = build_registry_projection().operations(RegistryView.AGENT_NATIVE)
-    mapping = native_operation_family_map(operations)
-    family_ids = {item.tool_id for item in reduced_agent_native_catalog()}
-
-    assert len(mapping) == 73
-    assert set(mapping.values()).issubset(family_ids)
+def test_reduced_catalog_exposes_only_the_curated_native_surface() -> None:
+    catalog = reduced_agent_native_catalog()
+    assert len(catalog) == 22
+    assert {item.family for item in catalog} == {"hw", "linux", "ros"}
+    assert all(item.access == "read" for item in catalog)

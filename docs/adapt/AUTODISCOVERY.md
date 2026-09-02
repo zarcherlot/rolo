@@ -1,4 +1,4 @@
-<!-- status: active; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-30 -->
+<!-- status: archived; authority: reference; owner: docs maintainers; last_reviewed: 2026-09-02 -->
 
 # rolo automatic discovery
 
@@ -137,7 +137,8 @@ conformance checks. This prevents documentation or naming heuristics from becomi
 definition or actuator command.
 
 Topic-name applicability is deterministic but no longer embedded as a project-specific Python
-dictionary. [`semantic_operation_rules.yaml`](../../src/rolo/stages/adapt/semantic_operation_rules.yaml)
+dictionary. The retired semantic rule table is not part of the v2 runtime; see the
+[v2 implementation map](../reference/IMPLEMENTATION_MAP.md).
 contains the reviewable topic segments, semantic URIs, and candidate Operations. Startup validates
 every referenced Operation against the active Registry; an unknown Operation makes the ruleset
 invalid. The scanner applies the same rules to live graph names, literal source interfaces, inert

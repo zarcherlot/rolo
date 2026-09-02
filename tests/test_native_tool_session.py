@@ -12,22 +12,22 @@ from rolo.agent_tools import (
     NativeToolSessionDescriptor,
     ToolPlanStep,
     build_tool_plan,
-    default_agent_native_catalog,
     native_broker_request,
     native_catalog_sha256,
+    reduced_agent_native_catalog,
 )
 from rolo.core.artifacts import ArtifactStore
 
 
 def _session(tmp_path, *, max_calls: int = 2) -> NativeToolSession:
-    catalog = default_agent_native_catalog()[:1]
+    catalog = reduced_agent_native_catalog()[:1]
     now = datetime.now(timezone.utc)
     descriptor = NativeToolSessionDescriptor(
         session_id="native-session-1",
         nonce="native_nonce_123456",
         robot_id="demo",
         stage="probe",
-        native_catalog_sha256=native_catalog_sha256(default_agent_native_catalog()),
+        native_catalog_sha256=native_catalog_sha256(reduced_agent_native_catalog()),
         allowed_tools=[catalog[0].tool_id],
         policy_version="native-policy-v1",
         budget=NativeToolSessionBudget(
@@ -41,7 +41,7 @@ def _session(tmp_path, *, max_calls: int = 2) -> NativeToolSession:
     return NativeToolSession(
         descriptor=descriptor,
         runner=AgentNativeRunner(
-            default_agent_native_catalog(),
+            reduced_agent_native_catalog(),
             executor=lambda *args, **kwargs: type(
                 "Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""}
             )(),
@@ -54,15 +54,15 @@ def _session(tmp_path, *, max_calls: int = 2) -> NativeToolSession:
 def test_native_session_writes_evidence_artifact_and_audit(tmp_path) -> None:
     session = _session(tmp_path)
 
-    result = session.invoke("native.hw.inventory.scan")
+    result = session.invoke("native.hw.inventory", {"mode": "usb"})
 
     assert result.status.value in {"SUCCEEDED", "UNAVAILABLE"}
     assert result.evidence_refs == [
-        "artifact://native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.scan.json"
+        "artifact://native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.json"
     ]
     assert (
         tmp_path
-        / "artifacts/native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.scan.json"
+        / "artifacts/native/demo/sessions/native-session-1/calls/0001-native.hw.inventory.json"
     ).is_file()
     assert (
         tmp_path / "artifacts/native/demo/sessions/native-session-1/audit.jsonl"
@@ -73,14 +73,14 @@ def test_native_session_rejects_unknown_tool_and_enforces_budget(tmp_path) -> No
     session = _session(tmp_path, max_calls=1)
 
     with pytest.raises(NativeToolSessionAuthorizationError):
-        session.invoke("native.ros.node.list")
-    session.invoke("native.hw.inventory.scan")
+        session.invoke("native.ros.graph.inspect", {"mode": "nodes"})
+    session.invoke("native.hw.inventory", {"mode": "usb"})
     with pytest.raises(ValueError, match="call budget"):
-        session.invoke("native.hw.inventory.scan")
+        session.invoke("native.hw.inventory", {"mode": "usb"})
 
 
 def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
-    catalog = default_agent_native_catalog()[:1]
+    catalog = reduced_agent_native_catalog()[:1]
     now = datetime.now(timezone.utc)
     descriptor = NativeToolSessionDescriptor(
         session_id="native-session-2",
@@ -97,7 +97,7 @@ def test_native_session_catalog_identity_is_bound(tmp_path) -> None:
     with pytest.raises(NativeToolSessionAuthorizationError, match="catalog identity"):
         NativeToolSession(
             descriptor=descriptor,
-            runner=AgentNativeRunner(default_agent_native_catalog()),
+            runner=AgentNativeRunner(reduced_agent_native_catalog()),
             artifacts=ArtifactStore(tmp_path / "artifacts"),
             clock=lambda: now,
         )
@@ -110,10 +110,10 @@ def test_native_session_executes_validated_tool_plan(tmp_path) -> None:
         target_id="demo",
         session_id="native-session-1",
         session_nonce="native_nonce_123456",
-        surface_digest=native_catalog_sha256(default_agent_native_catalog()),
+        surface_digest=native_catalog_sha256(reduced_agent_native_catalog()),
         steps=[
             ToolPlanStep(
-                tool_id="native.hw.inventory.scan",
+                tool_id="native.hw.inventory",
                 expected_observation="hardware inventory",
             )
         ],
@@ -132,10 +132,10 @@ def test_native_session_rejects_a_plan_from_another_nonce(tmp_path) -> None:
         target_id="demo",
         session_id="native-session-1",
         session_nonce="other_nonce_123456",
-        surface_digest=native_catalog_sha256(default_agent_native_catalog()),
+        surface_digest=native_catalog_sha256(reduced_agent_native_catalog()),
         steps=[
             ToolPlanStep(
-                tool_id="native.hw.inventory.scan",
+                tool_id="native.hw.inventory",
                 expected_observation="hardware inventory",
             )
         ],
@@ -172,9 +172,9 @@ def test_native_broker_keeps_runner_outside_agent_workspace(tmp_path) -> None:
             host,
             port,
             broker.token,
-            {"action": "run", "tool_id": "native.hw.inventory.scan"},
+            {"action": "run", "tool_id": "native.hw.inventory", "arguments": {"mode": "usb"}},
         )
-        assert result["result"]["tool_id"] == "native.hw.inventory.scan"
+        assert result["result"]["tool_id"] == "native.hw.inventory"
         with pytest.raises(ValueError, match="authorization"):
             native_broker_request(host, port, "wrong-token", {"action": "list"})
     finally:

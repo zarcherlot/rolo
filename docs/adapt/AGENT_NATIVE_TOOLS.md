@@ -68,7 +68,4 @@ hardware inventory / status
 ```
 
 `logs`、`observe`、`tf` monitor 类能力保留独立风险和时间预算；写操作、校准、reset、
-actuator、power、firmware 仍然属于 Canonical Operation。
-
-`native_variant_aliases()` 只报告 argv 完全相同的 mode 组，作为后续 telemetry 驱动的
-清理候选；它不会自动删除 mode，避免把历史 operation 到 family 的语义映射静默裁掉。
+actuator、power、firmware 仍然属于 v2 明确禁止的写/物理动作边界。

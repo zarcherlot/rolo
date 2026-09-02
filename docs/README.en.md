@@ -40,5 +40,6 @@ budgets, evidence, and Conformance.
 
 ## Documentation governance
 
-Active documents describe v2 only. Older Registry, lifecycle, and platform-specific plans remain
-under `archive/` for historical reference and are not implementation authority.
+Active documents describe v2 only. Older Registry, lifecycle, and platform-specific plans are
+marked `archived` or kept under `archive/` for historical reference and are not implementation
+authority.

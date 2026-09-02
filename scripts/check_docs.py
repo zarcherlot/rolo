@@ -9,10 +9,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
-GENERATED = {
-    DOCS / "OPERATION_CONTRACTS.md",
-    DOCS / "CANONICAL_OPERATIONS.md",
-}
+GENERATED: set[Path] = set()
 ENGINEERING_STATUS = DOCS / "reference" / "ENGINEERING_STATUS.md"
 ROOT_ALLOWLIST = {
     "README.md",

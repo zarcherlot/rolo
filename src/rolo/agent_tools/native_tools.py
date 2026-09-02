@@ -54,7 +54,7 @@ class AgentNativeToolDescriptor(BaseModel):
     schema_version: str = "rolo-agent-native-tool/v1"
     tool_id: str = Field(pattern=_SAFE_TOOL_ID.pattern)
     family: str = Field(min_length=1, max_length=32)
-    execution_path: str = Field(pattern=r"^(DIRECT_RUNNER|ROS_CLI)$")
+    execution_path: str = Field(pattern=r"^(DIRECT_RUNNER|MIDDLEWARE_CLI)$")
     executable: str = Field(min_length=1, max_length=256)
     argv_template: list[str] = Field(min_length=1, max_length=16)
     access: str = Field(pattern=r"^read$")
@@ -619,62 +619,6 @@ class RemoteAgentNativeRunner(AgentNativeRunner):
         )
 
 
-def default_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
-    """Return the first read-only Linux/ROS/HW slice; unavailable tools degrade explicitly."""
-    descriptors = [
-        AgentNativeToolDescriptor(
-            tool_id="native.linux.host.status",
-            family="linux",
-            execution_path="DIRECT_RUNNER",
-            executable="uname",
-            argv_template=["uname", "-a"],
-            access="read",
-            risk="R0",
-            max_duration_s=8,
-            max_output_bytes=64_000,
-            evidence_kind="HOST_STATUS",
-        ),
-        AgentNativeToolDescriptor(
-            tool_id="native.linux.process.list",
-            family="linux",
-            execution_path="DIRECT_RUNNER",
-            executable="ps",
-            argv_template=["ps", "-eo", "pid,comm,args"],
-            access="read",
-            risk="R0",
-            max_duration_s=8,
-            max_output_bytes=200_000,
-            evidence_kind="PROCESS_LIST",
-        ),
-        AgentNativeToolDescriptor(
-            tool_id="native.ros.node.list",
-            family="ros",
-            execution_path="ROS_CLI",
-            executable="ros2",
-            argv_template=["ros2", "node", "list"],
-            access="read",
-            risk="R0",
-            max_duration_s=8,
-            max_output_bytes=200_000,
-            evidence_kind="ROS_GRAPH",
-            allowed_env_keys=sorted(_SAFE_ENV_KEYS),
-        ),
-        AgentNativeToolDescriptor(
-            tool_id="native.hw.inventory.scan",
-            family="hw",
-            execution_path="DIRECT_RUNNER",
-            executable="lsusb",
-            argv_template=["lsusb"],
-            access="read",
-            risk="R0",
-            max_duration_s=8,
-            max_output_bytes=100_000,
-            evidence_kind="HARDWARE_INVENTORY",
-        ),
-    ]
-    return sorted(descriptors, key=lambda item: item.tool_id)
-
-
 def _family_tool(
     tool_id: str,
     family: str,
@@ -692,7 +636,7 @@ def _family_tool(
     return AgentNativeToolDescriptor(
         tool_id=tool_id,
         family=family,
-        execution_path="ROS_CLI" if family == "ros" else "DIRECT_RUNNER",
+        execution_path="MIDDLEWARE_CLI" if family == "ros" else "DIRECT_RUNNER",
         executable=first.executable,
         # The legacy fixed-argv fields remain populated for schema compatibility;
         # family invocations are selected from the validated variants map.
@@ -1077,104 +1021,3 @@ def reduced_agent_native_catalog() -> list[AgentNativeToolDescriptor]:
         ),
     ]
     return sorted(tools, key=lambda item: item.tool_id)
-
-
-def load_agent_native_catalog(version: str = "v2") -> list[AgentNativeToolDescriptor]:
-    """Load the catalog bound to a release/session version.
-
-    v1 keeps the original four fixed-argv descriptors for audit compatibility;
-    v2 uses the reduced family catalog.
-    """
-
-    if version == "v1":
-        return default_agent_native_catalog()
-    if version == "v2":
-        return reduced_agent_native_catalog()
-    raise ValueError(f"unknown Agent-native catalog version: {version}")
-
-
-def native_operation_family_map(operations: Sequence[str]) -> dict[str, str]:
-    """Map every governance-native operation to one curated family Tool.
-
-    This is intentionally a migration map, not a second operation registry.  It makes
-    omissions visible when the governance ledger grows and lets validation prove that
-    the old command-shaped names have a family-level replacement.
-    """
-
-    mapping: dict[str, str] = {}
-    for operation in operations:
-        if operation.startswith("linux.host.") or operation == "linux.time.status":
-            family = "native.linux.host.inspect"
-        elif operation.startswith("linux.resource."):
-            family = "native.linux.resource.snapshot"
-        elif operation.startswith("linux.process.logs"):
-            family = "native.linux.process.logs"
-        elif operation.startswith("linux.process."):
-            family = "native.linux.process.inspect"
-        elif operation.startswith("linux.service.logs"):
-            family = "native.linux.service.logs"
-        elif operation.startswith("linux.service."):
-            family = "native.linux.service.inspect"
-        elif operation.startswith("linux.container.logs"):
-            family = "native.linux.container.logs"
-        elif operation.startswith("linux.container."):
-            family = "native.linux.container.inspect"
-        elif operation.startswith("linux.schedule."):
-            family = "native.linux.schedule.inspect"
-        elif operation in {"linux.binary.describe", "linux.binary.verify", "linux.cli.probe"}:
-            family = "native.linux.binary.inspect"
-        elif operation.startswith("linux.package."):
-            family = "native.linux.package.inspect"
-        elif operation.startswith("linux.config."):
-            family = "native.linux.config.inspect"
-        elif operation.startswith("linux.file."):
-            family = "native.linux.file.inspect"
-        elif operation.startswith("linux.network."):
-            family = "native.linux.network.snapshot"
-        elif operation.startswith("linux.log."):
-            family = "native.linux.log.query"
-        elif operation.startswith("middleware."):
-            family = "native.middleware.snapshot"
-        elif operation.startswith("ros.topic.") or operation == "ros.diagnostics.watch":
-            family = "native.ros.observe" if operation.endswith(
-                ("sample", "rate", "bandwidth", "watch")
-            ) else "native.ros.graph.inspect"
-        elif operation.startswith("ros.tf."):
-            family = "native.ros.tf.inspect"
-        elif operation == "ros.bag.inspect":
-            family = "native.ros.bag.inspect"
-        elif operation.startswith("ros."):
-            family = "native.ros.graph.inspect"
-        else:
-            raise ValueError(f"no Agent-native family replacement for {operation}")
-        mapping[operation] = family
-    return mapping
-
-
-def native_variant_aliases(
-    descriptors: Sequence[AgentNativeToolDescriptor],
-) -> dict[str, dict[str, list[str]]]:
-    """Report byte-for-byte equivalent modes as retirement candidates.
-
-    The result is informational only: mode names remain available until usage
-    telemetry and semantic review prove that an alias can be retired safely.
-    """
-    aliases: dict[str, dict[str, list[str]]] = {}
-    for descriptor in descriptors:
-        groups: dict[tuple[str, tuple[str, ...], tuple[str, ...], str], list[str]] = {}
-        for mode, invocation in descriptor.variants.items():
-            key = (
-                invocation.executable,
-                tuple(invocation.argv_template),
-                tuple(invocation.required_parameters),
-                invocation.environment_dependency,
-            )
-            groups.setdefault(key, []).append(mode)
-        duplicate_groups = {
-            repr(key): sorted(modes)
-            for key, modes in groups.items()
-            if len(modes) > 1
-        }
-        if duplicate_groups:
-            aliases[descriptor.tool_id] = duplicate_groups
-    return aliases

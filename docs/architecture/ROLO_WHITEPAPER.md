@@ -1,4 +1,4 @@
-<!-- status: draft; authority: reference; owner: docs maintainers; last_reviewed: 2026-08-28 -->
+<!-- status: archived; authority: reference; owner: docs maintainers; last_reviewed: 2026-09-02 -->
 
 # ROLO 白皮书
 

@@ -1,6 +1,11 @@
-"""Bounded tools that an Adapt Agent may execute without a Canonical Operation wrapper."""
+"""Bounded read-only tools exposed to the current Agent in Rolo v2."""
 
 from rolo.agent_tools.broker import NativeToolBroker, native_broker_request
+from rolo.agent_tools.conformance import (
+    ToolConformanceCheck,
+    ToolConformanceReport,
+    conform_tool_surface,
+)
 from rolo.agent_tools.native_tools import (
     AgentNativeRunner,
     AgentNativeToolDescriptor,
@@ -9,10 +14,6 @@ from rolo.agent_tools.native_tools import (
     NativeToolParameter,
     NativeToolStatus,
     RemoteAgentNativeRunner,
-    default_agent_native_catalog,
-    load_agent_native_catalog,
-    native_operation_family_map,
-    native_variant_aliases,
     reduced_agent_native_catalog,
 )
 from rolo.agent_tools.planning import (
@@ -21,18 +22,6 @@ from rolo.agent_tools.planning import (
     ToolPlanStep,
     build_tool_plan,
     validate_tool_plan,
-)
-from rolo.agent_tools.rollout import (
-    NativeToolCanaryGateReport,
-    NativeToolExecutionParity,
-    NativeToolParityReport,
-    NativeToolRolloutDecision,
-    NativeToolRunSummary,
-    build_native_operation_parity_report,
-    compare_native_to_direct,
-    decide_native_tool_rollout,
-    evaluate_native_tool_canary_gate,
-    summarize_native_tool_run,
 )
 from rolo.agent_tools.session import (
     NativeToolSession,
@@ -52,10 +41,6 @@ __all__ = [
     "NativeToolStatus",
     "NativeToolInvocation",
     "NativeToolParameter",
-    "default_agent_native_catalog",
-    "load_agent_native_catalog",
-    "native_operation_family_map",
-    "native_variant_aliases",
     "reduced_agent_native_catalog",
     "ToolPlan",
     "ToolPlanningRequest",
@@ -71,14 +56,7 @@ __all__ = [
     "create_profile_native_tool_session",
     "NativeToolBroker",
     "native_broker_request",
-    "NativeToolRolloutDecision",
-    "NativeToolRunSummary",
-    "NativeToolParityReport",
-    "NativeToolExecutionParity",
-    "NativeToolCanaryGateReport",
-    "build_native_operation_parity_report",
-    "compare_native_to_direct",
-    "decide_native_tool_rollout",
-    "evaluate_native_tool_canary_gate",
-    "summarize_native_tool_run",
+    "ToolConformanceCheck",
+    "ToolConformanceReport",
+    "conform_tool_surface",
 ]

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from rolo.agent_tools import (
     NativeToolSessionDescriptor,
+    ToolConformanceReport,
     ToolPlan,
     reduced_agent_native_catalog,
 )
@@ -69,6 +70,7 @@ def run_release_check(
             (TargetEvidenceBundle, "target-evidence-bundle"),
             (NativeToolSessionDescriptor, "native-tool-session"),
             (ToolPlan, "tool-plan"),
+            (ToolConformanceReport, "tool-conformance"),
         ):
             model.model_json_schema()
             checks.append(f"schema:{label}")

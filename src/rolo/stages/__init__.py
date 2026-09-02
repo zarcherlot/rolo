@@ -1,4 +1,4 @@
-"""Three-stage rolo lifecycle orchestration."""
+"""Probe/Trace/Certify contracts; only the Probe slice is executable in v2."""
 
 from rolo.stages.contracts import (
     AgentRequirement,

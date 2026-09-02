@@ -43,6 +43,19 @@ packages = ["src/rolo"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+# v2 deliberately retires the v1 integration suite together with its removed
+# modules.  Historical files remain for archaeology but are not collected.
+python_files = [
+  "test_agent_native_tools.py",
+  "test_native_tool_session.py",
+  "test_probe_evidence_contract.py",
+  "test_probe_session_factory.py",
+  "test_product_cli_v2.py",
+  "test_target_credentials.py",
+  "test_target_executors.py",
+  "test_tool_conformance.py",
+  "test_tool_planning.py",
+]
 markers = [
   "lerobot: opt-in integration test requiring a separately installed LeRobot checkout",
   "ssh: opt-in integration test requiring OpenSSH client and server",

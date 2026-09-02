@@ -1,1 +1,1 @@
-"""Stage 1: discover, adapt, conform, and publish the canonical control surface."""
+"""Internal Probe provider helpers used to build target evidence."""

@@ -13,7 +13,7 @@ from typing import Annotated
 
 import typer
 
-from rolo.agent_tools import ToolPlan, create_profile_native_tool_session
+from rolo.agent_tools import ToolPlan, conform_tool_surface, create_profile_native_tool_session
 from rolo.commands.common import emit
 from rolo.commands.lifecycle import run_probe_start
 from rolo.core.config import get_settings
@@ -57,6 +57,16 @@ def _target_executor(
         identity_file=identity_file,
         timeout_s=timeout,
     )
+
+
+def _write_conformance(session) -> tuple[object, str]:
+    report = conform_tool_surface(session.descriptor, session.runner.list_tools())
+    relative = (
+        f"native/{session.descriptor.robot_id}/sessions/"
+        f"{session.descriptor.session_id}/conformance.json"
+    )
+    session.artifacts.write_json(relative, report.model_dump(mode="json"))
+    return report, f"artifact://{relative}"
 
 
 @target_app.command("inspect")
@@ -145,13 +155,18 @@ def target_tool_surface(
             artifact_root=get_settings().rolo_artifact_dir,
             timeout_s=timeout,
         )
+        conformance, conformance_ref = _write_conformance(session)
         emit(
             {
                 "status": "TOOL_SURFACE_READY",
                 "session": session.descriptor.model_dump(mode="json"),
                 "tools": [item.model_dump(mode="json") for item in session.list_tools()],
+                "conformance": conformance.model_dump(mode="json"),
+                "conformance_ref": conformance_ref,
             }
         )
+        if conformance.status != "PASS":
+            raise typer.Exit(code=2)
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     finally:
@@ -177,6 +192,7 @@ def target_tool_plan(
             session_id=plan.session_id,
             session_nonce=plan.session_nonce,
         )
+        conformance, conformance_ref = _write_conformance(session)
         results = session.execute_plan(plan)
         emit(
             {
@@ -184,6 +200,8 @@ def target_tool_plan(
                 "plan_sha256": plan.plan_sha256,
                 "session_id": plan.session_id,
                 "results": [item.model_dump(mode="json") for item in results],
+                "conformance": conformance.model_dump(mode="json"),
+                "conformance_ref": conformance_ref,
             }
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
@@ -324,11 +342,7 @@ def probe(
         result = run_probe_start(
             robot_id=robot_id,
             project_root=project_root,
-            urdf=None,
             active_probe=active_probe,
-            run_agent=False,
-            scratch_root=None,
-            timeout=None,
             evidence_mode=evidence_mode,
             allow_executable=allow_executable,
             collector_descriptor=None,
@@ -337,7 +351,6 @@ def probe(
             known_hosts=None,
             collector_config=".rolo/config/target-evidence-collector.json",
             evidence_timeout=evidence_timeout,
-            on_output=None,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc

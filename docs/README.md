@@ -39,4 +39,4 @@ Agent 负责理解目标和生成计划，Rolo 负责固定 argv、目标绑定�
 ## 文档治理
 
 本目录的 active 文档只描述 v2。旧的 Registry、Adapt、Diagnose、Verify 和平台专用计划
-保留在 `archive/`，仅用于历史追溯，不是当前实现依据。
+已标记为 `archived` 或保留在 `archive/`，仅用于历史追溯，不是当前实现依据。
