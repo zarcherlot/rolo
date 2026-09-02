@@ -163,6 +163,12 @@ def evaluate_lp_d01(observation: LPD01Observation) -> DiagnoseFinding:
                 "are observed"
             ],
         )
+    next_probe = (
+        "start a supervised mapping session with bounded motion, save a new map artifact, "
+        "then relaunch localization"
+        if not observation.map_topic_present and not observation.map_to_base_footprint_available
+        else "discover an explicit, target-bound relocalization/initial-pose operation; do not publish a guessed pose"
+    )
     return DiagnoseFinding(
         case_id="LP-D01",
         symptom="navigation command discovery",
@@ -295,7 +301,7 @@ def evaluate_lp_d03(observation: LPD03Observation) -> DiagnoseFinding:
         change="NO_CHANGE",
         smoke_result="missing: " + ", ".join(missing),
         decision=decision,
-        next_probe="discover an explicit, target-bound relocalization/initial-pose operation; do not publish a guessed pose",
+        next_probe=next_probe,
         limitations=[
             "no initial pose or parameter changes were attempted",
             "relative odometry can remain usable while global navigation is blocked",

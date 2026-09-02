@@ -63,6 +63,12 @@ def test_lp_d03_blocks_global_navigation_without_pose() -> None:
     assert "initial pose" in finding.smoke_result
 
 
+def test_lp_d03_prefers_new_mapping_when_no_active_map_exists() -> None:
+    finding = evaluate_lp_d03(LPD03Observation())
+    assert finding.decision == "BLOCKED"
+    assert "mapping session" in finding.next_probe
+
+
 def test_lp_d03_ready_requires_all_global_prerequisites() -> None:
     finding = evaluate_lp_d03(
         LPD03Observation(

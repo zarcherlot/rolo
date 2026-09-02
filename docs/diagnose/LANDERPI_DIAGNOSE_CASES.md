@@ -72,6 +72,11 @@ bring-up；重新读取 `/navigate_to_pose`、`/spin`、`/drive_on_heading` 和 
 
 **hypothesis**：没有 map frame 不代表没有导航能力，通常表示尚未初始化定位。
 
+如果目标没有可信的 active map（没有 `/map` publisher、`map_server` 参数或可验证的地图
+hash），首选下一步是现场建图，而不是从候选文件中猜测并加载一张地图。建图必须作为
+单独的受监督 motion session，具备速度边界、lease、取消、zero-stop 和保存 artifact；
+保存后的 YAML/PGM hash 进入 TargetEvidence，随后才进入定位初始化。
+
 **change**：默认 `NO_CHANGE`；用户允许时可将“发布已知安全起点”作为单独授权动作，
 但不能由 discovery 隐式完成。
 
