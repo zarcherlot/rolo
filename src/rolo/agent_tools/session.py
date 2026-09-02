@@ -109,11 +109,13 @@ class NativeToolSession:
         descriptor: NativeToolSessionDescriptor,
         runner: AgentNativeRunner,
         artifacts: ArtifactStore,
+        runtime_environment: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.descriptor = NativeToolSessionDescriptor.model_validate(descriptor.model_dump())
         self.runner = runner
         self.artifacts = artifacts
+        self.runtime_environment = dict(runtime_environment or {})
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         catalog = runner.list_tools()
         if native_catalog_sha256(catalog) != self.descriptor.native_catalog_sha256:
@@ -156,7 +158,11 @@ class NativeToolSession:
                     "native tool session result-byte budget is exhausted"
                 )
             self._calls += 1
-            result = self.runner.run(tool_id, arguments, environment=environment)
+            result = self.runner.run(
+                tool_id,
+                arguments,
+                environment=environment if environment is not None else self.runtime_environment,
+            )
             encoded = json.dumps(
                 result.model_dump(mode="json"),
                 ensure_ascii=False,

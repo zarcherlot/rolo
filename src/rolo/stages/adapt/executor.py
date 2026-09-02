@@ -530,6 +530,7 @@ class CodexAdaptExecutor:
                 descriptor=native_session_descriptor,
                 runner=AgentNativeRunner(native_catalog),
                 artifacts=self.artifacts,
+                runtime_environment=target_runtime_environment,
             )
             baseline_result = native_session.invoke(
                 "native.linux.host.inspect",
