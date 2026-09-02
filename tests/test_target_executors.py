@@ -116,6 +116,39 @@ def test_ssh_executor_uses_only_fixed_read_only_probes_and_read_only_plan(
         assert "bash" not in call
 
 
+def test_mapping_session_start_accepts_only_target_bound_entrypoint(tmp_path: Path) -> None:
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    runner = FakeSshRunner()
+    executor = SshTargetExecutor(
+        _ssh_target(),
+        known_hosts=known_hosts,
+        ros_setup_files=(),
+        runner=runner,
+    )
+    result = executor.run_mapping_session_start(
+        launch_file="/home/robot/wheeltec_ws/src/slam/launch/include/slam_base.launch.py",
+        ttl_s=600,
+        confirmation="I CONFIRM APP.MAP.CREATE",
+    )
+    assert result.returncode == 0
+    assert runner.calls[-1][-2] == "-c"
+    command = runner.calls[-1][-1]
+    assert "ros2 launch" in command
+    assert "enable_save:=true" in command
+    assert "scan_topic:=scan" in command
+    with pytest.raises(ValueError, match="exact human confirmation"):
+        executor.run_mapping_session_start(
+            launch_file="/home/robot/wheeltec_ws/src/slam/launch/include/slam_base.launch.py",
+            confirmation="wrong",
+        )
+    with pytest.raises(ValueError, match="enrolled workspace adapter"):
+        executor.run_mapping_session_start(
+            launch_file="/tmp/other.launch.py",
+            confirmation="I CONFIRM APP.MAP.CREATE",
+        )
+
+
 def test_ssh_executor_uses_pinned_identity_without_agent_fallback(tmp_path: Path) -> None:
     known_hosts = tmp_path / "known_hosts"
     known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")

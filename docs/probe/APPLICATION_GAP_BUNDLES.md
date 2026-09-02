@@ -78,5 +78,17 @@ Rolo 会先用只读 graph Tool 证明 `/cmd_vel` 的类型和 subscriber，再�
 发送一次固定 zero-Twist 请求。它不是通用写 Tool；`PASS` 只表示请求被目标 CLI 接受并完成路由复查，
 不表示底盘已经停止或具备安全认证。
 
+`app.map.create` 的第一版是独立的、无运动 `SESSION_START` 适配器：
+
+```bash
+rolo target application-map-create \
+  --profile my-robot \
+  --confirmation "I CONFIRM APP.MAP.CREATE"
+```
+
+Rolo 只接受证据中精确匹配的 SLAM launch entrypoint 和 `/scan` `LaserScan` 路由，启动
+带 TTL 的 SLAM 进程并返回 PID；它不发布速度、不启动探索。探索前仍需另一个经过验证的
+避障/急停 adapter。
+
 实现位于 `src/rolo/stages/probe/application.py`，CLI 入口位于 `src/rolo/product_cli.py`，
 测试位于 `tests/test_application_bundles.py`。

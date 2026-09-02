@@ -35,6 +35,11 @@ from rolo.stages.probe.application import (
     discover_application_candidate,
     discover_application_operation,
 )
+from rolo.stages.probe.application_mapping import (
+    MapCreateReport,
+    conform_map_create_dispatch,
+    discover_map_create_candidate,
+)
 from rolo.stages.probe.application_write import (
     ApplicationWriteCanaryReport,
     discover_base_stop_write_candidate,
@@ -584,6 +589,123 @@ def target_application_write_canary(
             ),
             "robot_id": robot_id,
             "operation": operation,
+            "candidate": candidate.model_dump(mode="json"),
+            "report": report.model_dump(mode="json"),
+            "artifacts": {"candidate": str(candidate_path), "report": str(report_path)},
+        }
+    )
+    if report.status != "PASS":
+        raise typer.Exit(code=2)
+
+
+@target_app.command("application-map-create")
+def target_application_map_create(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    confirmation: Annotated[
+        str,
+        typer.Option("--confirmation", help="Exact human-in-the-loop confirmation phrase"),
+    ] = "",
+    ttl: Annotated[
+        int,
+        typer.Option("--ttl", min=60, max=3600, help="Bounded SLAM session lifetime in seconds"),
+    ] = 900,
+    evidence: Annotated[
+        Path | None,
+        typer.Option(
+            "--evidence", help="Verified target evidence JSON; defaults to profile bundle"
+        ),
+    ] = None,
+) -> None:
+    """Start the fixed, no-motion SLAM session for ``app.map.create``."""
+    session = None
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        robot_id = target_profile.robot_id
+        deployment = load_deployment(
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+        )
+        evidence_path = evidence or (
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}-bundle.json"
+        )
+        target_bundle = TargetEvidenceBundle.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        verified_probes = verify_evidence_bundle(target_bundle, deployment=deployment)
+        verified_bundle = target_bundle.model_copy(update={"probes": verified_probes})
+
+        executor = create_profile_target_executor(
+            profile,
+            config_root=settings.rolo_config_dir,
+            timeout_s=30,
+        )
+        if not hasattr(executor, "run_mapping_session_start"):
+            raise ValueError("the enrolled target connector does not support app.map.create")
+        static = executor.run_readonly(
+            [
+                "find",
+                f"{target_profile.target.workspace}/src",
+                "-maxdepth",
+                "8",
+                "-type",
+                "f",
+                "-path",
+                "*/slam/launch/include/slam_base.launch.py",
+                "-print",
+            ]
+        )
+        candidate = discover_map_create_candidate(
+            verified_bundle,
+            static_entrypoints=[
+                line.strip() for line in static.stdout.splitlines() if line.strip()
+            ],
+        )
+        if candidate.status != "CANDIDATE" or candidate.launch_file is None:
+            report = MapCreateReport(
+                robot_id=robot_id,
+                candidate_id=candidate.candidate_id,
+                status="FAIL",
+                checks=["app.map.create candidate was rejected before dispatch"],
+                limitations=candidate.limitations,
+            )
+        else:
+            dispatch = executor.run_mapping_session_start(
+                launch_file=candidate.launch_file,
+                ttl_s=ttl,
+                confirmation=confirmation,
+            )  # type: ignore[attr-defined]
+            map_check = executor.run_readonly(["ros2", "topic", "list"])
+            report = conform_map_create_dispatch(
+                candidate,
+                returncode=dispatch.returncode,
+                stdout=dispatch.stdout,
+                map_route_observed=(
+                    map_check.returncode == 0
+                    and any(line.strip() == "/map" for line in map_check.stdout.splitlines())
+                ),
+            )
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        root = f"application/{robot_id}/operations/app_map_create"
+        candidate_path = artifact_store.write_json(
+            f"{root}/candidate.json", candidate.model_dump(mode="json")
+        )
+        report_path = artifact_store.write_json(
+            f"{root}/report.json", report.model_dump(mode="json")
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    finally:
+        if session is not None:
+            session.close()
+    emit(
+        {
+            "status": (
+                "APPLICATION_MAP_CREATE_STARTED"
+                if report.status == "PASS"
+                else "APPLICATION_MAP_CREATE_REJECTED"
+            ),
+            "robot_id": robot_id,
+            "operation": "app.map.create",
             "candidate": candidate.model_dump(mode="json"),
             "report": report.model_dump(mode="json"),
             "artifacts": {"candidate": str(candidate_path), "report": str(report_path)},

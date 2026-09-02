@@ -17,6 +17,7 @@
 | FEAT-APPLICATION-GAP-BUNDLE | STABLE | E4 | `rolo target application-bundle --profile --application` | `src/rolo/stages/probe/application.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | MVP 只覆盖 startup/navigation/mapping/manipulation；当前目标未观测到 map route；route presence 不证明应用行为正确；无证据时 Conformance 明确失败 |
 | FEAT-APPLICATION-OPERATION-SLICE | STABLE | E4 | `rolo target application-operation --profile --operation` | `src/rolo/stages/probe/application.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | v1 137 项中先实现 32 个只读 route-binding rules；当前 bundle 是 route-level candidate，不等同于行为/结果验证；R2/R3 明确 DEFERRED；LanderPi 六项 navigation write 均无 supervisor route |
 | FEAT-APPLICATION-WRITE-CANARY | PARTIAL | E4 | `rolo target application-write-canary --profile --operation app.base.stop` | `src/rolo/stages/probe/application_write.py`; `src/rolo/targets/executor.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | 仅固定 zero-Twist stop canary；必须新鲜路由证据和人工确认；PASS 只证明请求接受与路由复查，不证明物理停止或安全认证 |
+| FEAT-APPLICATION-MAP-CREATE | PARTIAL | E2 | `rolo target application-map-create --profile` | `src/rolo/stages/probe/application_mapping.py`; `src/rolo/targets/executor.py`; `src/rolo/product_cli.py` | `tests/test_application_mapping.py` | 只启动目标绑定的 SLAM 会话并返回 TTL/PID；不启动运动，探索仍需独立避障/急停 adapter |
 
 ## 可信度边界
 

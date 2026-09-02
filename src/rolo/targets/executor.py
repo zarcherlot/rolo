@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import posixpath
 import re
 import shlex
 import subprocess
@@ -299,6 +300,51 @@ class SshTargetExecutor:
             )
             return self._run(["bash", "--noprofile", "--norc", "-c", command])
         return self._run(remote_argv)
+
+    def run_mapping_session_start(
+        self,
+        *,
+        launch_file: str,
+        ttl_s: int = 900,
+        confirmation: str,
+    ) -> CommandResult:
+        """Start the target-bound, no-motion SLAM session used by ``app.map.create``.
+
+        This is intentionally a separate, fixed adapter rather than a general remote
+        command runner.  The only accepted launch entrypoint is the workspace's
+        ``slam/launch/include/slam_base.launch.py``; the command starts SLAM with
+        ``enable_save`` and a fixed ``scan`` input, but never publishes velocity or
+        starts the robot bring-up.
+        """
+        if confirmation != "I CONFIRM APP.MAP.CREATE":
+            raise ValueError("map create requires the exact human confirmation phrase")
+        if not 60 <= ttl_s <= 3_600:
+            raise ValueError("mapping session TTL must be between 60 and 3600 seconds")
+        workspace = posixpath.normpath(self.target.workspace)
+        expected = posixpath.join(
+            workspace, "src", "slam", "launch", "include", "slam_base.launch.py"
+        )
+        normalized_launch = posixpath.normpath(launch_file)
+        if normalized_launch != expected:
+            raise ValueError("mapping launch entrypoint is not the enrolled workspace adapter")
+        log_path = "/tmp/rolo-map-create.log"
+        command = (
+            "set -e; "
+            f"nohup timeout {int(ttl_s)}s ros2 launch {quote_remote_arg(normalized_launch)} "
+            "enable_save:=true scan_topic:=scan "
+            f"> {quote_remote_arg(log_path)} 2>&1 & "
+            "pid=$!; "
+            "printf 'rolo_mapping_pid=%s\\n' \"$pid\""
+        )
+        return self._run(["bash", "--noprofile", "--norc", "-c", command])
+
+    def run_mapping_session_stop(self, *, pid: int, confirmation: str) -> CommandResult:
+        """Stop one previously returned mapping session PID through a fixed adapter."""
+        if confirmation != "I CONFIRM APP.MAP.STOP":
+            raise ValueError("map stop requires the exact human confirmation phrase")
+        if not 1 <= pid <= 999_999_999:
+            raise ValueError("mapping session PID is out of bounds")
+        return self._run(["kill", "-TERM", "--", str(pid)])
 
     @staticmethod
     def _failure_detail(result: CommandResult) -> str:
