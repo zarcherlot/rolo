@@ -805,6 +805,10 @@ def _operation_observation(
         "app.imu.sample",
         "app.lidar.snapshot",
         "app.odometry.sample",
+        # Pose is an observation, not merely route metadata.  Binding it to
+        # the existing bounded native sample tool keeps the application Tool
+        # useful without introducing a localization-specific dispatcher.
+        "app.localization.pose",
     }
     if operation_id in sample_operations and route.kind == "ros_topic":
         return ApplicationOperationObservation(

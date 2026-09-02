@@ -152,6 +152,24 @@ def test_operation_slice_binds_minimal_routes_and_defers_writes() -> None:
     )
 
 
+def test_localization_pose_binds_to_bounded_native_sample() -> None:
+    evidence = _bundle(
+        _route("ros_topic:/odom", "ros_topic", "/odom", "nav_msgs/msg/Odometry"),
+    )
+    candidate = discover_application_operation(evidence, "app.localization.pose")
+    adapter = build_application_operation_adapter_bundle(
+        candidate,
+        target_evidence_sha256=evidence.payload_sha256,
+    )
+    assert candidate.status == "CANDIDATE"
+    assert len(adapter.observations) == 1
+    observation = adapter.observations[0]
+    assert observation.tool_id == "native.middleware.observe"
+    assert observation.mode == "sample"
+    assert observation.arguments == {"topic": "/odom"}
+    assert conform_application_operation_bundle(adapter, candidate, evidence).status == "PASS"
+
+
 def test_operation_slice_reports_unmapped_read_as_not_callable() -> None:
     evidence = _bundle()
     candidate = discover_application_operation(evidence, "app.safety.status")
