@@ -38,7 +38,7 @@ class DiagnoseFinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["rolo-diagnose-finding/v1"] = "rolo-diagnose-finding/v1"
-    case_id: str = Field(pattern=r"^LP-D0[12]$")
+    case_id: str = Field(pattern=r"^LP-D0[123]$")
     target_evidence_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     symptom: str = Field(min_length=1, max_length=512)
     hypothesis: str = Field(min_length=1, max_length=1024)
@@ -106,6 +106,22 @@ class LPD02Observation(BaseModel):
     @property
     def max_interval_s(self) -> float | None:
         return max(self.sample_intervals_s, default=None)
+
+
+class LPD03Observation(BaseModel):
+    """Evidence for global navigation prerequisites, without mutating pose state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tf_frames: list[str] = Field(default_factory=list, max_length=256)
+    runtime_topics: list[str] = Field(default_factory=list, max_length=256)
+    map_to_base_footprint_available: bool = False
+    map_topic_present: bool = False
+    map_publisher_count: int | None = Field(default=None, ge=0)
+    localization_nodes: list[str] = Field(default_factory=list, max_length=64)
+    localization_lifecycle: dict[str, str] = Field(default_factory=dict, max_length=16)
+    initial_pose_observed: bool = False
+    collection_errors: list[str] = Field(default_factory=list, max_length=16)
 
 
 def evaluate_lp_d01(observation: LPD01Observation) -> DiagnoseFinding:
@@ -222,6 +238,71 @@ def evaluate_lp_d02(observation: LPD02Observation) -> DiagnoseFinding:
     )
 
 
+def evaluate_lp_d03(observation: LPD03Observation) -> DiagnoseFinding:
+    """Classify global-localization readiness; relative motion is out of scope."""
+
+    localization_active = any(
+        state.casefold() in {"active", "activated"}
+        for state in observation.localization_lifecycle.values()
+    )
+    map_ready = (
+        observation.map_to_base_footprint_available
+        and observation.map_topic_present
+        and (observation.map_publisher_count is None or observation.map_publisher_count > 0)
+        and bool(observation.localization_nodes)
+        and localization_active
+        and observation.initial_pose_observed
+    )
+    refs = ["tf_map_to_base_footprint", "map_topic", "localization", "initial_pose"]
+    if map_ready:
+        return DiagnoseFinding(
+            case_id="LP-D03",
+            symptom="global navigation pose prerequisite",
+            hypothesis="map, localization, and an initial pose are observable in the target runtime",
+            evidence_refs=refs,
+            change="NO_CHANGE",
+            smoke_result="map→base_footprint TF, map publisher, active localization, and initial pose observed",
+            decision="HEALTHY",
+            next_probe="recheck navigation action route and run only an explicitly bounded motion canary",
+            limitations=["read-only readiness does not prove localization accuracy or task-level safety"],
+        )
+    if observation.collection_errors and not (
+        observation.tf_frames
+        or observation.runtime_topics
+        or observation.map_topic_present
+        or observation.localization_nodes
+    ):
+        decision: DiagnoseDecision = "INCONCLUSIVE"
+    else:
+        decision = "BLOCKED"
+    missing = []
+    if not observation.map_topic_present:
+        missing.append("/map publisher")
+    if not observation.map_to_base_footprint_available:
+        missing.append("map→base_footprint TF")
+    if not observation.localization_nodes:
+        missing.append("localization node")
+    if not localization_active:
+        missing.append("active localization lifecycle")
+    if not observation.initial_pose_observed:
+        missing.append("initial pose")
+    return DiagnoseFinding(
+        case_id="LP-D03",
+        symptom="global navigation pose prerequisite",
+        hypothesis="global navigation prerequisites are incomplete; relative motion must not be interpreted as global navigation",
+        evidence_refs=refs,
+        change="NO_CHANGE",
+        smoke_result="missing: " + ", ".join(missing),
+        decision=decision,
+        next_probe="discover an explicit, target-bound relocalization/initial-pose operation; do not publish a guessed pose",
+        limitations=[
+            "no initial pose or parameter changes were attempted",
+            "relative odometry can remain usable while global navigation is blocked",
+            *observation.collection_errors,
+        ],
+    )
+
+
 class LanderPiDiagnoseCollector:
     """Run only fixed, bounded, read-only commands on an enrolled target."""
 
@@ -325,5 +406,63 @@ class LanderPiDiagnoseCollector:
             observed_frequency_hz=float(hz_match.group(1)) if hz_match else None,
             timeout_count=sum(1 for line in lines if _TIMEOUT.search(line)),
             log_lines=lines,
+            collection_errors=errors,
+        )
+
+    def collect_lp_d03(self) -> LPD03Observation:
+        topics = self._run(["ros2", "topic", "list"])
+        nodes = self._run(["ros2", "node", "list"])
+        map_info = self._run(["ros2", "topic", "info", "/map"])
+        pose = self._run(
+            ["timeout", "4", "ros2", "topic", "echo", "--once", "/initialpose"]
+        )
+        tf = self._run(
+            ["timeout", "4", "ros2", "run", "tf2_ros", "tf2_echo", "map", "base_footprint"]
+        )
+        relative_tf = self._run(
+            ["timeout", "4", "ros2", "run", "tf2_ros", "tf2_echo", "odom", "base_footprint"]
+        )
+        topic_lines = self._lines(topics)
+        node_lines = self._lines(nodes)
+        localization = [
+            item
+            for item in node_lines
+            if any(token in item.casefold() for token in ("amcl", "localiz", "slam_toolbox"))
+        ]
+        lifecycle: dict[str, str] = {}
+        for node in localization[:8]:
+            name = node.lstrip("/")
+            state = self._run(["ros2", "lifecycle", "get", f"/{name}"])
+            match = re.search(r"(active|inactive|unconfigured|finalized)", state.stdout, re.I)
+            if match:
+                lifecycle[node] = match.group(1).upper()
+        publisher = re.search(r"Publisher count:\s*(\d+)", map_info.stdout, re.I)
+        errors = [
+            f"{name}: exit {result.returncode}"
+            for name, result in (
+                ("topic_list", topics),
+                ("node_list", nodes),
+                ("map_info", map_info),
+                ("initial_pose", pose),
+                ("tf_echo", tf),
+                ("relative_tf_echo", relative_tf),
+            )
+            if result.returncode != 0
+            and not (name in {"initial_pose", "tf_echo"} and result.returncode == 124 and result.stdout)
+        ]
+        return LPD03Observation(
+            tf_frames=(
+                ["map", "base_footprint"]
+                if "Translation:" in tf.stdout and "Rotation:" in tf.stdout
+                else []
+            )
+            + (["odom", "base_footprint"] if "Translation:" in relative_tf.stdout else []),
+            runtime_topics=topic_lines,
+            map_to_base_footprint_available=("Translation:" in tf.stdout and "Rotation:" in tf.stdout),
+            map_topic_present="/map" in topic_lines,
+            map_publisher_count=int(publisher.group(1)) if publisher else None,
+            localization_nodes=localization,
+            localization_lifecycle=lifecycle,
+            initial_pose_observed=bool(pose.stdout.strip()),
             collection_errors=errors,
         )

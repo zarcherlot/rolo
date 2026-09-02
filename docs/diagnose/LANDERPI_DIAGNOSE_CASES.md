@@ -122,11 +122,12 @@ bring-up；重新读取 `/navigate_to_pose`、`/spin`、`/drive_on_heading` 和 
 
 ## Diagnose 输出
 
-MVP 提供两个只读入口（不自动 bring-up、不重启驱动）：
+MVP 提供三个只读入口（不自动 bring-up、不重启驱动）：
 
 ```bash
 rolo target diagnose-case --profile <profile> --case LP-D01
 rolo target diagnose-case --profile <profile> --case LP-D02
+rolo target diagnose-case --profile <profile> --case LP-D03
 ```
 
 命令通过已 enroll 的 `TargetProfile → SSH Connector` 运行固定、限时命令，分别写入

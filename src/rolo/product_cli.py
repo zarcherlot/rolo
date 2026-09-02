@@ -23,6 +23,7 @@ from rolo.stages.diagnose import (
     LanderPiDiagnoseCollector,
     evaluate_lp_d01,
     evaluate_lp_d02,
+    evaluate_lp_d03,
 )
 from rolo.stages.probe.active_discovery import ActiveProbeMode
 from rolo.stages.probe.application import (
@@ -395,14 +396,17 @@ def target_diagnose_case(
     profile: Annotated[str, typer.Option("--profile", "--robot")],
     case: Annotated[
         str,
-        typer.Option("--case", help="Diagnose case: LP-D01 (navigation) or LP-D02 (range sensor)"),
+        typer.Option(
+            "--case",
+            help="Diagnose case: LP-D01 (navigation), LP-D02 (sensor), or LP-D03 (localization)",
+        ),
     ] = "LP-D01",
     timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=120.0)] = 15.0,
 ) -> None:
     """Collect and evaluate one bounded, read-only Diagnose case."""
     normalized = case.upper()
-    if normalized not in {"LP-D01", "LP-D02"}:
-        raise typer.BadParameter("case must be LP-D01 or LP-D02")
+    if normalized not in {"LP-D01", "LP-D02", "LP-D03"}:
+        raise typer.BadParameter("case must be LP-D01, LP-D02, or LP-D03")
     try:
         settings = get_settings()
         target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
@@ -417,9 +421,12 @@ def target_diagnose_case(
         if normalized == "LP-D01":
             observation = collector.collect_lp_d01()
             finding = evaluate_lp_d01(observation)
-        else:
+        elif normalized == "LP-D02":
             observation = collector.collect_lp_d02()
             finding = evaluate_lp_d02(observation)
+        else:
+            observation = collector.collect_lp_d03()
+            finding = evaluate_lp_d03(observation)
         evidence_root = settings.rolo_config_dir / "target-evidence"
         evidence_path = evidence_root / f"{target_profile.robot_id}-bundle.json"
         deployment_path = evidence_root / f"{target_profile.robot_id}.json"

@@ -2,8 +2,10 @@ from rolo.stages.diagnose.landerpi_cases import (
     LanderPiDiagnoseCollector,
     LPD01Observation,
     LPD02Observation,
+    LPD03Observation,
     evaluate_lp_d01,
     evaluate_lp_d02,
+    evaluate_lp_d03,
 )
 
 
@@ -43,6 +45,37 @@ def test_lp_d02_requires_a_window_not_one_sample() -> None:
     )
     assert finding.decision == "DEGRADED"
     assert "fewer than three samples" in finding.smoke_result
+
+
+def test_lp_d03_blocks_global_navigation_without_pose() -> None:
+    finding = evaluate_lp_d03(
+        LPD03Observation(
+            tf_frames=["/map", "/odom", "/base_footprint"],
+            map_to_base_footprint_available=False,
+            map_topic_present=True,
+            map_publisher_count=1,
+            localization_nodes=["/amcl"],
+            localization_lifecycle={"/amcl": "INACTIVE"},
+            initial_pose_observed=False,
+        )
+    )
+    assert finding.decision == "BLOCKED"
+    assert "initial pose" in finding.smoke_result
+
+
+def test_lp_d03_ready_requires_all_global_prerequisites() -> None:
+    finding = evaluate_lp_d03(
+        LPD03Observation(
+            tf_frames=["/map", "/odom", "/base_footprint"],
+            map_to_base_footprint_available=True,
+            map_topic_present=True,
+            map_publisher_count=1,
+            localization_nodes=["/amcl"],
+            localization_lifecycle={"/amcl": "ACTIVE"},
+            initial_pose_observed=True,
+        )
+    )
+    assert finding.decision == "HEALTHY"
 
 
 class _FakeTarget:
