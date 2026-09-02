@@ -19,6 +19,11 @@ from rolo.commands.lifecycle import run_probe_start
 from rolo.core.artifacts import ArtifactStore
 from rolo.core.config import get_settings
 from rolo.release_check import run_release_check
+from rolo.stages.diagnose import (
+    LanderPiDiagnoseCollector,
+    evaluate_lp_d01,
+    evaluate_lp_d02,
+)
 from rolo.stages.probe.active_discovery import ActiveProbeMode
 from rolo.stages.probe.application import (
     APPLICATION_IDS,
@@ -383,6 +388,74 @@ def target_application_operation(
     )
     if report.status != "PASS":
         raise typer.Exit(code=2)
+
+
+@target_app.command("diagnose-case")
+def target_diagnose_case(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    case: Annotated[
+        str,
+        typer.Option("--case", help="Diagnose case: LP-D01 (navigation) or LP-D02 (range sensor)"),
+    ] = "LP-D01",
+    timeout: Annotated[float, typer.Option("--timeout", min=1.0, max=120.0)] = 15.0,
+) -> None:
+    """Collect and evaluate one bounded, read-only Diagnose case."""
+    normalized = case.upper()
+    if normalized not in {"LP-D01", "LP-D02"}:
+        raise typer.BadParameter("case must be LP-D01 or LP-D02")
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        executor = create_profile_target_executor(
+            profile,
+            config_root=settings.rolo_config_dir,
+            timeout_s=timeout,
+        )
+        if not hasattr(executor, "run_readonly"):
+            raise ValueError("the enrolled target connector does not support read-only Diagnose")
+        collector = LanderPiDiagnoseCollector(executor)  # type: ignore[arg-type]
+        if normalized == "LP-D01":
+            observation = collector.collect_lp_d01()
+            finding = evaluate_lp_d01(observation)
+        else:
+            observation = collector.collect_lp_d02()
+            finding = evaluate_lp_d02(observation)
+        evidence_root = settings.rolo_config_dir / "target-evidence"
+        evidence_path = evidence_root / f"{target_profile.robot_id}-bundle.json"
+        deployment_path = evidence_root / f"{target_profile.robot_id}.json"
+        if evidence_path.is_file() and deployment_path.is_file():
+            deployment = load_deployment(deployment_path)
+            target_bundle = TargetEvidenceBundle.model_validate_json(
+                evidence_path.read_text(encoding="utf-8")
+            )
+            verify_evidence_bundle(target_bundle, deployment=deployment)
+            finding = finding.model_copy(
+                update={"target_evidence_sha256": target_bundle.payload_sha256}
+            )
+            # Keep the exact digest visible to the Agent without making it a
+            # free-form claim in the hypothesis text.
+            finding.evidence_refs.append(f"target-evidence:{target_bundle.payload_sha256}")
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        root = f"diagnose/{target_profile.robot_id}/cases/{normalized}/{stamp}"
+        observation_path = artifact_store.write_json(
+            f"{root}/observation.json", observation.model_dump(mode="json")
+        )
+        finding_path = artifact_store.write_json(
+            f"{root}/finding.json", finding.model_dump(mode="json")
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "DIAGNOSE_COMPLETE",
+            "robot_id": target_profile.robot_id,
+            "case_id": normalized,
+            "observation": observation.model_dump(mode="json"),
+            "finding": finding.model_dump(mode="json"),
+            "artifacts": {"observation": str(observation_path), "finding": str(finding_path)},
+        }
+    )
 
 
 @target_app.command("application-write-canary")

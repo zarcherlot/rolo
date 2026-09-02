@@ -122,6 +122,18 @@ bring-up；重新读取 `/navigate_to_pose`、`/spin`、`/drive_on_heading` 和 
 
 ## Diagnose 输出
 
+MVP 提供两个只读入口（不自动 bring-up、不重启驱动）：
+
+```bash
+rolo target diagnose-case --profile <profile> --case LP-D01
+rolo target diagnose-case --profile <profile> --case LP-D02
+```
+
+命令通过已 enroll 的 `TargetProfile → SSH Connector` 运行固定、限时命令，分别写入
+`diagnose/<robot>/cases/<case>/<UTC>/observation.json` 和 `finding.json`。若 profile 下有
+可验证的 TargetEvidenceBundle，finding 会绑定其 `payload_sha256`；缺少或校验失败时命令
+不会把本地推断伪装成目标证据。
+
 每个 case 输出一条结构化 finding：
 
 ```text
