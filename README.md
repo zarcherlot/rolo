@@ -18,6 +18,11 @@ rolo（robot only loop once）是一个面向具身机器人的开发与验证�
 输入、过程、结果和外部观测，形成可解释、可回放、可复现的证据闭环。当前版本仍是开发中的
 MVP；真实机器人能力必须经过目标证据、独立 Gate、授权和相应的真机验收。
 
+v2 的核心定位是“小而稳的可信工具面”：Rolo 定义 Tool、Discovery/Evidence、Conformance
+和 Release 四类标准，并提供经过验证的 inspect CLI；Agent 负责发现、规划和解释，Rolo 负责
+最终固化和运行时授权。详见 [Rolo v2 核心设计](docs/architecture/ROLO_V2_CORE_DESIGN_ZH.md)
+与[最小代码范围](docs/architecture/ROLO_V2_CODE_SCOPE_ZH.md)。
+
 ## 快速开始
 
 rolo 用一条可审计的三阶段路径，把机器人工作区从“已发现”推进到“可诊断”和“可验证”。
