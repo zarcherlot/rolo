@@ -163,12 +163,6 @@ def evaluate_lp_d01(observation: LPD01Observation) -> DiagnoseFinding:
                 "are observed"
             ],
         )
-    next_probe = (
-        "start a supervised mapping session with bounded motion, save a new map artifact, "
-        "then relaunch localization"
-        if not observation.map_topic_present and not observation.map_to_base_footprint_available
-        else "discover an explicit, target-bound relocalization/initial-pose operation; do not publish a guessed pose"
-    )
     return DiagnoseFinding(
         case_id="LP-D01",
         symptom="navigation command discovery",
@@ -293,6 +287,12 @@ def evaluate_lp_d03(observation: LPD03Observation) -> DiagnoseFinding:
         missing.append("active localization lifecycle")
     if not (observation.initial_pose_observed or observation.configured_initial_pose):
         missing.append("initial pose")
+    next_probe = (
+        "start a supervised mapping session with bounded motion, save a new map artifact, "
+        "then relaunch localization"
+        if not observation.map_topic_present and not observation.map_to_base_footprint_available
+        else "discover an explicit, target-bound relocalization/initial-pose operation; do not publish a guessed pose"
+    )
     return DiagnoseFinding(
         case_id="LP-D03",
         symptom="global navigation pose prerequisite",
