@@ -94,6 +94,11 @@ returned exit code `0`, and the route was rechecked afterwards. This proves requ
 route continuity only; it does not prove that the physical base has stopped. The artifact is retained
 under `.rolo/artifacts/application/mentorpi/operations/app_base_stop/write-canary/`.
 
+The six navigation writes (`app.navigation.start`, `pause`, `resume`, `cancel`, `stop`, and
+`recover`) were checked separately against a fresh LanderPi graph. All remain `DEFERRED_WRITE`:
+the target exposes no navigation execution supervisor action/service, so no navigation request was
+sent. The base stop canary must not be reused as navigation stop evidence.
+
 The historical source is `src/rolo/operation_contracts/app.yaml` at the pre-v2 registry commit;
 the v2 implementation deliberately keeps that source out of the runtime package and evolves this
 backlog one verified operation at a time.

@@ -91,6 +91,27 @@ was invoked.
 The canary candidate and report are retained in the ignored runtime artifact
 tree at `.rolo/artifacts/application/mentorpi/operations/app_base_stop/write-canary/`.
 
+## Navigation write discovery
+
+Using a fresh evidence bundle collected at `2026-09-02T09:02:03Z`
+(`payload_sha256=9ed9b0872041061d409615550e342243e35ee874a4266328a07997dc0973b4f5`),
+Rolo checked every v1 navigation write operation:
+
+| operation | candidate | bundle | conformance | result |
+|---|---|---|---|---|
+| `app.navigation.start` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+| `app.navigation.pause` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+| `app.navigation.resume` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+| `app.navigation.cancel` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+| `app.navigation.stop` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+| `app.navigation.recover` | `DEFERRED` | `DEFERRED_WRITE` | `FAIL` | no navigation execution supervisor route |
+
+The target graph exposed `/cmd_vel` and odometry routes, but no navigation action
+or service server. Rolo therefore did not send a navigation goal, pause, cancel,
+stop, resume, or recovery request. The previously validated `app.base.stop` zero-
+Twist canary remains a separate base-control operation and is not counted as
+navigation conformance.
+
 The first bundle produced by the pre-v2 target installation was deliberately
 not accepted: its declared hash did not match the v2 verifier after model
 normalization. Rolo v2 now hashes the normalized `TargetEvidenceBundle` form
