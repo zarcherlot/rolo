@@ -23,8 +23,11 @@ from rolo.stages.probe.active_discovery import ActiveProbeMode
 from rolo.stages.probe.application import (
     APPLICATION_IDS,
     build_application_adapter_bundle,
+    build_application_operation_adapter_bundle,
     conform_application_bundle,
+    conform_application_operation_bundle,
     discover_application_candidate,
+    discover_application_operation,
 )
 from rolo.stages.probe.target_evidence import (
     EvidenceDeploymentMode,
@@ -288,6 +291,82 @@ def target_application_bundle(
             ),
             "robot_id": robot_id,
             "application": application,
+            "candidate": candidate.model_dump(mode="json"),
+            "adapter_bundle": adapter.model_dump(mode="json"),
+            "conformance": report.model_dump(mode="json"),
+            "artifacts": {
+                "candidate": str(candidate_path),
+                "adapter_bundle": str(bundle_path),
+                "conformance": str(conformance_path),
+            },
+        }
+    )
+    if report.status != "PASS":
+        raise typer.Exit(code=2)
+
+
+@target_app.command("application-operation")
+def target_application_operation(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    operation: Annotated[
+        str,
+        typer.Option(
+            "--operation",
+            help="v1 application operation ID, for example app.navigation.status",
+        ),
+    ],
+    evidence: Annotated[
+        Path | None,
+        typer.Option(
+            "--evidence", help="Verified target evidence JSON; defaults to profile bundle"
+        ),
+    ] = None,
+) -> None:
+    """Discover one application operation and emit its minimal conformance bundle."""
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        robot_id = target_profile.robot_id
+        deployment = load_deployment(
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}.json"
+        )
+        evidence_path = evidence or (
+            settings.rolo_config_dir / "target-evidence" / f"{robot_id}-bundle.json"
+        )
+        target_bundle = TargetEvidenceBundle.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        verified_probes = verify_evidence_bundle(target_bundle, deployment=deployment)
+        verified_bundle = target_bundle.model_copy(update={"probes": verified_probes})
+        candidate = discover_application_operation(verified_bundle, operation)
+        adapter = build_application_operation_adapter_bundle(
+            candidate,
+            target_evidence_sha256=verified_bundle.payload_sha256,
+        )
+        report = conform_application_operation_bundle(adapter, candidate, verified_bundle)
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        operation_path = operation.replace(".", "_")
+        root = f"application/{robot_id}/operations/{operation_path}/{adapter.bundle_id}"
+        candidate_path = artifact_store.write_json(
+            f"{root}/candidate.json", candidate.model_dump(mode="json")
+        )
+        bundle_path = artifact_store.write_json(
+            f"{root}/adapter-bundle.json", adapter.model_dump(mode="json")
+        )
+        conformance_path = artifact_store.write_json(
+            f"{root}/conformance.json", report.model_dump(mode="json")
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": (
+                "APPLICATION_OPERATION_READY"
+                if report.status == "PASS"
+                else "APPLICATION_OPERATION_REJECTED"
+            ),
+            "robot_id": robot_id,
+            "operation": operation,
             "candidate": candidate.model_dump(mode="json"),
             "adapter_bundle": adapter.model_dump(mode="json"),
             "conformance": report.model_dump(mode="json"),

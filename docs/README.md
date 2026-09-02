@@ -16,6 +16,7 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 - [工程状态台账](reference/ENGINEERING_STATUS.md)：当前实现、证据等级、已知限制；
 - [Agent-native Tool 标准](probe/AGENT_NATIVE_TOOLS.md)：四类小而稳的 Tool Surface、Session 和调用约束；
 - [Application gap bundle](probe/APPLICATION_GAP_BUNDLES.md)：启动、导航、地图、操作四类窄应用闭环；
+- [v1 application operation inventory](probe/APPLICATION_OPERATION_V1_INVENTORY.md)：137 项语义清单及 LanderPi 首批验证切片；
 - [实现地图](reference/IMPLEMENTATION_MAP.md)：代码入口、Schema、产物与测试的对应关系；
 - [真实目标机 enrollment 记录](validation/ROLO_V2_TARGET_ENROLLMENT_20260902.md)：一次物理目标的验证证据。
 

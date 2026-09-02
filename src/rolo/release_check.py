@@ -22,6 +22,9 @@ from rolo.stages.probe.application import (
     ApplicationAdapterBundle,
     ApplicationCandidate,
     ApplicationConformanceReport,
+    ApplicationOperationAdapterBundle,
+    ApplicationOperationCandidate,
+    ApplicationOperationConformanceReport,
 )
 from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
@@ -80,6 +83,9 @@ def run_release_check(
             (ApplicationCandidate, "application-candidate"),
             (ApplicationAdapterBundle, "application-adapter-bundle"),
             (ApplicationConformanceReport, "application-conformance"),
+            (ApplicationOperationCandidate, "application-operation-candidate"),
+            (ApplicationOperationAdapterBundle, "application-operation-adapter-bundle"),
+            (ApplicationOperationConformanceReport, "application-operation-conformance"),
         ):
             model.model_json_schema()
             checks.append(f"schema:{label}")

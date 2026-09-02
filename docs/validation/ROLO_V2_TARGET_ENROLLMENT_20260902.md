@@ -26,7 +26,8 @@ hardware, OS, and Middleware in read-only mode.
 
 - Collector: `collector-6c07d8c4c07844a0af54db60012d1810`
 - Target fingerprint: `70c798f35729aec4e4ca083b561f37dd45cf70c8dcbecfbe7ecc1110bd1d74c9`
-- Bundle payload SHA-256: `e7490fef2d422386d9c2cd748dda7e60b17c08bb31ee9e2d29a0574e84146280`
+- Bundle payload SHA-256: `59b2163b2af173bb6a1096804d2ba830d53d6f4891ce915097c7aeb4c0cd87c2`
+- Bundle observed at: `2026-09-02T07:54:31Z`
 - Independent verification: `PASSED` for payload hash, HMAC signature, target
   identity, and all three current provider layers.
 
@@ -47,6 +48,30 @@ current target's Middleware provider; route presence is not a behavioral or
 physical-safety certificate. The generated candidate, adapter bundle, and
 conformance artifacts remain in the ignored local `.rolo/artifacts/application/`
 tree.
+
+## Application operation slice
+
+The v1 application contract contains 137 operation IDs. Rolo v2 keeps those IDs
+as the semantic identity, while using four small application families only as
+discovery buckets. The first implementation slice covers 32 read-only operation
+IDs on `mentorpi` (R0/R1); write operations remain deferred until a separate
+mutation-safety contract exists.
+
+Against the fresh bundle above:
+
+- `23/32` operations produced a candidate and passed independent
+  `ROUTE_BINDING` conformance;
+- each passing adapter binds to an existing read-only native observation Tool
+  (`native.middleware.graph.inspect` or `native.middleware.observe`) with a
+  fixed mode and endpoint argument;
+- `9/32` remained `NOT_FOUND`: `app.map.{inspect,list,export}`,
+  `app.navigation.{costmap.inspect,path.inspect}`, and
+  `app.gnss.{list,status,inspect,sample}`.
+
+`ROUTE_BINDING` proves only that the operation's minimum runtime route was
+observed and the adapter is safe to expose to an Agent. It does not yet prove
+normalized operation output or physical behavior; that is the next conformance
+stage after the Agent consumes the bound native Tool.
 
 The first bundle produced by the pre-v2 target installation was deliberately
 not accepted: its declared hash did not match the v2 verifier after model

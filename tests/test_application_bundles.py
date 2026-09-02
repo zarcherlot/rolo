@@ -4,9 +4,13 @@ from rolo.core.models import DiscoveryStatus, ProbeResult, RouteEvidence
 from rolo.stages.probe.application import (
     APPLICATION_IDS,
     ApplicationAdapterBundle,
+    application_operation_candidate_sha256,
     build_application_adapter_bundle,
+    build_application_operation_adapter_bundle,
     conform_application_bundle,
+    conform_application_operation_bundle,
     discover_application_candidate,
+    discover_application_operation,
 )
 from rolo.stages.probe.target_evidence import TargetEvidenceBundle
 
@@ -117,3 +121,43 @@ def test_missing_mapping_signal_still_produces_a_rejected_bundle() -> None:
     assert isinstance(adapter, ApplicationAdapterBundle)
     assert adapter.routes == []
     assert conform_application_bundle(adapter, candidate, evidence).status == "FAIL"
+
+
+def test_operation_slice_binds_minimal_routes_and_defers_writes() -> None:
+    evidence = _bundle(
+        _route("ros_topic:/cmd_vel", "ros_topic", "/cmd_vel", "geometry_msgs/msg/Twist"),
+        _route("ros_topic:/odom", "ros_topic", "/odom", "nav_msgs/msg/Odometry"),
+    )
+    candidate = discover_application_operation(evidence, "app.navigation.status")
+    assert candidate.status == "CANDIDATE"
+    adapter = build_application_operation_adapter_bundle(
+        candidate,
+        target_evidence_sha256=evidence.payload_sha256,
+    )
+    assert len(adapter.routes) == 2
+    assert adapter.candidate_sha256 == application_operation_candidate_sha256(candidate)
+    assert conform_application_operation_bundle(adapter, candidate, evidence).status == "PASS"
+
+    deferred = discover_application_operation(evidence, "app.navigation.start")
+    assert deferred.status == "DEFERRED"
+    deferred_bundle = build_application_operation_adapter_bundle(
+        deferred,
+        target_evidence_sha256=evidence.payload_sha256,
+    )
+    assert deferred_bundle.access == "DEFERRED_WRITE"
+    assert (
+        conform_application_operation_bundle(deferred_bundle, deferred, evidence).status
+        == "FAIL"
+    )
+
+
+def test_operation_slice_reports_unmapped_read_as_not_callable() -> None:
+    evidence = _bundle()
+    candidate = discover_application_operation(evidence, "app.safety.status")
+    assert candidate.status == "UNSUPPORTED"
+    assert candidate.access == "unknown"
+    adapter = build_application_operation_adapter_bundle(
+        candidate,
+        target_evidence_sha256=evidence.payload_sha256,
+    )
+    assert adapter.access == "UNSUPPORTED"

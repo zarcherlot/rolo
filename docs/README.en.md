@@ -16,6 +16,7 @@ TargetProfile → SSH Connector → TargetEvidenceBundle
 - [engineering status](reference/ENGINEERING_STATUS.md): implementation maturity and evidence;
 - [Agent-native Tool standard](probe/AGENT_NATIVE_TOOLS.md): the four small Tool Surface contracts;
 - [Application gap bundles](probe/APPLICATION_GAP_BUNDLES.md): narrow startup/navigation/mapping/manipulation loops;
+- [v1 application operation inventory](probe/APPLICATION_OPERATION_V1_INVENTORY.md): the 137-operation backlog and first LanderPi slice;
 - [implementation map](reference/IMPLEMENTATION_MAP.md): code, schemas, artifacts, and tests;
 - [physical target enrollment record](validation/ROLO_V2_TARGET_ENROLLMENT_20260902.md): one real-target verification.
 
