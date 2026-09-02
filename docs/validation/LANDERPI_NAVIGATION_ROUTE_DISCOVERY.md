@@ -119,3 +119,7 @@ state: ROUTE_OBSERVED_BUT_WRITE_NOT_CONFORMED
 `/navigate_to_pose` 的出现只完成了 TargetEvidence 和 route binding；它还没有通过
 写入行为正确性或物理安全 conformance。`app.navigation.status`、`pose`、`quality`
 等只读 operation 仍应优先使用 Rolo 已验证的 graph/TF/topic inspect Tools。
+
+后续 L1/L2 真机 conformance 的完整结果见
+[`landerpi-l1-l2-20260902.json`](evidence/landerpi-l1-l2-20260902.json)。L1 zero-stop
+和 L2 bounded rotation 均已通过；这两个结果仍不等同于全局导航任务成功。

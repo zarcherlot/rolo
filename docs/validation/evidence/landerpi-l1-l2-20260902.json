@@ -1,0 +1,53 @@
+{
+  "schema_version": "rolo-landerpi-motion-conformance/v1",
+  "target": "mentorpi",
+  "target_host": "192.168.10.167",
+  "collected_at": "2026-09-02",
+  "runtime": {
+    "navigation_launch": "/home/ubuntu/ros2_ws/src/navigation/launch/include/bringup.launch.py",
+    "map": "/home/ubuntu/ros2_ws/src/slam/maps/map_01.yaml",
+    "action": "/spin",
+    "action_type": "nav2_msgs/action/Spin",
+    "behavior_server_limits": {
+      "max_rotational_vel_rps": 0.1,
+      "min_rotational_vel_rps": 0.03,
+      "rotational_acc_lim_rps2": 0.3
+    }
+  },
+  "levels": {
+    "L1": {
+      "route": "/cmd_vel_nav",
+      "operation": "zero-stop",
+      "zero_messages": 69,
+      "odom_samples": 61,
+      "max_linear_mps": 0.0,
+      "max_angular_rps": 0.0000926,
+      "first_xy": [0.0, 0.0],
+      "last_xy": [0.0, 0.0],
+      "status": "PASS"
+    },
+    "L2": {
+      "route": "/spin",
+      "operation": "bounded-rotation",
+      "target_yaw_rad": 0.05,
+      "max_allowed_angular_rps": 0.15,
+      "max_allowed_yaw_delta_rad": 0.15,
+      "action_server": true,
+      "goal_accepted": true,
+      "goal_status": "SUCCEEDED",
+      "max_angular_rps": 0.107428,
+      "max_linear_mps": 0.0,
+      "yaw_delta_rad": 0.066786,
+      "position_delta_m": 0.0,
+      "final_linear_mps": 0.0,
+      "final_angular_rps": 0.0000084,
+      "zero_stop_after_action": true,
+      "status": "PASS"
+    }
+  },
+  "limitations": [
+    "L1/L2 prove bounded command routing, cancellation/termination and observed stop; they do not prove global navigation correctness.",
+    "The test temporarily set behavior_server runtime velocity parameters; the persistent config still requires a reviewed speed-bound patch.",
+    "No global map goal was sent."
+  ]
+}
