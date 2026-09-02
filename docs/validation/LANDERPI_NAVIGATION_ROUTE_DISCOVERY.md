@@ -18,6 +18,14 @@
   因此这是“路由可用 + 传感器证据不稳定”，不是运动安全或导航成功证明。
 - 验证结束后已终止临时导航 launch，并恢复 `start_app_node.service`；没有发送任何导航 goal。
 
+## 为什么之前没有发现导航指令
+
+之前的 discovery 只观察了当时正在运行的基础 bring-up。该 launch 没有启动 Nav2，
+所以 graph 中没有 `/navigate_to_pose`、`/compute_path_to_pose` 等 action；而导航入口
+藏在 workspace 源码和 `navigation.sh` 中，且还依赖 `.robotrc` 的环境变量。只扫描当前
+graph 会得到正确但不完整的 `NOT_FOUND`。本次补充了三层发现：文件系统入口、启动依赖、
+受控 bring-up 后的真实 action graph。
+
 ## 候选映射
 
 ### 1. 启动导航栈（bring-up，不发送 goal）
@@ -46,6 +54,27 @@ ros2 action send_goal /navigate_to_pose \
 这条命令会产生真实运动，当前仅用于说明 `app.navigation.start` 的可能 route
 binding，禁止由 discovery/conformance 自动执行。真正发布前还必须有新鲜 TF、定位、
 地图、测距、静止状态、速度上限、取消/停车和人在环授权。
+
+### 无运动写入 conformance（已在真机执行）
+
+在受控 Nav2-only bring-up 后，Rolo 发布当前位置（`map: (0, 0)`）作为目标，目标被
+`/bt_navigator` 接受后立即调用 action cancel：
+
+```text
+server=true
+accepted=true
+cancel_requested=true
+cancel_response=1
+result_status=5 (CANCELED)
+```
+
+取消后 3 秒 `/odom` 观察窗口：`max_linear=0.0 m/s`、`max_angular=8.1e-05 rad/s`，
+位置从 `(0.0, 0.0)` 到 `(0.0, 0.0)`。这证明了 action 接受/取消/无运动停车路径，
+不证明导航到目标的行为正确性。
+
+当前配置文件仍声明 velocity smoother 的上限为 `0.26 m/s`、`3.0 rad/s`；其中角速度
+上限与底盘 launch 的 `0.45 rad/s` 约束不一致。因此速度边界只能被发现，尚未被允许
+自动放行，必须先由 Rolo Tool 在运行时读取并校验最终生效参数。
 
 ## Rolo v2 结论
 
