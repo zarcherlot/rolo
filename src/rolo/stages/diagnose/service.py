@@ -127,14 +127,14 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
         validate_adapter_handoff(artifact_root, robot_id)
     except (FileNotFoundError, OSError, ValueError) as exc:
         return StageAssessment(
-            stage=StageName.DIAGNOSE,
+            stage=StageName.TRACE,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
             summary="Diagnosis is blocked until verified CLI and State Graph are available",
             prerequisites=[str(adapt_handoff)],
             artifacts={"agent_inputs": str(agent_inputs)} if agent_inputs.is_file() else {},
             blockers=[f"Adapter handoff is unavailable or invalid: {exc}"],
-            agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
+            agent_requirement=AgentRequirement.TRACE_AGENT,
         )
     handoff_valid = False
     handoff_error: str | None = None
@@ -159,7 +159,7 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
         except (OSError, ValueError) as exc:
             handoff_error = str(exc)
     return StageAssessment(
-        stage=StageName.DIAGNOSE,
+        stage=StageName.TRACE,
         robot_id=robot_id,
         status=handoff_status if handoff_valid else StageStatus.NOT_STARTED,
         summary=(
@@ -179,5 +179,5 @@ def assess_diagnose(artifact_root: Path, robot_id: str) -> StageAssessment:
             if handoff_valid and handoff_status == StageStatus.COMPLETE
             else [handoff_error or "Diagnosis did not produce a real conclusive target Episode"]
         ),
-        agent_requirement=AgentRequirement.DIAGNOSIS_AGENT,
+        agent_requirement=AgentRequirement.TRACE_AGENT,
     )

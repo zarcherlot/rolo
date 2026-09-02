@@ -476,7 +476,7 @@ class AdaptTask(BaseModel):
     id: str
     description: str
     operations: list[str] = Field(default_factory=list)
-    agent_requirement: AgentRequirement = AgentRequirement.ADAPTER_AGENT
+    agent_requirement: AgentRequirement = AgentRequirement.PROBE_AGENT
 
 
 class AdaptPlan(BaseModel):

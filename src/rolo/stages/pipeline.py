@@ -10,9 +10,9 @@ from rolo.stages.verify.service import assess_verify
 
 def assess_stage(stage: StageName, artifact_root: Path, robot_id: str) -> StageAssessment:
     assessors = {
-        StageName.ADAPT: assess_adapt,
-        StageName.DIAGNOSE: assess_diagnose,
-        StageName.VERIFY: assess_verify,
+        StageName.PROBE: assess_adapt,
+        StageName.TRACE: assess_diagnose,
+        StageName.CERTIFY: assess_verify,
     }
     return assessors[stage](artifact_root, robot_id)
 

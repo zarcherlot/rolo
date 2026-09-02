@@ -1,4 +1,4 @@
-<!-- status: draft-v2; authority: implementation scope; owner: rolo maintainers -->
+<!-- status: draft; authority: plan; owner: rolo maintainers; last_reviewed: 2026-09-02 -->
 
 # Rolo v2 最小代码范围
 

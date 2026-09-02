@@ -196,7 +196,7 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
         validate_diagnosis_handoff(artifact_root, robot_id)
     except (FileNotFoundError, OSError, ValueError) as exc:
         return StageAssessment(
-            stage=StageName.VERIFY,
+            stage=StageName.CERTIFY,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
             summary="Optional verification requires a frozen diagnosis handoff",
@@ -204,7 +204,7 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
             prerequisites=[str(diagnosis_handoff)],
             artifacts={"agent_inputs": str(agent_inputs)} if agent_inputs.is_file() else {},
             blockers=[f"Diagnosis handoff is unavailable or invalid: {exc}"],
-            agent_requirement=AgentRequirement.VERIFICATION_AGENT,
+            agent_requirement=AgentRequirement.CERTIFY_AGENT,
         )
     handoff_valid = False
     handoff_error: str | None = None
@@ -217,7 +217,7 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
         except (OSError, ValueError) as exc:
             handoff_error = str(exc)
     return StageAssessment(
-        stage=StageName.VERIFY,
+        stage=StageName.CERTIFY,
         robot_id=robot_id,
         status=handoff_status if handoff_valid else StageStatus.NOT_STARTED,
         summary=(
@@ -240,5 +240,5 @@ def assess_verify(artifact_root: Path, robot_id: str) -> StageAssessment:
             if handoff_valid
             else [handoff_error or "Verification was not requested or has not run"]
         ),
-        agent_requirement=AgentRequirement.VERIFICATION_AGENT,
+        agent_requirement=AgentRequirement.CERTIFY_AGENT,
     )

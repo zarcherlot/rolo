@@ -314,13 +314,13 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
     discovery_report = layout.discovery_latest(robot_id)
     if not adapt_inputs.is_file():
         return StageAssessment(
-            stage=StageName.ADAPT,
+            stage=StageName.PROBE,
             robot_id=robot_id,
             status=StageStatus.NOT_STARTED,
             summary="Adapt discovery has not produced probes and Agent inputs",
             prerequisites=[str(adapt_inputs)],
             blockers=["Run adapt discovery"],
-            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
         )
     try:
         report = load_latest_report(artifact_root, robot_id)
@@ -328,7 +328,7 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
         # A broken latest marker must degrade the read model, not take down the
         # control-plane overview endpoint. The next discovery run can repair it.
         return StageAssessment(
-            stage=StageName.ADAPT,
+            stage=StageName.PROBE,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
             summary="Latest Adapt discovery evidence is unavailable or invalid",
@@ -337,17 +337,17 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             blockers=[
                 "Latest discovery evidence failed manifest, schema, or integrity validation"
             ],
-            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
         )
     if report.status == DiscoveryStatus.FAILED:
         return StageAssessment(
-            stage=StageName.ADAPT,
+            stage=StageName.PROBE,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
             summary="Adapt discovery probes failed",
             artifacts={"inputs": str(adapt_inputs), "discovery_report": str(discovery_report)},
             blockers=["Resolve failed discovery probes"],
-            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
         )
     try:
         wiki_path = resolve_artifact_ref(artifact_root, report.review_ref)
@@ -355,13 +355,13 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             raise FileNotFoundError(wiki_path)
     except (OSError, ValueError) as exc:
         return StageAssessment(
-            stage=StageName.ADAPT,
+            stage=StageName.PROBE,
             robot_id=robot_id,
             status=StageStatus.BLOCKED,
             summary="The editable robot Wiki is unavailable",
             artifacts={"inputs": str(adapt_inputs)},
             blockers=[f"Regenerate or restore the robot Wiki: {exc}"],
-            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
         )
     handoff_valid = False
     handoff_error: str | None = None
@@ -383,7 +383,7 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             handoff_error = str(exc)
     if handoff_valid:
         return StageAssessment(
-            stage=StageName.ADAPT,
+            stage=StageName.PROBE,
             robot_id=robot_id,
             status=StageStatus.COMPLETE,
             summary="Verified CLI and State Graph handoff is available",
@@ -391,10 +391,10 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
                 "robot_wiki": str(wiki_path),
                 "handoff_index": str(handoff_index),
             },
-            agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
         )
     return StageAssessment(
-        stage=StageName.ADAPT,
+            stage=StageName.PROBE,
         robot_id=robot_id,
         status=(
             StageStatus.DEGRADED
@@ -409,5 +409,5 @@ def assess_adapt(artifact_root: Path, robot_id: str) -> StageAssessment:
             "robot_wiki": str(wiki_path),
         },
         blockers=[handoff_error or "Missing verified canonical CLI and State Graph handoff"],
-        agent_requirement=AgentRequirement.ADAPTER_AGENT,
+            agent_requirement=AgentRequirement.PROBE_AGENT,
     )

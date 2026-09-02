@@ -21,11 +21,12 @@ MVP；真实机器人能力必须经过目标证据、独立 Gate、授权和相
 v2 的核心定位是“小而稳的可信工具面”：Rolo 定义 Tool、Discovery/Evidence、Conformance
 和 Release 四类标准，并提供经过验证的 inspect CLI；Agent 负责发现、规划和解释，Rolo 负责
 最终固化和运行时授权。详见 [Rolo v2 核心设计](docs/architecture/ROLO_V2_CORE_DESIGN_ZH.md)
+、[Probe/Trace/Certify 阶段词汇](docs/architecture/ROLO_V2_PROBE_TRACE_CERTIFY_ZH.md)
 与[最小代码范围](docs/architecture/ROLO_V2_CODE_SCOPE_ZH.md)。
 
 ## 快速开始
 
-rolo 用一条可审计的三阶段路径，把机器人工作区从“已发现”推进到“可诊断”和“可验证”。
+rolo 用一条可审计的 Probe 主路径，把机器人目标从“未绑定”推进到“可由 Agent 消费的可信工具”。
 完整的离线 Demo、环境变量和故障排查见[10 分钟安装与 Demo](docs/getting-started/QUICKSTART_10_MIN.md)。
 
 ### 1. 安装
@@ -39,25 +40,23 @@ uv sync --locked --dev
 uv run robotctl runtime health
 ```
 
-### 2. Adapt：发现并建立机器人上下文
+### 2. Probe：发现并建立机器人上下文
 
 ```bash
-uv run rolo adapt /path/to/robot-workspace \
+uv run rolo probe /path/to/robot-workspace \
   --robot my-robot \
   --urdf /path/to/robot.urdf
-uv run robotctl adapt status --robot my-robot
+uv run robotctl probe status --robot my-robot
 ```
 
-`--urdf` 可以省略。Adapt 会生成 Wiki、目标证据、候选操作和 handoff；静态源码、mock 或
+`--urdf` 可以省略。Probe 会生成目标证据和 Agent 可消费的工具上下文；静态源码、mock 或
 `--help` 输出不会直接被当成真实运行能力。
 
-### 3. Diagnose → Verify：推进阶段闭环
+### 3. Trace → Certify：后续阶段（兼容入口）
 
 ```bash
-uv run robotctl diagnose plan --robot my-robot
-uv run robotctl diagnose run --robot my-robot --confirm
-uv run robotctl verify plan --robot my-robot
-uv run robotctl verify run --robot my-robot --confirm
+uv run robotctl trace plan --robot my-robot
+uv run robotctl certify plan --robot my-robot
 uv run robotctl pipeline-status --robot my-robot
 ```
 
@@ -69,7 +68,7 @@ uv run robotctl pipeline-status --robot my-robot
 uv run rolo
 ```
 
-例如输入“检查 my-robot 当前状态，只执行只读 Adapt”或“为 my-robot 生成 Diagnose plan”。脚本和桌面启动器可使用 `uv run rolo run`；非交互环境不会启动 REPL，而是输出帮助。
+例如输入“检查 my-robot 当前状态，只执行只读 Probe”。脚本和桌面启动器可使用 `uv run rolo run`；非交互环境不会启动 REPL，而是输出帮助。
 
 这条路径会生成 Wiki、机器证据、诊断 Episode、验证证据包和阶段 handoff；没有真实目标时，Diagnose/Verify 返回 `BLOCKED` 或等待证据是预期结果。模拟后端和离线 fixture 只用于开发验证，不替代急停、碰撞检测、人工授权或真机安全验收。
 

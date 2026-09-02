@@ -20,6 +20,7 @@ from rolo.targets.executor import (
     SubprocessCommandRunner,
     TargetExecutor,
     create_target_executor,
+    create_profile_target_executor,
 )
 from rolo.targets.models import (
     BootstrapAction,
@@ -84,6 +85,7 @@ __all__ = [
     "approve_bootstrap",
     "bootstrap_plan_digest",
     "create_target_executor",
+    "create_profile_target_executor",
     "execute_bootstrap",
     "request_bootstrap_approval",
     "sign_companion_manifest",

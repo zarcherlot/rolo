@@ -1,5 +1,7 @@
 <!-- status: draft-v2; authority: design baseline; owner: rolo maintainers -->
 
+<!-- status: active; authority: normative; owner: rolo maintainers; last_reviewed: 2026-09-02 -->
+
 # Rolo v2 核心设计：四类小而稳的标准
 
 ## 1. 产品目标

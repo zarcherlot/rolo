@@ -10,15 +10,15 @@ from rolo.core.models import utc_now
 
 
 class StageName(str, Enum):
-    ADAPT = "adapt"
-    DIAGNOSE = "diagnose"
-    VERIFY = "verify"
+    PROBE = "probe"
+    TRACE = "trace"
+    CERTIFY = "certify"
 
 
 class AgentRequirement(str, Enum):
-    ADAPTER_AGENT = "adapter_agent"
-    DIAGNOSIS_AGENT = "diagnosis_agent"
-    VERIFICATION_AGENT = "verification_agent"
+    PROBE_AGENT = "probe_agent"
+    TRACE_AGENT = "trace_agent"
+    CERTIFY_AGENT = "certify_agent"
 
 
 class StageStatus(str, Enum):
@@ -44,7 +44,9 @@ class StageAssessment(BaseModel):
 
 
 class PipelineAssessment(BaseModel):
-    schema_version: Literal["robot-three-stage-pipeline/v1"] = "robot-three-stage-pipeline/v1"
+    schema_version: Literal["rolo-probe-trace-certify-pipeline/v1"] = (
+        "rolo-probe-trace-certify-pipeline/v1"
+    )
     robot_id: str
     stages: list[StageAssessment]
     observed_at: datetime = Field(default_factory=utc_now)

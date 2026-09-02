@@ -1,3 +1,5 @@
+<!-- status: frozen; authority: reference; owner: rolo maintainers; target: raspberrypi/192.168.10.167 -->
+
 # Rolo v2 target enrollment record
 
 ## Result

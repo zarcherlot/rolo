@@ -38,7 +38,7 @@ from rolo.targets.approvals import (
     request_bootstrap_approval,
 )
 from rolo.targets.bootstrap import SubprocessBootstrapTransport
-from rolo.targets.executor import create_target_executor
+from rolo.targets.executor import create_profile_target_executor, create_target_executor
 from rolo.targets.models import BootstrapPlanStatus, TargetBootstrapPlan, TargetConnectionState
 from rolo.targets.package import build_companion_package
 from rolo.targets.profiles import CredentialReference, TargetProfileStore
@@ -293,6 +293,28 @@ def target_inspect(
         raise typer.Exit(code=2)
 
 
+@target_app.command("inspect-profile")
+def target_inspect_profile(
+    profile: Annotated[str, typer.Option("--profile", "--robot", help="Enrolled target profile")],
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
+    ] = 10.0,
+) -> None:
+    """Inspect an enrolled target using its pinned host key and credential."""
+    try:
+        assessment = create_profile_target_executor(
+            profile,
+            config_root=get_settings().rolo_config_dir,
+            timeout_s=timeout,
+        ).inspect()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(assessment)
+    if assessment.state != TargetConnectionState.READY:
+        raise typer.Exit(code=2)
+
+
 @target_app.command("episode-capture")
 def target_episode_capture(
     target: Annotated[str, typer.Argument(help="Local path or ssh:// workspace URI")],
@@ -428,6 +450,28 @@ def target_bootstrap_plan(
         if job
         else plan
     )
+    if plan.status == BootstrapPlanStatus.BLOCKED:
+        raise typer.Exit(code=2)
+
+
+@target_app.command("bootstrap-plan-profile")
+def target_bootstrap_plan_profile(
+    profile: Annotated[str, typer.Option("--profile", "--robot", help="Enrolled target profile")],
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", min=1.0, max=300.0, help="Connection timeout in seconds"),
+    ] = 10.0,
+) -> None:
+    """Plan bootstrap for an enrolled target using its pinned transport."""
+    try:
+        plan = create_profile_target_executor(
+            profile,
+            config_root=get_settings().rolo_config_dir,
+            timeout_s=timeout,
+        ).plan_bootstrap()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(plan)
     if plan.status == BootstrapPlanStatus.BLOCKED:
         raise typer.Exit(code=2)
 
@@ -749,8 +793,8 @@ def profile_approve_host_key(
     )
 
 
-@app.command("adapt")
-def adapt(
+@app.command("probe")
+def probe(
     target: Annotated[
         str,
         typer.Argument(help="Local workspace path or ssh:// target workspace URI"),
@@ -808,7 +852,7 @@ def adapt(
         typer.Option("--evidence-timeout", min=1.0, max=300.0),
     ] = 45.0,
 ) -> None:
-    """Run the shortest safe Adapt journey for TARGET."""
+    """Run the shortest safe Probe journey for TARGET."""
     if run_agent and not confirm:
         if sys.stdin.isatty():
             confirm = typer.confirm(

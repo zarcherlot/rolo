@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -14,8 +16,10 @@ from rolo.targets.executor import (
     CommandResult,
     LocalTargetExecutor,
     SshTargetExecutor,
+    create_profile_target_executor,
     quote_remote_argv,
 )
+from rolo.targets.profiles import CredentialReference, TargetProfileStore
 from rolo.targets.models import (
     BootstrapPlanStatus,
     CompanionStatus,
@@ -150,6 +154,55 @@ def test_ssh_executor_needs_no_mutation_when_companion_exists(tmp_path: Path) ->
     assert plan.status == BootstrapPlanStatus.READY
     assert plan.required_approvals == []
     assert all(step.risk == TargetRisk.READ_ONLY for step in plan.steps)
+
+
+def test_profile_executor_auto_assembles_pinned_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_root = tmp_path / "config"
+    store = TargetProfileStore(config_root)
+    profile = store.create(
+        robot_id="robot",
+        target=_ssh_target(),
+        credential=CredentialReference(
+            kind="platform-keychain", reference="platform-keychain:robot"
+        ),
+    )
+    host_key = profile.host_key.model_copy(
+        update={"status": "APPROVED", "fingerprint": "SHA256:abc"}
+    )
+    store.save(profile.model_copy(update={"host_key": host_key}))
+    known_hosts = config_root / "known_hosts"
+    known_hosts.parent.mkdir(parents=True)
+    known_hosts.write_text("example.test ssh-ed25519 AAAATEST\n", encoding="utf-8")
+    identity = config_root / "id_ed25519"
+    identity.write_text("private-key\n", encoding="utf-8")
+    if os.name != "nt":
+        identity.chmod(0o600)
+    deployment = SimpleNamespace(
+        mode=SimpleNamespace(value="remote"),
+        ssh_target="robot@example.test",
+        ssh_port=2222,
+        known_hosts_path=str(known_hosts),
+        ssh_identity_file=str(identity),
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.load_deployment", lambda _: deployment
+    )
+    monkeypatch.setattr(
+        "rolo.stages.adapt.target_evidence.verify_ssh_transport_pins", lambda _: None
+    )
+    runner = FakeSshRunner()
+
+    executor = create_profile_target_executor(
+        "robot", config_root=config_root, runner=runner
+    )
+    assessment = executor.inspect()
+
+    assert assessment.state == TargetConnectionState.READY
+    assert runner.calls
+    assert all("IdentitiesOnly=yes" in call for call in runner.calls)
+    assert all(str(identity.resolve()) in call for call in runner.calls)
 
 
 def test_product_cli_exposes_local_target_inspection_and_plan(tmp_path: Path) -> None:

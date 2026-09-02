@@ -336,7 +336,7 @@ def _adapt_detail(
     summary = LifecycleRunSummary(
         robot_id=robot_id,
         run_id=run_id,
-        stage=StageName.ADAPT,
+        stage=StageName.PROBE,
         status=status,
         gate_status=gate_status,
         handoff_status=handoff_status,
@@ -414,7 +414,7 @@ def _detail_for_root(
     *,
     observed_at: datetime,
 ) -> LifecycleRunDetail:
-    if stage is StageName.ADAPT:
+    if stage is StageName.PROBE:
         return _adapt_detail(
             artifact_root,
             output_root,
@@ -526,7 +526,7 @@ def lifecycle_evidence_specs(
     specs: dict[str, LifecycleEvidenceSpec] = {}
     layout = ArtifactLayout(artifact_root)
     for stage, run_root in roots:
-        if stage is not StageName.ADAPT:
+        if stage is not StageName.PROBE:
             continue
         try:
             detail = _adapt_detail(

@@ -32,6 +32,13 @@ def test_target_ref_parses_a_credential_free_ssh_uri() -> None:
     )
 
 
+def test_probe_is_the_v2_alias_for_the_adapt_journey() -> None:
+    result = CliRunner().invoke(app, ["probe", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "Probe" in result.output
+
+
 @pytest.mark.parametrize(
     ("value", "message"),
     [

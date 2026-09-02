@@ -1,4 +1,4 @@
-<!-- status: observed; authority: validation record; target: raspberrypi/192.168.10.167 -->
+<!-- status: frozen; authority: reference; owner: rolo maintainers; target: raspberrypi/192.168.10.167 -->
 
 # Rolo v2 首次真机 Smoke
 

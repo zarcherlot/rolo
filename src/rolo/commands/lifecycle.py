@@ -375,7 +375,7 @@ def emit_stage_status(stage: StageName, robot: str) -> None:
 @adapt_stage_app.command("status")
 def adapt_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show discovery, Adapter Agent, conformance, and handoff readiness."""
-    emit_stage_status(StageName.ADAPT, robot)
+    emit_stage_status(StageName.PROBE, robot)
 
 
 @adapt_stage_app.command("run")
@@ -504,7 +504,7 @@ def adapt_acceptance_pack(
 @diagnose_stage_app.command("status")
 def diagnose_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show the closed-loop diagnosis and tuning gate."""
-    emit_stage_status(StageName.DIAGNOSE, robot)
+    emit_stage_status(StageName.TRACE, robot)
 
 
 @diagnose_stage_app.command("plan")
@@ -578,7 +578,7 @@ def diagnose_stage_cancel(
 @verify_stage_app.command("status")
 def verify_stage_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
     """Show optional autonomous verification readiness."""
-    emit_stage_status(StageName.VERIFY, robot)
+    emit_stage_status(StageName.CERTIFY, robot)
 
 
 @verify_stage_app.command("plan")
@@ -693,9 +693,11 @@ def enrollment_show() -> None:
 
 
 def register_lifecycle_commands(root: typer.Typer) -> None:
-    root.add_typer(adapt_stage_app, name="adapt")
-    root.add_typer(diagnose_stage_app, name="diagnose")
-    root.add_typer(verify_stage_app, name="verify")
+    # Probe/Trace/Certify are the v2 vocabulary. Trace and Certify remain
+    # structural namespaces only; Probe is the active product path.
+    root.add_typer(adapt_stage_app, name="probe")
+    root.add_typer(diagnose_stage_app, name="trace")
+    root.add_typer(verify_stage_app, name="certify")
 
     @root.command("pipeline-status")
     def pipeline_status(robot: Annotated[str, typer.Option("--robot")]) -> None:
