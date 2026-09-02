@@ -24,3 +24,9 @@
 typed scan、typed command、distinct safe output、watchdog/zero-stop、independent
 emergency-stop。当前 LanderPi 结果为 **FAIL**：前两项 PASS，后三项 FAIL；所以仍不允许
 探索运动。
+
+代码侧已补上 ROS/provider-independent 的确定性 `safety_guard` 核心：输入命令或测距数据
+过期、时间戳异常、测距无效、前方障碍或急停时一律输出零速；正常输入只允许通过配置的线/角速度
+上限。该核心本身不冒充目标机运行时证明。LanderPi 当前 `/controller/cmd_vel` 仍有多个直接
+发布者，且没有已证明的安全输出与急停语义，因此必须先完成 single-writer 控制路径和独立急停
+后端，再把该核心接入目标机并重新执行 Conformance。

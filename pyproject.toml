@@ -60,6 +60,7 @@ python_files = [
   "test_diagnose_landerpi_cases.py",
   "test_application_mapping.py",
   "test_application_safety.py",
+  "test_safety_guard.py",
 ]
 markers = [
   "lerobot: opt-in integration test requiring a separately installed LeRobot checkout",

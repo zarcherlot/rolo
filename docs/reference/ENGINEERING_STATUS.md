@@ -18,7 +18,7 @@
 | FEAT-APPLICATION-OPERATION-SLICE | STABLE | E4 | `rolo target application-operation --profile --operation` | `src/rolo/stages/probe/application.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | v1 137 项中先实现 32 个只读 route-binding rules；当前 bundle 是 route-level candidate，不等同于行为/结果验证；R2/R3 明确 DEFERRED；LanderPi 六项 navigation write 均无 supervisor route |
 | FEAT-APPLICATION-WRITE-CANARY | PARTIAL | E4 | `rolo target application-write-canary --profile --operation app.base.stop` | `src/rolo/stages/probe/application_write.py`; `src/rolo/targets/executor.py`; `src/rolo/product_cli.py` | `tests/test_application_bundles.py` | 仅固定 zero-Twist stop canary；必须新鲜路由证据和人工确认；PASS 只证明请求接受与路由复查，不证明物理停止或安全认证 |
 | FEAT-APPLICATION-MAP-CREATE | PARTIAL | E2 | `rolo target application-map-create --profile` | `src/rolo/stages/probe/application_mapping.py`; `src/rolo/targets/executor.py`; `src/rolo/product_cli.py` | `tests/test_application_mapping.py` | 只启动目标绑定的 SLAM 会话并返回 TTL/PID；不启动运动，探索仍需独立避障/急停 adapter |
-| FEAT-MOTION-SAFETY-CONFORMANCE | PARTIAL | E3 | `rolo target safety-conformance --profile` | `src/rolo/stages/probe/application_safety.py`; `src/rolo/product_cli.py` | `tests/test_application_safety.py` | 已能独立证明安全链路缺口并 fail-closed；LanderPi 尚无 distinct safety output、watchdog zero-stop 和独立急停路由 |
+| FEAT-MOTION-SAFETY-CONFORMANCE | PARTIAL | E3 | `rolo target safety-conformance --profile` | `src/rolo/stages/probe/application_safety.py`; `src/rolo/stages/probe/safety_guard.py`; `src/rolo/product_cli.py` | `tests/test_application_safety.py`; `tests/test_safety_guard.py` | 已有 ROS-independent 确定性 guard core（限速、前方障碍、scan/command watchdog、急停 fail-closed）；LanderPi 尚无 single-writer distinct safety output、watchdog zero-stop 和独立急停路由 |
 
 ## 可信度边界
 
