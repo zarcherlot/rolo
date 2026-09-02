@@ -15,6 +15,7 @@ from rolo.agent_tools.native_tools import (
     AgentNativeRunner,
     AgentNativeToolDescriptor,
     AgentNativeToolResult,
+    NativeToolStatus,
 )
 from rolo.agent_tools.planning import ToolPlan, validate_tool_plan
 from rolo.core.artifacts import ArtifactStore
@@ -151,7 +152,13 @@ class NativeToolSession:
             allowed_tool_ids=self.descriptor.allowed_tools,
             catalog=self.runner.list_tools(),
         )
-        return [self.invoke(step.tool_id, step.arguments) for step in plan.steps]
+        results: list[AgentNativeToolResult] = []
+        for step in plan.steps:
+            result = self.invoke(step.tool_id, step.arguments)
+            results.append(result)
+            if result.status != NativeToolStatus.SUCCEEDED:
+                break
+        return results
 
     def invoke(
         self,
