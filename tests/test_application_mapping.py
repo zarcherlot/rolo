@@ -66,3 +66,34 @@ def test_map_create_dispatch_parses_bounded_pid_and_does_not_require_motion() ->
     assert report.status == "PASS"
     assert report.session_started is True
     assert report.session_pid == 1234
+
+
+def test_map_create_can_bind_a_verified_raw_scan_route() -> None:
+    evidence = _bundle().model_copy(update={
+        "probes": {
+            "ros": ProbeResult(
+                layer="ros",
+                status=DiscoveryStatus.SUCCEEDED,
+                data={
+                    "route_evidence": [
+                        RouteEvidence(
+                            resource_id="ros_topic:/scan_raw",
+                            kind="ros_topic",
+                            endpoint="/scan_raw",
+                            interface_type="sensor_msgs/msg/LaserScan",
+                            evidence_origin="OBSERVED_RUNTIME",
+                            source="test:runtime",
+                            observed_at=datetime.now(timezone.utc),
+                        ).model_dump(mode="json")
+                    ]
+                },
+            )
+        }
+    })
+    candidate = discover_map_create_candidate(
+        evidence,
+        static_entrypoints=["/home/ubuntu/ros2_ws/src/slam/launch/include/slam_base.launch.py"],
+    )
+    assert candidate.status == "CANDIDATE"
+    assert candidate.scan_route is not None
+    assert candidate.scan_route.endpoint == "/scan_raw"

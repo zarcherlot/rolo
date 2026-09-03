@@ -137,6 +137,13 @@ def test_mapping_session_start_accepts_only_target_bound_entrypoint(tmp_path: Pa
     assert "ros2 launch" in command
     assert "enable_save:=true" in command
     assert "scan_topic:=scan" in command
+    result = executor.run_mapping_session_start(
+        launch_file="/home/robot/wheeltec_ws/src/slam/launch/include/slam_base.launch.py",
+        ttl_s=600,
+        confirmation="I CONFIRM APP.MAP.CREATE",
+        scan_topic="scan_raw",
+    )
+    assert "scan_topic:=scan_raw" in runner.calls[-1][-1]
     with pytest.raises(ValueError, match="exact human confirmation"):
         executor.run_mapping_session_start(
             launch_file="/home/robot/wheeltec_ws/src/slam/launch/include/slam_base.launch.py",

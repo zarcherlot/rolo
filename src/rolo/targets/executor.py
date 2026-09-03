@@ -307,6 +307,7 @@ class SshTargetExecutor:
         launch_file: str,
         ttl_s: int = 900,
         confirmation: str,
+        scan_topic: str = "scan",
     ) -> CommandResult:
         """Start the target-bound, no-motion SLAM session used by ``app.map.create``.
 
@@ -327,14 +328,29 @@ class SshTargetExecutor:
         normalized_launch = posixpath.normpath(launch_file)
         if normalized_launch != expected:
             raise ValueError("mapping launch entrypoint is not the enrolled workspace adapter")
+        if scan_topic not in {"scan", "scan_raw"}:
+            raise ValueError("mapping scan topic is outside the enrolled adapter allowlist")
         log_path = "/tmp/rolo-map-create.log"
-        command = (
-            "set -e; "
-            f"nohup timeout {int(ttl_s)}s ros2 launch {quote_remote_arg(normalized_launch)} "
-            "enable_save:=true scan_topic:=scan "
-            f"> {quote_remote_arg(log_path)} 2>&1 & "
-            "pid=$!; "
-            "printf 'rolo_mapping_pid=%s\\n' \"$pid\""
+        setup_files = self.ros_setup_files
+        if any(
+            not path
+            or "\x00" in path
+            or not path.startswith("/")
+            or any(character in path for character in "'\";$`\\")
+            for path in setup_files
+        ):
+            raise ValueError("ROS setup paths must be absolute and shell-safe")
+        command = "; ".join(
+            [
+                "set -e",
+                *[f". {quote_remote_arg(path)}" for path in setup_files],
+                "export need_compile=False",
+                f"nohup timeout {int(ttl_s)}s ros2 launch {quote_remote_arg(normalized_launch)} "
+                f"enable_save:=true scan_topic:={quote_remote_arg(scan_topic)} "
+                f"> {quote_remote_arg(log_path)} 2>&1 & "
+                "pid=$!; "
+                "printf 'rolo_mapping_pid=%s\\n' \"$pid\"",
+            ]
         )
         return self._run(["bash", "--noprofile", "--norc", "-c", command])
 

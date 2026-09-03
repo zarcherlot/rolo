@@ -78,12 +78,16 @@ def discover_map_create_candidate(
     static_entrypoints: list[str],
 ) -> MapCreateCandidate:
     """Require a real scan route and the exact target workspace SLAM entrypoint."""
+    observed = _observed_routes(evidence)
     scan_route = next(
         (
             route
-            for route in _observed_routes(evidence)
+            # Prefer the raw stream when both are advertised: a filtered topic
+            # may exist in the graph while producing no samples.
+            for endpoint in ("/scan_raw", "/scan")
+            for route in observed
             if route.kind == "ros_topic"
-            and route.endpoint == "/scan"
+            and route.endpoint == endpoint
             and route.interface_type == _SCAN_TYPE
             and route.evidence_origin == "OBSERVED_RUNTIME"
         ),
@@ -117,6 +121,7 @@ def discover_map_create_candidate(
         limitations=[
             "This operation starts SLAM only; it never publishes velocity or starts exploration",
             "A started SLAM session is not proof of map quality or physical safety",
+            "The scan input is selected from observed /scan or /scan_raw routes",
         ],
     )
 

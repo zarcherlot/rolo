@@ -63,6 +63,31 @@ odom_publisher（唯一当前硬件写入者）
 不能把 watchdog 的“有效命令→超时归零”记为 PASS。正式部署仍需把仲裁器纳入目标启动
 管理，并先恢复可验证的测距数据流。
 
+随后确认原始 `/scan_raw` 有稳定约 10 Hz 的 `LaserScan` 样本，而现有过滤节点没有产出
+`/scan`。因此当前仲裁器实例显式使用 `/scan_raw`（脚本参数可配置），避免把“有 topic
+端点”误当作“有测距数据”。在遥控器保护下做了极小角速度 canary：输入 `angular.z=0.01`
+连续 3 次，safe 输出为 `0.01`；停止输入后约 0.25 s 内 safe 输出归零并保持。该结果证明
+了目标侧 watchdog 的实际行为，但正式 Conformance 仍需把这次有界测试写入独立 artifact，
+且不能替代后续启动管理与传感器过滤修复。
+
+## 2026-09-03 `app.map.create` 复验
+
+用户明确确认 `I CONFIRM APP.MAP.CREATE` 后，Rolo 先刷新 mentorpi 的只读
+TargetEvidence，再按候选绑定的真实 `/scan_raw` 路由启动目标工作区的
+`slam/launch/include/slam_base.launch.py`。本次没有发布任何速度指令。
+
+期间发现目标机原有 `robot_state_publisher` 进程虽存活，却没有有效发布底盘模型
+TF；因此 SLAM 曾以 `frame 'lidar_frame'` 丢弃 LaserScan。Rolo 在目标机生成并加载
+当前 `MACHINE_TYPE=LanderPi_Mecanum`、`LIDAR_TYPE=LD19` 对应的真实 URDF 后，
+确认 `base_footprint -> lidar_frame`，并恢复现有 EKF 的 `odom -> base_footprint`
+动态 TF。随后重新启动单个有界 SLAM 会话，复查结果：
+
+- `/scan_raw`：约 10 Hz `sensor_msgs/msg/LaserScan`；
+- `/map`：`nav_msgs/msg/OccupancyGrid` publisher 可见，约 10 Hz；
+- map 初始栅格约 `67 x 62`、分辨率 `0.05 m`；
+- `app.map.create` dispatch/report：`PASS`，含候选、目标证据摘要、session PID 和 report artifact；
+- 该 PASS 只代表 SLAM 会话已被目标接受并持续发布地图，不代表已完成环境覆盖、地图质量或物理安全验收。
+
 ## 物理按钮急停边界
 
 `/ros_robot_controller/button` 的 `ButtonState` 只报告 `id` 与 `state`；目标源码将按下、

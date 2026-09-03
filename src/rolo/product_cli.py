@@ -678,6 +678,9 @@ def target_application_map_create(
                 launch_file=candidate.launch_file,
                 ttl_s=ttl,
                 confirmation=confirmation,
+                scan_topic=(
+                    candidate.scan_route.endpoint.lstrip("/") if candidate.scan_route else "scan"
+                ),
             )  # type: ignore[attr-defined]
             map_check = executor.run_readonly(["ros2", "topic", "list"])
             report = conform_map_create_dispatch(
