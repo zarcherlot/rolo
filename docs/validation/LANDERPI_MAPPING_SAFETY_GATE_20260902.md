@@ -46,7 +46,7 @@ emergency-stop。当前 LanderPi 结果为 **FAIL**：前两项 PASS，后三项
 ```text
 现有六个命令发布者
         ↓  /controller/cmd_vel（候选输入）
-安全仲裁器：/scan + ButtonState + watchdog + 限速
+安全仲裁器：/scan + watchdog + 限速
         ↓  /controller/cmd_vel_safe（唯一安全输出）
 odom_publisher（唯一当前硬件写入者）
         ↓  ros_robot_controller/set_motor
@@ -56,6 +56,12 @@ odom_publisher（唯一当前硬件写入者）
 计算底盘速度后发布 `ros_robot_controller/set_motor`。因此实施时应把它的输入重映射为
 `/controller/cmd_vel_safe`，让安全仲裁器成为唯一通往该订阅者的输出；不能仅在原
 `/controller/cmd_vel` 上再并列增加一个过滤发布者。
+
+本轮已在 LanderPi 临时完成该 remap：`/controller/cmd_vel_safe` 当前有 1 个订阅者，
+原 `/controller/cmd_vel` 仅剩仲裁器订阅者。目标上的 `/scan` 目前只有发布端点而没有
+可收到的样本，仲裁器因此按 fail-closed 规则持续输出零速；这证明了安全默认值，但还
+不能把 watchdog 的“有效命令→超时归零”记为 PASS。正式部署仍需把仲裁器纳入目标启动
+管理，并先恢复可验证的测距数据流。
 
 ## 物理按钮急停边界
 
