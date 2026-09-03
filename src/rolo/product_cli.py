@@ -8,6 +8,7 @@ native Tool Surface, and execution of a digest-bound read-only ToolPlan.
 from __future__ import annotations
 
 import time
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -755,6 +756,69 @@ def target_application_map_explore_plan(
             ],
         }
     )
+
+
+@target_app.command("application-map-explore")
+def target_application_map_explore(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    confirmation: Annotated[
+        str,
+        typer.Option("--confirmation", help="Exact physical-action confirmation phrase"),
+    ] = "",
+    cycles: Annotated[int, typer.Option("--cycles", min=1, max=3)] = 1,
+) -> None:
+    """Execute one bounded L1 exploration plan after read-only safety preflight."""
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        executor = create_profile_target_executor(
+            profile, config_root=settings.rolo_config_dir, timeout_s=30
+        )
+        checks: dict[str, str] = {}
+        for name, endpoint, expected in (
+            ("map", "/map", "nav_msgs/msg/OccupancyGrid"),
+            ("scan", "/scan_raw", "sensor_msgs/msg/LaserScan"),
+            ("safe_output", "/controller/cmd_vel_safe", "geometry_msgs/msg/Twist"),
+        ):
+            result = executor.run_readonly(["ros2", "topic", "info", endpoint])
+            checks[name] = "PASS" if result.returncode == 0 and f"Type: {expected}" in result.stdout else "FAIL"
+        safe_info = executor.run_readonly(["ros2", "topic", "info", "/controller/cmd_vel_safe"])
+        subscription_match = re.search(r"^Subscription count:\s*(\d+)", safe_info.stdout, re.MULTILINE)
+        checks["safe_single_writer"] = (
+            "PASS" if subscription_match and int(subscription_match.group(1)) >= 1 else "FAIL"
+        )
+        if any(value != "PASS" for value in checks.values()):
+            raise ValueError(f"L1 exploration preflight rejected: {checks}")
+        plan = build_l1_micro_explore_plan(cycles=cycles)
+        script_path = Path(__file__).resolve().parents[2] / "scripts" / "rolo_micro_explorer.py"
+        script_text = script_path.read_text(encoding="utf-8")
+        dispatch = executor.run_micro_exploration(
+            plan_json=plan.model_dump_json(),
+            explorer_script=script_text,
+            confirmation=confirmation,
+        )
+        if dispatch.returncode != 0:
+            raise ValueError(dispatch.stderr.strip() or dispatch.stdout.strip() or "exploration dispatch failed")
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        root = f"application/{target_profile.robot_id}/operations/app_map_explore"
+        plan_path = artifact_store.write_json(f"{root}/plan.json", plan.model_dump(mode="json"))
+        report = {
+            "schema_version": "rolo-micro-explore-report/v1",
+            "robot_id": target_profile.robot_id,
+            "operation": "app.map.explore",
+            "level": "L1",
+            "status": "DISPATCHED",
+            "checks": checks,
+            "dispatch_stdout": dispatch.stdout.strip(),
+            "limitations": [
+                "bounded canary only; it does not prove map coverage or collision avoidance",
+                "physical remote control remains the independent human safeguard",
+            ],
+        }
+        report_path = artifact_store.write_json(f"{root}/report.json", report)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit({"status": "APPLICATION_MAP_EXPLORE_DISPATCHED", "report": report, "plan": plan.model_dump(mode="json"), "artifacts": {"plan": str(plan_path), "report": str(report_path)}})
 
 
 @target_app.command("safety-conformance")

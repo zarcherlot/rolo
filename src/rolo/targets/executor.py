@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import platform
 import posixpath
@@ -361,6 +363,53 @@ class SshTargetExecutor:
         if not 1 <= pid <= 999_999_999:
             raise ValueError("mapping session PID is out of bounds")
         return self._run(["kill", "-TERM", "--", str(pid)])
+
+    def run_micro_exploration(
+        self,
+        *,
+        plan_json: str,
+        explorer_script: str,
+        confirmation: str,
+    ) -> CommandResult:
+        """Run one fixed L1 plan through the target safety arbiter."""
+        if confirmation != "I CONFIRM APP.MAP.EXPLORE.L1":
+            raise ValueError("L1 exploration requires the exact human confirmation phrase")
+        if len(plan_json.encode()) > 32_768 or len(explorer_script.encode()) > 32_768:
+            raise ValueError("exploration plan or adapter exceeds bounded size")
+        try:
+            plan = json.loads(plan_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("exploration plan is not valid JSON") from exc
+        if plan.get("schema_version") != "rolo-micro-explore-plan/v1":
+            raise ValueError("unsupported exploration plan")
+        if plan.get("input_topic") != "/controller/cmd_vel":
+            raise ValueError("exploration input is outside the enrolled arbiter route")
+        if float(plan.get("total_duration_s", 0)) > 30:
+            raise ValueError("exploration plan exceeds the bounded duration")
+        setup_files = self.ros_setup_files
+        if any(
+            not path
+            or "\x00" in path
+            or not path.startswith("/")
+            or any(character in path for character in "'\";$`\\")
+            for path in setup_files
+        ):
+            raise ValueError("ROS setup paths must be absolute and shell-safe")
+        script_b64 = base64.b64encode(explorer_script.encode()).decode("ascii")
+        plan_b64 = base64.b64encode(plan_json.encode()).decode("ascii")
+        command = "; ".join(
+            [
+                "set -e",
+                *[f". {quote_remote_arg(path)}" for path in setup_files],
+                f"printf %s {quote_remote_arg(script_b64)} | base64 -d > /tmp/rolo_micro_explorer.py",
+                f"printf %s {quote_remote_arg(plan_b64)} | base64 -d > /tmp/rolo_micro_explore_plan.json",
+                "chmod 700 /tmp/rolo_micro_explorer.py",
+                "nohup timeout 30s /usr/bin/python3 /tmp/rolo_micro_explorer.py "
+                "/tmp/rolo_micro_explore_plan.json > /tmp/rolo-micro-explore.log 2>&1 & "
+                "pid=$!; printf 'rolo_explore_pid=%s\\n' \"$pid\"",
+            ]
+        )
+        return self._run(["bash", "--noprofile", "--norc", "-c", command])
 
     @staticmethod
     def _failure_detail(result: CommandResult) -> str:

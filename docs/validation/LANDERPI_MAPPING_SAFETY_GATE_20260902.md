@@ -88,6 +88,17 @@ TF；因此 SLAM 曾以 `frame 'lidar_frame'` 丢弃 LaserScan。Rolo 在目标�
 - `app.map.create` dispatch/report：`PASS`，含候选、目标证据摘要、session PID 和 report artifact；
 - 该 PASS 只代表 SLAM 会话已被目标接受并持续发布地图，不代表已完成环境覆盖、地图质量或物理安全验收。
 
+## 2026-09-03 L1 微探索复验
+
+在上述 SLAM 会话和安全输出预检均通过后，执行了用户确认的固定 L1 计划：
+前进 1 秒（计划上限 `0.05 m/s`）、归零 `0.5` 秒、原地旋转 `1.5` 秒、再归零
+`0.5` 秒。执行器 PID 为 `1749234`，结束后进程已退出；对
+`/controller/cmd_vel_safe` 的复查样本为全零。`/odom` 的短时读数显示约 `0.03 m`
+的位移，说明这次是实际硬件闭环而非仅接受命令；地图话题仍保持发布。
+
+该结果只证明一次有界 canary 的执行、归零和目标安全输出连通，不代表自主探索器已
+具备完整避障、覆盖规划、恢复或长期运行能力。
+
 ## 物理按钮急停边界
 
 `/ros_robot_controller/button` 的 `ButtonState` 只报告 `id` 与 `state`；目标源码将按下、
