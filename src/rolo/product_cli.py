@@ -42,7 +42,10 @@ from rolo.stages.probe.application_mapping import (
     conform_map_create_dispatch,
     discover_map_create_candidate,
 )
-from rolo.stages.probe.application_exploration import build_l1_micro_explore_plan
+from rolo.stages.probe.application_exploration import (
+    build_l1_micro_explore_plan,
+    build_l2_half_meter_plan,
+)
 from rolo.stages.probe.application_safety import (
     conform_motion_safety_candidate,
     discover_motion_safety_candidate,
@@ -766,6 +769,7 @@ def target_application_map_explore(
         typer.Option("--confirmation", help="Exact physical-action confirmation phrase"),
     ] = "",
     cycles: Annotated[int, typer.Option("--cycles", min=1, max=3)] = 1,
+    level: Annotated[str, typer.Option("--level", help="L1 or L2 bounded exploration")] = "L1",
 ) -> None:
     """Execute one bounded L1 exploration plan after read-only safety preflight."""
     try:
@@ -789,7 +793,12 @@ def target_application_map_explore(
         )
         if any(value != "PASS" for value in checks.values()):
             raise ValueError(f"L1 exploration preflight rejected: {checks}")
-        plan = build_l1_micro_explore_plan(cycles=cycles)
+        if level == "L1":
+            plan = build_l1_micro_explore_plan(cycles=cycles)
+        elif level == "L2":
+            plan = build_l2_half_meter_plan()
+        else:
+            raise ValueError("exploration level must be L1 or L2")
         script_path = Path(__file__).resolve().parents[2] / "scripts" / "rolo_micro_explorer.py"
         script_text = script_path.read_text(encoding="utf-8")
         dispatch = executor.run_micro_exploration(
