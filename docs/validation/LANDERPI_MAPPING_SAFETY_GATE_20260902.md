@@ -32,3 +32,28 @@ emergency-stop。当前 LanderPi 结果为 **FAIL**：前两项 PASS，后三项
 上限。该核心本身不冒充目标机运行时证明。LanderPi 当前 `/controller/cmd_vel` 仍有多个直接
 发布者，且没有已证明的安全输出与急停语义，因此必须先完成 single-writer 控制路径和独立急停
 后端，再把该核心接入目标机并重新执行 Conformance。
+
+## 速度链路分析（只读）
+
+当前可收敛为下面的单写入者方案：
+
+```text
+现有六个命令发布者
+        ↓  /controller/cmd_vel（候选输入）
+安全仲裁器：/scan + ButtonState + watchdog + 限速
+        ↓  /controller/cmd_vel_safe（唯一安全输出）
+odom_publisher（唯一当前硬件写入者）
+        ↓  ros_robot_controller/set_motor
+```
+
+源码证据表明 `odom_publisher` 是 `/controller/cmd_vel` 的当前唯一订阅者，并在回调中
+计算底盘速度后发布 `ros_robot_controller/set_motor`。因此实施时应把它的输入重映射为
+`/controller/cmd_vel_safe`，让安全仲裁器成为唯一通往该订阅者的输出；不能仅在原
+`/controller/cmd_vel` 上再并列增加一个过滤发布者。
+
+## 物理按钮急停边界
+
+`/ros_robot_controller/button` 的 `ButtonState` 只报告 `id` 与 `state`；目标源码将按下、
+短按释放、长按等编码成状态值，但没有现成的“急停”语义。安全仲裁器可以把一个明确配置的
+物理按钮按下事件做成锁存急停，恢复必须通过独立的人工复位步骤；在确认具体按钮 `id` 和
+复位方式前，Conformance 不能把该 topic 记为 independent emergency-stop。
