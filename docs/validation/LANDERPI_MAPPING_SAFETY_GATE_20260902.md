@@ -31,7 +31,13 @@ emergency-stop。当前 LanderPi 结果为 **FAIL**：前两项 PASS，后三项
 过期、时间戳异常、测距无效、前方障碍或急停时一律输出零速；正常输入只允许通过配置的线/角速度
 上限。该核心本身不冒充目标机运行时证明。LanderPi 当前 `/controller/cmd_vel` 仍有多个直接
 发布者，且没有已证明的安全输出与急停语义，因此必须先完成 single-writer 控制路径和独立急停
-后端，再把该核心接入目标机并重新执行 Conformance。
+后端，再把该核心接入目标机并重新执行 Conformance。本阶段按用户要求暂不把急停纳入
+仲裁器实现；遥控器只作为现场人工保护，不计入 Rolo 的独立急停证明。
+
+目标侧的第一版实现位于 `scripts/rolo_ros_safety_arbiter.py`。它订阅现有命令汇聚 topic
+和 `/scan`，以固定上限和双 watchdog 发布 `/controller/cmd_vel_safe`；缺命令、缺测距、
+数据过期、测距无效或前方障碍时发布零速。部署它本身不会改变电机控制，必须再将唯一硬件
+写入者 `odom_publisher` 重映射到 `/controller/cmd_vel_safe`，才能形成闭环。
 
 ## 速度链路分析（只读）
 
