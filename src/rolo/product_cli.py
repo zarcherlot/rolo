@@ -7,6 +7,7 @@ native Tool Surface, and execution of a digest-bound read-only ToolPlan.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -758,9 +759,15 @@ def target_safety_conformance(
             "/cmd_vel_out",
             "/cmd_vel_smoothed",
         ):
-            result = safety_executor.run_readonly(["ros2", "topic", "info", endpoint])
-            if result.returncode == 0:
-                topic_info[endpoint] = result.stdout
+            # DDS discovery can briefly lag after a target-side adapter starts.
+            # Retry only this bounded, read-only preflight; never retry writes.
+            for attempt in range(3):
+                result = safety_executor.run_readonly(["ros2", "topic", "info", endpoint])
+                if result.returncode == 0 and result.stdout.strip():
+                    topic_info[endpoint] = result.stdout
+                    break
+                if attempt < 2:
+                    time.sleep(0.25)
         service_info: dict[str, str] = {}
         for endpoint in ("/enable", "/emergency_stop", "/e_stop", "/protective_stop"):
             result = safety_executor.run_readonly(["ros2", "service", "type", endpoint])
