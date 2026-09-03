@@ -815,7 +815,7 @@ def target_application_map_explore(
             "schema_version": "rolo-micro-explore-report/v1",
             "robot_id": target_profile.robot_id,
             "operation": "app.map.explore",
-            "level": "L1",
+            "level": plan.level,
             "status": "DISPATCHED",
             "checks": checks,
             "dispatch_stdout": dispatch.stdout.strip(),

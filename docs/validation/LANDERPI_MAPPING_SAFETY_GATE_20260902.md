@@ -99,6 +99,12 @@ TF；因此 SLAM 曾以 `frame 'lidar_frame'` 丢弃 LaserScan。Rolo 在目标�
 该结果只证明一次有界 canary 的执行、归零和目标安全输出连通，不代表自主探索器已
 具备完整避障、覆盖规划、恢复或长期运行能力。
 
+本次随后执行 L2 计划（用户确认 `I CONFIRM APP.MAP.EXPLORE.L2`）：直行约 0.5 m、
+原地旋转约 0.8 rad，并在末尾归零。执行期间 `/odom` 读数约到 `0.54 m`，
+`/map` 栅格从约 `67 x 62` 扩展到 `67 x 64`；执行进程随后退出，
+`/controller/cmd_vel_safe` 复查为全零。该结果证明一次更长的受控硬件闭环，但仍不等于
+完整环境建图完成。
+
 ## 物理按钮急停边界
 
 `/ros_robot_controller/button` 的 `ButtonState` 只报告 `id` 与 `state`；目标源码将按下、
