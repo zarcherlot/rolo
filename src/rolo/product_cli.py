@@ -783,9 +783,18 @@ def target_application_map_explore(
             ("map", "/map", "nav_msgs/msg/OccupancyGrid"),
             ("scan", "/scan_raw", "sensor_msgs/msg/LaserScan"),
             ("safe_output", "/controller/cmd_vel_safe", "geometry_msgs/msg/Twist"),
+            ("motion_feedback", "/odom_rf2o", "nav_msgs/msg/Odometry"),
         ):
             result = executor.run_readonly(["ros2", "topic", "info", endpoint])
-            checks[name] = "PASS" if result.returncode == 0 and f"Type: {expected}" in result.stdout else "FAIL"
+            publisher_match = re.search(r"^Publisher count:\s*(\d+)", result.stdout, re.MULTILINE)
+            checks[name] = (
+                "PASS"
+                if result.returncode == 0
+                and f"Type: {expected}" in result.stdout
+                and publisher_match
+                and int(publisher_match.group(1)) >= 1
+                else "FAIL"
+            )
         safe_info = executor.run_readonly(["ros2", "topic", "info", "/controller/cmd_vel_safe"])
         subscription_match = re.search(r"^Subscription count:\s*(\d+)", safe_info.stdout, re.MULTILINE)
         checks["safe_single_writer"] = (
