@@ -372,8 +372,11 @@ class SshTargetExecutor:
         confirmation: str,
     ) -> CommandResult:
         """Run one fixed L1 plan through the target safety arbiter."""
-        if confirmation != "I CONFIRM APP.MAP.EXPLORE.L1":
-            raise ValueError("L1 exploration requires the exact human confirmation phrase")
+        if confirmation not in {
+            "I CONFIRM APP.MAP.EXPLORE.L1",
+            "I CONFIRM APP.MAP.EXPLORE.L2",
+        }:
+            raise ValueError("exploration requires the exact human confirmation phrase")
         if len(plan_json.encode()) > 32_768 or len(explorer_script.encode()) > 32_768:
             raise ValueError("exploration plan or adapter exceeds bounded size")
         try:
