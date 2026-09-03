@@ -41,6 +41,7 @@ from rolo.stages.probe.application_mapping import (
     conform_map_create_dispatch,
     discover_map_create_candidate,
 )
+from rolo.stages.probe.application_exploration import build_l1_micro_explore_plan
 from rolo.stages.probe.application_safety import (
     conform_motion_safety_candidate,
     discover_motion_safety_candidate,
@@ -721,6 +722,39 @@ def target_application_map_create(
     )
     if report.status != "PASS":
         raise typer.Exit(code=2)
+
+
+@target_app.command("application-map-explore-plan")
+def target_application_map_explore_plan(
+    profile: Annotated[str, typer.Option("--profile", "--robot")],
+    cycles: Annotated[
+        int,
+        typer.Option("--cycles", min=1, max=3, help="Number of fixed L1 micro-sweep cycles"),
+    ] = 1,
+) -> None:
+    """Emit a no-motion plan for a future, explicitly confirmed L1 exploration run."""
+    try:
+        settings = get_settings()
+        target_profile = TargetProfileStore(settings.rolo_config_dir).load(profile)
+        plan = build_l1_micro_explore_plan(cycles=cycles)
+        artifact_store = ArtifactStore(settings.rolo_artifact_dir)
+        root = f"application/{target_profile.robot_id}/operations/app_map_explore"
+        plan_path = artifact_store.write_json(f"{root}/plan.json", plan.model_dump(mode="json"))
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    emit(
+        {
+            "status": "APPLICATION_MAP_EXPLORE_PLAN_READY",
+            "robot_id": target_profile.robot_id,
+            "operation": "app.map.explore",
+            "plan": plan.model_dump(mode="json"),
+            "artifacts": {"plan": str(plan_path)},
+            "limitations": [
+                "plan generation never publishes velocity",
+                "execution requires a separate explicit confirmation and safety gate",
+            ],
+        }
+    )
 
 
 @target_app.command("safety-conformance")
